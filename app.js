@@ -41,10 +41,26 @@ const bangjuOrganization = [
 ];
 const organizationOptions = bangjuOrganization.flatMap((company) => [company.name, ...company.units.map((unit) => `${company.name} / ${unit.name}`)]);
 const priorityOptions = [
-  ["A", "A 중요"],
-  ["B", "B 진행"],
-  ["C", "C 가능"],
+  ["A", "A"],
+  ["B", "B"],
+  ["?", "?"],
 ];
+const defaultScheduleTimes = ["12:00", "12:30", "13:00", "13:30", "14:00", "14:30", "15:00", "15:30", "16:00", "16:30", "17:00", "17:30", "18:00", "18:30", "19:00"];
+const defaultProfile = {
+  org: "(주)방주",
+  role: "직원",
+  name: "내 프로필",
+  phone: "",
+  email: "",
+  primaryWork: "",
+  secondaryWork: "",
+  workplace: "",
+  workHours: "12:00-19:00",
+  extra: "",
+  strengths: "",
+  weaknesses: "",
+  developmentGoals: "",
+};
 const employees = [
   { id: "bangju-finance-1", name: "방주 재무담당", org: "(주)방주", role: "재무" },
   { id: "beyond-fitness-manager", name: "비욘드 피트니스 센터장", org: "(주)방주 / 비욘드 피트니스 지사", role: "센터장" },
@@ -66,11 +82,18 @@ function loadState() {
 }
 
 function createState() {
+  const profileEmployee = {
+    id: "profile-user",
+    name: defaultProfile.name,
+    org: defaultProfile.org,
+    role: defaultProfile.role,
+  };
   return {
-    selectedEmployeeId: employees[0].id,
+    selectedEmployeeId: "profile-user",
     selectedDateKey: todayKey,
+    profile: { ...defaultProfile },
     employeeLogs: {
-      [todayKey]: Object.fromEntries(employees.slice(0, 3).map((employee) => [employee.id, createEmployeeLog(employee)])),
+      [todayKey]: { "profile-user": createEmployeeLog(profileEmployee, defaultProfile) },
     },
     attendance: {
       [todayKey]: [
@@ -82,7 +105,7 @@ function createState() {
   };
 }
 
-function createEmployeeLog(employee = employees[0]) {
+function createEmployeeLog(employee = employees[0], profile = state?.profile || defaultProfile) {
   return {
     employeeId: employee.id,
     org: employee.org,
@@ -92,13 +115,9 @@ function createEmployeeLog(employee = employees[0]) {
     tasks: [
       { priority: "A", text: "", status: "진행", done: false },
       { priority: "B", text: "", status: "예정", done: false },
-      { priority: "C", text: "", status: "예정", done: false },
+      ...Array.from({ length: 12 }, () => ({ priority: "?", text: "", status: "예정", done: false })),
     ],
-    schedule: [
-      { time: "09:00", text: "", status: "진행" },
-      { time: "13:00", text: "", status: "예정" },
-      { time: "17:30", text: "", status: "보고" },
-    ],
+    schedule: getScheduleTimes(profile.workHours).map((time) => ({ time, text: "", status: "예정" })),
     report: "",
     memo: "",
     record: "",
@@ -106,11 +125,12 @@ function createEmployeeLog(employee = employees[0]) {
 }
 
 function normalizeState() {
-  state.selectedEmployeeId ||= employees[0].id;
+  state.selectedEmployeeId ||= "profile-user";
+  state.profile = { ...defaultProfile, ...(state.profile || {}) };
   state.selectedDateKey ||= todayKey;
   state.employeeLogs ||= {};
   state.employeeLogs[getActiveDateKey()] ||= {};
-  employees.forEach((employee) => {
+  getEmployeeOptions().forEach((employee) => {
     state.employeeLogs[getActiveDateKey()][employee.id] ||= createEmployeeLog(employee);
     const log = state.employeeLogs[getActiveDateKey()][employee.id];
     log.employeeId ||= employee.id;
@@ -120,6 +140,7 @@ function normalizeState() {
     log.clockOut ||= "";
     log.tasks ||= createEmployeeLog(employee).tasks;
     log.schedule ||= createEmployeeLog(employee).schedule;
+    normalizeEmployeeLogRows(log);
     log.report ||= log.record || "";
     log.memo ||= "";
     log.record ||= "";
@@ -135,12 +156,65 @@ function normalizeState() {
   state.attendance[getActiveDateKey()] ||= [];
 }
 
+function normalizeEmployeeLogRows(log) {
+  log.tasks ||= [];
+  log.schedule ||= [];
+  log.tasks.forEach((task, index) => {
+    task.priority ||= index === 0 ? "A" : index === 1 ? "B" : "?";
+    if (task.priority === "C") task.priority = "?";
+    task.status ||= "예정";
+    task.done ||= false;
+    task.text ||= "";
+  });
+  while (log.tasks.length < 14) {
+    log.tasks.push({ priority: "?", text: "", status: "예정", done: false });
+  }
+  const scheduleByTime = new Map(log.schedule.map((item) => [item.time, item]));
+  log.schedule = getScheduleTimes().map((time) => {
+    const item = scheduleByTime.get(time) || { time, text: "", status: "예정" };
+    item.time = time;
+    item.text ||= "";
+    item.status ||= "예정";
+    return item;
+  });
+}
+
 function saveState() {
   localStorage.setItem(storageKey, JSON.stringify(state));
 }
 
 function getSelectedEmployee() {
-  return employees.find((employee) => employee.id === state.selectedEmployeeId) || employees[0];
+  return getEmployeeOptions().find((employee) => employee.id === state.selectedEmployeeId) || getProfileEmployee();
+}
+
+function getEmployeeOptions() {
+  return [getProfileEmployee(), ...employees];
+}
+
+function getProfileEmployee() {
+  const profile = { ...defaultProfile, ...(state?.profile || {}) };
+  return {
+    id: "profile-user",
+    name: profile.name || "내 프로필",
+    org: profile.org || "(주)방주",
+    role: profile.role || "직원",
+  };
+}
+
+function getScheduleTimes(workHoursValue) {
+  const workHours = workHoursValue || state?.profile?.workHours || defaultProfile.workHours;
+  const match = workHours.match(/(\d{1,2}):(\d{2})\s*[-~]\s*(\d{1,2}):(\d{2})/);
+  if (!match) return defaultScheduleTimes;
+  const start = Number(match[1]) * 60 + Number(match[2]);
+  const end = Number(match[3]) * 60 + Number(match[4]);
+  if (!Number.isFinite(start) || !Number.isFinite(end) || end <= start) return defaultScheduleTimes;
+  const times = [];
+  for (let minute = start; minute <= end; minute += 30) {
+    const hour = Math.floor(minute / 60);
+    const min = minute % 60;
+    times.push(`${String(hour).padStart(2, "0")}:${String(min).padStart(2, "0")}`);
+  }
+  return times;
 }
 
 function getActiveDateKey() {
@@ -197,9 +271,37 @@ function renderEmployeeTitle() {
   document.getElementById("todayTitle").textContent = `${employee.org} 업무일지. ${employee.role} ${employee.name}`;
 }
 
+function renderProfileForm() {
+  document.querySelectorAll("[data-profile-field]").forEach((field) => {
+    field.value = state.profile?.[field.dataset.profileField] || "";
+  });
+}
+
+function saveProfileFromForm() {
+  state.profile = { ...defaultProfile, ...(state.profile || {}) };
+  document.querySelectorAll("[data-profile-field]").forEach((field) => {
+    state.profile[field.dataset.profileField] = field.value.trim();
+  });
+  state.selectedEmployeeId = "profile-user";
+  normalizeState();
+  normalizeEmployeeLogRows(getSelectedLog());
+  saveState();
+  renderAll();
+  switchView("today");
+}
+
+function switchAuthTab(tab) {
+  document.querySelectorAll("[data-auth-tab]").forEach((button) => {
+    button.classList.toggle("is-active", button.dataset.authTab === tab);
+  });
+  document.querySelectorAll(".auth-panel").forEach((panel) => {
+    panel.classList.toggle("is-active", panel.id === `auth-panel-${tab}`);
+  });
+}
+
 function renderEmployeeSelect() {
   const select = document.getElementById("employeeSelect");
-  select.innerHTML = employees.map((employee) => `
+  select.innerHTML = getEmployeeOptions().map((employee) => `
     <option value="${escapeAttr(employee.id)}" ${employee.id === state.selectedEmployeeId ? "selected" : ""}>
       ${escapeHtml(employee.name)} · ${escapeHtml(employee.role)}
     </option>
@@ -209,22 +311,20 @@ function renderEmployeeSelect() {
 function renderEntries() {
   const list = document.getElementById("entryList");
   const log = getSelectedLog();
+  normalizeEmployeeLogRows(log);
   const entries = log.schedule || [];
   list.innerHTML = "";
   entries.forEach((entry, index) => {
     const row = document.createElement("div");
-    row.className = "worklog-entry";
+    row.className = "schedule-row";
     row.innerHTML = `
-      <input type="time" value="${escapeAttr(entry.time)}" aria-label="시간" />
-      <input type="text" value="${escapeAttr(entry.text)}" placeholder="업무 내용, 결정사항, 이슈" aria-label="업무 내용" />
-      <select aria-label="상태">
-        ${["예정", "진행", "완료", "보고", "보류", "지원필요"].map((status) => `<option value="${status}" ${entry.status === status ? "selected" : ""}>${status}</option>`).join("")}
-      </select>
+      <strong>${escapeHtml(entry.time)}</strong>
+      <input type="text" value="${escapeAttr(entry.text)}" placeholder="일정" aria-label="${escapeAttr(entry.time)} 일정" />
+      <button type="button" aria-label="${escapeAttr(entry.time)} 일정 입력">+</button>
     `;
-    const [time, text, status] = row.querySelectorAll("input, select");
-    time.oninput = () => updateEntry(index, "time", time.value);
+    const text = row.querySelector("input");
     text.oninput = () => updateEntry(index, "text", text.value);
-    status.onchange = () => updateEntry(index, "status", status.value);
+    row.querySelector("button").onclick = () => text.focus();
     list.appendChild(row);
   });
   renderPriorityBoard();
@@ -244,50 +344,40 @@ function updateEntry(index, field, value) {
 }
 
 function addEntry() {
-  getSelectedLog().schedule.push({ time: "", text: "", status: "예정" });
-  saveState();
-  renderEntries();
+  const emptySlot = getSelectedLog().schedule.find((entry) => !entry.text.trim());
+  if (emptySlot) {
+    saveState();
+    renderEntries();
+  }
 }
 
 function renderPriorityBoard() {
   const board = document.getElementById("priorityBoard");
   const log = getSelectedLog();
-  board.innerHTML = priorityOptions.map(([priority, label]) => {
-    const rows = log.tasks.filter((task) => task.priority === priority);
-    if (!rows.length) rows.push(addTask(priority, false));
-    return `
-      <section class="priority-column" data-priority="${priority}">
-        <header>
-          <strong>${label}</strong>
-          <button type="button" data-add-priority="${priority}">+</button>
-        </header>
-        ${rows.map((task) => renderTaskRow(task, log.tasks.indexOf(task))).join("")}
-      </section>
-    `;
-  }).join("");
-  board.querySelectorAll("[data-add-priority]").forEach((button) => {
-    button.onclick = () => {
-      addTask(button.dataset.addPriority);
-      renderEntries();
-    };
-  });
+  normalizeEmployeeLogRows(log);
+  board.innerHTML = log.tasks.map((task, index) => renderTaskRow(task, index)).join("");
   board.querySelectorAll("[data-task-field]").forEach((field) => {
     const index = Number(field.dataset.taskIndex);
     const key = field.dataset.taskField;
     const eventName = field.type === "checkbox" || field.tagName === "SELECT" ? "change" : "input";
     field.addEventListener(eventName, () => updateTask(index, key, field.type === "checkbox" ? field.checked : field.value));
   });
+  board.querySelectorAll("[data-task-remove]").forEach((button) => {
+    button.onclick = () => clearTask(Number(button.dataset.taskIndex));
+  });
 }
 
 function renderTaskRow(task, index) {
   return `
-    <label class="priority-task ${task.done ? "is-done" : ""}">
+    <div class="priority-task ${task.done ? "is-done" : ""}">
       <input type="checkbox" data-task-index="${index}" data-task-field="done" ${task.done ? "checked" : ""} aria-label="완료" />
-      <input type="text" data-task-index="${index}" data-task-field="text" value="${escapeAttr(task.text)}" placeholder="우선업무" aria-label="우선업무" />
-      <select data-task-index="${index}" data-task-field="status" aria-label="상태">
-        ${["예정", "진행", "완료", "위임", "연기", "취소", "지원필요"].map((status) => `<option value="${status}" ${task.status === status ? "selected" : ""}>${status}</option>`).join("")}
+      <select data-task-index="${index}" data-task-field="priority" aria-label="우선순위">
+        ${priorityOptions.map(([value, label]) => `<option value="${value}" ${task.priority === value ? "selected" : ""}>${label}</option>`).join("")}
       </select>
-    </label>
+      <input type="text" data-task-index="${index}" data-task-field="text" value="${escapeAttr(task.text)}" placeholder="우선업무" aria-label="우선업무" />
+      ${task.text?.trim() ? `<span class="task-tag">${escapeHtml(task.status || "예정")}</span>` : ""}
+      <button type="button" data-task-index="${index}" data-task-remove aria-label="업무 삭제">×</button>
+    </div>
   `;
 }
 
@@ -306,7 +396,19 @@ function updateTask(index, field, value) {
   saveState();
   renderTodayContext();
   renderReport();
-  if (field === "done") renderPriorityBoard();
+  if (["done", "priority"].includes(field)) renderPriorityBoard();
+}
+
+function clearTask(index) {
+  const task = getSelectedLog().tasks[index];
+  task.text = "";
+  task.status = "예정";
+  task.done = false;
+  if (index > 1) task.priority = "?";
+  saveState();
+  renderPriorityBoard();
+  renderTodayContext();
+  renderReport();
 }
 
 function renderEmployeeDetailFields() {
@@ -471,6 +573,7 @@ function switchView(view) {
 
 function renderAll() {
   renderEmployeeSelect();
+  renderProfileForm();
   renderEntries();
   renderAttendance();
   renderManagement();
@@ -489,6 +592,15 @@ document.querySelectorAll(".worklog-tabs button").forEach((button) => {
   button.onclick = () => switchView(button.dataset.view);
 });
 
+document.getElementById("settingsGearButton").onclick = () => {
+  renderProfileForm();
+  switchView("auth");
+};
+document.getElementById("closeAuthButton").onclick = () => switchView("today");
+document.querySelectorAll("[data-auth-tab]").forEach((button) => {
+  button.onclick = () => switchAuthTab(button.dataset.authTab);
+});
+document.getElementById("saveProfileButton").onclick = saveProfileFromForm;
 document.getElementById("employeeSelect").onchange = (event) => {
   state.selectedEmployeeId = event.target.value;
   saveState();
@@ -502,7 +614,12 @@ document.getElementById("selectedDateButton").onclick = () => {
   renderAll();
 };
 document.getElementById("nextDateButton").onclick = () => moveSelectedDate(1);
-document.getElementById("addEntryButton").onclick = addEntry;
+document.getElementById("addEntryButton").onclick = () => {
+  alert("시간별 일정 AI 추천은 이후 Beyond Work 오늘 섹션의 추천 로직과 연결합니다.");
+};
+document.querySelectorAll("[data-section-ai]").forEach((button) => {
+  button.onclick = () => alert("오늘의 우선업무 AI 추천은 이후 Beyond Work 추천 로직과 연결합니다.");
+});
 document.getElementById("addAttendanceButton").onclick = addAttendance;
 document.getElementById("clockInButton").onclick = () => {
   getSelectedLog().clockIn = currentTimeValue();
