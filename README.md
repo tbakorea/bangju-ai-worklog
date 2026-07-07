@@ -47,10 +47,22 @@ It should be faster and simpler than the planner. The first screen should answer
 Use a separate storage namespace from Beyond Work:
 
 - Local key prefix: `beyond-worklog`
-- Suggested DB table later: `worklog_states`
+- Supabase tables: `profiles`, `worklog_states`
 - Suggested route: `/worklog/`
 
 Do not reuse planner state keys for worklog data.
+
+## Supabase Setup
+
+The app is configured for Supabase Auth and remote worklog storage.
+
+1. Open Supabase Dashboard.
+2. Go to the Bangju AI Worklog project.
+3. Open SQL Editor.
+4. Run `supabase/worklog_schema.sql`.
+5. Open the app, press the gear button, then sign up or log in.
+
+The browser still keeps a local copy with `localStorage`, so a network issue does not erase the current device's worklog.
 
 ## Today Section Reuse
 

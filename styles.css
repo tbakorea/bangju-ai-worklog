@@ -562,8 +562,64 @@ textarea {
   margin-bottom: 14px;
 }
 
+.login-card {
+  display: grid;
+  gap: 12px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: rgba(255, 253, 248, 0.78);
+  padding: 14px;
+  margin-bottom: 14px;
+}
+
+.login-card strong,
+.login-card span {
+  display: block;
+}
+
+.login-card strong {
+  font-size: 15px;
+}
+
+.login-card span {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 760;
+  margin-top: 3px;
+}
+
+.login-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.login-grid label {
+  display: grid;
+  gap: 6px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 850;
+}
+
+.login-grid input {
+  width: 100%;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: rgba(255, 253, 248, 0.95);
+  color: var(--ink);
+  padding: 10px 11px;
+}
+
+.login-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
 .auth-tabs button,
-.auth-actions button {
+.auth-actions button,
+.login-actions button {
   border: 1px solid rgba(33, 55, 45, 0.14);
   border-radius: 999px;
   background: rgba(255, 253, 248, 0.9);
@@ -574,9 +630,14 @@ textarea {
 }
 
 .auth-tabs button.is-active,
-.auth-actions button {
+.auth-actions button,
+.login-actions button:first-child {
   background: var(--ink);
   color: #fffefa;
+}
+
+.login-actions button:disabled {
+  opacity: 0.45;
 }
 
 .auth-panel {
@@ -648,6 +709,10 @@ textarea {
   .worklog-context-grid,
   .management-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .login-grid {
+    grid-template-columns: 1fr;
   }
 
   .daily-split {

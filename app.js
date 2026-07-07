@@ -1,4 +1,9 @@
 const storageKey = "beyond-worklog-state-v1";
+const supabaseConfig = {
+  url: "https://zllpfaijahyfppivkxzu.supabase.co",
+  anonKey: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InpsbHBmYWlqYWh5ZnBwaXZreHp1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODMzMzQxNTUsImV4cCI6MjA5ODkxMDE1NX0.C4omaj-e_9PM-iF3-5GUUVX47Wo06UsNTOYMlMMVcZU",
+};
+const supabaseClient = window.supabase?.createClient(supabaseConfig.url, supabaseConfig.anonKey) || null;
 const todayKey = formatDateKey(new Date());
 const bangjuOrganization = [
   {
@@ -72,6 +77,13 @@ const employees = [
 ];
 
 const state = loadState();
+const authState = {
+  session: null,
+  user: null,
+  remoteReady: Boolean(supabaseClient),
+  applyingRemote: false,
+  saveTimer: null,
+};
 
 function loadState() {
   try {
@@ -105,7 +117,7 @@ function createState() {
   };
 }
 
-function createEmployeeLog(employee = employees[0], profile = state?.profile || defaultProfile) {
+function createEmployeeLog(employee = employees[0], profile = defaultProfile) {
   return {
     employeeId: employee.id,
     org: employee.org,
@@ -181,6 +193,7 @@ function normalizeEmployeeLogRows(log) {
 
 function saveState() {
   localStorage.setItem(storageKey, JSON.stringify(state));
+  scheduleRemoteSave();
 }
 
 function getSelectedEmployee() {
@@ -249,6 +262,7 @@ function moveSelectedDate(offsetDays) {
   normalizeState();
   saveState();
   renderAll();
+  loadRemoteWorklogForActiveDate();
 }
 
 function formatKoreanDate(key) {
@@ -286,8 +300,216 @@ function saveProfileFromForm() {
   normalizeState();
   normalizeEmployeeLogRows(getSelectedLog());
   saveState();
+  saveRemoteProfile();
   renderAll();
   switchView("today");
+}
+
+function renderAuthStatus(message) {
+  const status = document.getElementById("authStatus");
+  const email = authState.user?.email || "";
+  const readyText = authState.remoteReady ? "Supabase 연결 준비됨" : "Supabase 스크립트 로딩 필요";
+  status.textContent = message || (email ? `${email} 로그인됨 · 원격 저장 켜짐` : `${readyText} · 로그인하면 원격 저장됩니다.`);
+  document.getElementById("logoutButton").disabled = !authState.user;
+}
+
+function getAuthCredentials() {
+  const email = document.getElementById("authEmail").value.trim();
+  const password = document.getElementById("authPassword").value;
+  if (!email || !password) {
+    renderAuthStatus("이메일과 비밀번호를 입력해주세요.");
+    return null;
+  }
+  return { email, password };
+}
+
+async function signUpWithSupabase() {
+  const credentials = getAuthCredentials();
+  if (!credentials || !supabaseClient) return;
+  renderAuthStatus("가입 처리 중입니다...");
+  const { data, error } = await supabaseClient.auth.signUp(credentials);
+  if (error) {
+    renderAuthStatus(`가입 실패: ${error.message}`);
+    return;
+  }
+  if (data.user) {
+    state.profile.email = credentials.email;
+    saveState();
+    renderProfileForm();
+  }
+  renderAuthStatus("가입 완료. 이메일 확인이 필요한 설정이면 메일 확인 후 로그인해주세요.");
+}
+
+async function signInWithSupabase() {
+  const credentials = getAuthCredentials();
+  if (!credentials || !supabaseClient) return;
+  renderAuthStatus("로그인 중입니다...");
+  const { data, error } = await supabaseClient.auth.signInWithPassword(credentials);
+  if (error) {
+    renderAuthStatus(`로그인 실패: ${error.message}`);
+    return;
+  }
+  await applySession(data.session);
+}
+
+async function signOutWithSupabase() {
+  if (!supabaseClient) return;
+  await supabaseClient.auth.signOut();
+  authState.session = null;
+  authState.user = null;
+  renderAuthStatus("로그아웃되었습니다. 입력 내용은 이 기기에 계속 보관됩니다.");
+}
+
+async function applySession(session) {
+  authState.session = session;
+  authState.user = session?.user || null;
+  if (!authState.user) {
+    renderAuthStatus();
+    return;
+  }
+  document.getElementById("authEmail").value = authState.user.email || "";
+  state.profile.email ||= authState.user.email || "";
+  await loadRemoteProfile();
+  await loadRemoteWorklogForActiveDate();
+  await saveRemoteProfile();
+  scheduleRemoteSave(0);
+  renderAll();
+  renderAuthStatus();
+}
+
+function scheduleRemoteSave(delay = 700) {
+  if (!authState.user || authState.applyingRemote) return;
+  clearTimeout(authState.saveTimer);
+  authState.saveTimer = setTimeout(() => {
+    saveRemoteSnapshot();
+  }, delay);
+}
+
+function buildRemoteSnapshot() {
+  const key = getActiveDateKey();
+  return {
+    selectedEmployeeId: state.selectedEmployeeId,
+    selectedDateKey: key,
+    profile: state.profile,
+    employeeLogs: { [key]: state.employeeLogs?.[key] || {} },
+    attendance: { [key]: state.attendance?.[key] || [] },
+    reportTone: state.reportTone,
+  };
+}
+
+async function saveRemoteSnapshot() {
+  if (!supabaseClient || !authState.user) return;
+  const key = getActiveDateKey();
+  const { error } = await supabaseClient.from("worklog_states").upsert({
+    user_id: authState.user.id,
+    log_date: key,
+    organization: state.profile?.org || "(주)방주",
+    state: buildRemoteSnapshot(),
+    updated_at: new Date().toISOString(),
+  }, { onConflict: "user_id,organization,log_date" });
+  if (error) {
+    renderAuthStatus(`원격 저장 대기: ${error.message}`);
+    return;
+  }
+  renderAuthStatus();
+}
+
+async function loadRemoteWorklogForActiveDate() {
+  if (!supabaseClient || !authState.user) return;
+  const key = getActiveDateKey();
+  const { data, error } = await supabaseClient
+    .from("worklog_states")
+    .select("state")
+    .eq("user_id", authState.user.id)
+    .eq("log_date", key)
+    .order("updated_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (error) {
+    renderAuthStatus(`원격 불러오기 대기: ${error.message}`);
+    return;
+  }
+  if (!data?.state) return;
+  authState.applyingRemote = true;
+  state.selectedEmployeeId = data.state.selectedEmployeeId || state.selectedEmployeeId;
+  state.profile = { ...state.profile, ...(data.state.profile || {}) };
+  state.employeeLogs = { ...(state.employeeLogs || {}), ...(data.state.employeeLogs || {}) };
+  state.attendance = { ...(state.attendance || {}), ...(data.state.attendance || {}) };
+  state.reportTone = data.state.reportTone || state.reportTone;
+  normalizeState();
+  localStorage.setItem(storageKey, JSON.stringify(state));
+  authState.applyingRemote = false;
+  renderAll();
+  renderAuthStatus();
+}
+
+function profileToRemoteRow() {
+  return {
+    id: authState.user.id,
+    org: state.profile.org,
+    role: state.profile.role,
+    name: state.profile.name,
+    phone: state.profile.phone,
+    email: state.profile.email || authState.user.email || "",
+    primary_work: state.profile.primaryWork,
+    secondary_work: state.profile.secondaryWork,
+    workplace: state.profile.workplace,
+    work_hours: state.profile.workHours,
+    extra: state.profile.extra,
+    strengths: state.profile.strengths,
+    weaknesses: state.profile.weaknesses,
+    development_goals: state.profile.developmentGoals,
+    updated_at: new Date().toISOString(),
+  };
+}
+
+function remoteRowToProfile(row) {
+  return {
+    org: row.org,
+    role: row.role,
+    name: row.name,
+    phone: row.phone,
+    email: row.email,
+    primaryWork: row.primary_work,
+    secondaryWork: row.secondary_work,
+    workplace: row.workplace,
+    workHours: row.work_hours,
+    extra: row.extra,
+    strengths: row.strengths,
+    weaknesses: row.weaknesses,
+    developmentGoals: row.development_goals,
+  };
+}
+
+async function saveRemoteProfile() {
+  if (!supabaseClient || !authState.user) return;
+  const { error } = await supabaseClient.from("profiles").upsert(profileToRemoteRow());
+  if (error) renderAuthStatus(`프로필 원격 저장 대기: ${error.message}`);
+}
+
+async function loadRemoteProfile() {
+  if (!supabaseClient || !authState.user) return;
+  const { data, error } = await supabaseClient.from("profiles").select("*").eq("id", authState.user.id).maybeSingle();
+  if (error) {
+    renderAuthStatus(`프로필 불러오기 대기: ${error.message}`);
+    return;
+  }
+  if (!data) return;
+  state.profile = { ...defaultProfile, ...state.profile, ...remoteRowToProfile(data) };
+  localStorage.setItem(storageKey, JSON.stringify(state));
+  renderProfileForm();
+}
+
+async function initializeAuth() {
+  if (!supabaseClient) {
+    renderAuthStatus("Supabase 스크립트를 불러오지 못했습니다. 로컬 저장으로 동작합니다.");
+    return;
+  }
+  const { data } = await supabaseClient.auth.getSession();
+  await applySession(data.session);
+  supabaseClient.auth.onAuthStateChange((_event, session) => {
+    applySession(session);
+  });
 }
 
 function switchAuthTab(tab) {
@@ -601,6 +823,9 @@ document.querySelectorAll("[data-auth-tab]").forEach((button) => {
   button.onclick = () => switchAuthTab(button.dataset.authTab);
 });
 document.getElementById("saveProfileButton").onclick = saveProfileFromForm;
+document.getElementById("loginButton").onclick = signInWithSupabase;
+document.getElementById("signupButton").onclick = signUpWithSupabase;
+document.getElementById("logoutButton").onclick = signOutWithSupabase;
 document.getElementById("employeeSelect").onchange = (event) => {
   state.selectedEmployeeId = event.target.value;
   saveState();
@@ -612,6 +837,7 @@ document.getElementById("selectedDateButton").onclick = () => {
   normalizeState();
   saveState();
   renderAll();
+  loadRemoteWorklogForActiveDate();
 };
 document.getElementById("nextDateButton").onclick = () => moveSelectedDate(1);
 document.getElementById("addEntryButton").onclick = () => {
@@ -667,4 +893,7 @@ document.getElementById("worklogAiButton").onclick = () => {
 
 normalizeState();
 document.getElementById("reportTone").value = state.reportTone;
+document.getElementById("authEmail").value = state.profile.email || "";
+renderAuthStatus();
 renderAll();
+initializeAuth();
