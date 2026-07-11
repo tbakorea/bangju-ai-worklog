@@ -75,6 +75,71 @@ const employees = [
   { id: "dongcheon-site-manager", name: "동천체육관현장 소장", org: "(주)비제이종합건설 / 동천체육관현장", role: "현장소장" },
   { id: "beyond-company-director", name: "비욘드컴퍼니 총괄", org: "(주)비욘드컴퍼니", role: "총괄관리" },
 ];
+const beyondAssets = [
+  {
+    building: "루클라쎄 1차",
+    district: "옥동",
+    floors: [
+      { floor: "1F", rooms: ["113호"], site: "WorkBase 옥동점", brand: "WorkBase", status: "운영", operator: "(주)방주" },
+      { floor: "2F", rooms: ["202호", "203호", "204호", "205호", "206호"], site: "WorkBase 옥동점", brand: "WorkBase", status: "운영", operator: "(주)방주" },
+    ],
+  },
+  {
+    building: "루클라쎄 2차",
+    district: "옥동",
+    floors: [
+      { floor: "1F", rooms: ["1~4호", "8호"], site: "Beyond Fitness", brand: "Beyond Fitness", status: "운영", operator: "(주)비욘드컴퍼니" },
+      { floor: "1F", rooms: ["Lounge"], site: "Lounge of Beyond", brand: "Lounge of Beyond", status: "무인운영", operator: "(주)비욘드컴퍼니" },
+      { floor: "1F", rooms: ["WorkBox"], site: "WorkBox", brand: "WorkBox", status: "운영", operator: "(주)비욘드컴퍼니" },
+      { floor: "2F", rooms: ["204호", "205호", "206호"], site: "TBA 쇼룸 / AI 교육장", brand: "TBA", status: "준비", operator: "TBA스튜디오" },
+      { floor: "2F", rooms: ["209호", "210호", "211호", "212호"], site: "브랜드 쇼룸 / 행사장", brand: "Off:Line", status: "보류", operator: "(주)비욘드컴퍼니" },
+    ],
+  },
+  {
+    building: "더헤이븐",
+    district: "옥동",
+    floors: [
+      { floor: "1F", rooms: ["GS25"], site: "편의점", brand: "GS25", status: "운영종료", operator: "(주)방주" },
+      { floor: "2F", rooms: ["전체"], site: "WorkBase 옥동2", brand: "WorkBase", status: "운영", operator: "(주)방주" },
+      { floor: "3F", rooms: ["전체"], site: "공유오피스", brand: "WorkBase", status: "운영", operator: "(주)방주" },
+      { floor: "4F", rooms: ["전체"], site: "주거", brand: "더헤이븐", status: "임대", operator: "(주)더헤이븐빌" },
+      { floor: "5F", rooms: ["전체"], site: "주거", brand: "더헤이븐", status: "임대", operator: "(주)더헤이븐빌" },
+    ],
+  },
+  {
+    building: "어반플러스",
+    district: "동천",
+    floors: [
+      { floor: "사업장", rooms: ["동천체육관점"], site: "WorkBase 동천체육관점", brand: "WorkBase", status: "운영", operator: "(주)방주" },
+    ],
+  },
+];
+const beyondModules = [
+  ["직원관리", "직원 기본정보, 미션, 목표, 교육, 역량학습", "운영"],
+  ["근태관리", "출퇴근, 외근, 휴가, GPS/QR/Face ID 확장", "운영"],
+  ["업무일지", "우선업무, 시간별 일정, 보고, AI 요약", "운영"],
+  ["사업장 운영관리", "청결, 시설, 공실, 회원, 방문객, 운영점수", "설계"],
+  ["마케팅관리", "SNS, 광고, 블로그, 리뷰, 이벤트 감지", "설계"],
+  ["매출·매입관리", "POS, 카드매출, 매입, 원가, 영업이익", "설계"],
+  ["재무관리", "현금흐름, 세금, 미수금, 대출, 위험 분석", "설계"],
+  ["시설관리", "점검, 유지보수, 고장접수, 예측정비", "설계"],
+  ["건설현장관리", "공정, 품질, 안전, 원가, 도면, 하자", "설계"],
+  ["CRM", "회원, 입주기업, 거래처, 민원, 계약 갱신", "설계"],
+  ["문서관리", "계약서, 도면, 사진, 회의록, AI 검색", "설계"],
+  ["AI 코칭", "직원, 사업장, 대표 코칭과 실행 추적", "운영"],
+];
+const benchmarkSystems = [
+  ["Microsoft Dynamics 365", "CRM·ERP·Finance·Field Service·Project Operations를 분리 앱으로 제공하고 AI/Agent를 각 업무 흐름에 붙이는 구조"],
+  ["Procore", "건설 프로젝트 전 생애주기, 품질·안전·재무·문서·협업을 하나의 플랫폼과 500+ 통합으로 연결"],
+  ["Odoo", "업무 앱을 모듈식으로 쌓는 ERP 방식. CRM, 회계, POS, 프로젝트, 재고 등으로 확장"],
+  ["Yardi", "부동산 운영에서 자산, 임대, 회계, CRM을 통합하는 산업 특화 플랫폼 접근"],
+];
+const operatingRisks = [
+  ["공간", "루클라쎄 2차 209~212호 보류 공간의 활용 시나리오 필요", "중"],
+  ["매출", "Beyond Fitness 월매출 2천만원 기준 회원 유지율과 PT 전환율 추적 필요", "상"],
+  ["시설", "공유오피스/피트니스/무인카페 시설 점검 주기 통합 필요", "중"],
+  ["문서", "계약서, 도면, 사진이 사업장 단위로 연결되어야 AI 검색 가능", "상"],
+];
 
 const state = loadState();
 const authState = {
@@ -274,6 +339,95 @@ function formatKoreanDate(key) {
 function currentTimeValue() {
   const now = new Date();
   return `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
+}
+
+function renderResponsiveMode() {
+  const mode = window.matchMedia("(max-width: 760px)").matches ? "narrow" : "expanded";
+  document.body.dataset.deviceMode = mode;
+}
+
+function getAssetRows() {
+  return beyondAssets.flatMap((asset) => asset.floors.map((floor) => ({ ...floor, building: asset.building, district: asset.district })));
+}
+
+function calculateOperatingScore() {
+  const rows = getAssetRows();
+  const active = rows.filter((row) => ["운영", "무인운영", "임대"].includes(row.status)).length;
+  const pending = rows.filter((row) => ["준비", "보류"].includes(row.status)).length;
+  const closed = rows.filter((row) => row.status === "운영종료").length;
+  return Math.max(0, Math.min(100, Math.round((active / rows.length) * 78 + (pending ? 8 : 14) - closed * 3)));
+}
+
+function renderOsDashboard() {
+  const rows = getAssetRows();
+  const brands = new Set(rows.map((row) => row.brand)).size;
+  const rooms = rows.reduce((sum, row) => sum + row.rooms.length, 0);
+  const score = calculateOperatingScore();
+  document.getElementById("osKpiGrid").innerHTML = [
+    ["운영점수", `${score}점`],
+    ["법인", `${bangjuOrganization.length}개`],
+    ["건물", `${beyondAssets.length}개`],
+    ["호실/공간", `${rooms}개`],
+    ["사업장", `${rows.length}개`],
+    ["브랜드", `${brands}개`],
+  ].map(([label, value]) => `<article><span>${label}</span><strong>${value}</strong></article>`).join("");
+
+  document.getElementById("assetMap").innerHTML = beyondAssets.map((asset) => `
+    <section class="asset-building">
+      <header>
+        <strong>${escapeHtml(asset.building)}</strong>
+        <span>${escapeHtml(asset.district)}</span>
+      </header>
+      ${asset.floors.map((floor) => `
+        <div class="asset-room">
+          <b>${escapeHtml(floor.floor)} · ${escapeHtml(floor.rooms.join(", "))}</b>
+          <span>${escapeHtml(floor.site)} / ${escapeHtml(floor.brand)}</span>
+          <em data-status="${escapeAttr(floor.status)}">${escapeHtml(floor.status)}</em>
+        </div>
+      `).join("")}
+    </section>
+  `).join("");
+
+  document.getElementById("riskList").innerHTML = operatingRisks.map(([category, text, level]) => `
+    <article class="risk-item">
+      <span>${escapeHtml(category)}</span>
+      <strong>${escapeHtml(text)}</strong>
+      <em data-level="${escapeAttr(level)}">${escapeHtml(level)}</em>
+    </article>
+  `).join("");
+
+  document.getElementById("moduleGrid").innerHTML = beyondModules.map(([name, description, status]) => `
+    <article>
+      <span>${escapeHtml(status)}</span>
+      <strong>${escapeHtml(name)}</strong>
+      <p>${escapeHtml(description)}</p>
+    </article>
+  `).join("");
+
+  document.getElementById("benchmarkList").innerHTML = benchmarkSystems.map(([name, insight]) => `
+    <article>
+      <strong>${escapeHtml(name)}</strong>
+      <p>${escapeHtml(insight)}</p>
+    </article>
+  `).join("");
+}
+
+function renderAiCoach() {
+  const score = calculateOperatingScore();
+  const log = getSelectedLog();
+  const tasks = (log.tasks || []).filter((task) => task.text.trim());
+  const coaching = [
+    ["대표 AI 코치", `오늘 점검 우선순위는 운영점수 ${score}점 기준으로 매출, 공간 활용, 문서 연결입니다.`],
+    ["사업장 AI 코치", "Beyond Fitness는 회원 240명, 월매출 2천만원을 기준 KPI로 두고 PT 전환율과 이탈률을 먼저 추적해야 합니다."],
+    ["직원 AI 코치", tasks.length ? `오늘 우선업무 ${tasks.length}건을 기준으로 완료율과 지연 사유를 기록합니다.` : "개인 업무일지의 우선업무와 시간별 일정을 먼저 기록해야 코칭 품질이 올라갑니다."],
+    ["데이터 설계 코치", "모든 사진, 도면, 계약서, 업무일지, 매출 데이터는 반드시 사업장 ID와 호실 ID에 연결해야 합니다."],
+  ];
+  document.getElementById("aiCoachGrid").innerHTML = coaching.map(([title, body]) => `
+    <article>
+      <strong>${escapeHtml(title)}</strong>
+      <p>${escapeHtml(body)}</p>
+    </article>
+  `).join("");
 }
 
 function renderDateNav() {
@@ -715,23 +869,26 @@ function renderManagement() {
   const logs = Object.values(state.employeeLogs?.[getActiveDateKey()] || {});
   const entries = logs.flatMap((log) => [...(log.tasks || []), ...(log.schedule || [])]);
   const attendance = state.attendance?.[getActiveDateKey()] || [];
+  const assetRows = getAssetRows();
   const staffCount = bangjuOrganization.reduce((sum, company) => sum + company.staff + company.units.reduce((unitSum, unit) => unitSum + unit.staff, 0), 0);
   const companies = bangjuOrganization.length;
-  const units = bangjuOrganization.reduce((sum, company) => sum + company.units.length, 0);
+  const operatingSites = assetRows.filter((row) => ["운영", "무인운영", "임대"].includes(row.status)).length;
   const openIssues = entries.filter((entry) => entry.status === "보류" || entry.status === "지원필요").length;
   node.innerHTML = [
     ["법인", `${companies}개`],
-    ["부서/현장", `${units}개`],
+    ["운영 사업장", `${operatingSites}개`],
+    ["공간/호실", `${assetRows.reduce((sum, row) => sum + row.rooms.length, 0)}개`],
     ["관리 인원", `${staffCount}명+`],
     ["오늘 근태", `${attendance.length}건`],
     ["경영 이슈", `${openIssues}건`],
-    ["AI 점검", openIssues ? "지원 필요 항목 우선" : "정상 흐름"],
+    ["운영점수", `${calculateOperatingScore()}점`],
+    ["AI 점검", openIssues ? "지원 필요 항목 우선" : "공간·매출 데이터 보강"],
   ].map(([label, value]) => `<article><span>${label}</span><strong>${value}</strong></article>`).join("");
 }
 
 function renderOrganization() {
   const node = document.getElementById("organizationTree");
-  node.innerHTML = bangjuOrganization.map((company) => `
+  const companyHtml = bangjuOrganization.map((company) => `
     <article class="organization-company">
       <header>
         <strong>${escapeHtml(company.name)}</strong>
@@ -748,6 +905,24 @@ function renderOrganization() {
       </div>
     </article>
   `).join("");
+  const assetHtml = `
+    <article class="organization-company">
+      <header>
+        <strong>건물 → 층 → 호실 → 사업장 → 브랜드 → 법인</strong>
+        <span>Beyond OS 기본 계층</span>
+      </header>
+      <div>
+        ${getAssetRows().map((row) => `
+          <section>
+            <b>${escapeHtml(row.building)} / ${escapeHtml(row.floor)} / ${escapeHtml(row.rooms.join(", "))}</b>
+            <small>${escapeHtml(row.site)} · ${escapeHtml(row.brand)}</small>
+            <em>${escapeHtml(row.operator)} · ${escapeHtml(row.status)}</em>
+          </section>
+        `).join("")}
+      </div>
+    </article>
+  `;
+  node.innerHTML = assetHtml + companyHtml;
 }
 
 function renderReport() {
@@ -788,12 +963,16 @@ function renderReport() {
 function switchView(view) {
   document.querySelectorAll(".worklog-tabs button").forEach((button) => button.classList.toggle("is-active", button.dataset.view === view));
   document.querySelectorAll(".worklog-view").forEach((panel) => panel.classList.toggle("is-active", panel.id === `view-${view}`));
+  renderOsDashboard();
+  renderAiCoach();
   renderAttendance();
   renderManagement();
   renderOrganization();
 }
 
 function renderAll() {
+  renderOsDashboard();
+  renderAiCoach();
   renderEmployeeSelect();
   renderProfileForm();
   renderEntries();
@@ -846,6 +1025,9 @@ document.getElementById("addEntryButton").onclick = () => {
 document.querySelectorAll("[data-section-ai]").forEach((button) => {
   button.onclick = () => alert("오늘의 우선업무 AI 추천은 이후 Beyond Work 추천 로직과 연결합니다.");
 });
+document.querySelectorAll("[data-os-action]").forEach((button) => {
+  button.onclick = () => alert("Beyond OS AI는 마스터 데이터, 운영점수, 리스크, 실행 추적 데이터를 기준으로 코칭합니다.");
+});
 document.getElementById("addAttendanceButton").onclick = addAttendance;
 document.getElementById("clockInButton").onclick = () => {
   getSelectedLog().clockIn = currentTimeValue();
@@ -890,7 +1072,9 @@ document.getElementById("reportTone").onchange = (event) => {
 document.getElementById("worklogAiButton").onclick = () => {
   alert("Bangju AI는 업무일지, 근태, 경영 이슈를 모아 일일 보고·리스크 감지·다음 행동 추천으로 연결합니다.");
 };
+window.addEventListener("resize", renderResponsiveMode);
 
+renderResponsiveMode();
 normalizeState();
 document.getElementById("reportTone").value = state.reportTone;
 document.getElementById("authEmail").value = state.profile.email || "";

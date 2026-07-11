@@ -1,6 +1,6 @@
-# Bangju AI Worklog
+# Beyond OS
 
-Bangju AI Worklog is a separate work-journal, attendance, and management-agent product built from the Beyond Work design language and planning philosophy.
+Beyond OS is the Bangju Group operating platform. It expands the original Bangju AI Worklog into an integrated operating system for companies, buildings, rooms, sites, brands, employees, CRM, facility operations, construction, finance, documents, and AI coaching.
 
 This app should stay independent from the CEO planner dashboard:
 
@@ -9,13 +9,14 @@ This app should stay independent from the CEO planner dashboard:
 
 ## Product Position
 
-Bangju AI Worklog is for daily operational reporting, attendance tracking, management summaries, and AI-assisted decision support across the Bangju group.
-It should be faster and simpler than the planner. The first screen should answer:
+Beyond OS is for daily operational reporting, attendance tracking, site operations, management summaries, master data governance, and AI-assisted decision support across the Bangju group.
+The first screen should answer:
 
 1. What did I do today?
 2. What was completed?
 3. What remains or needs help?
 4. What should be reported upward?
+5. Which site, room, employee, contract, or metric needs action?
 
 ## MVP Sections
 
@@ -47,7 +48,8 @@ It should be faster and simpler than the planner. The first screen should answer
 Use a separate storage namespace from Beyond Work:
 
 - Local key prefix: `beyond-worklog`
-- Supabase tables: `profiles`, `worklog_states`
+- Supabase worklog tables: `profiles`, `worklog_states`
+- Supabase OS master tables: see `supabase/beyond_os_schema.sql`
 - Suggested route: `/worklog/`
 
 Do not reuse planner state keys for worklog data.
@@ -61,6 +63,8 @@ The app is configured for Supabase Auth and remote worklog storage.
 3. Open SQL Editor.
 4. Run `supabase/worklog_schema.sql`.
 5. Open the app, press the gear button, then sign up or log in.
+
+For the Beyond OS master data model, run `supabase/beyond_os_schema.sql` after the base worklog schema.
 
 The browser still keeps a local copy with `localStorage`, so a network issue does not erase the current device's worklog.
 

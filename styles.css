@@ -25,9 +25,9 @@ textarea {
 }
 
 .worklog-shell {
-  width: min(1180px, 100%);
+  width: min(1440px, 100%);
   margin: 0;
-  padding: max(18px, env(safe-area-inset-top)) 16px 32px;
+  padding: max(18px, env(safe-area-inset-top)) clamp(12px, 2vw, 24px) 32px;
 }
 
 .worklog-header {
@@ -48,7 +48,7 @@ textarea {
 
 .worklog-header h1 {
   margin: 0;
-  font-size: clamp(30px, 7vw, 54px);
+  font-size: clamp(34px, 5vw, 58px);
   line-height: 0.95;
   letter-spacing: 0;
 }
@@ -108,6 +108,235 @@ textarea {
 
 .worklog-view.is-active {
   display: block;
+}
+
+.os-view {
+  border-radius: 14px;
+}
+
+.os-hero {
+  display: flex;
+  justify-content: space-between;
+  gap: 18px;
+  align-items: flex-start;
+  border-bottom: 1px solid var(--line);
+  padding-bottom: 14px;
+  margin-bottom: 14px;
+}
+
+.os-hero p {
+  margin: 0 0 6px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.os-hero h2 {
+  margin: 0;
+  font-size: 30px;
+  line-height: 1.1;
+}
+
+.os-mode-switch {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.os-mode-switch span {
+  border: 1px solid rgba(33, 55, 45, 0.14);
+  border-radius: 999px;
+  background: rgba(255, 253, 248, 0.86);
+  padding: 7px 10px;
+  color: #3c5147;
+  font-size: 12px;
+  font-weight: 900;
+}
+
+body[data-device-mode="expanded"] .os-mode-switch span[data-device-mode="expanded"],
+body[data-device-mode="narrow"] .os-mode-switch span[data-device-mode="narrow"] {
+  background: var(--ink);
+  color: #fffefa;
+}
+
+.os-kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 8px;
+  margin-bottom: 14px;
+}
+
+.os-kpi-grid article {
+  border: 1px solid rgba(222, 216, 202, 0.86);
+  border-radius: 12px;
+  background: #fffefa;
+  padding: 12px;
+}
+
+.os-kpi-grid span,
+.module-grid span,
+.risk-item span {
+  display: block;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 900;
+}
+
+.os-kpi-grid strong {
+  display: block;
+  margin-top: 5px;
+  font-size: 24px;
+  font-weight: 950;
+}
+
+.os-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1.35fr) minmax(320px, 0.85fr);
+  gap: 14px;
+  margin-top: 14px;
+}
+
+.os-layout-wide {
+  grid-template-columns: minmax(0, 1.15fr) minmax(320px, 0.85fr);
+}
+
+.os-panel {
+  border: 1px solid rgba(222, 216, 202, 0.9);
+  border-radius: 14px;
+  background: rgba(255, 253, 248, 0.72);
+  padding: 14px;
+}
+
+.os-panel h3 {
+  margin: 0 0 10px;
+  font-size: 19px;
+  line-height: 1.2;
+}
+
+.asset-map,
+.risk-list,
+.benchmark-list,
+.ai-coach-grid {
+  display: grid;
+  gap: 10px;
+}
+
+.asset-building {
+  border: 1px solid rgba(222, 216, 202, 0.78);
+  border-radius: 12px;
+  background: rgba(247, 245, 239, 0.58);
+  padding: 11px;
+}
+
+.asset-building header {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  border-bottom: 1px solid var(--line);
+  padding-bottom: 8px;
+  margin-bottom: 8px;
+}
+
+.asset-building header strong,
+.risk-item strong,
+.benchmark-list strong,
+.ai-coach-grid strong,
+.module-grid strong {
+  color: var(--ink);
+  font-weight: 950;
+}
+
+.asset-building header span,
+.asset-room span,
+.asset-room em,
+.benchmark-list p,
+.ai-coach-grid p,
+.module-grid p,
+.risk-item em {
+  color: var(--muted);
+  font-size: 12px;
+  font-style: normal;
+  font-weight: 740;
+}
+
+.asset-room {
+  display: grid;
+  grid-template-columns: minmax(120px, 0.9fr) minmax(0, 1.2fr) 76px;
+  gap: 8px;
+  align-items: center;
+  border-bottom: 1px solid rgba(222, 216, 202, 0.72);
+  padding: 7px 0;
+}
+
+.asset-room:last-child {
+  border-bottom: 0;
+}
+
+.asset-room b {
+  font-size: 13px;
+}
+
+.asset-room em,
+.risk-item em {
+  justify-self: end;
+  border: 1px solid rgba(33, 55, 45, 0.12);
+  border-radius: 999px;
+  background: #fffefa;
+  padding: 4px 8px;
+}
+
+.asset-room em[data-status="보류"],
+.risk-item em[data-level="상"] {
+  color: #9b2f2f;
+  background: #fff2f0;
+}
+
+.asset-room em[data-status="준비"],
+.risk-item em[data-level="중"] {
+  color: #695300;
+  background: #fff8d7;
+}
+
+.module-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(180px, 1fr));
+  gap: 8px;
+}
+
+.module-grid article,
+.benchmark-list article,
+.ai-coach-grid article,
+.risk-item {
+  border: 1px solid rgba(222, 216, 202, 0.82);
+  border-radius: 12px;
+  background: rgba(247, 245, 239, 0.62);
+  padding: 11px;
+}
+
+.module-grid strong,
+.benchmark-list strong,
+.ai-coach-grid strong {
+  display: block;
+  margin: 4px 0 6px;
+}
+
+.module-grid p,
+.benchmark-list p,
+.ai-coach-grid p {
+  margin: 0;
+  line-height: 1.45;
+}
+
+.risk-item {
+  display: grid;
+  grid-template-columns: 48px minmax(0, 1fr) 44px;
+  gap: 8px;
+  align-items: center;
+}
+
+.ai-coach-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
 .worklog-title-row {
@@ -281,7 +510,7 @@ textarea {
 
 .daily-split {
   display: grid;
-  grid-template-columns: minmax(360px, 1fr) minmax(340px, 0.95fr);
+  grid-template-columns: minmax(0, 1fr) minmax(0, 0.95fr);
   gap: 14px;
   align-items: start;
   margin-top: 14px;
@@ -689,9 +918,82 @@ textarea {
   margin-top: 14px;
 }
 
-@media (max-width: 520px) {
+@media (min-width: 761px) and (max-width: 1024px) {
+  .os-kpi-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .os-layout,
+  .os-layout-wide {
+    grid-template-columns: minmax(0, 1fr) minmax(280px, 0.9fr);
+  }
+
+  .module-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .attendance-row {
+    grid-template-columns: minmax(140px, 1.1fr) 90px 90px 82px minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 760px) {
   .worklog-shell {
     padding-inline: 10px;
+  }
+
+  .worklog-header {
+    align-items: flex-start;
+  }
+
+  .worklog-header h1 {
+    font-size: 34px;
+  }
+
+  .header-actions {
+    flex-shrink: 0;
+  }
+
+  .worklog-tabs {
+    border-radius: 16px;
+    padding: 6px;
+  }
+
+  .worklog-view {
+    border-radius: 14px;
+    padding: 12px;
+  }
+
+  .os-hero {
+    display: grid;
+  }
+
+  .os-hero h2 {
+    font-size: 23px;
+  }
+
+  .os-mode-switch {
+    justify-content: flex-start;
+  }
+
+  .os-kpi-grid,
+  .os-layout,
+  .os-layout-wide,
+  .module-grid,
+  .ai-coach-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .os-kpi-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .asset-room {
+    grid-template-columns: 1fr;
+  }
+
+  .asset-room em {
+    justify-self: start;
   }
 
   .employee-log-topbar {
@@ -715,13 +1017,36 @@ textarea {
     grid-template-columns: 1fr;
   }
 
-  .daily-split {
-    grid-template-columns: 1fr;
-    gap: 12px;
-  }
-
   .daily-split .planner-section {
     padding: 12px;
+  }
+
+  .daily-split {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    gap: 8px;
+    overflow-x: auto;
+    align-items: start;
+  }
+
+  .day-task-panel,
+  .day-schedule-panel {
+    min-width: 0;
+  }
+
+  .daily-split .section-heading-row {
+    align-items: center;
+    gap: 6px;
+  }
+
+  .daily-split .section-heading-row h3 {
+    font-size: 16px;
+    line-height: 1.1;
+  }
+
+  .daily-split .section-heading-row button {
+    min-height: 30px;
+    padding: 5px 8px;
+    font-size: 12px;
   }
 
   .day-task-panel,
@@ -730,27 +1055,44 @@ textarea {
   }
 
   .schedule-row {
-    grid-template-columns: 72px minmax(0, 1fr) 38px;
+    grid-template-columns: 48px minmax(0, 1fr) 28px;
+    gap: 4px;
+    min-height: 42px;
   }
 
   .schedule-row strong,
   .schedule-row input,
   .priority-task input[type="text"],
   .priority-task select {
-    font-size: 17px;
+    font-size: 14px;
+  }
+
+  .schedule-row button {
+    width: 28px;
+    height: 28px;
+    font-size: 18px;
   }
 
   .priority-task {
-    grid-template-columns: 42px 34px minmax(0, 1fr) 32px;
+    grid-template-columns: 28px 24px minmax(0, 1fr) 24px;
+    gap: 4px;
+    min-height: 42px;
   }
 
   .priority-task input[type="checkbox"] {
-    width: 34px;
-    height: 34px;
+    width: 28px;
+    height: 28px;
+    border-radius: 8px;
   }
 
   .priority-task select {
-    width: 34px;
+    width: 24px;
+  }
+
+  .priority-task button {
+    width: 24px;
+    height: 24px;
+    font-size: 18px;
   }
 
   .task-tag {
