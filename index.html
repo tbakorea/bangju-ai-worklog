@@ -74,27 +74,24 @@
 
       <section class="worklog-view is-active" id="view-today">
         <div class="employee-log-topbar">
-          <strong>Employee Worklog</strong>
           <div class="worklog-control-strip" aria-label="날짜 및 근태 기록">
             <div class="date-nav" aria-label="업무일지 날짜 이동">
               <button id="prevDateButton" type="button">어제</button>
               <button id="selectedDateButton" type="button"></button>
               <button id="nextDateButton" type="button">내일</button>
             </div>
-            <button id="clockInButton" type="button">출근</button>
-            <button id="clockOutButton" type="button">퇴근</button>
-            <button id="earlyLeaveButton" type="button">조퇴</button>
-            <label>
-              출근시간
+            <button class="attendance-cycle-button" id="attendanceCycleButton" type="button">출근</button>
+            <label class="attendance-time-field">
+              <span>출근</span>
               <input id="clockInTime" type="time" />
             </label>
-            <label>
-              퇴근시간
+            <label class="attendance-time-field">
+              <span>퇴근/조퇴</span>
               <input id="clockOutTime" type="time" />
             </label>
           </div>
         </div>
-        <div class="worklog-title-row employee-title-row">
+        <div class="worklog-title-row employee-title-row" hidden>
           <div>
             <h2 id="todayTitle"></h2>
             <label class="employee-picker">
@@ -103,7 +100,7 @@
             </label>
           </div>
         </div>
-        <div class="worklog-context-grid" id="todayContext"></div>
+        <div class="worklog-context-grid" id="todayContext" hidden></div>
         <div class="daily-split" aria-label="오늘 실행 화면">
           <article class="planner-section day-task-panel">
             <div class="section-heading-row">

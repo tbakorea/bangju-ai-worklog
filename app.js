@@ -219,6 +219,7 @@ function normalizeState() {
     log.clockIn ||= "";
     log.clockOut ||= "";
     log.attendanceStatus ||= "";
+    log.attendanceStep ||= log.attendanceStatus === "조퇴" ? "early" : log.clockOut ? "out" : log.clockIn ? "in" : "ready";
     log.tasks ||= createEmployeeLog(employee).tasks;
     log.schedule ||= createEmployeeLog(employee).schedule;
     normalizeEmployeeLogRows(log);
@@ -816,6 +817,39 @@ function renderClockPanel() {
   const log = getSelectedLog();
   document.getElementById("clockInTime").value = log.clockIn || "";
   document.getElementById("clockOutTime").value = log.clockOut || "";
+  const button = document.getElementById("attendanceCycleButton");
+  if (button) button.textContent = getNextAttendanceAction(log);
+}
+
+function getNextAttendanceAction(log = getSelectedLog()) {
+  if (!log.clockIn || log.attendanceStep === "ready") return "출근";
+  if (!log.clockOut || log.attendanceStep === "in") return "퇴근";
+  if (log.attendanceStep === "out") return "조퇴";
+  return "출근";
+}
+
+function applyAttendanceCycle() {
+  const log = getSelectedLog();
+  const action = getNextAttendanceAction(log);
+  const now = currentTimeValue();
+  if (action === "출근") {
+    log.clockIn = now;
+    log.clockOut = "";
+    log.attendanceStatus = "출근";
+    log.attendanceStep = "in";
+  } else if (action === "퇴근") {
+    log.clockOut = now;
+    log.attendanceStatus = "퇴근";
+    log.attendanceStep = "out";
+  } else {
+    log.clockOut = now;
+    log.attendanceStatus = "조퇴";
+    log.attendanceStep = "early";
+  }
+  saveState();
+  renderClockPanel();
+  renderTodayContext();
+  renderReport();
 }
 
 function renderTodayContext() {
@@ -1053,39 +1087,22 @@ document.querySelectorAll("[data-os-action]").forEach((button) => {
   button.onclick = () => alert("Beyond OS AI는 마스터 데이터, 운영점수, 리스크, 실행 추적 데이터를 기준으로 코칭합니다.");
 });
 document.getElementById("addAttendanceButton").onclick = addAttendance;
-document.getElementById("clockInButton").onclick = () => {
-  getSelectedLog().clockIn = currentTimeValue();
-  getSelectedLog().attendanceStatus = "출근";
-  saveState();
-  renderClockPanel();
-  renderTodayContext();
-  renderReport();
-};
-document.getElementById("clockOutButton").onclick = () => {
-  getSelectedLog().clockOut = currentTimeValue();
-  getSelectedLog().attendanceStatus = "퇴근";
-  saveState();
-  renderClockPanel();
-  renderTodayContext();
-  renderReport();
-};
-document.getElementById("earlyLeaveButton").onclick = () => {
-  getSelectedLog().clockOut = currentTimeValue();
-  getSelectedLog().attendanceStatus = "조퇴";
-  saveState();
-  renderClockPanel();
-  renderTodayContext();
-  renderReport();
-};
+document.getElementById("attendanceCycleButton").onclick = applyAttendanceCycle;
 document.getElementById("clockInTime").oninput = (event) => {
   getSelectedLog().clockIn = event.target.value;
+  getSelectedLog().attendanceStep = event.target.value ? "in" : "ready";
+  getSelectedLog().attendanceStatus = event.target.value ? "출근" : "";
   saveState();
+  renderClockPanel();
   renderTodayContext();
   renderReport();
 };
 document.getElementById("clockOutTime").oninput = (event) => {
   getSelectedLog().clockOut = event.target.value;
+  getSelectedLog().attendanceStep = event.target.value ? "out" : "in";
+  getSelectedLog().attendanceStatus = event.target.value ? "퇴근" : "출근";
   saveState();
+  renderClockPanel();
   renderTodayContext();
   renderReport();
 };
