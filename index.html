@@ -12,7 +12,7 @@
       <header class="worklog-header">
         <div>
           <p>Bangju Group Operating System</p>
-          <h1>Beyond OS</h1>
+          <h1 id="globalEmployeeIdentity">(주)방주 (부서: 비욘드 피트니스) 성명 직함</h1>
         </div>
         <div class="header-actions">
           <button id="settingsGearButton" type="button" aria-label="로그인 및 설정">⚙</button>
@@ -21,8 +21,8 @@
       </header>
 
       <nav class="worklog-tabs" aria-label="Beyond OS 메뉴">
-        <button class="is-active" type="button" data-view="os">OS</button>
-        <button type="button" data-view="today">업무일지</button>
+        <button class="is-active" type="button" data-view="today">업무일지</button>
+        <button type="button" data-view="os">OS</button>
         <button type="button" data-view="attendance">근태</button>
         <button type="button" data-view="management">사업장</button>
         <button type="button" data-view="organization">조직</button>
@@ -32,7 +32,7 @@
         <button type="button" data-view="settings">설정</button>
       </nav>
 
-      <section class="worklog-view is-active os-view" id="view-os">
+      <section class="worklog-view os-view" id="view-os">
         <div class="os-hero">
           <div>
             <p>ERP + 그룹웨어 + CRM + 시설관리 + 프로젝트관리 + AI 코칭</p>
@@ -72,13 +72,26 @@
         </div>
       </section>
 
-      <section class="worklog-view" id="view-today">
+      <section class="worklog-view is-active" id="view-today">
         <div class="employee-log-topbar">
-          <strong>Bangju AI Work Log</strong>
-          <div class="date-nav" aria-label="업무일지 날짜 이동">
-            <button id="prevDateButton" type="button">어제</button>
-            <button id="selectedDateButton" type="button"></button>
-            <button id="nextDateButton" type="button">내일</button>
+          <strong>Employee Worklog</strong>
+          <div class="worklog-control-strip" aria-label="날짜 및 근태 기록">
+            <div class="date-nav" aria-label="업무일지 날짜 이동">
+              <button id="prevDateButton" type="button">어제</button>
+              <button id="selectedDateButton" type="button"></button>
+              <button id="nextDateButton" type="button">내일</button>
+            </div>
+            <button id="clockInButton" type="button">출근</button>
+            <button id="clockOutButton" type="button">퇴근</button>
+            <button id="earlyLeaveButton" type="button">조퇴</button>
+            <label>
+              출근시간
+              <input id="clockInTime" type="time" />
+            </label>
+            <label>
+              퇴근시간
+              <input id="clockOutTime" type="time" />
+            </label>
           </div>
         </div>
         <div class="worklog-title-row employee-title-row">
@@ -89,18 +102,6 @@
               <select id="employeeSelect"></select>
             </label>
           </div>
-        </div>
-        <div class="clock-panel" aria-label="출퇴근 기록">
-          <button id="clockInButton" type="button">출근</button>
-          <label>
-            출근시간
-            <input id="clockInTime" type="time" />
-          </label>
-          <button id="clockOutButton" type="button">퇴근</button>
-          <label>
-            퇴근시간
-            <input id="clockOutTime" type="time" />
-          </label>
         </div>
         <div class="worklog-context-grid" id="todayContext"></div>
         <div class="daily-split" aria-label="오늘 실행 화면">

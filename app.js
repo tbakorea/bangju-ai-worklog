@@ -166,11 +166,11 @@ function createState() {
     role: defaultProfile.role,
   };
   return {
-    selectedEmployeeId: "profile-user",
+    selectedEmployeeId: "beyond-fitness-manager",
     selectedDateKey: todayKey,
     profile: { ...defaultProfile },
     employeeLogs: {
-      [todayKey]: { "profile-user": createEmployeeLog(profileEmployee, defaultProfile) },
+      [todayKey]: { "beyond-fitness-manager": createEmployeeLog(employees.find((employee) => employee.id === "beyond-fitness-manager") || profileEmployee, defaultProfile) },
     },
     attendance: {
       [todayKey]: [
@@ -202,8 +202,11 @@ function createEmployeeLog(employee = employees[0], profile = defaultProfile) {
 }
 
 function normalizeState() {
-  state.selectedEmployeeId ||= "profile-user";
+  state.selectedEmployeeId ||= "beyond-fitness-manager";
   state.profile = { ...defaultProfile, ...(state.profile || {}) };
+  if (state.selectedEmployeeId === "profile-user" && state.profile.name === defaultProfile.name) {
+    state.selectedEmployeeId = "beyond-fitness-manager";
+  }
   state.selectedDateKey ||= todayKey;
   state.employeeLogs ||= {};
   state.employeeLogs[getActiveDateKey()] ||= {};
@@ -215,6 +218,7 @@ function normalizeState() {
     log.role ||= employee.role;
     log.clockIn ||= "";
     log.clockOut ||= "";
+    log.attendanceStatus ||= "";
     log.tasks ||= createEmployeeLog(employee).tasks;
     log.schedule ||= createEmployeeLog(employee).schedule;
     normalizeEmployeeLogRows(log);
@@ -437,6 +441,13 @@ function renderDateNav() {
 function renderEmployeeTitle() {
   const employee = getSelectedEmployee();
   document.getElementById("todayTitle").textContent = `${employee.org} 업무일지. ${employee.role} ${employee.name}`;
+}
+
+function renderGlobalEmployeeIdentity() {
+  const employee = getSelectedEmployee();
+  const [company, rawDepartment] = employee.org.split(" / ");
+  const department = rawDepartment || employee.org.replace("(주)방주", "").trim() || "비욘드 피트니스";
+  document.getElementById("globalEmployeeIdentity").textContent = `${company || "(주)방주"} (부서: ${department}) ${employee.name} ${employee.role}`;
 }
 
 function renderProfileForm() {
@@ -807,6 +818,7 @@ function renderTodayContext() {
   const attendance = state.attendance?.[getActiveDateKey()] || [];
   const completed = tasks.filter((task) => task.done || task.status === "완료").length;
   const support = [...tasks, ...entries].filter((entry) => entry.status === "지원필요" || entry.status === "보류").length;
+  const status = log.attendanceStatus || attendance.find((item) => item.employeeId === employee.id)?.status || "미기록";
   node.innerHTML = [
     ["직원", employee.name],
     ["소속", employee.org.split(" / ").at(-1)],
@@ -815,7 +827,7 @@ function renderTodayContext() {
     ["우선업무", `${tasks.filter((task) => task.text.trim()).length}건`],
     ["완료", `${completed}건`],
     ["이슈", `${support}건`],
-    ["근태", attendance.find((item) => item.employeeId === employee.id)?.status || "미기록"],
+    ["근태", status],
   ].map(([label, value]) => `<span><b>${label}</b><strong>${value}</strong></span>`).join("");
 }
 
@@ -963,6 +975,7 @@ function renderReport() {
 function switchView(view) {
   document.querySelectorAll(".worklog-tabs button").forEach((button) => button.classList.toggle("is-active", button.dataset.view === view));
   document.querySelectorAll(".worklog-view").forEach((panel) => panel.classList.toggle("is-active", panel.id === `view-${view}`));
+  renderGlobalEmployeeIdentity();
   renderOsDashboard();
   renderAiCoach();
   renderAttendance();
@@ -971,6 +984,7 @@ function switchView(view) {
 }
 
 function renderAll() {
+  renderGlobalEmployeeIdentity();
   renderOsDashboard();
   renderAiCoach();
   renderEmployeeSelect();
@@ -1009,6 +1023,7 @@ document.getElementById("employeeSelect").onchange = (event) => {
   state.selectedEmployeeId = event.target.value;
   saveState();
   renderEntries();
+  renderGlobalEmployeeIdentity();
 };
 document.getElementById("prevDateButton").onclick = () => moveSelectedDate(-1);
 document.getElementById("selectedDateButton").onclick = () => {
@@ -1031,6 +1046,7 @@ document.querySelectorAll("[data-os-action]").forEach((button) => {
 document.getElementById("addAttendanceButton").onclick = addAttendance;
 document.getElementById("clockInButton").onclick = () => {
   getSelectedLog().clockIn = currentTimeValue();
+  getSelectedLog().attendanceStatus = "출근";
   saveState();
   renderClockPanel();
   renderTodayContext();
@@ -1038,6 +1054,15 @@ document.getElementById("clockInButton").onclick = () => {
 };
 document.getElementById("clockOutButton").onclick = () => {
   getSelectedLog().clockOut = currentTimeValue();
+  getSelectedLog().attendanceStatus = "퇴근";
+  saveState();
+  renderClockPanel();
+  renderTodayContext();
+  renderReport();
+};
+document.getElementById("earlyLeaveButton").onclick = () => {
+  getSelectedLog().clockOut = currentTimeValue();
+  getSelectedLog().attendanceStatus = "조퇴";
   saveState();
   renderClockPanel();
   renderTodayContext();
