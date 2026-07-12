@@ -585,6 +585,192 @@ body[data-device-mode="narrow"] .os-mode-switch span[data-device-mode="narrow"] 
   gap: 0;
 }
 
+.task-board,
+.appointment-list {
+  display: grid;
+  gap: 0;
+  padding-bottom: 72px;
+  scroll-padding-bottom: 72px;
+}
+
+.task-row,
+.appointment-row {
+  border: 1px solid var(--line);
+  border-width: 0 0 1px;
+  border-radius: 0;
+  background: transparent;
+}
+
+.task-row {
+  display: grid;
+  grid-template-columns: 22px 30px minmax(0, 1fr) 22px;
+  column-gap: 6px;
+  align-items: center;
+  min-height: 36px;
+  padding: 2px;
+}
+
+.task-cycle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  min-height: 22px;
+  border: 2px solid #b9b3a7;
+  border-radius: 6px;
+  background: #fffefa;
+  color: #d7372f;
+  font-size: 15px;
+  font-weight: 900;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.task-row.marker-dot .task-cycle {
+  border-color: #8e8170;
+  color: #263238;
+  font-size: 30px;
+  line-height: 0;
+  padding-bottom: 3px;
+}
+
+.task-status-cell {
+  display: grid;
+  min-width: 0;
+}
+
+.priority-select {
+  width: 30px;
+  border: 0;
+  background: transparent;
+  color: #263238;
+  padding: 0;
+  font-size: 17px;
+  font-weight: 930;
+  appearance: none;
+  text-align: center;
+}
+
+.task-text-cell {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+  width: 100%;
+}
+
+.task-text-input {
+  flex: 1 1 auto;
+  min-width: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--ink);
+  min-height: 28px;
+  padding: 2px 3px;
+  font-size: 17px;
+  font-weight: 760;
+  outline: 0;
+}
+
+.task-row.priority-a .task-text-input {
+  color: #1f322b;
+  font-weight: 820;
+}
+
+.task-row.done .task-text-input {
+  color: var(--muted);
+  text-decoration: line-through;
+}
+
+.task-link-tags {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  min-width: 0;
+}
+
+.task-link-tags span {
+  min-height: 20px;
+  border: 1px solid rgba(95, 118, 104, 0.16);
+  border-radius: 999px;
+  background: rgba(95, 118, 104, 0.08);
+  color: rgba(47, 65, 56, 0.76);
+  padding: 3px 6px;
+  font-size: 10px;
+  font-weight: 850;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.task-delete {
+  width: 22px;
+  height: 22px;
+  min-height: 22px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: rgba(185, 132, 132, 0.38);
+  padding: 0;
+  font-size: 16px;
+  font-weight: 900;
+  line-height: 1;
+}
+
+.appointment-row {
+  position: relative;
+  display: grid;
+  grid-template-columns: 54px minmax(0, 1fr) 28px;
+  gap: 6px;
+  align-items: center;
+  min-height: 38px;
+  padding: 2px;
+}
+
+.appointment-row.is-filled {
+  background: rgba(217, 229, 234, 0.28);
+}
+
+.appointment-time {
+  color: var(--muted);
+  font-size: 15px;
+  font-weight: 760;
+}
+
+.appointment-row input[type="text"] {
+  min-width: 0;
+  min-height: 28px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--ink);
+  padding: 2px 4px;
+  font-size: 17px;
+  font-weight: 760;
+  outline: 0;
+}
+
+.appointment-row input[type="text"]::placeholder,
+.task-text-input::placeholder {
+  color: rgba(94, 102, 97, 0.34);
+}
+
+.appointment-merge-button {
+  width: 25px;
+  height: 23px;
+  min-height: 23px;
+  border: 1px solid rgba(221, 216, 203, 0.78);
+  border-radius: 999px;
+  background: rgba(255, 253, 248, 0.92);
+  color: rgba(127, 132, 123, 0.55);
+  padding: 0;
+  font-size: 16px;
+  font-weight: 900;
+  line-height: 1;
+}
+
 .priority-task {
   display: grid;
   grid-template-columns: 48px 38px minmax(0, 1fr) auto 34px;
@@ -1091,6 +1277,75 @@ body[data-device-mode="narrow"] .os-mode-switch span[data-device-mode="narrow"] 
   .day-task-panel,
   .day-schedule-panel {
     max-height: none;
+  }
+
+  .task-board,
+  .appointment-list {
+    padding-bottom: 86px;
+    scroll-padding-bottom: 86px;
+  }
+
+  .task-row {
+    grid-template-columns: 20px 24px minmax(0, 1fr) 20px;
+    column-gap: 4px;
+    min-height: 36px;
+  }
+
+  .task-cycle {
+    width: 20px;
+    height: 20px;
+    min-height: 20px;
+    border-radius: 6px;
+  }
+
+  .priority-select {
+    width: 24px;
+    max-width: 24px;
+    font-size: 15px;
+  }
+
+  .task-text-input {
+    min-height: 28px;
+    padding-inline: 4px;
+    font-size: 13px;
+    line-height: 1.25;
+  }
+
+  .task-delete {
+    width: 20px;
+    height: 20px;
+    min-height: 20px;
+    font-size: 14px;
+  }
+
+  .task-link-tags {
+    display: none;
+  }
+
+  .appointment-row {
+    grid-template-columns: 45px minmax(0, 1fr) 23px;
+    gap: 5px;
+    min-height: 36px;
+    padding-right: 2px;
+  }
+
+  .appointment-time {
+    font-size: 13px;
+    font-weight: 760;
+  }
+
+  .appointment-row input[type="text"] {
+    min-height: 30px;
+    padding-inline: 5px;
+    font-size: 13px;
+    line-height: 1.25;
+  }
+
+  .appointment-merge-button {
+    width: 23px;
+    height: 20px;
+    min-height: 20px;
+    font-size: 14px;
   }
 
   .schedule-row {

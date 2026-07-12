@@ -703,11 +703,11 @@ function renderEntries() {
   list.innerHTML = "";
   entries.forEach((entry, index) => {
     const row = document.createElement("div");
-    row.className = "schedule-row";
+    row.className = `appointment-row ${entry.text?.trim() ? "is-filled" : ""}`;
     row.innerHTML = `
-      <strong>${escapeHtml(entry.time)}</strong>
+      <span class="appointment-time">${escapeHtml(entry.time)}</span>
       <input type="text" value="${escapeAttr(entry.text)}" placeholder="일정" aria-label="${escapeAttr(entry.time)} 일정" />
-      <button type="button" aria-label="${escapeAttr(entry.time)} 일정 입력">+</button>
+      <button class="appointment-merge-button" type="button" aria-label="${escapeAttr(entry.time)} 일정 입력">+</button>
     `;
     const text = row.querySelector("input");
     text.oninput = () => updateEntry(index, "text", text.value);
@@ -746,6 +746,10 @@ function renderPriorityBoard() {
   board.querySelectorAll("[data-task-field]").forEach((field) => {
     const index = Number(field.dataset.taskIndex);
     const key = field.dataset.taskField;
+    if (field.tagName === "BUTTON" && key === "done") {
+      field.addEventListener("click", () => updateTask(index, key, !getSelectedLog().tasks[index].done));
+      return;
+    }
     const eventName = field.type === "checkbox" || field.tagName === "SELECT" ? "change" : "input";
     field.addEventListener(eventName, () => updateTask(index, key, field.type === "checkbox" ? field.checked : field.value));
   });
@@ -755,15 +759,20 @@ function renderPriorityBoard() {
 }
 
 function renderTaskRow(task, index) {
+  const marker = task.done ? "check" : task.text?.trim() ? "dot" : "check";
   return `
-    <div class="priority-task ${task.done ? "is-done" : ""}">
-      <input type="checkbox" data-task-index="${index}" data-task-field="done" ${task.done ? "checked" : ""} aria-label="완료" />
-      <select data-task-index="${index}" data-task-field="priority" aria-label="우선순위">
+    <div class="task-row priority-${task.priority === "A" ? "a" : "none"} marker-${marker} ${task.done ? "done" : ""}">
+      <button class="task-cycle" type="button" data-task-index="${index}" data-task-field="done" aria-label="완료 상태 변경">${task.done ? "✓" : task.text?.trim() ? "·" : ""}</button>
+      <div class="task-status-cell">
+        <select class="priority-select" data-task-index="${index}" data-task-field="priority" aria-label="우선순위">
         ${priorityOptions.map(([value, label]) => `<option value="${value}" ${task.priority === value ? "selected" : ""}>${label}</option>`).join("")}
-      </select>
-      <input type="text" data-task-index="${index}" data-task-field="text" value="${escapeAttr(task.text)}" placeholder="우선업무" aria-label="우선업무" />
-      ${task.text?.trim() ? `<span class="task-tag">${escapeHtml(task.status || "예정")}</span>` : ""}
-      <button type="button" data-task-index="${index}" data-task-remove aria-label="업무 삭제">×</button>
+        </select>
+      </div>
+      <div class="task-text-cell">
+        <input class="task-text-input" type="text" data-task-index="${index}" data-task-field="text" value="${escapeAttr(task.text)}" placeholder="업무 내용" aria-label="우선업무" />
+        ${task.text?.trim() ? `<span class="task-link-tags"><span>${escapeHtml(task.status || "예정")}</span></span>` : ""}
+      </div>
+      <button class="task-delete" type="button" data-task-index="${index}" data-task-remove aria-label="우선업무 삭제">×</button>
     </div>
   `;
 }
