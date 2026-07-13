@@ -661,6 +661,176 @@ body[data-device-mode="narrow"] .os-mode-switch span[data-device-mode="narrow"] 
   margin-top: 14px;
 }
 
+.worklog-today {
+  display: grid;
+  gap: 8px;
+  color: #263238;
+}
+
+.worklog-today-title {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: center;
+  min-height: 58px;
+  padding: 8px 10px;
+  border: 1px solid rgba(221, 216, 203, 0.78);
+  border-radius: 10px;
+  background: rgba(255, 253, 248, 0.94);
+  box-shadow: 0 8px 18px rgba(38, 50, 56, 0.06);
+}
+
+.worklog-summary-date {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.worklog-summary-date span {
+  overflow: hidden;
+  color: var(--fitness-green);
+  font-size: clamp(18px, 5.2vw, 24px);
+  font-weight: 950;
+  line-height: 1.05;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.worklog-summary-date small {
+  overflow: hidden;
+  color: rgba(47, 65, 56, 0.62);
+  font-size: 11px;
+  font-weight: 850;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.worklog-completion {
+  display: grid;
+  justify-items: end;
+  min-width: 58px;
+  padding-left: 9px;
+  border-left: 2px solid rgba(95, 118, 104, 0.36);
+}
+
+.worklog-completion span {
+  color: rgba(47, 65, 56, 0.72);
+  font-size: 10px;
+  font-weight: 850;
+}
+
+.worklog-completion strong {
+  color: var(--fitness-green);
+  font-size: 24px;
+  line-height: 1;
+}
+
+.worklog-pulse-row {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 4px;
+  align-items: center;
+}
+
+.worklog-pulse,
+.worklog-side-nav {
+  overflow: hidden;
+  min-height: 31px;
+  border: 1px solid rgba(221, 216, 203, 0.72);
+  border-radius: 999px;
+  background: rgba(255, 253, 248, 0.82);
+  color: #243f35;
+  padding: 5px 10px;
+  font-size: 12px;
+  font-weight: 850;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.worklog-main {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 8px;
+  min-height: min(720px, calc(100dvh - 245px));
+}
+
+.worklog-panel {
+  min-width: 0;
+  min-height: 0;
+  overflow: auto;
+  padding: 10px;
+  padding-bottom: max(32px, env(safe-area-inset-bottom));
+  border: 1px solid rgba(221, 216, 203, 0.86);
+  border-radius: 10px;
+  background: rgba(255, 253, 248, 0.84);
+}
+
+.worklog-panel h3 {
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: -10px -10px 8px;
+  padding: 10px;
+  background: rgba(255, 253, 248, 0.96);
+  box-shadow: 0 1px 0 rgba(221, 216, 203, 0.82);
+  font-size: 18px;
+  font-weight: 930;
+}
+
+.worklog-panel h3 span {
+  min-width: 0;
+}
+
+.ai-section-button,
+.schedule-unit-button,
+.mobile-focus-done {
+  min-height: 30px;
+  border: 1px solid rgba(15, 59, 46, 0.16);
+  border-radius: 999px;
+  background: rgba(255, 253, 248, 0.9);
+  color: var(--fitness-green);
+  padding: 4px 9px;
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.ai-section-button {
+  margin-left: auto;
+}
+
+.mobile-focus-done {
+  display: none;
+}
+
+.worklog-task-board,
+.worklog-appointment-list {
+  padding-bottom: max(110px, calc(env(safe-area-inset-bottom) + 92px));
+  scroll-padding-bottom: max(120px, calc(env(safe-area-inset-bottom) + 104px));
+}
+
+.worklog-task-list {
+  display: grid;
+  gap: 0;
+}
+
+.worklog-add-row {
+  justify-self: start;
+  margin-top: 10px;
+  min-height: 34px;
+  border: 1px dashed rgba(15, 59, 46, 0.28);
+  border-radius: 999px;
+  background: rgba(255, 253, 248, 0.68);
+  color: var(--fitness-green);
+  padding: 6px 12px;
+  font-weight: 900;
+}
+
 .daily-split {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(0, 0.95fr);
@@ -759,6 +929,18 @@ body[data-device-mode="narrow"] .os-mode-switch span[data-device-mode="narrow"] 
   padding-bottom: 3px;
 }
 
+.task-row.marker-delegate .task-cycle,
+.task-row.marker-postpone .task-cycle {
+  border-color: rgba(15, 59, 46, 0.34);
+  color: var(--fitness-green);
+  font-size: 15px;
+}
+
+.task-row.marker-cancel .task-cycle {
+  border-color: rgba(185, 132, 132, 0.42);
+  color: rgba(185, 72, 72, 0.72);
+}
+
 .task-status-cell {
   display: grid;
   min-width: 0;
@@ -801,6 +983,11 @@ body[data-device-mode="narrow"] .os-mode-switch span[data-device-mode="narrow"] 
 .task-row.priority-a .task-text-input {
   color: #1f322b;
   font-weight: 820;
+}
+
+.task-row.priority-b .task-text-input,
+.task-row.priority-c .task-text-input {
+  color: #263238;
 }
 
 .task-row.done .task-text-input {
@@ -855,6 +1042,25 @@ body[data-device-mode="narrow"] .os-mode-switch span[data-device-mode="narrow"] 
 
 .appointment-row.is-filled {
   background: rgba(217, 229, 234, 0.28);
+}
+
+.appointment-row.is-current .appointment-time {
+  color: var(--fitness-green);
+  font-size: 17px;
+  font-weight: 950;
+}
+
+.appointment-row.is-merged {
+  min-height: 76px;
+}
+
+.appointment-row.is-merged input[type="text"] {
+  min-height: 58px;
+  font-size: 19px;
+  font-weight: 860;
+  line-height: 1.25;
+  text-align: center;
+  white-space: normal;
 }
 
 .appointment-time {
@@ -1393,45 +1599,63 @@ body[data-device-mode="narrow"] .os-mode-switch span[data-device-mode="narrow"] 
     grid-template-columns: 1fr;
   }
 
-  .daily-split .planner-section {
-    padding: 12px;
-  }
-
-  .daily-split {
+  .worklog-main {
     grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-    gap: 8px;
-    overflow-x: auto;
-    align-items: start;
+    gap: 4px;
+    min-height: calc(100dvh - 250px);
   }
 
-  .day-task-panel,
-  .day-schedule-panel {
+  .worklog-panel {
     min-width: 0;
+    padding: 6px;
+    border-radius: 8px;
   }
 
-  .daily-split .section-heading-row {
-    align-items: center;
-    gap: 6px;
+  .worklog-panel h3 {
+    margin: -6px -6px 6px;
+    padding: 8px 6px;
+    gap: 4px;
   }
 
-  .daily-split .section-heading-row h3 {
+  .worklog-panel h3 span {
     font-size: 16px;
     line-height: 1.1;
   }
 
-  .daily-split .section-heading-row button {
+  .worklog-panel h3 button {
     min-height: 30px;
     padding: 5px 8px;
     font-size: 12px;
   }
 
-  .day-task-panel,
-  .day-schedule-panel {
-    max-height: none;
+  .worklog-main.is-focus-tasks,
+  .worklog-main.is-focus-schedule {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .worklog-main.is-focus-tasks .worklog-schedule-panel,
+  .worklog-main.is-focus-schedule .worklog-task-panel {
+    display: none;
+  }
+
+  .worklog-main.is-focus-tasks .mobile-focus-done,
+  .worklog-main.is-focus-schedule .mobile-focus-done {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .worklog-main.is-focus-tasks .task-text-input,
+  .worklog-main.is-focus-schedule .appointment-row input[type="text"] {
+    min-height: 42px;
+    font-size: 22px;
+    line-height: 1.25;
   }
 
   .task-board,
-  .appointment-list {
+  .appointment-list,
+  .worklog-task-board,
+  .worklog-appointment-list {
     padding-bottom: 86px;
     scroll-padding-bottom: 86px;
   }

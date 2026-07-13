@@ -48,8 +48,11 @@ const organizationOptions = bangjuOrganization.flatMap((company) => [company.nam
 const priorityOptions = [
   ["A", "A"],
   ["B", "B"],
+  ["C", "C"],
   ["?", "?"],
 ];
+const taskPriorityOptions = ["?", "A", "B", "C", "취소", "연기"];
+const taskStatusCycle = ["미완료", "완료", "진행중", "위임", "연기"];
 const defaultScheduleTimes = ["12:00", "12:30", "13:00", "13:30", "14:00", "14:30", "15:00", "15:30", "16:00", "16:30", "17:00", "17:30", "18:00", "18:30", "19:00"];
 const defaultProfile = {
   org: "(주)방주",
@@ -196,6 +199,7 @@ function createEmployeeLog(employee = employees[0], profile = defaultProfile) {
       ...Array.from({ length: 12 }, () => ({ priority: "?", text: "", status: "예정", done: false })),
     ],
     schedule: getScheduleTimes(profile.workHours).map((time) => ({ time, text: "", status: "예정" })),
+    scheduleUnit: "30",
     report: "",
     memo: "",
     record: "",
@@ -243,28 +247,31 @@ function normalizeEmployeeLogRows(log) {
   log.tasks ||= [];
   log.schedule ||= [];
   log.tasks.forEach((task, index) => {
+    task.id ||= `task-${Date.now()}-${index}-${Math.random().toString(36).slice(2, 7)}`;
     task.priority ||= index === 0 ? "A" : index === 1 ? "B" : "?";
-    if (task.priority === "C") task.priority = "?";
     task.status ||= "예정";
     task.done ||= false;
     task.text ||= "";
   });
   while (log.tasks.length < 14) {
-    log.tasks.push({ priority: "?", text: "", status: "예정", done: false });
+    log.tasks.push({ id: `task-${Date.now()}-${log.tasks.length}`, priority: "?", text: "", status: "예정", done: false });
   }
+  log.scheduleUnit = log.scheduleUnit === "60" ? "60" : "30";
   const scheduleByTime = new Map(log.schedule.map((item) => [item.time, item]));
-  log.schedule = getScheduleTimes().map((time) => {
+  const scheduleTimes = getWorklogScheduleSlots(log);
+  log.schedule = scheduleTimes.map((time) => {
     const item = scheduleByTime.get(time) || { time, text: "", status: "예정" };
     item.time = time;
     item.text ||= "";
     item.status ||= "예정";
+    item.mergeDown ||= false;
     return item;
   });
 }
 
-function saveState() {
+function saveState(options = {}) {
   localStorage.setItem(storageKey, JSON.stringify(state));
-  scheduleRemoteSave();
+  scheduleRemoteSave(options.fastSave ? 500 : 700);
 }
 
 function getSelectedEmployee() {
@@ -728,6 +735,13 @@ function switchAuthTab(tab) {
   });
 }
 
+function setMobileWorklogFocus(panel) {
+  const main = document.getElementById("worklogMain");
+  if (!main) return;
+  main.classList.toggle("is-focus-tasks", panel === "tasks");
+  main.classList.toggle("is-focus-schedule", panel === "schedule");
+}
+
 function renderEmployeeSelect() {
   const select = document.getElementById("employeeSelect");
   select.innerHTML = getEmployeeOptions().map((employee) => `
@@ -738,31 +752,227 @@ function renderEmployeeSelect() {
 }
 
 function renderEntries() {
-  const list = document.getElementById("entryList");
   const log = getSelectedLog();
   normalizeEmployeeLogRows(log);
-  const entries = log.schedule || [];
-  list.innerHTML = "";
-  entries.forEach((entry, index) => {
-    const row = document.createElement("div");
-    row.className = `appointment-row ${entry.text?.trim() ? "is-filled" : ""}`;
-    row.innerHTML = `
-      <span class="appointment-time">${escapeHtml(entry.time)}</span>
-      <input type="text" value="${escapeAttr(entry.text)}" placeholder="일정" aria-label="${escapeAttr(entry.time)} 일정" />
-      <button class="appointment-merge-button" type="button" aria-label="${escapeAttr(entry.time)} 일정 입력">+</button>
-    `;
-    const text = row.querySelector("input");
-    text.oninput = () => updateEntry(index, "text", text.value);
-    row.querySelector("button").onclick = () => text.focus();
-    list.appendChild(row);
-  });
-  renderPriorityBoard();
+  renderWorklogToday(log);
   renderEmployeeDetailFields();
   renderClockPanel();
   renderEmployeeTitle();
   renderDateNav();
   renderTodayContext();
   renderReport();
+}
+
+function renderWorklogToday(log = getSelectedLog()) {
+  renderWorklogSummary(log);
+  renderWorklogTaskBoard(log);
+  renderWorklogAppointments(log);
+}
+
+function renderWorklogSummary(log) {
+  const tasks = getWorklogTaskRefs(log).map((ref) => ref.task).filter((task) => isActiveTask(task));
+  const completed = tasks.filter((task) => task.done || task.status === "완료").length;
+  const pending = tasks.filter((task) => !task.done && !["완료", "취소"].includes(task.status)).length;
+  const nextEntry = getNextScheduleEntry(log);
+  document.getElementById("worklogDayTitle").textContent = formatKoreanDate(getActiveDateKey());
+  document.getElementById("worklogCompletion").textContent = `${completed}/${tasks.length}`;
+  document.getElementById("worklogPulse").textContent = `오늘 실행 ${completed}/${tasks.length} · 다음 일정 ${nextEntry ? `${nextEntry.time} ${nextEntry.text}` : "없음"} · 미완료 ${pending} · AI 운영 신호 ${pending ? "추적" : "정상"}`;
+  const unitButton = document.getElementById("scheduleUnitButton");
+  if (unitButton) unitButton.textContent = log.scheduleUnit === "60" ? "1시간" : "30분";
+}
+
+function renderWorklogTaskBoard(log) {
+  const board = document.getElementById("worklogTaskBoard");
+  board.innerHTML = "";
+  const list = document.createElement("section");
+  list.className = "worklog-task-list";
+  getWorklogTaskRefs(log).forEach(({ task, index }) => {
+    list.appendChild(renderWorklogTaskRow(task, index, log));
+  });
+  const add = document.createElement("button");
+  add.type = "button";
+  add.className = "worklog-add-row";
+  add.textContent = "업무 추가";
+  add.onclick = () => {
+    log.tasks.push(createWorklogTask("A"));
+    saveState();
+    renderEntries();
+  };
+  list.appendChild(add);
+  board.appendChild(list);
+}
+
+function createWorklogTask(priority = "?") {
+  return {
+    id: crypto.randomUUID?.() || `task-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+    priority,
+    text: "",
+    status: "미완료",
+    done: false,
+  };
+}
+
+function getWorklogTaskRefs(log) {
+  return (log.tasks || [])
+    .map((task, index) => ({ task, index }))
+    .sort((a, b) => {
+      const activeA = isActiveTask(a.task);
+      const activeB = isActiveTask(b.task);
+      const orderA = getPrioritySortValue(a.task.priority);
+      const orderB = getPrioritySortValue(b.task.priority);
+      return Number(activeB) - Number(activeA) || orderA - orderB || a.index - b.index;
+    });
+}
+
+function isActiveTask(task) {
+  return Boolean(task.text?.trim() || task.done || !["예정", "미완료"].includes(task.status || "미완료"));
+}
+
+function getPrioritySortValue(priority = "?") {
+  return { A: 1, B: 2, C: 3, "?": 4, 연기: 5, 취소: 6 }[priority] || 7;
+}
+
+function renderWorklogTaskRow(task, index, log) {
+  const row = document.createElement("div");
+  const marker = getWorklogTaskMarker(task);
+  row.className = `worklog-task-row task-row priority-${String(task.priority || "?").toLowerCase()} marker-${marker} ${task.done ? "done" : ""}`;
+  row.innerHTML = `
+    <button class="task-cycle" type="button" aria-label="상태 변경">${getWorklogTaskMarkerLabel(task)}</button>
+    <select class="priority-select" aria-label="중요도">
+      ${taskPriorityOptions.map((value) => `<option value="${escapeAttr(value)}" ${getPriorityValue(task) === value ? "selected" : ""}>${value}</option>`).join("")}
+    </select>
+    <div class="task-text-cell">
+      <input class="task-text-input" type="text" value="${escapeAttr(task.text)}" placeholder="업무 내용" aria-label="주요업무" />
+      ${renderWorklogTaskTags(getWorklogTaskTags(task))}
+    </div>
+    <button class="task-delete" type="button" aria-label="업무 삭제">×</button>
+  `;
+  row.querySelector(".task-cycle").onclick = () => {
+    cycleWorklogTaskStatus(task);
+    syncWorklogTaskTimeHintToSchedule(task, log);
+    saveState();
+    renderEntries();
+  };
+  row.querySelector(".priority-select").onchange = (event) => {
+    updateWorklogTaskPriority(task, event.target.value);
+    syncWorklogTaskTimeHintToSchedule(task, log);
+    saveState();
+    renderEntries();
+  };
+  row.querySelector(".task-text-input").oninput = (event) => {
+    task.text = event.target.value;
+    syncWorklogTaskTimeHintToSchedule(task, log);
+    saveState({ fastSave: true });
+    updateTaskRowTags(row, task);
+    renderWorklogSummary(log);
+    renderWorklogAppointments(log);
+    renderTodayContext();
+    renderReport();
+  };
+  row.querySelector(".task-delete").onclick = () => {
+    removeLinkedSchedule(task, log);
+    log.tasks.splice(index, 1);
+    saveState();
+    renderEntries();
+  };
+  return row;
+}
+
+function getPriorityValue(task) {
+  if (["취소", "연기"].includes(task.status)) return task.status;
+  return task.priority || "?";
+}
+
+function updateWorklogTaskPriority(task, value) {
+  if (["취소", "연기"].includes(value)) {
+    task.status = value;
+    task.done = false;
+    task.priority = value;
+    return;
+  }
+  task.priority = value;
+  if (["취소", "연기"].includes(task.status)) task.status = "미완료";
+}
+
+function getWorklogTaskMarker(task) {
+  if (task.status === "완료" || task.done) return "check";
+  if (task.status === "진행중" || task.status === "진행") return "dot";
+  if (task.status === "위임") return "delegate";
+  if (task.status === "연기") return "postpone";
+  if (task.status === "취소") return "cancel";
+  return "blank";
+}
+
+function getWorklogTaskMarkerLabel(task) {
+  const marker = getWorklogTaskMarker(task);
+  return { check: "✓", dot: "·", delegate: "↗", postpone: "→", cancel: "×", blank: "" }[marker] || "";
+}
+
+function cycleWorklogTaskStatus(task) {
+  const current = task.done ? "완료" : ["예정", "진행"].includes(task.status) ? "미완료" : task.status || "미완료";
+  const next = taskStatusCycle[(taskStatusCycle.indexOf(current) + 1) % taskStatusCycle.length] || "미완료";
+  task.status = next;
+  task.done = next === "완료";
+}
+
+function getWorklogTaskTags(task) {
+  const text = task.text || "";
+  const tags = [];
+  const add = (tag) => {
+    if (!tags.includes(tag)) tags.push(tag);
+  };
+  if (task.financeItemId || /자금|입금|지출|카드|이자|정산|대금|money/i.test(text)) add("Money");
+  if (task.projectTaskId || /프로젝트|현장|계약|공사|분양|임대|쇼룸|회원|시설/.test(text)) add("프로젝트");
+  if (/목표|핵심|성장|개선|성과|매출|전환율/.test(text)) add("목표");
+  if (/운동|건강|수면|회복|투약|검진|스트레칭|피트니스|pt/i.test(text)) add("건강");
+  return tags.slice(0, 3);
+}
+
+function renderWorklogTaskTags(tags) {
+  if (!tags.length) return "";
+  return `<span class="task-link-tags">${tags.map((tag) => `<span>${escapeHtml(tag)}</span>`).join("")}</span>`;
+}
+
+function updateTaskRowTags(row, task) {
+  const cell = row.querySelector(".task-text-cell");
+  row.querySelector(".task-link-tags")?.remove();
+  const tags = getWorklogTaskTags(task);
+  if (!tags.length) return;
+  const node = document.createElement("span");
+  node.className = "task-link-tags";
+  node.innerHTML = tags.map((tag) => `<span>${escapeHtml(tag)}</span>`).join("");
+  cell.appendChild(node);
+}
+
+function renderWorklogAppointments(log) {
+  normalizeWorklogSchedule(log);
+  const list = document.getElementById("worklogAppointmentList");
+  list.innerHTML = "";
+  (log.schedule || []).forEach((entry, index) => {
+    if (index > 0 && log.schedule[index - 1]?.mergeDown) return;
+    const row = document.createElement("div");
+    const mergedEntry = entry.mergeDown ? log.schedule[index + 1] : null;
+    const value = mergedEntry?.text && !entry.text ? mergedEntry.text : entry.text || "";
+    row.className = `appointment-row ${value.trim() ? "is-filled" : ""} ${isCurrentScheduleSlot(entry, log) ? "is-current" : ""} ${entry.mergeDown ? "is-merged" : ""}`;
+    row.innerHTML = `
+      <span class="appointment-time">${escapeHtml(entry.time)}</span>
+      <input type="text" value="${escapeAttr(value)}" placeholder="일정" aria-label="${escapeAttr(entry.time)} 일정" />
+      <button class="appointment-merge-button" type="button" aria-label="${escapeAttr(entry.time)} 일정 병합">${entry.mergeDown ? "−" : "+"}</button>
+    `;
+    const text = row.querySelector("input");
+    text.oninput = () => {
+      entry.text = text.value;
+      if (mergedEntry && !mergedEntry.text) mergedEntry.text = text.value;
+      saveState({ fastSave: true });
+      renderWorklogSummary(log);
+    };
+    row.querySelector("button").onclick = () => {
+      entry.mergeDown = !entry.mergeDown && index < log.schedule.length - 1;
+      saveState();
+      renderWorklogAppointments(log);
+    };
+    list.appendChild(row);
+  });
 }
 
 function updateEntry(index, field, value) {
@@ -780,47 +990,8 @@ function addEntry() {
   }
 }
 
-function renderPriorityBoard() {
-  const board = document.getElementById("priorityBoard");
-  const log = getSelectedLog();
-  normalizeEmployeeLogRows(log);
-  board.innerHTML = log.tasks.map((task, index) => renderTaskRow(task, index)).join("");
-  board.querySelectorAll("[data-task-field]").forEach((field) => {
-    const index = Number(field.dataset.taskIndex);
-    const key = field.dataset.taskField;
-    if (field.tagName === "BUTTON" && key === "done") {
-      field.addEventListener("click", () => updateTask(index, key, !getSelectedLog().tasks[index].done));
-      return;
-    }
-    const eventName = field.type === "checkbox" || field.tagName === "SELECT" ? "change" : "input";
-    field.addEventListener(eventName, () => updateTask(index, key, field.type === "checkbox" ? field.checked : field.value));
-  });
-  board.querySelectorAll("[data-task-remove]").forEach((button) => {
-    button.onclick = () => clearTask(Number(button.dataset.taskIndex));
-  });
-}
-
-function renderTaskRow(task, index) {
-  const marker = task.done ? "check" : task.text?.trim() ? "dot" : "check";
-  return `
-    <div class="task-row priority-${task.priority === "A" ? "a" : "none"} marker-${marker} ${task.done ? "done" : ""}">
-      <button class="task-cycle" type="button" data-task-index="${index}" data-task-field="done" aria-label="완료 상태 변경">${task.done ? "✓" : task.text?.trim() ? "·" : ""}</button>
-      <div class="task-status-cell">
-        <select class="priority-select" data-task-index="${index}" data-task-field="priority" aria-label="우선순위">
-        ${priorityOptions.map(([value, label]) => `<option value="${value}" ${task.priority === value ? "selected" : ""}>${label}</option>`).join("")}
-        </select>
-      </div>
-      <div class="task-text-cell">
-        <input class="task-text-input" type="text" data-task-index="${index}" data-task-field="text" value="${escapeAttr(task.text)}" placeholder="업무 내용" aria-label="우선업무" />
-        ${task.text?.trim() ? `<span class="task-link-tags"><span>${escapeHtml(task.status || "예정")}</span></span>` : ""}
-      </div>
-      <button class="task-delete" type="button" data-task-index="${index}" data-task-remove aria-label="우선업무 삭제">×</button>
-    </div>
-  `;
-}
-
 function addTask(priority, shouldRender = true) {
-  const task = { priority, text: "", status: "예정", done: false };
+  const task = createWorklogTask(priority);
   getSelectedLog().tasks.push(task);
   saveState();
   if (shouldRender) renderEntries();
@@ -831,22 +1002,157 @@ function updateTask(index, field, value) {
   const task = getSelectedLog().tasks[index];
   task[field] = value;
   if (field === "done") task.status = value ? "완료" : "진행";
+  syncWorklogTaskTimeHintToSchedule(task, getSelectedLog());
   saveState();
   renderTodayContext();
   renderReport();
-  if (["done", "priority"].includes(field)) renderPriorityBoard();
+  if (["done", "priority"].includes(field)) renderEntries();
 }
 
 function clearTask(index) {
   const task = getSelectedLog().tasks[index];
+  removeLinkedSchedule(task, getSelectedLog());
   task.text = "";
   task.status = "예정";
   task.done = false;
   if (index > 1) task.priority = "?";
   saveState();
-  renderPriorityBoard();
+  renderEntries();
   renderTodayContext();
   renderReport();
+}
+
+function extractWorklogTaskTimeHint(text = "") {
+  const source = String(text || "");
+  const match = source.match(/(오전|오후)\s*(\d{1,2})(?::([0-5]\d)|시\s*([0-5]\d)?)?|(?:^|[^\d])(\d{1,2}):([0-5]\d)|(?:^|[^\d])(\d{1,2})시\s*([0-5]\d)?/);
+  if (!match) return null;
+  const meridiem = match[1] || "";
+  let hour = Number(match[2] || match[5] || match[7]);
+  const minute = Number(match[3] || match[4] || match[6] || match[8] || "00");
+  if (meridiem === "오후" && hour < 12) hour += 12;
+  if (meridiem === "오전" && hour === 12) hour = 0;
+  if (hour < 0 || hour > 23 || minute < 0 || minute > 59) return null;
+  const slot = `${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")}`;
+  const scheduleText = source.replace(match[0], " ").replace(/\s{2,}/g, " ").trim();
+  return { slot, text: scheduleText };
+}
+
+function syncWorklogTaskTimeHintToSchedule(task, log) {
+  log.autoTaskScheduleLinks ||= {};
+  const linkId = `task:${task.id || task.text}`;
+  const existing = log.autoTaskScheduleLinks[linkId];
+  if (["취소", "연기", "위임"].includes(task.status) || ["취소", "연기"].includes(task.priority)) {
+    removeLinkedSchedule(task, log);
+    return;
+  }
+  const hint = extractWorklogTaskTimeHint(task.text);
+  if (!hint || !hint.text) return;
+  if (existing && existing.slot !== hint.slot) {
+    const previous = findScheduleEntry(log, existing.slot);
+    if (previous && previous.text === existing.text) previous.text = "";
+  }
+  const entry = ensureWorklogAppointmentSlot(log, hint.slot);
+  if (existing?.slot === hint.slot && entry.text === existing.text) {
+    entry.text = hint.text;
+    log.autoTaskScheduleLinks[linkId] = { type: "task", slot: hint.slot, text: hint.text };
+    normalizeWorklogSchedule(log);
+    return;
+  }
+  const current = String(entry.text || "").trim();
+  if (!current) {
+    entry.text = hint.text;
+  } else if (!current.includes(hint.text)) {
+    entry.text = `${current} / ${hint.text}`;
+  }
+  log.autoTaskScheduleLinks[linkId] = { type: "task", slot: hint.slot, text: hint.text };
+  normalizeWorklogSchedule(log);
+}
+
+function removeLinkedSchedule(task, log) {
+  log.autoTaskScheduleLinks ||= {};
+  const linkId = `task:${task.id || task.text}`;
+  const existing = log.autoTaskScheduleLinks[linkId];
+  if (!existing) return;
+  const entry = findScheduleEntry(log, existing.slot);
+  if (entry && entry.text === existing.text) entry.text = "";
+  delete log.autoTaskScheduleLinks[linkId];
+}
+
+function ensureWorklogAppointmentSlot(log, slot) {
+  log.schedule ||= [];
+  let entry = findScheduleEntry(log, slot);
+  if (!entry) {
+    entry = { time: slot, text: "", status: "예정", mergeDown: false };
+    log.schedule.push(entry);
+  }
+  normalizeWorklogSchedule(log);
+  return findScheduleEntry(log, slot);
+}
+
+function findScheduleEntry(log, slot) {
+  return (log.schedule || []).find((entry) => entry.time === slot);
+}
+
+function normalizeWorklogSchedule(log) {
+  const byTime = new Map((log.schedule || []).map((entry) => [entry.time, entry]));
+  log.schedule = getWorklogScheduleSlots(log).map((time) => {
+    const entry = byTime.get(time) || { time, text: "", status: "예정", mergeDown: false };
+    entry.time = time;
+    entry.text ||= "";
+    entry.status ||= "예정";
+    entry.mergeDown ||= false;
+    return entry;
+  });
+}
+
+function getWorklogScheduleSlots(log) {
+  const unit = log?.scheduleUnit === "60" ? 60 : 30;
+  const baseTimes = getScheduleTimes(state?.profile?.workHours || defaultProfile.workHours);
+  const scheduleTimes = (log?.schedule || []).map((entry) => entry.time).filter(Boolean);
+  const taskTimes = (log?.tasks || []).map((task) => extractWorklogTaskTimeHint(task.text)?.slot).filter(Boolean);
+  const allTimes = [...baseTimes, ...scheduleTimes, ...taskTimes];
+  let start = 8 * 60;
+  let end = 19 * 60 + 30;
+  allTimes.forEach((time) => {
+    const minutes = timeToMinutes(time);
+    if (!Number.isFinite(minutes)) return;
+    start = Math.min(start, Math.floor(minutes / unit) * unit);
+    end = Math.max(end, Math.floor(minutes / unit) * unit + unit);
+  });
+  const slots = [];
+  for (let minute = start; minute <= end; minute += unit) {
+    slots.push(minutesToTime(minute));
+  }
+  return slots;
+}
+
+function timeToMinutes(value) {
+  const [hour, minute] = String(value || "00:00").split(":").map(Number);
+  if (!Number.isFinite(hour) || !Number.isFinite(minute)) return NaN;
+  return hour * 60 + minute;
+}
+
+function minutesToTime(minutes) {
+  const hour = Math.floor(minutes / 60);
+  const minute = minutes % 60;
+  return `${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")}`;
+}
+
+function isCurrentScheduleSlot(entry, log) {
+  if (getActiveDateKey() !== todayKey) return false;
+  const unit = log.scheduleUnit === "60" ? 60 : 30;
+  const now = new Date();
+  const current = now.getHours() * 60 + now.getMinutes();
+  const start = timeToMinutes(entry.time);
+  return current >= start && current < start + unit;
+}
+
+function getNextScheduleEntry(log) {
+  const now = new Date();
+  const current = getActiveDateKey() === todayKey ? now.getHours() * 60 + now.getMinutes() : 0;
+  return (log.schedule || [])
+    .filter((entry) => entry.text?.trim() && timeToMinutes(entry.time) >= current)
+    .sort((a, b) => timeToMinutes(a.time) - timeToMinutes(b.time))[0];
 }
 
 function renderEmployeeDetailFields() {
@@ -1113,6 +1419,13 @@ document.getElementById("prevDateButton").onclick = () => moveSelectedDate(-1);
 document.getElementById("selectedDateButton").onclick = () => setSelectedDateKey(todayKey);
 document.getElementById("nextDateButton").onclick = () => moveSelectedDate(1);
 document.getElementById("todayJumpButton").onclick = () => setSelectedDateKey(todayKey);
+document.getElementById("scheduleUnitButton").onclick = () => {
+  const log = getSelectedLog();
+  log.scheduleUnit = log.scheduleUnit === "60" ? "30" : "60";
+  normalizeEmployeeLogRows(log);
+  saveState();
+  renderEntries();
+};
 document.getElementById("addEntryButton").onclick = () => {
   alert("시간별 일정 AI 추천은 이후 Beyond Work 오늘 섹션의 추천 로직과 연결합니다.");
 };
@@ -1121,6 +1434,26 @@ document.querySelectorAll("[data-section-ai]").forEach((button) => {
 });
 document.querySelectorAll("[data-os-action]").forEach((button) => {
   button.onclick = () => alert("Beyond OS AI는 마스터 데이터, 운영점수, 리스크, 실행 추적 데이터를 기준으로 코칭합니다.");
+});
+document.querySelectorAll("[data-mobile-focus-panel]").forEach((panel) => {
+  let tapTimer = 0;
+  const focusPanel = () => setMobileWorklogFocus(panel.dataset.mobileFocusPanel);
+  panel.addEventListener("dblclick", focusPanel);
+  panel.addEventListener("contextmenu", (event) => {
+    event.preventDefault();
+    focusPanel();
+  });
+  panel.addEventListener("touchend", () => {
+    const now = Date.now();
+    if (now - tapTimer < 320) focusPanel();
+    tapTimer = now;
+  });
+});
+document.querySelectorAll("[data-mobile-focus-close]").forEach((button) => {
+  button.onclick = (event) => {
+    event.stopPropagation();
+    setMobileWorklogFocus("");
+  };
 });
 document.getElementById("addAttendanceButton").onclick = addAttendance;
 document.getElementById("attendanceCycleButton").onclick = applyAttendanceCycle;

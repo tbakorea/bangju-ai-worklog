@@ -102,22 +102,42 @@
           </div>
         </div>
         <div class="worklog-context-grid" id="todayContext" hidden></div>
-        <div class="daily-split" aria-label="오늘 실행 화면">
-          <article class="planner-section day-task-panel">
-            <div class="section-heading-row">
-              <h3>오늘의 우선업무</h3>
-              <button type="button" data-section-ai="tasks">AI</button>
+        <section class="worklog-today">
+          <header class="worklog-today-title">
+            <div class="worklog-summary-date">
+              <span id="worklogDayTitle"></span>
+              <small>Beyond Fitness 운영 업무일지</small>
             </div>
-            <div class="priority-board task-board" id="priorityBoard"></div>
-          </article>
-          <article class="planner-section day-schedule-panel">
-            <div class="section-heading-row">
-              <h3>시간별 일정</h3>
-              <button id="addEntryButton" type="button">AI</button>
+            <div class="worklog-completion">
+              <span>완료</span>
+              <strong id="worklogCompletion">0/0</strong>
             </div>
-            <div class="worklog-entry-list appointment-list" id="entryList"></div>
-          </article>
-        </div>
+          </header>
+          <div class="worklog-pulse-row">
+            <button type="button" class="worklog-side-nav" data-worklog-panel="weekly">Weekly</button>
+            <button type="button" class="worklog-pulse" id="worklogPulse">오늘 실행 0/0 · 다음 일정 없음 · 이월 0</button>
+            <button type="button" class="worklog-side-nav" data-worklog-panel="memo">Memo</button>
+          </div>
+          <div class="worklog-main" id="worklogMain">
+            <article class="worklog-panel worklog-task-panel" data-mobile-focus-panel="tasks">
+              <h3>
+                <span>오늘의 주요업무</span>
+                <button type="button" class="ai-section-button" data-section-ai="tasks">AI</button>
+                <button type="button" class="mobile-focus-done" data-mobile-focus-close>확인</button>
+              </h3>
+              <div id="worklogTaskBoard" class="worklog-task-board"></div>
+            </article>
+            <article class="worklog-panel worklog-schedule-panel" data-mobile-focus-panel="schedule">
+              <h3>
+                <span>시간별 업무일정</span>
+                <button type="button" class="schedule-unit-button" id="scheduleUnitButton">30분</button>
+                <button id="addEntryButton" type="button" class="ai-section-button" data-section-ai="schedule">AI</button>
+                <button type="button" class="mobile-focus-done" data-mobile-focus-close>확인</button>
+              </h3>
+              <div id="worklogAppointmentList" class="worklog-appointment-list"></div>
+            </article>
+          </div>
+        </section>
         <article class="planner-section">
           <h3>업무보고</h3>
           <textarea id="employeeReport" rows="7" placeholder="오늘 진행한 업무, 완료사항, 이슈, 지원 요청을 보고 형식으로 정리합니다."></textarea>
