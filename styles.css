@@ -872,17 +872,21 @@ body[data-device-mode="narrow"] .os-mode-switch span[data-device-mode="narrow"] 
 .calendar-year-wheel {
   position: relative;
   display: grid;
-  gap: 4px;
-  max-height: 166px;
+  gap: 0;
+  max-height: 152px;
   overflow-y: auto;
-  margin-bottom: 10px;
-  padding: 58px 0;
-  border: 1px solid rgba(15, 59, 46, 0.08);
-  border-radius: 18px;
-  background: linear-gradient(180deg, rgba(255, 253, 248, 0.58), rgba(255, 253, 248, 0.96));
+  margin: -2px 0 10px;
+  padding: 52px 0;
+  border: 0;
+  border-radius: 12px;
+  background: rgba(15, 59, 46, 0.035);
   scroll-snap-type: y mandatory;
   scrollbar-width: none;
   mask-image: linear-gradient(180deg, transparent, #000 24%, #000 76%, transparent);
+}
+
+.calendar-year-wheel[hidden] {
+  display: none;
 }
 
 .calendar-year-wheel::-webkit-scrollbar {
@@ -894,29 +898,29 @@ body[data-device-mode="narrow"] .os-mode-switch span[data-device-mode="narrow"] 
   position: sticky;
   top: 58px;
   z-index: 0;
-  height: 42px;
-  margin-bottom: -42px;
-  border-block: 1px solid rgba(15, 59, 46, 0.12);
-  background: rgba(15, 59, 46, 0.045);
+  height: 38px;
+  margin-bottom: -38px;
+  border-block: 1px solid rgba(15, 59, 46, 0.1);
+  background: transparent;
   pointer-events: none;
 }
 
 .calendar-year-wheel button {
   position: relative;
   z-index: 1;
-  min-height: 42px;
+  min-height: 38px;
   border: 0;
-  border-radius: 12px;
+  border-radius: 0;
   background: transparent;
   color: rgba(47, 65, 56, 0.56);
-  font-size: 18px;
+  font-size: 16px;
   font-weight: 900;
   scroll-snap-align: center;
 }
 
 .calendar-year-wheel button.is-selected {
   color: var(--fitness-green);
-  font-size: 22px;
+  font-size: 20px;
   font-weight: 950;
 }
 
@@ -1822,12 +1826,12 @@ body[data-device-mode="narrow"] .os-mode-switch span[data-device-mode="narrow"] 
   }
 
   .calendar-year-wheel {
-    max-height: 184px;
-    padding-block: 64px;
+    max-height: 158px;
+    padding-block: 54px;
   }
 
   .calendar-year-wheel::before {
-    top: 64px;
+    top: 54px;
   }
 
   .calendar-day-grid {
