@@ -2273,3 +2273,832 @@ body[data-device-mode="narrow"] .os-mode-switch span[data-device-mode="narrow"] 
     width: 100%;
   }
 }
+
+/* Swiss visual system upgrade: restrained grid, stronger typography, lower ornament. */
+:root {
+  --paper: #f4f4f1;
+  --ink: #111411;
+  --muted: #626760;
+  --line: #c9ccc5;
+  --card: rgba(252, 252, 247, 0.94);
+  --fitness-green: #123b2d;
+  --fitness-green-soft: rgba(18, 59, 45, 0.08);
+  --nordic-sheet: #fcfcf7;
+  --swiss-red: #d8382f;
+  --swiss-blue: #2454ff;
+  --swiss-yellow: #f3c747;
+  --hairline: rgba(17, 20, 17, 0.16);
+  --hardline: rgba(17, 20, 17, 0.88);
+}
+
+html {
+  background: var(--paper);
+}
+
+body {
+  background:
+    linear-gradient(90deg, rgba(17, 20, 17, 0.035) 1px, transparent 1px) 0 0 / 72px 72px,
+    linear-gradient(180deg, rgba(17, 20, 17, 0.028) 1px, transparent 1px) 0 0 / 72px 72px,
+    var(--paper);
+  color: var(--ink);
+  font-feature-settings: "tnum" 1, "case" 1;
+  letter-spacing: 0;
+}
+
+button,
+input,
+select,
+textarea {
+  letter-spacing: 0;
+}
+
+button {
+  transition: background 140ms ease, color 140ms ease, border-color 140ms ease, transform 140ms ease;
+}
+
+button:active {
+  transform: translateY(1px);
+}
+
+button:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible {
+  outline: 2px solid var(--swiss-blue);
+  outline-offset: 2px;
+}
+
+.worklog-shell {
+  width: min(1480px, 100%);
+  padding: max(18px, env(safe-area-inset-top)) clamp(14px, 2.2vw, 34px) 36px;
+}
+
+.worklog-header {
+  align-items: stretch;
+  border: 1px solid var(--hardline);
+  border-radius: 0;
+  background: var(--nordic-sheet);
+  padding: 18px 20px;
+  box-shadow: none;
+}
+
+.worklog-header::before {
+  content: "01";
+  display: grid;
+  place-items: center;
+  width: 46px;
+  margin-right: 6px;
+  background: var(--hardline);
+  color: var(--nordic-sheet);
+  font-size: 14px;
+  font-weight: 900;
+  line-height: 1;
+}
+
+.worklog-header > div:first-child {
+  display: grid;
+  align-content: center;
+}
+
+.worklog-header p {
+  margin-bottom: 6px;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 850;
+  letter-spacing: 0.08em;
+}
+
+.worklog-header h1 {
+  color: var(--ink);
+  font-size: clamp(24px, 4vw, 48px);
+  font-weight: 900;
+  line-height: 0.98;
+}
+
+.header-actions {
+  align-self: center;
+}
+
+.worklog-header button,
+.worklog-tabs button,
+.worklog-title-row button,
+.date-nav button,
+.clock-panel button,
+.section-heading-row button,
+.worklog-control-strip > button,
+.ai-section-button,
+.schedule-unit-button,
+.mobile-focus-done,
+.today-jump,
+.worklog-pulse,
+.worklog-side-nav {
+  border: 1px solid var(--hardline);
+  border-radius: 0;
+  background: var(--nordic-sheet);
+  color: var(--ink);
+  box-shadow: none;
+  font-weight: 850;
+}
+
+.worklog-header button:hover,
+.worklog-tabs button:hover,
+.worklog-title-row button:hover,
+.date-nav button:hover,
+.clock-panel button:hover,
+.section-heading-row button:hover,
+.worklog-control-strip > button:hover,
+.ai-section-button:hover,
+.schedule-unit-button:hover,
+.mobile-focus-done:hover,
+.today-jump:hover,
+.worklog-pulse:hover,
+.worklog-side-nav:hover {
+  background: var(--ink);
+  color: var(--nordic-sheet) !important;
+}
+
+#settingsGearButton {
+  width: 42px;
+}
+
+.worklog-tabs {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(104px, max-content);
+  gap: 0;
+  margin: 18px 0 18px;
+  padding: 0;
+  border: 1px solid var(--hardline);
+  border-radius: 0;
+  background: transparent;
+}
+
+.worklog-tabs button {
+  min-height: 44px;
+  border: 0;
+  border-right: 1px solid var(--hardline);
+  padding-inline: 14px;
+  background: rgba(252, 252, 247, 0.88);
+  color: var(--ink);
+  font-size: 13px;
+}
+
+.worklog-tabs button:last-child {
+  border-right: 0;
+}
+
+.worklog-tabs button.is-active {
+  background: var(--ink);
+  color: var(--nordic-sheet);
+}
+
+.worklog-view {
+  border: 1px solid var(--hardline);
+  border-radius: 0;
+  background: rgba(252, 252, 247, 0.92);
+  padding: clamp(14px, 2vw, 24px);
+  box-shadow: none;
+}
+
+.employee-log-topbar {
+  margin-bottom: 12px;
+}
+
+.worklog-control-strip {
+  grid-template-columns: 68px minmax(112px, 0.5fr) minmax(112px, 0.5fr);
+  gap: 0;
+  width: min(430px, 100%);
+  border: 1px solid var(--hardline);
+  background: var(--nordic-sheet);
+}
+
+.worklog-control-strip label {
+  gap: 2px;
+  padding: 8px 10px;
+  border-left: 1px solid var(--hardline);
+  color: var(--muted);
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.attendance-time-field span {
+  padding-left: 0;
+}
+
+.worklog-control-strip input {
+  min-height: 28px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--ink);
+  padding: 0;
+  text-align: left;
+  font-size: 17px;
+  font-weight: 850;
+}
+
+.attendance-cycle-button {
+  min-height: 100% !important;
+  border: 0 !important;
+  border-radius: 0;
+  background: var(--fitness-green) !important;
+  color: var(--nordic-sheet) !important;
+  font-size: 13px;
+}
+
+.worklog-today {
+  gap: 12px;
+  color: var(--ink);
+}
+
+.worklog-today-title {
+  top: 0;
+  min-height: 76px;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 16px;
+  padding: 0;
+  border: 1px solid var(--hardline);
+  border-radius: 0;
+  background: rgba(252, 252, 247, 0.97);
+  box-shadow: none;
+  backdrop-filter: blur(18px);
+}
+
+.worklog-today-title::before {
+  content: "TODAY";
+  align-self: stretch;
+  display: grid;
+  place-items: center;
+  width: 72px;
+  background: var(--swiss-red);
+  color: white;
+  font-size: 11px;
+  font-weight: 950;
+  letter-spacing: 0.08em;
+  writing-mode: vertical-rl;
+  transform: rotate(180deg);
+}
+
+.worklog-summary-date {
+  grid-column: 1;
+  grid-row: 1;
+  padding-left: 88px;
+  gap: 8px;
+}
+
+.worklog-summary-date #selectedDateButton {
+  min-height: 58px;
+  border-radius: 0;
+  padding: 0 8px;
+}
+
+.worklog-summary-date #selectedDateButton:hover {
+  background: rgba(17, 20, 17, 0.04);
+}
+
+.worklog-summary-date span {
+  color: var(--ink);
+  font-size: clamp(28px, 4.2vw, 56px);
+  font-weight: 950;
+  line-height: 0.95;
+}
+
+.worklog-summary-date small {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.date-arrow-button {
+  width: 38px;
+  min-height: 54px !important;
+  border: 0 !important;
+  border-right: 1px solid var(--hairline) !important;
+  color: var(--ink) !important;
+  font-size: 31px;
+}
+
+.date-arrow-button:last-child {
+  border-right: 0 !important;
+  border-left: 1px solid var(--hairline) !important;
+}
+
+.worklog-title-actions {
+  grid-column: 2;
+  grid-row: 1;
+  align-self: stretch;
+  gap: 0;
+  border-left: 1px solid var(--hardline);
+}
+
+.today-jump {
+  align-self: stretch;
+  min-height: 100% !important;
+  border: 0 !important;
+  border-right: 1px solid var(--hardline) !important;
+  color: var(--ink) !important;
+  padding: 0 16px !important;
+}
+
+.worklog-completion {
+  align-content: center;
+  min-width: 96px;
+  height: 100%;
+  padding: 0 16px;
+  border-left: 0;
+  background: var(--nordic-sheet);
+}
+
+.worklog-completion span {
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.worklog-completion strong {
+  color: var(--ink);
+  font-size: 31px;
+  font-weight: 950;
+  line-height: 0.95;
+}
+
+.worklog-pulse-row {
+  grid-template-columns: 116px minmax(0, 1fr) 90px;
+  gap: 0;
+  border: 1px solid var(--hardline);
+  border-top: 0;
+  background: var(--nordic-sheet);
+}
+
+.worklog-pulse,
+.worklog-side-nav {
+  min-height: 38px;
+  border: 0;
+  border-right: 1px solid var(--hardline);
+  border-radius: 0;
+  background: transparent;
+  color: var(--ink);
+  padding: 8px 12px;
+  font-size: 12px;
+}
+
+.worklog-side-nav:last-child {
+  border-right: 0;
+}
+
+.worklog-pulse {
+  text-align: left;
+}
+
+.worklog-main {
+  grid-template-columns: minmax(0, 1.04fr) minmax(0, 0.96fr);
+  gap: 12px;
+  min-height: min(740px, calc(100dvh - 260px));
+}
+
+.worklog-panel {
+  border: 1px solid var(--hardline);
+  border-radius: 0;
+  background: rgba(252, 252, 247, 0.94);
+  padding: 0;
+  box-shadow: none;
+}
+
+.worklog-panel h3 {
+  top: 0;
+  margin: 0;
+  min-height: 54px;
+  padding: 0 12px 0 16px;
+  border-bottom: 1px solid var(--hardline);
+  background: rgba(252, 252, 247, 0.98);
+  box-shadow: none;
+  color: var(--ink);
+  font-size: 20px;
+  font-weight: 900;
+  letter-spacing: -0.01em;
+}
+
+.worklog-panel h3::before {
+  content: "";
+  width: 8px;
+  height: 28px;
+  background: var(--fitness-green);
+}
+
+.day-schedule-panel h3::before {
+  background: var(--swiss-blue);
+}
+
+.ai-section-button,
+.schedule-unit-button,
+.mobile-focus-done {
+  min-height: 32px;
+  padding: 5px 10px;
+  border-color: var(--hardline);
+  font-size: 12px;
+}
+
+.task-board,
+.appointment-list,
+.worklog-task-board,
+.worklog-appointment-list {
+  padding: 8px 12px max(112px, calc(env(safe-area-inset-bottom) + 92px));
+  scroll-padding-bottom: max(112px, calc(env(safe-area-inset-bottom) + 92px));
+}
+
+.task-row,
+.appointment-row {
+  border-color: var(--hairline);
+}
+
+.task-row {
+  grid-template-columns: 28px minmax(38px, max-content) minmax(0, 1fr) 26px;
+  column-gap: 8px;
+  min-height: 45px;
+  padding: 0;
+}
+
+.task-row:hover,
+.appointment-row:hover {
+  background: rgba(17, 20, 17, 0.035);
+}
+
+.task-cycle {
+  width: 24px;
+  height: 24px;
+  min-height: 24px;
+  border: 1.5px solid var(--hardline);
+  border-radius: 0;
+  background: var(--nordic-sheet);
+  color: var(--swiss-red);
+  font-size: 14px;
+}
+
+.task-row.marker-dot .task-cycle {
+  border-color: var(--hardline);
+  color: var(--ink);
+  font-size: 26px;
+}
+
+.priority-select {
+  width: 38px;
+  color: var(--ink);
+  font-size: 18px;
+  font-weight: 950;
+}
+
+.delegate-input,
+.postpone-date-button {
+  border-bottom: 1px solid var(--hairline);
+  color: var(--fitness-green);
+}
+
+.task-text-cell {
+  gap: 8px;
+}
+
+.task-text-input {
+  min-height: 38px;
+  color: var(--ink);
+  font-size: 18px;
+  font-weight: 650;
+}
+
+.task-row.priority-a .task-text-input {
+  color: var(--ink);
+  font-weight: 860;
+}
+
+.task-origin-tag,
+.task-link-tags span,
+.task-tag {
+  border-radius: 0;
+  background: transparent;
+  border-color: var(--hairline);
+  color: var(--muted);
+  font-weight: 850;
+}
+
+.task-delete {
+  width: 24px;
+  height: 24px;
+  min-height: 24px;
+  color: rgba(216, 56, 47, 0.42);
+}
+
+.appointment-row {
+  grid-template-columns: 64px minmax(0, 1fr) 30px;
+  gap: 9px;
+  min-height: 45px;
+  padding: 0;
+}
+
+.appointment-row.is-filled {
+  background: rgba(36, 84, 255, 0.055);
+}
+
+.appointment-row.is-current {
+  border-left: 5px solid var(--swiss-red);
+  padding-left: 7px;
+}
+
+.appointment-row.is-current .appointment-time {
+  color: var(--swiss-red);
+}
+
+.appointment-row.is-merged {
+  min-height: 86px;
+}
+
+.appointment-time {
+  color: var(--muted);
+  font-size: 15px;
+  font-weight: 850;
+  font-variant-numeric: tabular-nums;
+}
+
+.appointment-row input[type="text"] {
+  min-height: 38px;
+  color: var(--ink);
+  font-size: 18px;
+  font-weight: 650;
+}
+
+.appointment-merge-button {
+  width: 26px;
+  height: 24px;
+  min-height: 24px;
+  border-color: var(--hairline);
+  border-radius: 0;
+  background: transparent;
+}
+
+.planner-section {
+  margin-top: 16px;
+  padding: 18px 0 0;
+  border-top: 1px solid var(--hardline);
+}
+
+.planner-section h3 {
+  display: inline-grid;
+  grid-template-columns: 10px auto;
+  gap: 10px;
+  align-items: center;
+  margin-bottom: 12px;
+  color: var(--ink);
+  font-size: 22px;
+  font-weight: 900;
+}
+
+.planner-section h3::before {
+  content: "";
+  height: 26px;
+  background: var(--swiss-yellow);
+}
+
+.worklog-view textarea,
+.worklog-view select,
+.attendance-row input,
+.attendance-row select,
+.priority-task input[type="text"] {
+  border: 1px solid var(--hardline);
+  border-radius: 0;
+  background: var(--nordic-sheet);
+  color: var(--ink);
+  font-size: 17px;
+  line-height: 1.5;
+}
+
+.worklog-view textarea {
+  min-height: 160px;
+  padding: 14px;
+  resize: vertical;
+}
+
+.calendar-topline button,
+.calendar-footer button,
+.calendar-header button,
+.calendar-day-grid button,
+.calendar-month-grid button {
+  border-radius: 0;
+}
+
+.worklog-calendar-popover {
+  border: 1px solid var(--hardline);
+  border-radius: 0;
+  background: var(--nordic-sheet);
+  box-shadow: 14px 14px 0 rgba(17, 20, 17, 0.15);
+}
+
+.os-hero,
+.os-panel,
+.os-kpi-grid article,
+.module-grid article,
+.benchmark-list article,
+.ai-coach-grid article,
+.risk-item,
+.asset-building,
+.organization-company,
+.organization-company section,
+.worklog-context-grid span,
+.management-grid article,
+.login-card {
+  border-radius: 0;
+  border-color: var(--hardline);
+  background: rgba(252, 252, 247, 0.92);
+  box-shadow: none;
+}
+
+.os-hero {
+  border-bottom: 1px solid var(--hardline);
+}
+
+.os-hero h2,
+.worklog-view h2,
+.worklog-title-row h2 {
+  color: var(--ink);
+  font-weight: 950;
+  letter-spacing: -0.02em;
+}
+
+@media (min-width: 1180px) {
+  .worklog-view.is-active {
+    display: block;
+  }
+
+  #view-today.worklog-view.is-active {
+    padding: 20px;
+  }
+}
+
+@media (max-width: 760px) {
+  body {
+    background:
+      linear-gradient(90deg, rgba(17, 20, 17, 0.035) 1px, transparent 1px) 0 0 / 44px 44px,
+      linear-gradient(180deg, rgba(17, 20, 17, 0.028) 1px, transparent 1px) 0 0 / 44px 44px,
+      var(--paper);
+  }
+
+  .worklog-shell {
+    padding-inline: 10px;
+  }
+
+  .worklog-header {
+    display: grid;
+    grid-template-columns: 36px minmax(0, 1fr) auto;
+    gap: 10px;
+    padding: 12px;
+  }
+
+  .worklog-header::before {
+    width: 36px;
+    margin-right: 0;
+  }
+
+  .worklog-header h1 {
+    font-size: 23px;
+  }
+
+  .worklog-tabs {
+    grid-auto-columns: minmax(86px, max-content);
+    overflow-x: auto;
+  }
+
+  .worklog-tabs button {
+    min-height: 42px;
+    font-size: 12px;
+  }
+
+  .worklog-view {
+    padding: 10px;
+  }
+
+  .worklog-control-strip {
+    width: 100%;
+    grid-template-columns: 64px minmax(0, 1fr) minmax(0, 1fr);
+  }
+
+  .worklog-today-title {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 0;
+    min-height: 92px;
+  }
+
+  .worklog-today-title::before {
+    width: 44px;
+  }
+
+  .worklog-summary-date {
+    padding-left: 50px;
+    padding-right: 8px;
+  }
+
+  .worklog-summary-date span {
+    font-size: clamp(24px, 8vw, 38px);
+  }
+
+  .worklog-summary-date small {
+    font-size: 10px;
+  }
+
+  .date-arrow-button {
+    width: 28px;
+    min-height: 48px !important;
+    font-size: 24px;
+  }
+
+  .worklog-title-actions {
+    grid-column: 1;
+    grid-row: 2;
+    min-height: 40px;
+    border-top: 1px solid var(--hardline);
+    border-left: 0;
+  }
+
+  .worklog-completion {
+    margin-left: auto;
+    min-width: 84px;
+    padding-inline: 10px;
+    border-left: 1px solid var(--hardline);
+  }
+
+  .worklog-completion strong {
+    font-size: 24px;
+  }
+
+  .worklog-pulse-row {
+    grid-template-columns: 80px minmax(0, 1fr) 66px;
+  }
+
+  .worklog-pulse,
+  .worklog-side-nav {
+    min-height: 36px;
+    padding-inline: 8px;
+    font-size: 11px;
+  }
+
+  .worklog-main {
+    gap: 8px;
+    min-height: calc(100dvh - 292px);
+  }
+
+  .worklog-panel h3 {
+    min-height: 48px;
+    padding-inline: 9px;
+  }
+
+  .worklog-panel h3 span {
+    font-size: 17px;
+  }
+
+  .task-board,
+  .appointment-list,
+  .worklog-task-board,
+  .worklog-appointment-list {
+    padding: 6px 8px 90px;
+  }
+
+  .task-row {
+    grid-template-columns: 23px minmax(28px, max-content) minmax(0, 1fr) 22px;
+    min-height: 42px;
+  }
+
+  .task-cycle {
+    width: 21px;
+    height: 21px;
+    min-height: 21px;
+  }
+
+  .priority-select {
+    width: 28px;
+    font-size: 15px;
+  }
+
+  .task-text-input,
+  .appointment-row input[type="text"] {
+    min-height: 36px;
+    font-size: 15px;
+  }
+
+  .appointment-row {
+    grid-template-columns: 48px minmax(0, 1fr) 24px;
+    min-height: 42px;
+  }
+
+  .appointment-time {
+    font-size: 13px;
+  }
+
+  .planner-section h3 {
+    font-size: 19px;
+  }
+
+  .worklog-view textarea {
+    min-height: 132px;
+  }
+}
