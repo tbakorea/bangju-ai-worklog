@@ -602,9 +602,9 @@ function renderWorklogCalendar() {
   monthGrid.innerHTML = Array.from({ length: 12 }, (_, index) => `
     <button type="button" class="${index === month ? "is-selected" : ""}" data-calendar-month="${index}">${index + 1}월</button>
   `).join("");
-  yearGrid.innerHTML = Array.from({ length: 12 }, (_, index) => {
-    const value = year - 5 + index;
-    return `<button type="button" class="${value === year ? "is-selected" : ""}" data-calendar-year="${value}">${value}</button>`;
+  yearGrid.innerHTML = Array.from({ length: 21 }, (_, index) => {
+    const value = year - 10 + index;
+    return `<button type="button" role="option" aria-selected="${value === year}" class="${value === year ? "is-selected" : ""}" data-calendar-year="${value}">${value}</button>`;
   }).join("");
   monthGrid.querySelectorAll("[data-calendar-month]").forEach((button) => {
     button.onclick = () => {
@@ -619,6 +619,9 @@ function renderWorklogCalendar() {
       renderWorklogCalendar();
     };
   });
+  if (!yearGrid.hidden) {
+    yearGrid.querySelector(".is-selected")?.scrollIntoView({ block: "center" });
+  }
 }
 
 function selectCalendarDate(dateKey) {
@@ -1731,6 +1734,9 @@ document.getElementById("calendarNextYear").onclick = () => shiftCalendarYear(1)
 document.getElementById("calendarMonthTitle").onclick = () => {
   const yearGrid = document.getElementById("calendarYearGrid");
   yearGrid.hidden = !yearGrid.hidden;
+  if (!yearGrid.hidden) {
+    window.setTimeout(() => yearGrid.querySelector(".is-selected")?.scrollIntoView({ block: "center" }), 0);
+  }
 };
 document.getElementById("calendarMonthTitle").addEventListener("wheel", (event) => {
   event.preventDefault();
