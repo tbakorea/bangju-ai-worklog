@@ -161,6 +161,11 @@ const authState = {
 };
 let dateSlideTimer = 0;
 let calendarViewDate = parseDateKey(todayKey);
+let mobileDayFocusMode = "split";
+const dailyEditingState = {
+  focused: false,
+  composing: false,
+};
 
 function loadState() {
   try {
@@ -834,11 +839,100 @@ function switchAuthTab(tab) {
   });
 }
 
-function setMobileWorklogFocus(panel) {
+function isMobilePhoneFocusLayout() {
+  return window.matchMedia("(max-width: 640px)").matches || document.body.classList.contains("smartphone-device");
+}
+
+function isEditingDailyField() {
+  return dailyEditingState.focused || dailyEditingState.composing;
+}
+
+function isEditableDayControl(target) {
+  return Boolean(target?.closest?.(".day-task-panel input, .day-task-panel textarea, .day-task-panel select, .day-schedule-panel input, .day-schedule-panel textarea, .day-schedule-panel select"));
+}
+
+function setupMobileDayFocus() {
+  document.querySelectorAll(".day-task-panel, .day-schedule-panel").forEach((panel) => {
+    setupSplitEditGate(panel, panel.classList.contains("day-task-panel") ? "tasks" : "schedule");
+  });
+  setupMobileFocusCloseButtons();
+  applyMobileDayFocusMode();
+}
+
+function setupSplitEditGate(node, mode) {
+  node.addEventListener("pointerdown", (event) => {
+    if (!isMobilePhoneFocusLayout() || mobileDayFocusMode !== "split") return;
+    if (!isEditableDayControl(event.target)) return;
+    event.preventDefault();
+    setMobileDayFocusMode(mode);
+  }, true);
+  node.addEventListener("click", (event) => {
+    if (!isMobilePhoneFocusLayout() || mobileDayFocusMode !== "split") return;
+    if (!isEditableDayControl(event.target)) return;
+    event.preventDefault();
+    event.stopPropagation();
+  }, true);
+}
+
+function setupMobileFocusCloseButtons() {
+  document.querySelectorAll("[data-mobile-focus-close]").forEach((button) => {
+    button.onclick = (event) => {
+      event.stopPropagation();
+      resetMobileDayFocusToSplit({ blur: true });
+    };
+  });
+  document.addEventListener("compositionstart", (event) => {
+    if (isEditableDayControl(event.target)) dailyEditingState.composing = true;
+  });
+  document.addEventListener("compositionend", () => {
+    dailyEditingState.composing = false;
+  });
+  document.addEventListener("focusin", (event) => {
+    if (isEditableDayControl(event.target)) dailyEditingState.focused = true;
+  });
+  document.addEventListener("focusout", (event) => {
+    if (isEditableDayControl(event.target)) {
+      window.setTimeout(() => {
+        dailyEditingState.focused = Boolean(document.activeElement && isEditableDayControl(document.activeElement));
+      }, 0);
+    }
+  });
+  window.addEventListener("resize", () => {
+    if (!isMobilePhoneFocusLayout()) resetMobileDayFocusToSplit({ blur: false });
+    else applyMobileDayFocusMode();
+  });
+}
+
+function setMobileDayFocusMode(mode) {
+  mobileDayFocusMode = isMobilePhoneFocusLayout() ? mode : "split";
+  applyMobileDayFocusMode();
+}
+
+function applyMobileDayFocusMode() {
   const main = document.getElementById("worklogMain");
   if (!main) return;
-  main.classList.toggle("is-focus-tasks", panel === "tasks");
-  main.classList.toggle("is-focus-schedule", panel === "schedule");
+  const mode = isMobilePhoneFocusLayout() ? mobileDayFocusMode : "split";
+  main.classList.toggle("is-focus-tasks", mode === "tasks");
+  main.classList.toggle("is-focus-schedule", mode === "schedule");
+  main.classList.toggle("is-mobile-focus-active", mode !== "split");
+  main.classList.toggle("day-swipe", true);
+}
+
+function resetMobileDayFocusToSplit({ blur = true } = {}) {
+  const main = document.getElementById("worklogMain");
+  if (blur && document.activeElement && isEditableDayControl(document.activeElement)) {
+    document.activeElement.blur();
+  }
+  mobileDayFocusMode = "split";
+  if (main) {
+    main.classList.add("is-focus-restoring");
+    window.setTimeout(() => main.classList.remove("is-focus-restoring"), 230);
+  }
+  applyMobileDayFocusMode();
+}
+
+function setMobileWorklogFocus(panel) {
+  setMobileDayFocusMode(panel || "split");
 }
 
 function renderEmployeeSelect() {
@@ -860,6 +954,7 @@ function renderEntries() {
   renderDateNav();
   renderTodayContext();
   renderReport();
+  applyMobileDayFocusMode();
 }
 
 function renderWorklogToday(log = getSelectedLog()) {
@@ -1616,11 +1711,14 @@ document.addEventListener("keydown", (event) => {
   const swipeArea = document.getElementById("worklogDateSwipeArea");
   let startX = 0;
   let startY = 0;
+  let swipeBlocked = false;
   swipeArea.addEventListener("pointerdown", (event) => {
+    swipeBlocked = isEditableDayControl(event.target) || Boolean(event.target.closest("button, select, textarea, input"));
     startX = event.clientX;
     startY = event.clientY;
   });
   swipeArea.addEventListener("pointerup", (event) => {
+    if (swipeBlocked || isEditingDailyField()) return;
     const dx = event.clientX - startX;
     const dy = event.clientY - startY;
     if (Math.abs(dx) < 45 || Math.abs(dx) < Math.abs(dy) * 1.4) return;
@@ -1643,26 +1741,7 @@ document.querySelectorAll("[data-section-ai]").forEach((button) => {
 document.querySelectorAll("[data-os-action]").forEach((button) => {
   button.onclick = () => alert("Beyond OS AI는 마스터 데이터, 운영점수, 리스크, 실행 추적 데이터를 기준으로 코칭합니다.");
 });
-document.querySelectorAll("[data-mobile-focus-panel]").forEach((panel) => {
-  let tapTimer = 0;
-  const focusPanel = () => setMobileWorklogFocus(panel.dataset.mobileFocusPanel);
-  panel.addEventListener("dblclick", focusPanel);
-  panel.addEventListener("contextmenu", (event) => {
-    event.preventDefault();
-    focusPanel();
-  });
-  panel.addEventListener("touchend", () => {
-    const now = Date.now();
-    if (now - tapTimer < 320) focusPanel();
-    tapTimer = now;
-  });
-});
-document.querySelectorAll("[data-mobile-focus-close]").forEach((button) => {
-  button.onclick = (event) => {
-    event.stopPropagation();
-    setMobileWorklogFocus("");
-  };
-});
+setupMobileDayFocus();
 document.getElementById("addAttendanceButton").onclick = addAttendance;
 document.getElementById("attendanceCycleButton").onclick = applyAttendanceCycle;
 document.getElementById("clockInTime").oninput = (event) => {

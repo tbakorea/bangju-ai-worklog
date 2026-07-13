@@ -1764,6 +1764,7 @@ body[data-device-mode="narrow"] .os-mode-switch span[data-device-mode="narrow"] 
     grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
     gap: 4px;
     min-height: calc(100dvh - 250px);
+    transition: grid-template-columns 220ms ease;
   }
 
   .worklog-panel {
@@ -1790,27 +1791,49 @@ body[data-device-mode="narrow"] .os-mode-switch span[data-device-mode="narrow"] 
   }
 
   .worklog-main.is-focus-tasks,
-  .worklog-main.is-focus-schedule {
+  .worklog-main.is-focus-schedule,
+  .day-main-panel.is-focus-tasks,
+  .day-main-panel.is-focus-schedule {
     grid-template-columns: minmax(0, 1fr);
+    overflow-x: hidden;
   }
 
   .worklog-main.is-focus-tasks .worklog-schedule-panel,
-  .worklog-main.is-focus-schedule .worklog-task-panel {
+  .worklog-main.is-focus-schedule .worklog-task-panel,
+  .day-main-panel.is-focus-tasks .day-schedule-panel,
+  .day-main-panel.is-focus-schedule .day-task-panel {
     display: none;
   }
 
   .worklog-main.is-focus-tasks .mobile-focus-done,
-  .worklog-main.is-focus-schedule .mobile-focus-done {
+  .worklog-main.is-focus-schedule .mobile-focus-done,
+  .day-main-panel.is-focus-tasks .mobile-focus-done,
+  .day-main-panel.is-focus-schedule .mobile-focus-done {
     display: inline-flex;
     align-items: center;
     justify-content: center;
   }
 
   .worklog-main.is-focus-tasks .task-text-input,
-  .worklog-main.is-focus-schedule .appointment-row input[type="text"] {
+  .worklog-main.is-focus-schedule .appointment-row input[type="text"],
+  .day-main-panel.is-focus-tasks .task-text-input,
+  .day-main-panel.is-focus-schedule .appointment-row input[type="text"] {
+    width: 100%;
+    max-width: 100%;
     min-height: 42px;
+    min-width: 0;
     font-size: 22px;
     line-height: 1.25;
+  }
+
+  .day-swipe.is-mobile-focus-active {
+    width: 100%;
+    max-width: 100%;
+    overflow-x: hidden;
+  }
+
+  .day-main-panel.is-focus-restoring {
+    transition: grid-template-columns 230ms ease, opacity 230ms ease;
   }
 
   .task-board,

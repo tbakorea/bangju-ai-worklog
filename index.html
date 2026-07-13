@@ -132,23 +132,23 @@
             <button type="button" class="worklog-pulse" id="worklogPulse">오늘 실행 0/0 · 다음 일정 없음 · 이월 0</button>
             <button type="button" class="worklog-side-nav" data-worklog-panel="memo">Memo</button>
           </div>
-          <div class="worklog-main" id="worklogMain">
-            <article class="worklog-panel worklog-task-panel" data-mobile-focus-panel="tasks">
+          <div class="worklog-main day-main-panel day-swipe" id="worklogMain">
+            <article class="worklog-panel worklog-task-panel day-task-panel" data-mobile-focus-panel="tasks">
               <h3>
                 <span>오늘의 주요업무</span>
                 <button type="button" class="ai-section-button" data-section-ai="tasks">AI</button>
                 <button type="button" class="mobile-focus-done" data-mobile-focus-close>확인</button>
               </h3>
-              <div id="worklogTaskBoard" class="worklog-task-board"></div>
+              <div id="worklogTaskBoard" class="worklog-task-board task-board"></div>
             </article>
-            <article class="worklog-panel worklog-schedule-panel" data-mobile-focus-panel="schedule">
+            <article class="worklog-panel worklog-schedule-panel day-schedule-panel" data-mobile-focus-panel="schedule">
               <h3>
                 <span>시간별 업무일정</span>
                 <button type="button" class="schedule-unit-button" id="scheduleUnitButton">30분</button>
                 <button id="addEntryButton" type="button" class="ai-section-button" data-section-ai="schedule">AI</button>
                 <button type="button" class="mobile-focus-done" data-mobile-focus-close>확인</button>
               </h3>
-              <div id="worklogAppointmentList" class="worklog-appointment-list"></div>
+              <div id="worklogAppointmentList" class="worklog-appointment-list appointment-list"></div>
             </article>
           </div>
         </section>
