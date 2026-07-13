@@ -551,6 +551,7 @@ function closeWorklogCalendar() {
   backdrop?.classList.remove("is-open");
   selectedDateButton?.setAttribute("aria-expanded", "false");
   document.getElementById("calendarYearGrid").hidden = true;
+  document.getElementById("calendarYearControl").classList.remove("is-wheel-open");
   window.setTimeout(() => {
     popover.hidden = true;
     if (backdrop) backdrop.hidden = true;
@@ -617,6 +618,7 @@ function renderWorklogCalendar() {
     button.onclick = () => {
       calendarViewDate = new Date(Number(button.dataset.calendarYear), month, 1);
       yearGrid.hidden = true;
+      document.getElementById("calendarYearControl").classList.remove("is-wheel-open");
       renderWorklogCalendar();
     };
   });
@@ -1738,7 +1740,9 @@ document.getElementById("calendarPrevYear").onclick = () => shiftCalendarYear(-1
 document.getElementById("calendarNextYear").onclick = () => shiftCalendarYear(1);
 document.getElementById("calendarMonthTitle").onclick = () => {
   const yearGrid = document.getElementById("calendarYearGrid");
+  const yearControl = document.getElementById("calendarYearControl");
   yearGrid.hidden = !yearGrid.hidden;
+  yearControl.classList.toggle("is-wheel-open", !yearGrid.hidden);
   if (!yearGrid.hidden) {
     window.setTimeout(() => yearGrid.querySelector(".is-selected")?.scrollIntoView({ block: "center" }), 0);
   }

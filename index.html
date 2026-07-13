@@ -125,10 +125,12 @@
               </div>
               <div class="calendar-header">
                 <button type="button" id="calendarPrevYear" aria-label="이전 연도">‹</button>
-                <button type="button" id="calendarMonthTitle" aria-label="연도 선택"></button>
+                <div class="calendar-year-control" id="calendarYearControl">
+                  <button type="button" id="calendarMonthTitle" aria-label="연도 선택"></button>
+                  <div class="calendar-year-wheel" id="calendarYearGrid" role="listbox" aria-label="연도 선택" hidden></div>
+                </div>
                 <button type="button" id="calendarNextYear" aria-label="다음 연도">›</button>
               </div>
-              <div class="calendar-year-wheel" id="calendarYearGrid" role="listbox" aria-label="연도 선택" hidden></div>
               <div class="calendar-month-grid" id="calendarMonthGrid"></div>
               <div class="calendar-weekdays" aria-hidden="true">
                 <span>일</span><span>월</span><span>화</span><span>수</span><span>목</span><span>금</span><span>토</span>
