@@ -53,6 +53,13 @@ const priorityOptions = [
 ];
 const taskPriorityOptions = ["?", "A", "B", "C", "취소", "연기"];
 const taskStatusCycle = ["미완료", "완료", "진행중", "위임", "연기"];
+const taskStatusGuideLabels = {
+  "완료": "완료",
+  "진행중": "진행중",
+  "위임": "위임",
+  "연기": "연기",
+  "미완료": "미완료",
+};
 const defaultScheduleTimes = ["12:00", "12:30", "13:00", "13:30", "14:00", "14:30", "15:00", "15:30", "16:00", "16:30", "17:00", "17:30", "18:00", "18:30", "19:00"];
 const defaultProfile = {
   org: "(주)방주",
@@ -253,6 +260,8 @@ function normalizeEmployeeLogRows(log) {
     task.status ||= "예정";
     task.done ||= false;
     task.text ||= "";
+    task.delegate ||= "";
+    task.postponeDate ||= "";
   });
   while (log.tasks.length < 14) {
     log.tasks.push({ id: `task-${Date.now()}-${log.tasks.length}`, priority: "?", text: "", status: "예정", done: false });
@@ -382,6 +391,12 @@ function formatKoreanDate(key) {
   const date = parseDateKey(key);
   const weekdays = ["일", "월", "화", "수", "목", "금", "토"];
   return `${date.getFullYear()}.${String(date.getMonth() + 1).padStart(2, "0")}.${String(date.getDate()).padStart(2, "0")} (${weekdays[date.getDay()]})`;
+}
+
+function formatShortDate(key) {
+  if (!key) return "미정";
+  const date = parseDateKey(key);
+  return `${String(date.getMonth() + 1).padStart(2, "0")}.${String(date.getDate()).padStart(2, "0")}`;
 }
 
 function currentTimeValue() {
@@ -859,8 +874,8 @@ function renderWorklogTaskBoard(log) {
   board.innerHTML = "";
   const list = document.createElement("section");
   list.className = "worklog-task-list";
-  getWorklogTaskRefs(log).forEach(({ task, index }) => {
-    list.appendChild(renderWorklogTaskRow(task, index, log));
+  getWorklogTaskRefs(log).forEach((ref) => {
+    list.appendChild(renderWorklogTaskRow(ref, log));
   });
   const add = document.createElement("button");
   add.type = "button";
@@ -882,12 +897,23 @@ function createWorklogTask(priority = "?") {
     text: "",
     status: "미완료",
     done: false,
+    delegate: "",
+    postponeDate: "",
   };
 }
 
 function getWorklogTaskRefs(log) {
-  return (log.tasks || [])
-    .map((task, index) => ({ task, index }))
+  const refs = (log.tasks || []).map((task, index) => ({ task, index, log, sourceDateKey: getActiveDateKey(), isPostponedFromOtherDate: false }));
+  Object.entries(state.employeeLogs || {}).forEach(([dateKey, logsByEmployee]) => {
+    if (dateKey === getActiveDateKey()) return;
+    const sourceLog = logsByEmployee?.[getSelectedEmployee().id];
+    (sourceLog?.tasks || []).forEach((task, index) => {
+      if (task.status === "연기" && task.postponeDate === getActiveDateKey()) {
+        refs.push({ task, index, log: sourceLog, sourceDateKey: dateKey, isPostponedFromOtherDate: true });
+      }
+    });
+  });
+  return refs
     .sort((a, b) => {
       const activeA = isActiveTask(a.task);
       const activeB = isActiveTask(b.task);
@@ -905,18 +931,18 @@ function getPrioritySortValue(priority = "?") {
   return { A: 1, B: 2, C: 3, "?": 4, 연기: 5, 취소: 6 }[priority] || 7;
 }
 
-function renderWorklogTaskRow(task, index, log) {
+function renderWorklogTaskRow(ref, currentLog) {
+  const { task, index, log, isPostponedFromOtherDate, sourceDateKey } = ref;
   const row = document.createElement("div");
   const marker = getWorklogTaskMarker(task);
-  row.className = `worklog-task-row task-row priority-${String(task.priority || "?").toLowerCase()} marker-${marker} ${task.done ? "done" : ""}`;
+  row.className = `worklog-task-row task-row priority-${String(task.priority || "?").toLowerCase()} marker-${marker} ${task.done ? "done" : ""} ${isPostponedFromOtherDate ? "is-postponed-in" : ""}`;
   row.innerHTML = `
     <button class="task-cycle" type="button" aria-label="상태 변경">${getWorklogTaskMarkerLabel(task)}</button>
-    <select class="priority-select" aria-label="중요도">
-      ${taskPriorityOptions.map((value) => `<option value="${escapeAttr(value)}" ${getPriorityValue(task) === value ? "selected" : ""}>${value}</option>`).join("")}
-    </select>
+    <div class="task-status-cell">${renderTaskMetaControl(task)}</div>
     <div class="task-text-cell">
       <input class="task-text-input" type="text" value="${escapeAttr(task.text)}" placeholder="업무 내용" aria-label="주요업무" />
       ${renderWorklogTaskTags(getWorklogTaskTags(task))}
+      ${isPostponedFromOtherDate ? `<span class="task-origin-tag">${escapeHtml(formatShortDate(sourceDateKey))} 이월</span>` : ""}
     </div>
     <button class="task-delete" type="button" aria-label="업무 삭제">×</button>
   `;
@@ -925,20 +951,16 @@ function renderWorklogTaskRow(task, index, log) {
     syncWorklogTaskTimeHintToSchedule(task, log);
     saveState();
     renderEntries();
+    showTaskStatusGuide(taskStatusGuideLabels[task.status] || task.status || "미완료");
   };
-  row.querySelector(".priority-select").onchange = (event) => {
-    updateWorklogTaskPriority(task, event.target.value);
-    syncWorklogTaskTimeHintToSchedule(task, log);
-    saveState();
-    renderEntries();
-  };
+  bindTaskMetaControl(row, task, log);
   row.querySelector(".task-text-input").oninput = (event) => {
     task.text = event.target.value;
     syncWorklogTaskTimeHintToSchedule(task, log);
     saveState({ fastSave: true });
     updateTaskRowTags(row, task);
-    renderWorklogSummary(log);
-    renderWorklogAppointments(log);
+    renderWorklogSummary(currentLog);
+    renderWorklogAppointments(currentLog);
     renderTodayContext();
     renderReport();
   };
@@ -949,6 +971,58 @@ function renderWorklogTaskRow(task, index, log) {
     renderEntries();
   };
   return row;
+}
+
+function renderTaskMetaControl(task) {
+  if (task.status === "위임") {
+    return `<input class="delegate-input" type="text" value="${escapeAttr(task.delegate || "")}" placeholder="위임자" aria-label="위임받은 사람" />`;
+  }
+  if (task.status === "연기") {
+    const label = task.postponeDate ? formatShortDate(task.postponeDate) : "미정";
+    return `
+      <button class="postpone-date-button" type="button" aria-label="연기 날짜 선택">${escapeHtml(label)}</button>
+      <input class="postpone-date-input" type="date" value="${escapeAttr(task.postponeDate || "")}" aria-label="연기 날짜" />
+    `;
+  }
+  return `
+    <select class="priority-select" aria-label="중요도">
+      ${taskPriorityOptions.map((value) => `<option value="${escapeAttr(value)}" ${getPriorityValue(task) === value ? "selected" : ""}>${value}</option>`).join("")}
+    </select>
+  `;
+}
+
+function bindTaskMetaControl(row, task, log) {
+  const delegateInput = row.querySelector(".delegate-input");
+  if (delegateInput) {
+    delegateInput.oninput = () => {
+      task.delegate = delegateInput.value;
+      saveState({ fastSave: true });
+    };
+    return;
+  }
+  const postponeButton = row.querySelector(".postpone-date-button");
+  const postponeInput = row.querySelector(".postpone-date-input");
+  if (postponeButton && postponeInput) {
+    postponeButton.onclick = () => {
+      if (postponeInput.showPicker) postponeInput.showPicker();
+      else postponeInput.click();
+    };
+    postponeInput.onchange = () => {
+      task.postponeDate = postponeInput.value;
+      saveState();
+      renderEntries();
+    };
+    return;
+  }
+  const prioritySelect = row.querySelector(".priority-select");
+  if (prioritySelect) {
+    prioritySelect.onchange = (event) => {
+      updateWorklogTaskPriority(task, event.target.value);
+      syncWorklogTaskTimeHintToSchedule(task, log);
+      saveState();
+      renderEntries();
+    };
+  }
 }
 
 function getPriorityValue(task) {
@@ -978,7 +1052,7 @@ function getWorklogTaskMarker(task) {
 
 function getWorklogTaskMarkerLabel(task) {
   const marker = getWorklogTaskMarker(task);
-  return { check: "✓", dot: "·", delegate: "↗", postpone: "→", cancel: "×", blank: "" }[marker] || "";
+  return { check: "v", dot: "·", delegate: "↗", postpone: "→", cancel: "×", blank: "" }[marker] || "";
 }
 
 function cycleWorklogTaskStatus(task) {
@@ -986,6 +1060,23 @@ function cycleWorklogTaskStatus(task) {
   const next = taskStatusCycle[(taskStatusCycle.indexOf(current) + 1) % taskStatusCycle.length] || "미완료";
   task.status = next;
   task.done = next === "완료";
+  if (next !== "위임") task.delegate ||= "";
+  if (next !== "연기") task.postponeDate ||= "";
+}
+
+function showTaskStatusGuide(label) {
+  let toast = document.getElementById("taskStatusGuide");
+  if (!toast) {
+    toast = document.createElement("div");
+    toast.id = "taskStatusGuide";
+    toast.className = "task-status-guide";
+    document.body.appendChild(toast);
+  }
+  toast.textContent = label;
+  toast.classList.remove("is-visible");
+  void toast.offsetWidth;
+  toast.classList.add("is-visible");
+  window.setTimeout(() => toast.classList.remove("is-visible"), 900);
 }
 
 function getWorklogTaskTags(task) {

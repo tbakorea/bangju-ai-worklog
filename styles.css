@@ -989,7 +989,7 @@ body[data-device-mode="narrow"] .os-mode-switch span[data-device-mode="narrow"] 
 
 .task-row {
   display: grid;
-  grid-template-columns: 22px 30px minmax(0, 1fr) 22px;
+  grid-template-columns: 22px minmax(58px, 76px) minmax(0, 1fr) 22px;
   column-gap: 6px;
   align-items: center;
   min-height: 36px;
@@ -1039,7 +1039,7 @@ body[data-device-mode="narrow"] .os-mode-switch span[data-device-mode="narrow"] 
 }
 
 .priority-select {
-  width: 30px;
+  width: 100%;
   border: 0;
   background: transparent;
   color: #263238;
@@ -1048,6 +1048,46 @@ body[data-device-mode="narrow"] .os-mode-switch span[data-device-mode="narrow"] 
   font-weight: 930;
   appearance: none;
   text-align: center;
+}
+
+.delegate-input,
+.postpone-date-button {
+  width: 100%;
+  min-width: 0;
+  min-height: 28px;
+  border: 1px solid rgba(15, 59, 46, 0.14);
+  border-radius: 8px;
+  background: rgba(255, 253, 248, 0.92);
+  color: var(--fitness-green);
+  padding: 2px 5px;
+  font-size: 12px;
+  font-weight: 900;
+  text-align: center;
+}
+
+.delegate-input::placeholder {
+  color: rgba(47, 65, 56, 0.42);
+}
+
+.postpone-date-input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.task-origin-tag {
+  flex: 0 0 auto;
+  border: 1px solid rgba(15, 59, 46, 0.16);
+  border-radius: 999px;
+  background: rgba(15, 59, 46, 0.07);
+  color: rgba(47, 65, 56, 0.78);
+  padding: 3px 6px;
+  font-size: 10px;
+  font-weight: 900;
+  line-height: 1;
+  white-space: nowrap;
 }
 
 .task-text-cell {
@@ -1120,6 +1160,30 @@ body[data-device-mode="narrow"] .os-mode-switch span[data-device-mode="narrow"] 
   font-size: 16px;
   font-weight: 900;
   line-height: 1;
+}
+
+.task-status-guide {
+  position: fixed;
+  left: 50%;
+  bottom: max(28px, calc(env(safe-area-inset-bottom) + 18px));
+  z-index: 100;
+  transform: translate(-50%, 12px);
+  opacity: 0;
+  pointer-events: none;
+  border: 1px solid rgba(15, 59, 46, 0.18);
+  border-radius: 999px;
+  background: rgba(15, 59, 46, 0.94);
+  color: #fffefa;
+  padding: 9px 16px;
+  font-size: 15px;
+  font-weight: 950;
+  box-shadow: 0 14px 32px rgba(15, 59, 46, 0.18);
+  transition: opacity 160ms ease, transform 160ms ease;
+}
+
+.task-status-guide.is-visible {
+  transform: translate(-50%, 0);
+  opacity: 1;
 }
 
 .appointment-row {
@@ -1753,7 +1817,7 @@ body[data-device-mode="narrow"] .os-mode-switch span[data-device-mode="narrow"] 
   }
 
   .task-row {
-    grid-template-columns: 20px 24px minmax(0, 1fr) 20px;
+    grid-template-columns: 20px minmax(48px, 62px) minmax(0, 1fr) 20px;
     column-gap: 4px;
     min-height: 36px;
   }
@@ -1766,9 +1830,16 @@ body[data-device-mode="narrow"] .os-mode-switch span[data-device-mode="narrow"] 
   }
 
   .priority-select {
-    width: 24px;
-    max-width: 24px;
+    width: 100%;
+    max-width: none;
     font-size: 15px;
+  }
+
+  .delegate-input,
+  .postpone-date-button {
+    min-height: 26px;
+    padding-inline: 3px;
+    font-size: 11px;
   }
 
   .task-text-input {
