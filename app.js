@@ -149,6 +149,7 @@ const authState = {
   applyingRemote: false,
   saveTimer: null,
 };
+let dateSlideTimer = 0;
 
 function loadState() {
   try {
@@ -325,14 +326,47 @@ function parseDateKey(key) {
   return new Date(year, month - 1, day);
 }
 
-function moveSelectedDate(offsetDays) {
-  const date = parseDateKey(getActiveDateKey());
-  date.setDate(date.getDate() + offsetDays);
-  state.selectedDateKey = formatDateKey(date);
+function setSelectedDateKey(dateKey) {
+  state.selectedDateKey = dateKey;
   normalizeState();
   saveState();
   renderAll();
   loadRemoteWorklogForActiveDate();
+}
+
+function moveSelectedDate(offsetDays, animate = true) {
+  const date = parseDateKey(getActiveDateKey());
+  date.setDate(date.getDate() + offsetDays);
+  const nextDateKey = formatDateKey(date);
+  if (animate) {
+    animateDateTitle(offsetDays, nextDateKey);
+    return;
+  }
+  setSelectedDateKey(nextDateKey);
+}
+
+function animateDateTitle(delta, nextDateKey) {
+  const titleButton = document.getElementById("selectedDateButton");
+  if (!titleButton) {
+    setSelectedDateKey(nextDateKey);
+    return;
+  }
+
+  clearTimeout(dateSlideTimer);
+  titleButton.classList.remove("slide-out-next", "slide-out-prev", "slide-in-next", "slide-in-prev");
+  void titleButton.offsetWidth;
+  titleButton.classList.add(delta > 0 ? "slide-out-next" : "slide-out-prev");
+
+  dateSlideTimer = window.setTimeout(() => {
+    setSelectedDateKey(nextDateKey);
+    const nextTitleButton = document.getElementById("selectedDateButton");
+    nextTitleButton.classList.remove("slide-out-next", "slide-out-prev", "slide-in-next", "slide-in-prev");
+    void nextTitleButton.offsetWidth;
+    nextTitleButton.classList.add(delta > 0 ? "slide-in-next" : "slide-in-prev");
+    window.setTimeout(() => {
+      nextTitleButton.classList.remove("slide-in-next", "slide-in-prev");
+    }, 220);
+  }, 150);
 }
 
 function formatKoreanDate(key) {
@@ -436,7 +470,14 @@ function renderAiCoach() {
 }
 
 function renderDateNav() {
-  document.getElementById("selectedDateButton").textContent = formatKoreanDate(getActiveDateKey());
+  const selectedDateButton = document.getElementById("selectedDateButton");
+  const todayJumpButton = document.getElementById("todayJumpButton");
+  const activeDateKey = getActiveDateKey();
+  selectedDateButton.textContent = formatKoreanDate(activeDateKey);
+  selectedDateButton.setAttribute("aria-label", `${formatKoreanDate(activeDateKey)} 업무일지, 오늘로 이동`);
+  if (todayJumpButton) {
+    todayJumpButton.hidden = activeDateKey === todayKey;
+  }
 }
 
 function renderEmployeeTitle() {
@@ -1069,14 +1110,9 @@ document.getElementById("employeeSelect").onchange = (event) => {
   renderGlobalEmployeeIdentity();
 };
 document.getElementById("prevDateButton").onclick = () => moveSelectedDate(-1);
-document.getElementById("selectedDateButton").onclick = () => {
-  state.selectedDateKey = todayKey;
-  normalizeState();
-  saveState();
-  renderAll();
-  loadRemoteWorklogForActiveDate();
-};
+document.getElementById("selectedDateButton").onclick = () => setSelectedDateKey(todayKey);
 document.getElementById("nextDateButton").onclick = () => moveSelectedDate(1);
+document.getElementById("todayJumpButton").onclick = () => setSelectedDateKey(todayKey);
 document.getElementById("addEntryButton").onclick = () => {
   alert("시간별 일정 AI 추천은 이후 Beyond Work 오늘 섹션의 추천 로직과 연결합니다.");
 };

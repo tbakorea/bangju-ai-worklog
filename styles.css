@@ -391,11 +391,13 @@ body[data-device-mode="narrow"] .os-mode-switch span[data-device-mode="narrow"] 
   padding-left: 9px;
 }
 
-.date-nav {
-  display: grid;
-  grid-template-columns: 52px minmax(138px, auto) 52px;
-  gap: 6px;
+.date-nav,
+.day-date-nav {
+  display: flex;
   align-items: center;
+  gap: 8px;
+  min-width: 0;
+  touch-action: pan-y;
 }
 
 .date-nav button,
@@ -424,9 +426,112 @@ body[data-device-mode="narrow"] .os-mode-switch span[data-device-mode="narrow"] 
 }
 
 #selectedDateButton {
-  border-color: var(--fitness-green);
-  background: var(--fitness-green);
-  color: #fffefa;
+  display: flex;
+  flex: 0 1 auto;
+  align-items: center;
+  min-width: 0;
+  min-height: 40px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--ink);
+  overflow: hidden;
+  padding: 3px 6px;
+  font-size: clamp(18px, 2.2vw, 26px);
+  font-weight: 950;
+  line-height: 1.08;
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  will-change: transform, opacity;
+}
+
+#selectedDateButton:hover {
+  background: rgba(15, 59, 46, 0.06);
+}
+
+.date-arrow-button {
+  width: 32px;
+  min-height: 42px !important;
+  border-color: rgba(15, 59, 46, 0.34) !important;
+  color: var(--fitness-green) !important;
+  font-size: 30px;
+  font-weight: 950;
+  line-height: 0.8;
+  padding: 0 !important;
+}
+
+.today-jump {
+  width: auto;
+  min-height: 38px !important;
+  border-color: rgba(15, 59, 46, 0.24) !important;
+  color: var(--fitness-green) !important;
+  padding: 0 12px !important;
+  font-weight: 900;
+}
+
+.today-jump[hidden] {
+  display: none;
+}
+
+#selectedDateButton.slide-out-next {
+  animation: dateSlideOutNext 150ms ease forwards;
+}
+
+#selectedDateButton.slide-out-prev {
+  animation: dateSlideOutPrev 150ms ease forwards;
+}
+
+#selectedDateButton.slide-in-next {
+  animation: dateSlideInNext 210ms ease both;
+}
+
+#selectedDateButton.slide-in-prev {
+  animation: dateSlideInPrev 210ms ease both;
+}
+
+@keyframes dateSlideOutNext {
+  from {
+    opacity: 1;
+    transform: translateX(0);
+  }
+  to {
+    opacity: 0;
+    transform: translateX(-28px);
+  }
+}
+
+@keyframes dateSlideOutPrev {
+  from {
+    opacity: 1;
+    transform: translateX(0);
+  }
+  to {
+    opacity: 0;
+    transform: translateX(28px);
+  }
+}
+
+@keyframes dateSlideInNext {
+  from {
+    opacity: 0;
+    transform: translateX(34px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes dateSlideInPrev {
+  from {
+    opacity: 0;
+    transform: translateX(-34px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
 }
 
 .attendance-cycle-button {
@@ -1243,7 +1348,28 @@ body[data-device-mode="narrow"] .os-mode-switch span[data-device-mode="narrow"] 
 
   .date-nav {
     grid-column: 1 / -1;
-    grid-template-columns: 46px minmax(0, 1fr) 46px;
+    gap: 3px;
+    min-width: 0;
+  }
+
+  .date-arrow-button {
+    width: 20px;
+    min-height: 30px !important;
+    font-size: 22px;
+  }
+
+  #selectedDateButton {
+    min-height: 34px;
+    padding-inline: 3px;
+    font-size: 17px;
+    line-height: 1;
+  }
+
+  .today-jump {
+    min-width: 40px;
+    min-height: 34px !important;
+    padding: 4px 8px !important;
+    font-size: 11px;
   }
 
   .worklog-control-strip label {

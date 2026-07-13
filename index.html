@@ -75,10 +75,11 @@
       <section class="worklog-view is-active" id="view-today">
         <div class="employee-log-topbar">
           <div class="worklog-control-strip" aria-label="날짜 및 근태 기록">
-            <div class="date-nav" aria-label="업무일지 날짜 이동">
-              <button id="prevDateButton" type="button">어제</button>
+            <div class="date-nav day-date-nav" aria-label="업무일지 날짜 이동">
+              <button class="date-arrow-button" id="prevDateButton" type="button" aria-label="이전 날짜">‹</button>
               <button id="selectedDateButton" type="button"></button>
-              <button id="nextDateButton" type="button">내일</button>
+              <button class="date-arrow-button" id="nextDateButton" type="button" aria-label="다음 날짜">›</button>
+              <button class="today-jump" id="todayJumpButton" type="button" hidden>오늘</button>
             </div>
             <button class="attendance-cycle-button" id="attendanceCycleButton" type="button">출근</button>
             <label class="attendance-time-field">
