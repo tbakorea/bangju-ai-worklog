@@ -75,12 +75,6 @@
       <section class="worklog-view is-active" id="view-today">
         <div class="employee-log-topbar">
           <div class="worklog-control-strip" aria-label="날짜 및 근태 기록">
-            <div class="date-nav day-date-nav" aria-label="업무일지 날짜 이동">
-              <button class="date-arrow-button" id="prevDateButton" type="button" aria-label="이전 날짜">‹</button>
-              <button id="selectedDateButton" type="button"></button>
-              <button class="date-arrow-button" id="nextDateButton" type="button" aria-label="다음 날짜">›</button>
-              <button class="today-jump" id="todayJumpButton" type="button" hidden>오늘</button>
-            </div>
             <button class="attendance-cycle-button" id="attendanceCycleButton" type="button">출근</button>
             <label class="attendance-time-field">
               <span>출근</span>
@@ -104,13 +98,32 @@
         <div class="worklog-context-grid" id="todayContext" hidden></div>
         <section class="worklog-today">
           <header class="worklog-today-title">
-            <div class="worklog-summary-date">
-              <span id="worklogDayTitle"></span>
-              <small>Beyond Fitness 운영 업무일지</small>
+            <div class="worklog-summary-date" id="worklogDateSwipeArea">
+              <button class="date-arrow-button" id="prevDateButton" type="button" aria-label="이전 날짜">‹</button>
+              <button id="selectedDateButton" type="button" aria-haspopup="dialog" aria-expanded="false">
+                <span id="worklogDayTitle"></span>
+                <small>Beyond Fitness 운영 업무일지</small>
+              </button>
+              <button class="date-arrow-button" id="nextDateButton" type="button" aria-label="다음 날짜">›</button>
             </div>
-            <div class="worklog-completion">
-              <span>완료</span>
-              <strong id="worklogCompletion">0/0</strong>
+            <div class="worklog-title-actions">
+              <button class="today-jump" id="todayJumpButton" type="button" hidden>오늘</button>
+              <div class="worklog-completion">
+                <span>완료</span>
+                <strong id="worklogCompletion">0/0</strong>
+              </div>
+            </div>
+            <div class="worklog-calendar-popover" id="worklogCalendarPopover" hidden>
+              <div class="calendar-header">
+                <button type="button" id="calendarPrevYear" aria-label="이전 연도">‹</button>
+                <button type="button" id="calendarMonthTitle" aria-label="월 선택"></button>
+                <button type="button" id="calendarNextYear" aria-label="다음 연도">›</button>
+              </div>
+              <div class="calendar-month-grid" id="calendarMonthGrid" hidden></div>
+              <div class="calendar-weekdays" aria-hidden="true">
+                <span>일</span><span>월</span><span>화</span><span>수</span><span>목</span><span>금</span><span>토</span>
+              </div>
+              <div class="calendar-day-grid" id="calendarDayGrid"></div>
             </div>
           </header>
           <div class="worklog-pulse-row">

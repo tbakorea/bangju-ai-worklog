@@ -153,6 +153,7 @@ const authState = {
   saveTimer: null,
 };
 let dateSlideTimer = 0;
+let calendarViewDate = parseDateKey(todayKey);
 
 function loadState() {
   try {
@@ -339,6 +340,7 @@ function setSelectedDateKey(dateKey) {
   saveState();
   renderAll();
   loadRemoteWorklogForActiveDate();
+  closeWorklogCalendar();
 }
 
 function moveSelectedDate(offsetDays, animate = true) {
@@ -478,13 +480,84 @@ function renderAiCoach() {
 
 function renderDateNav() {
   const selectedDateButton = document.getElementById("selectedDateButton");
+  const dayTitle = document.getElementById("worklogDayTitle");
   const todayJumpButton = document.getElementById("todayJumpButton");
   const activeDateKey = getActiveDateKey();
-  selectedDateButton.textContent = formatKoreanDate(activeDateKey);
-  selectedDateButton.setAttribute("aria-label", `${formatKoreanDate(activeDateKey)} 업무일지, 오늘로 이동`);
+  calendarViewDate = parseDateKey(activeDateKey);
+  if (dayTitle) dayTitle.textContent = formatKoreanDate(activeDateKey);
+  selectedDateButton.setAttribute("aria-label", `${formatKoreanDate(activeDateKey)} 업무일지 날짜 선택`);
   if (todayJumpButton) {
     todayJumpButton.hidden = activeDateKey === todayKey;
   }
+  renderWorklogCalendar();
+}
+
+function openWorklogCalendar() {
+  const popover = document.getElementById("worklogCalendarPopover");
+  const selectedDateButton = document.getElementById("selectedDateButton");
+  calendarViewDate = parseDateKey(getActiveDateKey());
+  popover.hidden = false;
+  selectedDateButton.setAttribute("aria-expanded", "true");
+  renderWorklogCalendar();
+}
+
+function closeWorklogCalendar() {
+  const popover = document.getElementById("worklogCalendarPopover");
+  const selectedDateButton = document.getElementById("selectedDateButton");
+  if (!popover || popover.hidden) return;
+  popover.hidden = true;
+  selectedDateButton?.setAttribute("aria-expanded", "false");
+  document.getElementById("calendarMonthGrid").hidden = true;
+}
+
+function toggleWorklogCalendar() {
+  const popover = document.getElementById("worklogCalendarPopover");
+  if (popover.hidden) openWorklogCalendar();
+  else closeWorklogCalendar();
+}
+
+function renderWorklogCalendar() {
+  const popover = document.getElementById("worklogCalendarPopover");
+  if (!popover || popover.hidden) return;
+  const monthTitle = document.getElementById("calendarMonthTitle");
+  const dayGrid = document.getElementById("calendarDayGrid");
+  const monthGrid = document.getElementById("calendarMonthGrid");
+  const year = calendarViewDate.getFullYear();
+  const month = calendarViewDate.getMonth();
+  monthTitle.textContent = `${year}년 ${month + 1}월`;
+  dayGrid.innerHTML = "";
+  const firstDay = new Date(year, month, 1).getDay();
+  const lastDate = new Date(year, month + 1, 0).getDate();
+  for (let i = 0; i < firstDay; i += 1) {
+    dayGrid.appendChild(document.createElement("span"));
+  }
+  for (let date = 1; date <= lastDate; date += 1) {
+    const key = formatDateKey(new Date(year, month, date));
+    const button = document.createElement("button");
+    button.type = "button";
+    button.textContent = String(date);
+    button.className = [
+      key === getActiveDateKey() ? "is-selected" : "",
+      key === todayKey ? "is-today" : "",
+    ].filter(Boolean).join(" ");
+    button.onclick = () => setSelectedDateKey(key);
+    dayGrid.appendChild(button);
+  }
+  monthGrid.innerHTML = Array.from({ length: 12 }, (_, index) => `
+    <button type="button" class="${index === month ? "is-selected" : ""}" data-calendar-month="${index}">${index + 1}월</button>
+  `).join("");
+  monthGrid.querySelectorAll("[data-calendar-month]").forEach((button) => {
+    button.onclick = () => {
+      calendarViewDate = new Date(year, Number(button.dataset.calendarMonth), 1);
+      monthGrid.hidden = true;
+      renderWorklogCalendar();
+    };
+  });
+}
+
+function shiftCalendarYear(delta) {
+  calendarViewDate = new Date(calendarViewDate.getFullYear() + delta, calendarViewDate.getMonth(), 1);
+  renderWorklogCalendar();
 }
 
 function renderEmployeeTitle() {
@@ -1416,9 +1489,38 @@ document.getElementById("employeeSelect").onchange = (event) => {
   renderGlobalEmployeeIdentity();
 };
 document.getElementById("prevDateButton").onclick = () => moveSelectedDate(-1);
-document.getElementById("selectedDateButton").onclick = () => setSelectedDateKey(todayKey);
+document.getElementById("selectedDateButton").onclick = (event) => {
+  event.stopPropagation();
+  toggleWorklogCalendar();
+};
 document.getElementById("nextDateButton").onclick = () => moveSelectedDate(1);
 document.getElementById("todayJumpButton").onclick = () => setSelectedDateKey(todayKey);
+document.getElementById("calendarPrevYear").onclick = () => shiftCalendarYear(-1);
+document.getElementById("calendarNextYear").onclick = () => shiftCalendarYear(1);
+document.getElementById("calendarMonthTitle").onclick = () => {
+  const monthGrid = document.getElementById("calendarMonthGrid");
+  monthGrid.hidden = !monthGrid.hidden;
+};
+document.getElementById("worklogCalendarPopover").onclick = (event) => event.stopPropagation();
+document.addEventListener("click", closeWorklogCalendar);
+document.addEventListener("keydown", (event) => {
+  if (event.key === "Escape") closeWorklogCalendar();
+});
+{
+  const swipeArea = document.getElementById("worklogDateSwipeArea");
+  let startX = 0;
+  let startY = 0;
+  swipeArea.addEventListener("pointerdown", (event) => {
+    startX = event.clientX;
+    startY = event.clientY;
+  });
+  swipeArea.addEventListener("pointerup", (event) => {
+    const dx = event.clientX - startX;
+    const dy = event.clientY - startY;
+    if (Math.abs(dx) < 45 || Math.abs(dx) < Math.abs(dy) * 1.4) return;
+    moveSelectedDate(dx < 0 ? 1 : -1);
+  });
+}
 document.getElementById("scheduleUnitButton").onclick = () => {
   const log = getSelectedLog();
   log.scheduleUnit = log.scheduleUnit === "60" ? "30" : "60";
