@@ -883,15 +883,15 @@ body[data-device-mode="narrow"] .os-mode-switch span[data-device-mode="narrow"] 
 
 .calendar-month-grid {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 4px 6px;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 4px;
   margin-bottom: 8px;
 }
 
 .calendar-month-grid button {
   min-height: 28px;
-  border-radius: 10px;
-  font-size: 12px;
+  border-radius: 9px;
+  font-size: 11px;
 }
 
 .calendar-year-wheel {
@@ -1849,13 +1849,13 @@ body[data-device-mode="narrow"] .os-mode-switch span[data-device-mode="narrow"] 
   }
 
   .calendar-month-grid button {
-    min-height: 31px;
-    border-radius: 10px;
-    font-size: 12px;
+    min-height: 30px;
+    border-radius: 9px;
+    font-size: 11px;
   }
 
   .calendar-month-grid {
-    gap: 5px 7px;
+    gap: 4px;
   }
 
   .calendar-year-wheel {
