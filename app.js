@@ -514,20 +514,32 @@ function renderDateNav() {
 
 function openWorklogCalendar() {
   const popover = document.getElementById("worklogCalendarPopover");
+  const backdrop = document.getElementById("worklogCalendarBackdrop");
   const selectedDateButton = document.getElementById("selectedDateButton");
   calendarViewDate = parseDateKey(getActiveDateKey());
   popover.hidden = false;
+  backdrop.hidden = false;
   selectedDateButton.setAttribute("aria-expanded", "true");
   renderWorklogCalendar();
+  requestAnimationFrame(() => {
+    popover.classList.add("is-open");
+    backdrop.classList.add("is-open");
+  });
 }
 
 function closeWorklogCalendar() {
   const popover = document.getElementById("worklogCalendarPopover");
+  const backdrop = document.getElementById("worklogCalendarBackdrop");
   const selectedDateButton = document.getElementById("selectedDateButton");
   if (!popover || popover.hidden) return;
-  popover.hidden = true;
+  popover.classList.remove("is-open");
+  backdrop?.classList.remove("is-open");
   selectedDateButton?.setAttribute("aria-expanded", "false");
   document.getElementById("calendarYearGrid").hidden = true;
+  window.setTimeout(() => {
+    popover.hidden = true;
+    if (backdrop) backdrop.hidden = true;
+  }, 170);
 }
 
 function toggleWorklogCalendar() {
@@ -540,12 +552,14 @@ function renderWorklogCalendar() {
   const popover = document.getElementById("worklogCalendarPopover");
   if (!popover || popover.hidden) return;
   const monthTitle = document.getElementById("calendarMonthTitle");
+  const selectedLabel = document.getElementById("calendarSelectedLabel");
   const dayGrid = document.getElementById("calendarDayGrid");
   const monthGrid = document.getElementById("calendarMonthGrid");
   const yearGrid = document.getElementById("calendarYearGrid");
   const year = calendarViewDate.getFullYear();
   const month = calendarViewDate.getMonth();
   monthTitle.textContent = `${year}년`;
+  selectedLabel.textContent = formatKoreanDate(getActiveDateKey());
   dayGrid.innerHTML = "";
   const firstDay = new Date(year, month, 1).getDay();
   const lastDate = new Date(year, month + 1, 0).getDate();
@@ -1702,6 +1716,9 @@ document.getElementById("calendarMonthTitle").addEventListener("wheel", (event) 
   event.preventDefault();
   shiftCalendarYear(event.deltaY > 0 ? 1 : -1);
 }, { passive: false });
+document.getElementById("calendarCloseButton").onclick = closeWorklogCalendar;
+document.getElementById("worklogCalendarBackdrop").onclick = closeWorklogCalendar;
+document.getElementById("calendarTodaySheetButton").onclick = () => setSelectedDateKey(todayKey);
 document.getElementById("worklogCalendarPopover").onclick = (event) => event.stopPropagation();
 document.addEventListener("click", closeWorklogCalendar);
 document.addEventListener("keydown", (event) => {

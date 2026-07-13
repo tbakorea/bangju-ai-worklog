@@ -113,7 +113,16 @@
                 <strong id="worklogCompletion">0/0</strong>
               </div>
             </div>
-            <div class="worklog-calendar-popover" id="worklogCalendarPopover" hidden>
+            <div class="worklog-calendar-backdrop" id="worklogCalendarBackdrop" hidden></div>
+            <div class="worklog-calendar-popover" id="worklogCalendarPopover" role="dialog" aria-modal="true" aria-label="업무일지 날짜 선택" hidden>
+              <div class="calendar-grabber" aria-hidden="true"></div>
+              <div class="calendar-topline">
+                <div>
+                  <strong>날짜 선택</strong>
+                  <span id="calendarSelectedLabel"></span>
+                </div>
+                <button type="button" id="calendarCloseButton">확인</button>
+              </div>
               <div class="calendar-header">
                 <button type="button" id="calendarPrevYear" aria-label="이전 연도">‹</button>
                 <button type="button" id="calendarMonthTitle" aria-label="연도 선택"></button>
@@ -125,6 +134,9 @@
                 <span>일</span><span>월</span><span>화</span><span>수</span><span>목</span><span>금</span><span>토</span>
               </div>
               <div class="calendar-day-grid" id="calendarDayGrid"></div>
+              <div class="calendar-footer">
+                <button type="button" id="calendarTodaySheetButton">오늘로 이동</button>
+              </div>
             </div>
           </header>
           <div class="worklog-pulse-row">
