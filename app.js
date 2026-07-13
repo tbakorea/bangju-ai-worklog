@@ -60,7 +60,7 @@ const taskStatusGuideLabels = {
   "연기": "연기",
   "미완료": "미완료",
 };
-const defaultScheduleTimes = ["12:00", "12:30", "13:00", "13:30", "14:00", "14:30", "15:00", "15:30", "16:00", "16:30", "17:00", "17:30", "18:00", "18:30", "19:00"];
+const defaultScheduleTimes = ["08:00", "08:30", "09:00", "09:30", "10:00", "10:30", "11:00", "11:30", "12:00", "12:30", "13:00", "13:30", "14:00", "14:30", "15:00", "15:30", "16:00", "16:30", "17:00", "17:30", "18:00"];
 const defaultProfile = {
   org: "(주)방주",
   role: "직원",
@@ -70,7 +70,7 @@ const defaultProfile = {
   primaryWork: "",
   secondaryWork: "",
   workplace: "",
-  workHours: "12:00-19:00",
+  workHours: "08:00-18:00",
   extra: "",
   strengths: "",
   weaknesses: "",
@@ -224,6 +224,7 @@ function createEmployeeLog(employee = employees[0], profile = defaultProfile) {
 function normalizeState() {
   state.selectedEmployeeId ||= "beyond-fitness-manager";
   state.profile = { ...defaultProfile, ...(state.profile || {}) };
+  if (state.profile.workHours === "12:00-19:00") state.profile.workHours = defaultProfile.workHours;
   if (state.selectedEmployeeId === "profile-user" && state.profile.name === defaultProfile.name) {
     state.selectedEmployeeId = "beyond-fitness-manager";
   }
@@ -863,6 +864,7 @@ async function loadRemoteProfile() {
   }
   if (!data) return;
   state.profile = { ...defaultProfile, ...state.profile, ...remoteRowToProfile(data) };
+  if (state.profile.workHours === "12:00-19:00") state.profile.workHours = defaultProfile.workHours;
   localStorage.setItem(storageKey, JSON.stringify(state));
   renderProfileForm();
 }
@@ -1154,7 +1156,10 @@ function bindTaskMetaControl(row, task, log) {
   }
   const postponeButton = row.querySelector(".postpone-date-button");
   if (postponeButton) {
-    postponeButton.onclick = () => openPostponeCalendar(task);
+    postponeButton.onclick = (event) => {
+      event.stopPropagation();
+      openPostponeCalendar(task);
+    };
     return;
   }
   const prioritySelect = row.querySelector(".priority-select");
@@ -1419,7 +1424,7 @@ function getWorklogScheduleSlots(log) {
   const taskTimes = (log?.tasks || []).map((task) => extractWorklogTaskTimeHint(task.text)?.slot).filter(Boolean);
   const allTimes = [...baseTimes, ...scheduleTimes, ...taskTimes];
   let start = 8 * 60;
-  let end = 19 * 60 + 30;
+  let end = 18 * 60;
   allTimes.forEach((time) => {
     const minutes = timeToMinutes(time);
     if (!Number.isFinite(minutes)) return;

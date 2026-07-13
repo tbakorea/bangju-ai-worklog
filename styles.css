@@ -359,24 +359,30 @@ body[data-device-mode="narrow"] .os-mode-switch span[data-device-mode="narrow"] 
   margin-bottom: 12px;
 }
 
+.employee-title-row,
+#todayContext {
+  display: none !important;
+}
+
 .employee-log-topbar {
   display: block;
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  border: 1px solid rgba(15, 59, 46, 0.12);
-  border-radius: 18px;
-  background: linear-gradient(180deg, rgba(255, 254, 250, 0.96), rgba(250, 251, 247, 0.9)), var(--nordic-sheet);
-  padding: 10px;
-  margin-bottom: 10px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  padding: 0;
+  margin-bottom: 6px;
 }
 
 .worklog-control-strip {
   display: grid;
-  grid-template-columns: auto minmax(108px, 0.52fr) minmax(108px, 0.52fr);
+  grid-template-columns: 54px minmax(92px, 0.45fr) minmax(92px, 0.45fr);
   gap: 6px;
   align-items: end;
-  width: 100%;
+  width: min(360px, 100%);
+  margin-left: auto;
 }
 
 .worklog-control-strip label {
@@ -535,10 +541,13 @@ body[data-device-mode="narrow"] .os-mode-switch span[data-device-mode="narrow"] 
 }
 
 .attendance-cycle-button {
-  min-width: 72px;
+  min-width: 0;
+  min-height: 30px !important;
   border-color: var(--fitness-green) !important;
   background: var(--fitness-green) !important;
   color: #fffefa !important;
+  padding: 4px 8px !important;
+  font-size: 12px;
 }
 
 .employee-title-row h2 {
@@ -1909,7 +1918,7 @@ body[data-device-mode="narrow"] .os-mode-switch span[data-device-mode="narrow"] 
   }
 
   .worklog-control-strip {
-    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-columns: 52px minmax(0, 1fr) minmax(0, 1fr);
     width: 100%;
   }
 
@@ -1940,11 +1949,11 @@ body[data-device-mode="narrow"] .os-mode-switch span[data-device-mode="narrow"] 
   }
 
   .worklog-control-strip label {
-    grid-column: span 2;
+    grid-column: auto;
   }
 
   .attendance-cycle-button {
-    min-width: 68px;
+    min-width: 0;
   }
 
   .clock-panel {
