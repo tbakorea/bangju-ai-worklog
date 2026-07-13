@@ -591,12 +591,18 @@ function renderWorklogCalendar() {
   }
   for (let date = 1; date <= lastDate; date += 1) {
     const key = formatDateKey(new Date(year, month, date));
+    const holidays = getKoreanHolidayLabels(key);
     const button = document.createElement("button");
     button.type = "button";
-    button.textContent = String(date);
+    button.innerHTML = `
+      <span class="calendar-day-number">${date}</span>
+      ${holidays.length ? `<span class="calendar-holiday-label">${holidays[0]}</span>` : ""}
+    `;
+    if (holidays.length) button.title = holidays.join(", ");
     button.className = [
       key === selectedDateKey ? "is-selected" : "",
       key === todayKey ? "is-today" : "",
+      holidays.length ? "is-holiday" : "",
     ].filter(Boolean).join(" ");
     button.onclick = () => selectCalendarDate(key);
     dayGrid.appendChild(button);
@@ -625,6 +631,55 @@ function renderWorklogCalendar() {
   if (!yearGrid.hidden) {
     yearGrid.querySelector(".is-selected")?.scrollIntoView({ block: "center" });
   }
+}
+
+const koreanFixedHolidays = {
+  "01-01": ["신정"],
+  "03-01": ["3.1절"],
+  "05-01": ["근로자의 날"],
+  "05-05": ["어린이날"],
+  "06-06": ["현충일"],
+  "07-17": ["제헌절"],
+  "08-15": ["광복절"],
+  "10-03": ["개천절"],
+  "10-09": ["한글날"],
+  "12-25": ["성탄절"],
+};
+
+const koreanLunarHolidayAnchors = {
+  2026: { seollal: "2026-02-17", buddha: "2026-05-24", chuseok: "2026-09-25" },
+  2027: { seollal: "2027-02-08", buddha: "2027-05-13", chuseok: "2027-09-15" },
+  2028: { seollal: "2028-01-27", buddha: "2028-05-02", chuseok: "2028-10-03" },
+  2029: { seollal: "2029-02-13", buddha: "2029-05-20", chuseok: "2029-09-22" },
+  2030: { seollal: "2030-02-03", buddha: "2030-05-09", chuseok: "2030-09-12" },
+  2031: { seollal: "2031-01-23", buddha: "2031-05-28", chuseok: "2031-10-01" },
+  2032: { seollal: "2032-02-11", buddha: "2032-05-16", chuseok: "2032-09-19" },
+  2033: { seollal: "2033-01-31", buddha: "2033-05-06", chuseok: "2033-09-08" },
+  2034: { seollal: "2034-02-19", buddha: "2034-05-25", chuseok: "2034-09-27" },
+  2035: { seollal: "2035-02-08", buddha: "2035-05-15", chuseok: "2035-09-16" },
+};
+
+function getKoreanHolidayLabels(dateKey) {
+  const labels = [...(koreanFixedHolidays[dateKey.slice(5)] || [])];
+  const year = Number(dateKey.slice(0, 4));
+  const lunar = koreanLunarHolidayAnchors[year];
+  if (lunar) {
+    if (dateKey === addDaysToDateKey(lunar.seollal, -1)) labels.push("설연휴");
+    if (dateKey === lunar.seollal) labels.push("설날");
+    if (dateKey === addDaysToDateKey(lunar.seollal, 1)) labels.push("설연휴");
+    if (dateKey === lunar.buddha) labels.push("부처님오신날");
+    if (dateKey === addDaysToDateKey(lunar.chuseok, -1)) labels.push("추석연휴");
+    if (dateKey === lunar.chuseok) labels.push("추석");
+    if (dateKey === addDaysToDateKey(lunar.chuseok, 1)) labels.push("추석연휴");
+  }
+
+  if (dateKey === "2026-09-27") labels.push("대체휴일");
+  return [...new Set(labels)];
+}
+
+function addDaysToDateKey(dateKey, days) {
+  const [year, month, date] = dateKey.split("-").map(Number);
+  return formatDateKey(new Date(year, month - 1, date + days));
 }
 
 function selectCalendarDate(dateKey) {
