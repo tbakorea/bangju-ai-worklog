@@ -866,17 +866,13 @@ body[data-device-mode="narrow"] .os-mode-switch span[data-device-mode="narrow"] 
 }
 
 #calendarMonthTitle {
-  width: 100%;
   background: rgba(15, 59, 46, 0.08);
   font-size: 17px;
   font-weight: 950;
-  text-align: center;
 }
 
 .calendar-year-control {
   position: relative;
-  justify-self: center;
-  width: min(150px, 100%);
   min-width: 0;
 }
 
@@ -900,11 +896,10 @@ body[data-device-mode="narrow"] .os-mode-switch span[data-device-mode="narrow"] 
 
 .calendar-year-wheel {
   position: absolute;
-  inset: -44px auto auto 50%;
+  inset: -44px 0 auto;
   z-index: 5;
   display: grid;
   gap: 0;
-  width: min(150px, 100%);
   max-height: 128px;
   overflow-y: auto;
   margin: 0;
@@ -915,7 +910,6 @@ body[data-device-mode="narrow"] .os-mode-switch span[data-device-mode="narrow"] 
   box-shadow: 0 10px 26px rgba(15, 59, 46, 0.14);
   scroll-snap-type: y mandatory;
   scrollbar-width: none;
-  transform: translateX(-50%);
   mask-image: linear-gradient(180deg, transparent, #000 24%, #000 76%, transparent);
 }
 
@@ -977,38 +971,6 @@ body[data-device-mode="narrow"] .os-mode-switch span[data-device-mode="narrow"] 
   min-height: 38px;
 }
 
-.calendar-day-grid button {
-  display: grid;
-  align-content: center;
-  justify-items: center;
-  gap: 1px;
-  min-width: 0;
-  padding: 4px 2px;
-  line-height: 1;
-}
-
-.calendar-day-number {
-  min-height: auto;
-  font-size: 14px;
-  line-height: 1;
-}
-
-.calendar-holiday-label {
-  overflow: hidden;
-  width: 100%;
-  min-height: auto;
-  color: #b13a32;
-  font-size: 8px;
-  font-weight: 950;
-  line-height: 1.05;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.calendar-day-grid button.is-holiday {
-  border-color: rgba(177, 58, 50, 0.18);
-}
-
 .calendar-day-grid button.is-today {
   border-color: rgba(15, 59, 46, 0.58);
   box-shadow: 0 0 0 3px rgba(15, 59, 46, 0.07);
@@ -1020,10 +982,6 @@ body[data-device-mode="narrow"] .os-mode-switch span[data-device-mode="narrow"] 
   border-color: var(--fitness-green);
   color: #fffefa;
   box-shadow: 0 8px 18px rgba(15, 59, 46, 0.18);
-}
-
-.calendar-day-grid button.is-selected .calendar-holiday-label {
-  color: rgba(255, 254, 250, 0.82);
 }
 
 .calendar-footer {
@@ -1901,7 +1859,7 @@ body[data-device-mode="narrow"] .os-mode-switch span[data-device-mode="narrow"] 
   }
 
   .calendar-year-wheel {
-    inset: -40px auto auto 50%;
+    inset: -40px 0 auto;
     max-height: 132px;
     padding-block: 46px;
   }
@@ -1916,15 +1874,6 @@ body[data-device-mode="narrow"] .os-mode-switch span[data-device-mode="narrow"] 
 
   .calendar-day-grid span {
     min-height: 42px;
-  }
-
-  .calendar-day-number,
-  .calendar-holiday-label {
-    min-height: auto;
-  }
-
-  .calendar-holiday-label {
-    font-size: 7.5px;
   }
 }
 
