@@ -1161,14 +1161,6 @@ body[data-device-mode="narrow"] .os-mode-switch span[data-device-mode="narrow"] 
   color: rgba(47, 65, 56, 0.42);
 }
 
-.postpone-date-input {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  opacity: 0;
-  pointer-events: none;
-}
-
 .task-origin-tag {
   flex: 0 0 auto;
   border: 1px solid rgba(15, 59, 46, 0.16);

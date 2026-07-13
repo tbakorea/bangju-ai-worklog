@@ -161,6 +161,8 @@ const authState = {
 };
 let dateSlideTimer = 0;
 let calendarViewDate = parseDateKey(todayKey);
+let calendarPickerMode = "worklog";
+let calendarPostponeTask = null;
 let mobileDayFocusMode = "split";
 const dailyEditingState = {
   focused: false,
@@ -513,10 +515,22 @@ function renderDateNav() {
 }
 
 function openWorklogCalendar() {
+  calendarPickerMode = "worklog";
+  calendarPostponeTask = null;
+  openCalendarSheet(parseDateKey(getActiveDateKey()));
+}
+
+function openPostponeCalendar(task) {
+  calendarPickerMode = "postpone";
+  calendarPostponeTask = task;
+  openCalendarSheet(parseDateKey(task.postponeDate || getActiveDateKey()));
+}
+
+function openCalendarSheet(viewDate) {
   const popover = document.getElementById("worklogCalendarPopover");
   const backdrop = document.getElementById("worklogCalendarBackdrop");
   const selectedDateButton = document.getElementById("selectedDateButton");
-  calendarViewDate = parseDateKey(getActiveDateKey());
+  calendarViewDate = viewDate;
   popover.hidden = false;
   backdrop.hidden = false;
   selectedDateButton.setAttribute("aria-expanded", "true");
@@ -539,6 +553,8 @@ function closeWorklogCalendar() {
   window.setTimeout(() => {
     popover.hidden = true;
     if (backdrop) backdrop.hidden = true;
+    calendarPickerMode = "worklog";
+    calendarPostponeTask = null;
   }, 170);
 }
 
@@ -556,10 +572,15 @@ function renderWorklogCalendar() {
   const dayGrid = document.getElementById("calendarDayGrid");
   const monthGrid = document.getElementById("calendarMonthGrid");
   const yearGrid = document.getElementById("calendarYearGrid");
+  const todayButton = document.getElementById("calendarTodaySheetButton");
   const year = calendarViewDate.getFullYear();
   const month = calendarViewDate.getMonth();
+  const selectedDateKey = calendarPickerMode === "postpone" ? calendarPostponeTask?.postponeDate : getActiveDateKey();
   monthTitle.textContent = `${year}년`;
-  selectedLabel.textContent = formatKoreanDate(getActiveDateKey());
+  selectedLabel.textContent = calendarPickerMode === "postpone"
+    ? `연기일 ${selectedDateKey ? formatKoreanDate(selectedDateKey) : "미정"}`
+    : formatKoreanDate(getActiveDateKey());
+  todayButton.textContent = calendarPickerMode === "postpone" ? "오늘로 지정" : "오늘로 이동";
   dayGrid.innerHTML = "";
   const firstDay = new Date(year, month, 1).getDay();
   const lastDate = new Date(year, month + 1, 0).getDate();
@@ -572,10 +593,10 @@ function renderWorklogCalendar() {
     button.type = "button";
     button.textContent = String(date);
     button.className = [
-      key === getActiveDateKey() ? "is-selected" : "",
+      key === selectedDateKey ? "is-selected" : "",
       key === todayKey ? "is-today" : "",
     ].filter(Boolean).join(" ");
-    button.onclick = () => setSelectedDateKey(key);
+    button.onclick = () => selectCalendarDate(key);
     dayGrid.appendChild(button);
   }
   monthGrid.innerHTML = Array.from({ length: 12 }, (_, index) => `
@@ -598,6 +619,17 @@ function renderWorklogCalendar() {
       renderWorklogCalendar();
     };
   });
+}
+
+function selectCalendarDate(dateKey) {
+  if (calendarPickerMode === "postpone" && calendarPostponeTask) {
+    calendarPostponeTask.postponeDate = dateKey;
+    saveState();
+    closeWorklogCalendar();
+    renderEntries();
+    return;
+  }
+  setSelectedDateKey(dateKey);
 }
 
 function shiftCalendarYear(delta) {
@@ -1099,10 +1131,7 @@ function renderTaskMetaControl(task) {
   }
   if (task.status === "연기") {
     const label = task.postponeDate ? formatShortDate(task.postponeDate) : "미정";
-    return `
-      <button class="postpone-date-button" type="button" aria-label="연기 날짜 선택">${escapeHtml(label)}</button>
-      <input class="postpone-date-input" type="date" value="${escapeAttr(task.postponeDate || "")}" aria-label="연기 날짜" />
-    `;
+    return `<button class="postpone-date-button" type="button" aria-label="연기 날짜 선택">${escapeHtml(label)}</button>`;
   }
   return `
     <select class="priority-select" aria-label="중요도">
@@ -1121,17 +1150,8 @@ function bindTaskMetaControl(row, task, log) {
     return;
   }
   const postponeButton = row.querySelector(".postpone-date-button");
-  const postponeInput = row.querySelector(".postpone-date-input");
-  if (postponeButton && postponeInput) {
-    postponeButton.onclick = () => {
-      if (postponeInput.showPicker) postponeInput.showPicker();
-      else postponeInput.click();
-    };
-    postponeInput.onchange = () => {
-      task.postponeDate = postponeInput.value;
-      saveState();
-      renderEntries();
-    };
+  if (postponeButton) {
+    postponeButton.onclick = () => openPostponeCalendar(task);
     return;
   }
   const prioritySelect = row.querySelector(".priority-select");
@@ -1718,7 +1738,7 @@ document.getElementById("calendarMonthTitle").addEventListener("wheel", (event) 
 }, { passive: false });
 document.getElementById("calendarCloseButton").onclick = closeWorklogCalendar;
 document.getElementById("worklogCalendarBackdrop").onclick = closeWorklogCalendar;
-document.getElementById("calendarTodaySheetButton").onclick = () => setSelectedDateKey(todayKey);
+document.getElementById("calendarTodaySheetButton").onclick = () => selectCalendarDate(todayKey);
 document.getElementById("worklogCalendarPopover").onclick = (event) => event.stopPropagation();
 document.addEventListener("click", closeWorklogCalendar);
 document.addEventListener("keydown", (event) => {
