@@ -522,7 +522,7 @@ function closeWorklogCalendar() {
   if (!popover || popover.hidden) return;
   popover.hidden = true;
   selectedDateButton?.setAttribute("aria-expanded", "false");
-  document.getElementById("calendarMonthGrid").hidden = true;
+  document.getElementById("calendarYearGrid").hidden = true;
 }
 
 function toggleWorklogCalendar() {
@@ -537,9 +537,10 @@ function renderWorklogCalendar() {
   const monthTitle = document.getElementById("calendarMonthTitle");
   const dayGrid = document.getElementById("calendarDayGrid");
   const monthGrid = document.getElementById("calendarMonthGrid");
+  const yearGrid = document.getElementById("calendarYearGrid");
   const year = calendarViewDate.getFullYear();
   const month = calendarViewDate.getMonth();
-  monthTitle.textContent = `${year}년 ${month + 1}월`;
+  monthTitle.textContent = `${year}년`;
   dayGrid.innerHTML = "";
   const firstDay = new Date(year, month, 1).getDay();
   const lastDate = new Date(year, month + 1, 0).getDate();
@@ -561,10 +562,20 @@ function renderWorklogCalendar() {
   monthGrid.innerHTML = Array.from({ length: 12 }, (_, index) => `
     <button type="button" class="${index === month ? "is-selected" : ""}" data-calendar-month="${index}">${index + 1}월</button>
   `).join("");
+  yearGrid.innerHTML = Array.from({ length: 12 }, (_, index) => {
+    const value = year - 5 + index;
+    return `<button type="button" class="${value === year ? "is-selected" : ""}" data-calendar-year="${value}">${value}</button>`;
+  }).join("");
   monthGrid.querySelectorAll("[data-calendar-month]").forEach((button) => {
     button.onclick = () => {
       calendarViewDate = new Date(year, Number(button.dataset.calendarMonth), 1);
-      monthGrid.hidden = true;
+      renderWorklogCalendar();
+    };
+  });
+  yearGrid.querySelectorAll("[data-calendar-year]").forEach((button) => {
+    button.onclick = () => {
+      calendarViewDate = new Date(Number(button.dataset.calendarYear), month, 1);
+      yearGrid.hidden = true;
       renderWorklogCalendar();
     };
   });
@@ -1589,9 +1600,13 @@ document.getElementById("todayJumpButton").onclick = () => setSelectedDateKey(to
 document.getElementById("calendarPrevYear").onclick = () => shiftCalendarYear(-1);
 document.getElementById("calendarNextYear").onclick = () => shiftCalendarYear(1);
 document.getElementById("calendarMonthTitle").onclick = () => {
-  const monthGrid = document.getElementById("calendarMonthGrid");
-  monthGrid.hidden = !monthGrid.hidden;
+  const yearGrid = document.getElementById("calendarYearGrid");
+  yearGrid.hidden = !yearGrid.hidden;
 };
+document.getElementById("calendarMonthTitle").addEventListener("wheel", (event) => {
+  event.preventDefault();
+  shiftCalendarYear(event.deltaY > 0 ? 1 : -1);
+}, { passive: false });
 document.getElementById("worklogCalendarPopover").onclick = (event) => event.stopPropagation();
 document.addEventListener("click", closeWorklogCalendar);
 document.addEventListener("keydown", (event) => {
