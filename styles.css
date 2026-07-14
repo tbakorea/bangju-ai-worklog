@@ -3720,14 +3720,14 @@ textarea:focus-visible {
 
 .main-menu-wheel-select {
   align-self: center;
-  min-width: 104px;
-  min-height: 42px;
+  min-width: 132px;
+  min-height: 46px;
   border: 1px solid var(--hardline);
   border-radius: 0;
   background: var(--nordic-sheet);
   color: var(--ink);
   padding: 0 28px 0 12px;
-  font-size: 13px;
+  font-size: 18px;
   font-weight: 950;
   text-align: center;
   cursor: pointer;
@@ -3740,7 +3740,7 @@ textarea:focus-visible {
 
 @media (max-width: 760px) {
   .worklog-header {
-    grid-template-columns: 30px minmax(0, 1fr) 82px auto;
+    grid-template-columns: 30px minmax(0, 1fr) 116px auto;
     gap: 7px;
   }
 
@@ -3757,10 +3757,11 @@ textarea:focus-visible {
 
   .main-menu-wheel-select {
     min-width: 0;
-    width: 82px;
-    min-height: 34px;
-    padding: 0 18px 0 8px;
-    font-size: 12px;
+    width: 116px;
+    min-height: 38px;
+    padding: 0 20px 0 10px;
+    font-size: 17px;
+    font-weight: 950;
   }
 
   .worklog-summary-date span {
