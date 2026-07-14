@@ -4079,3 +4079,99 @@ textarea:focus-visible {
     font-size: 15px;
   }
 }
+
+.fitness-log-view {
+  display: none;
+}
+
+.fitness-log-view.is-active {
+  display: grid;
+  gap: 12px;
+}
+
+.fitness-log-title {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: center;
+  border: 1px solid var(--hardline);
+  background: rgba(252, 252, 247, 0.94);
+  padding: 12px;
+}
+
+.fitness-log-title p,
+.fitness-log-title span {
+  margin: 0;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 900;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.fitness-log-title h2 {
+  margin: 2px 0;
+  color: var(--ink);
+  font-size: clamp(24px, 4vw, 40px);
+  font-weight: 950;
+  line-height: 1;
+}
+
+.fitness-log-title button {
+  min-height: 38px;
+  border: 1px solid var(--hardline);
+  border-radius: 0;
+  background: var(--fitness-green);
+  color: var(--nordic-sheet);
+  padding: 7px 12px;
+  font-weight: 950;
+}
+
+.fitness-log-task-panel,
+.fitness-log-schedule-panel {
+  max-height: none;
+}
+
+.fitness-log-task-panel .worklog-task-board,
+.fitness-log-task-panel .task-board {
+  padding-bottom: 8px;
+  scroll-padding-bottom: 8px;
+}
+
+.fitness-task-list .task-row:nth-child(n + 6) {
+  display: none;
+}
+
+.fitness-log-schedule-panel .worklog-appointment-list,
+.fitness-log-schedule-panel .appointment-list {
+  padding-bottom: 20px;
+  scroll-padding-bottom: 20px;
+}
+
+@media (max-width: 760px) {
+  .fitness-log-view.is-active {
+    gap: 8px;
+  }
+
+  .fitness-log-title {
+    padding: 8px;
+  }
+
+  .fitness-log-title h2 {
+    font-size: 22px;
+  }
+
+  .fitness-log-title button {
+    min-height: 32px;
+    padding-inline: 10px;
+    font-size: 12px;
+  }
+
+  .fitness-log-task-panel .task-row {
+    min-height: 35px;
+  }
+
+  .fitness-log-schedule-panel .appointment-row {
+    min-height: 34px;
+  }
+}

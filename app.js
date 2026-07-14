@@ -1041,6 +1041,7 @@ function renderEntries() {
   const log = getSelectedLog();
   normalizeEmployeeLogRows(log);
   renderWorklogToday(log);
+  renderFitnessWorklog(log);
   renderEmployeeDetailFields();
   renderClockPanel();
   renderEmployeeTitle();
@@ -1054,6 +1055,15 @@ function renderWorklogToday(log = getSelectedLog()) {
   renderWorklogSummary(log);
   renderWorklogTaskBoard(log);
   renderWorklogAppointments(log);
+}
+
+function renderFitnessWorklog(log = getSelectedLog()) {
+  const title = document.getElementById("fitnessWorklogDate");
+  if (title) title.textContent = formatKoreanDate(getActiveDateKey());
+  const unitButton = document.getElementById("fitnessScheduleUnitButton");
+  if (unitButton) unitButton.textContent = log.scheduleUnit === "60" ? "1시간" : "30분";
+  renderFitnessTaskBoard(log);
+  renderFitnessAppointments(log);
 }
 
 function renderWorklogSummary(log) {
@@ -1086,6 +1096,18 @@ function renderWorklogTaskBoard(log) {
     renderEntries();
   };
   list.appendChild(add);
+  board.appendChild(list);
+}
+
+function renderFitnessTaskBoard(log) {
+  const board = document.getElementById("fitnessTaskBoard");
+  if (!board) return;
+  board.innerHTML = "";
+  const list = document.createElement("section");
+  list.className = "worklog-task-list fitness-task-list";
+  getWorklogTaskRefs(log).slice(0, 5).forEach((ref) => {
+    list.appendChild(renderWorklogTaskRow(ref, log));
+  });
   board.appendChild(list);
 }
 
@@ -1160,6 +1182,7 @@ function renderWorklogTaskRow(ref, currentLog) {
     updateTaskRowTags(row, task);
     renderWorklogSummary(currentLog);
     renderWorklogAppointments(currentLog);
+    renderFitnessAppointments(currentLog);
     renderTodayContext();
     renderReport();
   };
@@ -1319,10 +1342,46 @@ function renderWorklogAppointments(log) {
       if (mergedEntry && !mergedEntry.text) mergedEntry.text = text.value;
       saveState({ fastSave: true });
       renderWorklogSummary(log);
+      renderFitnessAppointments(log);
+      renderReport();
     };
     row.querySelector("button").onclick = () => {
       entry.mergeDown = !entry.mergeDown && index < log.schedule.length - 1;
       saveState();
+      renderWorklogAppointments(log);
+    };
+    list.appendChild(row);
+  });
+}
+
+function renderFitnessAppointments(log) {
+  normalizeWorklogSchedule(log);
+  const list = document.getElementById("fitnessAppointmentList");
+  if (!list) return;
+  list.innerHTML = "";
+  (log.schedule || []).forEach((entry, index) => {
+    if (index > 0 && log.schedule[index - 1]?.mergeDown) return;
+    const row = document.createElement("div");
+    const mergedEntry = entry.mergeDown ? log.schedule[index + 1] : null;
+    const value = mergedEntry?.text && !entry.text ? mergedEntry.text : entry.text || "";
+    row.className = `appointment-row ${value.trim() ? "is-filled" : ""} ${isCurrentScheduleSlot(entry, log) ? "is-current" : ""} ${entry.mergeDown ? "is-merged" : ""}`;
+    row.innerHTML = `
+      <span class="appointment-time">${escapeHtml(entry.time)}</span>
+      <input type="text" value="${escapeAttr(value)}" placeholder="일정" aria-label="${escapeAttr(entry.time)} 피트니스 일정" />
+      <button class="appointment-merge-button" type="button" aria-label="${escapeAttr(entry.time)} 일정 병합">${entry.mergeDown ? "−" : "+"}</button>
+    `;
+    const text = row.querySelector("input");
+    text.oninput = () => {
+      entry.text = text.value;
+      if (mergedEntry && !mergedEntry.text) mergedEntry.text = text.value;
+      saveState({ fastSave: true });
+      renderWorklogSummary(log);
+      renderReport();
+    };
+    row.querySelector("button").onclick = () => {
+      entry.mergeDown = !entry.mergeDown && index < log.schedule.length - 1;
+      saveState();
+      renderFitnessAppointments(log);
       renderWorklogAppointments(log);
     };
     list.appendChild(row);
@@ -1943,6 +2002,13 @@ document.getElementById("scheduleUnitButton").onclick = () => {
   saveState();
   renderEntries();
 };
+document.getElementById("fitnessScheduleUnitButton")?.addEventListener("click", () => {
+  const log = getSelectedLog();
+  log.scheduleUnit = log.scheduleUnit === "60" ? "30" : "60";
+  normalizeEmployeeLogRows(log);
+  saveState();
+  renderEntries();
+});
 document.getElementById("addEntryButton").onclick = () => {
   alert("시간별 일정 AI 추천은 이후 Beyond Work 오늘 섹션의 추천 로직과 연결합니다.");
 };

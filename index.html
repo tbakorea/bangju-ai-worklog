@@ -17,6 +17,7 @@
         </div>
         <select id="mainMenuWheelSelect" class="main-menu-wheel-select" aria-label="메인메뉴 선택">
           <option value="today">업무일지</option>
+          <option value="fitness-log">피트니스 업무일지</option>
           <option value="fitness">피트니스 OS</option>
           <option value="os">OS</option>
           <option value="attendance">근태</option>
@@ -35,6 +36,7 @@
 
       <nav class="worklog-tabs" aria-label="Beyond OS 메뉴">
         <button class="is-active" type="button" data-view="today">업무일지</button>
+        <button type="button" data-view="fitness-log">피트니스 업무일지</button>
         <button type="button" data-view="fitness">피트니스 OS</button>
         <button type="button" data-view="os">OS</button>
         <button type="button" data-view="attendance">근태</button>
@@ -180,6 +182,40 @@
             </article>
           </div>
         </section>
+        <article class="planner-section">
+          <h3>업무보고</h3>
+          <textarea id="employeeReport" rows="7" placeholder="오늘 진행한 업무, 완료사항, 이슈, 지원 요청을 보고 형식으로 정리합니다."></textarea>
+        </article>
+        <article class="planner-section">
+          <h3>메모</h3>
+          <textarea id="employeeMemo" rows="6" placeholder="회의 메모, 인수인계, 내일 확인할 내용을 자유롭게 적습니다."></textarea>
+        </article>
+      </section>
+
+      <section class="worklog-view fitness-log-view" id="view-fitness-log">
+        <div class="fitness-log-title">
+          <div>
+            <p>Beyond Fitness Daily Worklog</p>
+            <h2>피트니스 업무일지</h2>
+            <span id="fitnessWorklogDate"></span>
+          </div>
+          <button type="button" id="fitnessLogCoachButton">AI 코칭</button>
+        </div>
+        <article class="worklog-panel fitness-log-task-panel">
+          <h3>
+            <span>오늘의 우선업무</span>
+            <button type="button" class="ai-section-button" data-section-ai="fitness-tasks">AI</button>
+          </h3>
+          <div id="fitnessTaskBoard" class="worklog-task-board task-board"></div>
+        </article>
+        <article class="worklog-panel fitness-log-schedule-panel">
+          <h3>
+            <span>시간별일정</span>
+            <button type="button" class="schedule-unit-button" id="fitnessScheduleUnitButton">30분</button>
+            <button type="button" class="ai-section-button" data-section-ai="fitness-schedule">AI</button>
+          </h3>
+          <div id="fitnessAppointmentList" class="worklog-appointment-list appointment-list"></div>
+        </article>
         <article class="planner-section fitness-ops-section">
           <h3>피트니스 운영기록</h3>
           <div class="fitness-ops-grid">
@@ -197,14 +233,6 @@
             <label>근무/운영 메모 <textarea data-fitness-field="shiftNote" rows="2" placeholder="오픈, 센터관리, 마감, 시설 이슈 등"></textarea></label>
             <label>특이사항 보고 <textarea data-fitness-field="specialReport" rows="2" placeholder="고객 민원, 안전, 시설, 인수인계가 필요한 내용을 기록"></textarea></label>
           </div>
-        </article>
-        <article class="planner-section">
-          <h3>업무보고</h3>
-          <textarea id="employeeReport" rows="7" placeholder="오늘 진행한 업무, 완료사항, 이슈, 지원 요청을 보고 형식으로 정리합니다."></textarea>
-        </article>
-        <article class="planner-section">
-          <h3>메모</h3>
-          <textarea id="employeeMemo" rows="6" placeholder="회의 메모, 인수인계, 내일 확인할 내용을 자유롭게 적습니다."></textarea>
         </article>
       </section>
 
