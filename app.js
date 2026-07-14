@@ -52,6 +52,7 @@ const priorityOptions = [
   ["?", "?"],
 ];
 const taskPriorityOptions = ["?", "A", "B", "C", "취소", "연기"];
+const scheduleTypeOptions = ["업무", "PT", "센터관리", "청결", "고객관리", "영업", "행정", "오픈마감", "휴게", "시설점검", "정산", "인수인계"];
 const taskStatusCycle = ["미완료", "완료", "진행중", "위임", "연기"];
 const taskStatusGuideLabels = {
   "완료": "완료",
@@ -279,7 +280,7 @@ function normalizeState() {
     log.record ||= "";
     log.fitnessOps = { ...createFitnessOps(), ...(log.fitnessOps || {}) };
   });
-  if (state.entries?.[todayKey]?.length && getActiveDateKey() === todayKey && !state.employeeLogs[todayKey][employees[0].id].schedule.some((item) => item.text)) {
+  if (state.entries?.[todayKey]?.length && getActiveDateKey() === todayKey && !state.employeeLogs[todayKey][employees[0].id].schedule.some((item) => getScheduleEntryText(item))) {
     state.employeeLogs[todayKey][employees[0].id].schedule = state.entries[todayKey].map((entry) => ({
       time: entry.time || "",
       text: entry.text || "",
@@ -309,9 +310,9 @@ function normalizeEmployeeLogRows(log) {
   const scheduleByTime = new Map(log.schedule.map((item) => [item.time, item]));
   const scheduleTimes = getWorklogScheduleSlots(log);
   log.schedule = scheduleTimes.map((time) => {
-    const item = scheduleByTime.get(time) || { time, text: "", status: "예정" };
+    const item = scheduleByTime.get(time) || { time, text: "", status: "예정", items: [createScheduleItem()] };
     item.time = time;
-    item.text ||= "";
+    normalizeScheduleEntryItems(item);
     item.status ||= "예정";
     item.mergeDown ||= false;
     return item;
@@ -1077,7 +1078,7 @@ function renderWorklogSummary(log) {
   const nextEntry = getNextScheduleEntry(log);
   document.getElementById("worklogDayTitle").textContent = formatKoreanDate(getActiveDateKey());
   document.getElementById("worklogCompletion").textContent = `${completed}/${tasks.length}`;
-  document.getElementById("worklogPulse").textContent = `오늘 실행 ${completed}/${tasks.length} · 다음 일정 ${nextEntry ? `${nextEntry.time} ${nextEntry.text}` : "없음"} · 미완료 ${pending} · AI 운영 신호 ${pending ? "추적" : "정상"}`;
+  document.getElementById("worklogPulse").textContent = `오늘 실행 ${completed}/${tasks.length} · 다음 일정 ${nextEntry ? `${nextEntry.time} ${getScheduleEntryText(nextEntry)}` : "없음"} · 미완료 ${pending} · AI 운영 신호 ${pending ? "추적" : "정상"}`;
   const unitButton = document.getElementById("scheduleUnitButton");
   if (unitButton) unitButton.textContent = log.scheduleUnit === "60" ? "1시간" : "30분";
 }
@@ -1325,36 +1326,64 @@ function updateTaskRowTags(row, task) {
   cell.appendChild(node);
 }
 
+function inferScheduleType(text = "") {
+  if (/pt|피티|수업|운동지도/i.test(text)) return "PT";
+  if (/센터관리|센타관리|기구|시설|냉난방|조명/.test(text)) return "센터관리";
+  if (/청소|세탁|쓰레기|샤워실|탈의실|정리|위생/.test(text)) return "청결";
+  if (/상담|회원|고객|문의|재등록|민원/.test(text)) return "고객관리";
+  if (/영업|아웃바운드|전화|콜|체험권|매출|결제/.test(text)) return "영업";
+  if (/정산|보고|업무일지|서류|행정/.test(text)) return "행정";
+  if (/오픈|마감/.test(text)) return "오픈마감";
+  if (/식사|휴식|대기/.test(text)) return "휴게";
+  return "업무";
+}
+
+function normalizeScheduleEntryItems(entry) {
+  entry.items = Array.isArray(entry.items) ? entry.items : null;
+  if (!entry.items) {
+    const text = String(entry.text || "").trim();
+    entry.items = text ? [{ type: inferScheduleType(text), text }] : [{ type: "업무", text: "" }];
+  }
+  if (!entry.items.length) entry.items.push({ type: "업무", text: "" });
+  entry.items.forEach((item) => {
+    item.type = scheduleTypeOptions.includes(item.type) ? item.type : inferScheduleType(item.text);
+    item.text ||= "";
+  });
+  syncScheduleEntryText(entry);
+  return entry.items;
+}
+
+function getScheduleEntryText(entry) {
+  const items = normalizeScheduleEntryItems(entry);
+  return items
+    .filter((item) => String(item.text || "").trim())
+    .map((item) => `(${item.type || "업무"}) ${item.text.trim()}`)
+    .join(" / ");
+}
+
+function syncScheduleEntryText(entry) {
+  const items = Array.isArray(entry.items) ? entry.items : [];
+  entry.text = items
+    .filter((item) => String(item.text || "").trim())
+    .map((item) => `(${item.type || "업무"}) ${item.text.trim()}`)
+    .join(" / ");
+}
+
+function createScheduleItem(text = "", type = "") {
+  return { type: type || inferScheduleType(text), text };
+}
+
+function renderScheduleTypeOptions(selected = "업무") {
+  return scheduleTypeOptions.map((value) => `<option value="${escapeAttr(value)}" ${value === selected ? "selected" : ""}>${escapeHtml(value)}</option>`).join("");
+}
+
 function renderWorklogAppointments(log) {
   normalizeWorklogSchedule(log);
   const list = document.getElementById("worklogAppointmentList");
   list.innerHTML = "";
   (log.schedule || []).forEach((entry, index) => {
     if (index > 0 && log.schedule[index - 1]?.mergeDown) return;
-    const row = document.createElement("div");
-    const mergedEntry = entry.mergeDown ? log.schedule[index + 1] : null;
-    const value = mergedEntry?.text && !entry.text ? mergedEntry.text : entry.text || "";
-    row.className = `appointment-row ${value.trim() ? "is-filled" : ""} ${isCurrentScheduleSlot(entry, log) ? "is-current" : ""} ${entry.mergeDown ? "is-merged" : ""}`;
-    row.innerHTML = `
-      <span class="appointment-time">${escapeHtml(entry.time)}</span>
-      <input type="text" value="${escapeAttr(value)}" placeholder="일정" aria-label="${escapeAttr(entry.time)} 일정" />
-      <button class="appointment-merge-button" type="button" aria-label="${escapeAttr(entry.time)} 일정 병합">${entry.mergeDown ? "−" : "+"}</button>
-    `;
-    const text = row.querySelector("input");
-    text.oninput = () => {
-      entry.text = text.value;
-      if (mergedEntry && !mergedEntry.text) mergedEntry.text = text.value;
-      saveState({ fastSave: true });
-      renderWorklogSummary(log);
-      renderFitnessAppointments(log);
-      renderReport();
-    };
-    row.querySelector("button").onclick = () => {
-      entry.mergeDown = !entry.mergeDown && index < log.schedule.length - 1;
-      saveState();
-      renderWorklogAppointments(log);
-    };
-    list.appendChild(row);
+    list.appendChild(renderAppointmentRow(entry, log, "worklog"));
   });
 }
 
@@ -1365,31 +1394,73 @@ function renderFitnessAppointments(log) {
   list.innerHTML = "";
   (log.schedule || []).forEach((entry, index) => {
     if (index > 0 && log.schedule[index - 1]?.mergeDown) return;
-    const row = document.createElement("div");
-    const mergedEntry = entry.mergeDown ? log.schedule[index + 1] : null;
-    const value = mergedEntry?.text && !entry.text ? mergedEntry.text : entry.text || "";
-    row.className = `appointment-row ${value.trim() ? "is-filled" : ""} ${isCurrentScheduleSlot(entry, log) ? "is-current" : ""} ${entry.mergeDown ? "is-merged" : ""}`;
-    row.innerHTML = `
-      <span class="appointment-time">${escapeHtml(entry.time)}</span>
-      <input type="text" value="${escapeAttr(value)}" placeholder="일정" aria-label="${escapeAttr(entry.time)} 피트니스 일정" />
-      <button class="appointment-merge-button" type="button" aria-label="${escapeAttr(entry.time)} 일정 병합">${entry.mergeDown ? "−" : "+"}</button>
-    `;
-    const text = row.querySelector("input");
-    text.oninput = () => {
-      entry.text = text.value;
-      if (mergedEntry && !mergedEntry.text) mergedEntry.text = text.value;
+    list.appendChild(renderAppointmentRow(entry, log, "fitness"));
+  });
+}
+
+function renderAppointmentRow(entry, log, scope = "worklog") {
+  const items = normalizeScheduleEntryItems(entry);
+  const row = document.createElement("div");
+  const value = getScheduleEntryText(entry);
+  row.className = `appointment-row multi-appointment-row ${value.trim() ? "is-filled" : ""} ${isCurrentScheduleSlot(entry, log) ? "is-current" : ""}`;
+  row.innerHTML = `
+    <span class="appointment-time">${escapeHtml(entry.time)}</span>
+    <div class="appointment-items">
+      ${items.map((item, itemIndex) => `
+        <div class="appointment-item" data-schedule-item-index="${itemIndex}">
+          <select class="schedule-type-select" aria-label="${escapeAttr(entry.time)} 업무종류">
+            ${renderScheduleTypeOptions(item.type)}
+          </select>
+          <input class="schedule-text-input" type="text" value="${escapeAttr(item.text)}" placeholder="일정" aria-label="${escapeAttr(entry.time)} 일정" />
+          <button class="schedule-item-delete" type="button" aria-label="일정 삭제">×</button>
+        </div>
+      `).join("")}
+    </div>
+    <button class="appointment-merge-button" type="button" aria-label="${escapeAttr(entry.time)} 일정 추가">+</button>
+  `;
+  row.querySelectorAll(".appointment-item").forEach((itemRow) => {
+    const itemIndex = Number(itemRow.dataset.scheduleItemIndex);
+    const item = items[itemIndex];
+    const type = itemRow.querySelector(".schedule-type-select");
+    const text = itemRow.querySelector(".schedule-text-input");
+    const remove = itemRow.querySelector(".schedule-item-delete");
+    type.onchange = () => {
+      item.type = type.value;
+      syncScheduleEntryText(entry);
       saveState({ fastSave: true });
       renderWorklogSummary(log);
       renderReport();
-    };
-    row.querySelector("button").onclick = () => {
-      entry.mergeDown = !entry.mergeDown && index < log.schedule.length - 1;
-      saveState();
-      renderFitnessAppointments(log);
       renderWorklogAppointments(log);
+      renderFitnessAppointments(log);
     };
-    list.appendChild(row);
+    text.oninput = () => {
+      item.text = text.value;
+      if (item.type === "업무") item.type = inferScheduleType(text.value);
+      syncScheduleEntryText(entry);
+      saveState({ fastSave: true });
+      renderWorklogSummary(log);
+      renderReport();
+      if (scope === "worklog") renderFitnessAppointments(log);
+      else renderWorklogAppointments(log);
+    };
+    remove.onclick = () => {
+      items.splice(itemIndex, 1);
+      if (!items.length) items.push(createScheduleItem());
+      syncScheduleEntryText(entry);
+      saveState();
+      renderWorklogAppointments(log);
+      renderFitnessAppointments(log);
+      renderReport();
+    };
   });
+  row.querySelector(".appointment-merge-button").onclick = () => {
+    items.push(createScheduleItem());
+    syncScheduleEntryText(entry);
+    saveState();
+    renderWorklogAppointments(log);
+    renderFitnessAppointments(log);
+  };
+  return row;
 }
 
 function updateEntry(index, field, value) {
@@ -1400,7 +1471,7 @@ function updateEntry(index, field, value) {
 }
 
 function addEntry() {
-  const emptySlot = getSelectedLog().schedule.find((entry) => !entry.text.trim());
+  const emptySlot = getSelectedLog().schedule.find((entry) => !getScheduleEntryText(entry));
   if (emptySlot) {
     saveState();
     renderEntries();
@@ -1466,21 +1537,33 @@ function syncWorklogTaskTimeHintToSchedule(task, log) {
   if (!hint || !hint.text) return;
   if (existing && existing.slot !== hint.slot) {
     const previous = findScheduleEntry(log, existing.slot);
-    if (previous && previous.text === existing.text) previous.text = "";
+    if (previous) {
+      normalizeScheduleEntryItems(previous);
+      previous.items = previous.items.filter((item) => item.text !== existing.text);
+      if (!previous.items.length) previous.items.push(createScheduleItem());
+      syncScheduleEntryText(previous);
+    }
   }
   const entry = ensureWorklogAppointmentSlot(log, hint.slot);
-  if (existing?.slot === hint.slot && entry.text === existing.text) {
-    entry.text = hint.text;
+  normalizeScheduleEntryItems(entry);
+  if (existing?.slot === hint.slot && getScheduleEntryText(entry).includes(existing.text)) {
+    const linkedItem = entry.items.find((item) => item.text === existing.text);
+    if (linkedItem) {
+      linkedItem.text = hint.text;
+      linkedItem.type = inferScheduleType(hint.text);
+    }
+    syncScheduleEntryText(entry);
     log.autoTaskScheduleLinks[linkId] = { type: "task", slot: hint.slot, text: hint.text };
     normalizeWorklogSchedule(log);
     return;
   }
-  const current = String(entry.text || "").trim();
+  const current = getScheduleEntryText(entry);
   if (!current) {
-    entry.text = hint.text;
+    entry.items = [createScheduleItem(hint.text)];
   } else if (!current.includes(hint.text)) {
-    entry.text = `${current} / ${hint.text}`;
+    entry.items.push(createScheduleItem(hint.text));
   }
+  syncScheduleEntryText(entry);
   log.autoTaskScheduleLinks[linkId] = { type: "task", slot: hint.slot, text: hint.text };
   normalizeWorklogSchedule(log);
 }
@@ -1491,7 +1574,12 @@ function removeLinkedSchedule(task, log) {
   const existing = log.autoTaskScheduleLinks[linkId];
   if (!existing) return;
   const entry = findScheduleEntry(log, existing.slot);
-  if (entry && entry.text === existing.text) entry.text = "";
+  if (entry) {
+    normalizeScheduleEntryItems(entry);
+    entry.items = entry.items.filter((item) => item.text !== existing.text);
+    if (!entry.items.length) entry.items.push(createScheduleItem());
+    syncScheduleEntryText(entry);
+  }
   delete log.autoTaskScheduleLinks[linkId];
 }
 
@@ -1499,7 +1587,7 @@ function ensureWorklogAppointmentSlot(log, slot) {
   log.schedule ||= [];
   let entry = findScheduleEntry(log, slot);
   if (!entry) {
-    entry = { time: slot, text: "", status: "예정", mergeDown: false };
+    entry = { time: slot, text: "", status: "예정", mergeDown: false, items: [createScheduleItem()] };
     log.schedule.push(entry);
   }
   normalizeWorklogSchedule(log);
@@ -1513,9 +1601,9 @@ function findScheduleEntry(log, slot) {
 function normalizeWorklogSchedule(log) {
   const byTime = new Map((log.schedule || []).map((entry) => [entry.time, entry]));
   log.schedule = getWorklogScheduleSlots(log).map((time) => {
-    const entry = byTime.get(time) || { time, text: "", status: "예정", mergeDown: false };
+    const entry = byTime.get(time) || { time, text: "", status: "예정", mergeDown: false, items: [createScheduleItem()] };
     entry.time = time;
-    entry.text ||= "";
+    normalizeScheduleEntryItems(entry);
     entry.status ||= "예정";
     entry.mergeDown ||= false;
     return entry;
@@ -1526,7 +1614,7 @@ function getWorklogScheduleSlots(log) {
   const unit = log?.scheduleUnit === "60" ? 60 : 30;
   const baseTimes = getScheduleTimes(getEmployeeWorkHours(log?.employeeId));
   const scheduleTimes = (log?.schedule || [])
-    .filter((entry) => String(entry?.text || "").trim())
+    .filter((entry) => getScheduleEntryText(entry))
     .map((entry) => entry.time)
     .filter(Boolean);
   const taskTimes = (log?.tasks || []).map((task) => extractWorklogTaskTimeHint(task.text)?.slot).filter(Boolean);
@@ -1571,7 +1659,7 @@ function getNextScheduleEntry(log) {
   const now = new Date();
   const current = getActiveDateKey() === todayKey ? now.getHours() * 60 + now.getMinutes() : 0;
   return (log.schedule || [])
-    .filter((entry) => entry.text?.trim() && timeToMinutes(entry.time) >= current)
+    .filter((entry) => getScheduleEntryText(entry) && timeToMinutes(entry.time) >= current)
     .sort((a, b) => timeToMinutes(a.time) - timeToMinutes(b.time))[0];
 }
 
@@ -1857,7 +1945,7 @@ function renderReport() {
   const employee = getSelectedEmployee();
   const log = getSelectedLog();
   const tasks = (log.tasks || []).filter((task) => task.text.trim());
-  const entries = (log.schedule || []).filter((entry) => entry.text.trim());
+  const entries = (log.schedule || []).filter((entry) => getScheduleEntryText(entry));
   const attendance = state.attendance?.[getActiveDateKey()] || [];
   const employeeAttendance = attendance.find((item) => item.employeeId === employee.id);
   const completed = tasks.filter((task) => task.done || task.status === "완료");
@@ -1872,7 +1960,7 @@ function renderReport() {
     ...priorityOptions.flatMap(([priority]) => tasks.filter((task) => task.priority === priority).map((task) => `- ${priority} ${task.text} (${task.status}${task.done ? ", 완료" : ""})`)),
     "",
     `2. 시간별 업무흐름: ${entries.length}건`,
-    ...entries.map((entry) => `- ${entry.time || "--:--"} ${entry.text} (${entry.status})`),
+    ...entries.map((entry) => `- ${entry.time || "--:--"} ${getScheduleEntryText(entry)} (${entry.status})`),
     "",
     "3. 피트니스 운영기록",
     ...formatFitnessOpsReport(log.fitnessOps),
@@ -1881,7 +1969,7 @@ function renderReport() {
     ...completed.map((task) => `- ${task.priority} ${task.text}`),
     "",
     `5. 이슈/지원 필요: ${blocked.length}건`,
-    ...blocked.map((entry) => `- ${entry.text} (${entry.status})`),
+    ...blocked.map((entry) => `- ${entry.text || getScheduleEntryText(entry)} (${entry.status})`),
     "",
     "6. 업무보고",
     log.report || "-",

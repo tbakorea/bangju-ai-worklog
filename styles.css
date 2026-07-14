@@ -4227,3 +4227,79 @@ textarea:focus-visible {
     min-height: 34px;
   }
 }
+
+.appointment-items {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.appointment-item {
+  display: grid;
+  grid-template-columns: minmax(62px, 0.35fr) minmax(0, 1fr) 20px;
+  gap: 4px;
+  align-items: center;
+  min-width: 0;
+}
+
+.schedule-type-select,
+.schedule-text-input {
+  min-width: 0;
+  min-height: 28px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--ink);
+  padding: 0 2px;
+  font-weight: 800;
+  outline: 0;
+}
+
+.schedule-type-select {
+  border-right: 1px solid var(--hairline);
+  color: var(--fitness-green);
+  font-size: 12px;
+  font-weight: 950;
+}
+
+.schedule-text-input {
+  font-size: 15px;
+}
+
+.schedule-item-delete {
+  width: 18px;
+  height: 18px;
+  min-height: 18px;
+  border: 0;
+  background: transparent;
+  color: rgba(185, 132, 132, 0.46);
+  padding: 0;
+  font-size: 13px;
+  font-weight: 950;
+}
+
+.multi-appointment-row.is-filled {
+  align-items: start;
+  padding-top: 3px;
+  padding-bottom: 3px;
+}
+
+@media (max-width: 760px) {
+  .appointment-item {
+    grid-template-columns: minmax(48px, 0.35fr) minmax(0, 1fr) 18px;
+    gap: 3px;
+  }
+
+  .schedule-type-select,
+  .schedule-text-input {
+    min-height: 25px;
+  }
+
+  .schedule-type-select {
+    font-size: 10px;
+  }
+
+  .schedule-text-input {
+    font-size: 12px;
+  }
+}
