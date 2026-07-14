@@ -398,7 +398,7 @@ function animateDateTitle(delta, nextDateKey) {
 function formatKoreanDate(key) {
   const date = parseDateKey(key);
   const weekdays = ["일", "월", "화", "수", "목", "금", "토"];
-  return `${date.getFullYear()}.${String(date.getMonth() + 1).padStart(2, "0")}.${String(date.getDate()).padStart(2, "0")} (${weekdays[date.getDay()]})`;
+  return `${date.getFullYear()}.${String(date.getMonth() + 1).padStart(2, "0")}.${String(date.getDate()).padStart(2, "0")}(${weekdays[date.getDay()]})`;
 }
 
 function formatShortDate(key) {
@@ -1679,6 +1679,8 @@ function renderReport() {
 function switchView(view) {
   document.querySelectorAll(".worklog-tabs button").forEach((button) => button.classList.toggle("is-active", button.dataset.view === view));
   document.querySelectorAll(".worklog-view").forEach((panel) => panel.classList.toggle("is-active", panel.id === `view-${view}`));
+  const menuSelect = document.getElementById("mainMenuWheelSelect");
+  if (menuSelect && menuSelect.value !== view) menuSelect.value = view;
   renderGlobalEmployeeIdentity();
   renderOsDashboard();
   renderAiCoach();
@@ -1709,6 +1711,9 @@ function escapeHtml(value = "") {
 
 document.querySelectorAll(".worklog-tabs button").forEach((button) => {
   button.onclick = () => switchView(button.dataset.view);
+});
+document.getElementById("mainMenuWheelSelect")?.addEventListener("change", (event) => {
+  switchView(event.target.value);
 });
 
 document.getElementById("settingsGearButton").onclick = () => {

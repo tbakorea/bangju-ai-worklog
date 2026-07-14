@@ -3707,3 +3707,69 @@ textarea:focus-visible {
     padding-bottom: 5px;
   }
 }
+
+.worklog-tabs {
+  display: none !important;
+}
+
+.worklog-header {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto auto;
+  align-items: stretch;
+}
+
+.main-menu-wheel-select {
+  align-self: center;
+  min-width: 104px;
+  min-height: 42px;
+  border: 1px solid var(--hardline);
+  border-radius: 0;
+  background: var(--nordic-sheet);
+  color: var(--ink);
+  padding: 0 28px 0 12px;
+  font-size: 13px;
+  font-weight: 950;
+  text-align: center;
+  cursor: pointer;
+}
+
+.main-menu-wheel-select:focus-visible {
+  outline: 2px solid var(--swiss-blue);
+  outline-offset: 2px;
+}
+
+@media (max-width: 760px) {
+  .worklog-header {
+    grid-template-columns: 30px minmax(0, 1fr) 82px auto;
+    gap: 7px;
+  }
+
+  .worklog-header > div:first-child {
+    min-width: 0;
+  }
+
+  .worklog-header p {
+    overflow: hidden;
+    max-width: 100%;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .main-menu-wheel-select {
+    min-width: 0;
+    width: 82px;
+    min-height: 34px;
+    padding: 0 18px 0 8px;
+    font-size: 12px;
+  }
+
+  .worklog-summary-date span {
+    font-size: clamp(19px, 5.6vw, 28px);
+    letter-spacing: 0;
+    white-space: nowrap;
+  }
+
+  .worklog-summary-date #selectedDateButton {
+    padding-inline: 3px;
+  }
+}
