@@ -3594,3 +3594,65 @@ textarea:focus-visible {
     min-width: 58px;
   }
 }
+
+@media (max-width: 760px) {
+  .worklog-today-title {
+    grid-template-rows: 42px 28px;
+    min-height: 70px;
+    align-items: stretch;
+  }
+
+  .worklog-today-title::before {
+    grid-row: 1 / 3;
+    width: 34px;
+  }
+
+  .worklog-summary-date {
+    min-height: 42px;
+    padding-left: 40px;
+  }
+
+  .worklog-summary-date #selectedDateButton {
+    min-height: 38px;
+  }
+
+  .date-arrow-button {
+    min-height: 38px !important;
+  }
+
+  .worklog-title-actions {
+    min-height: 28px;
+    height: 28px;
+    overflow: hidden;
+  }
+
+  .worklog-title-actions .worklog-control-strip {
+    min-height: 28px;
+    height: 28px;
+  }
+
+  .worklog-title-actions .worklog-control-strip label {
+    padding-block: 0;
+  }
+
+  .worklog-title-actions .worklog-control-strip input {
+    min-height: 24px;
+    height: 24px;
+    padding-block: 0;
+  }
+
+  .worklog-title-actions .attendance-cycle-button,
+  .worklog-title-actions .today-jump {
+    min-height: 28px !important;
+    height: 28px;
+  }
+
+  .worklog-completion {
+    height: 28px;
+    align-content: center;
+  }
+
+  .worklog-completion strong {
+    font-size: 20px;
+  }
+}
