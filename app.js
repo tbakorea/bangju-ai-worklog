@@ -202,6 +202,7 @@ function createState() {
 }
 
 function createEmployeeLog(employee = employees[0], profile = defaultProfile) {
+  const workHours = employee.workHours || getEmployeeWorkHours(employee.id, profile);
   return {
     employeeId: employee.id,
     org: employee.org,
@@ -213,7 +214,7 @@ function createEmployeeLog(employee = employees[0], profile = defaultProfile) {
       { priority: "B", text: "", status: "예정", done: false },
       ...Array.from({ length: 12 }, () => ({ priority: "?", text: "", status: "예정", done: false })),
     ],
-    schedule: getScheduleTimes(profile.workHours).map((time) => ({ time, text: "", status: "예정" })),
+    schedule: getScheduleTimes(workHours).map((time) => ({ time, text: "", status: "예정" })),
     scheduleUnit: "30",
     report: "",
     memo: "",
@@ -307,7 +308,16 @@ function getProfileEmployee() {
     name: profile.name || "내 프로필",
     org: profile.org || "(주)방주",
     role: profile.role || "직원",
+    workHours: profile.workHours || defaultProfile.workHours,
   };
+}
+
+function getEmployeeWorkHours(employeeId = state?.selectedEmployeeId, profile = state?.profile) {
+  if (employeeId === "profile-user") {
+    return profile?.workHours || state?.profile?.workHours || defaultProfile.workHours;
+  }
+  const employee = employees.find((item) => item.id === employeeId);
+  return employee?.workHours || defaultProfile.workHours;
 }
 
 function getScheduleTimes(workHoursValue) {
@@ -1421,8 +1431,11 @@ function normalizeWorklogSchedule(log) {
 
 function getWorklogScheduleSlots(log) {
   const unit = log?.scheduleUnit === "60" ? 60 : 30;
-  const baseTimes = getScheduleTimes(state?.profile?.workHours || defaultProfile.workHours);
-  const scheduleTimes = (log?.schedule || []).map((entry) => entry.time).filter(Boolean);
+  const baseTimes = getScheduleTimes(getEmployeeWorkHours(log?.employeeId));
+  const scheduleTimes = (log?.schedule || [])
+    .filter((entry) => String(entry?.text || "").trim())
+    .map((entry) => entry.time)
+    .filter(Boolean);
   const taskTimes = (log?.tasks || []).map((task) => extractWorklogTaskTimeHint(task.text)?.slot).filter(Boolean);
   const allTimes = [...baseTimes, ...scheduleTimes, ...taskTimes];
   let start = 8 * 60;
