@@ -178,6 +178,24 @@
             </article>
           </div>
         </section>
+        <article class="planner-section fitness-ops-section">
+          <h3>피트니스 운영기록</h3>
+          <div class="fitness-ops-grid">
+            <label>정규 PT <input data-fitness-field="ptRegular" type="number" min="0" inputmode="numeric" /></label>
+            <label>무료 PT <input data-fitness-field="ptFree" type="number" min="0" inputmode="numeric" /></label>
+            <label>기타 PT <input data-fitness-field="ptOther" type="number" min="0" inputmode="numeric" /></label>
+            <label>신규 <input data-fitness-field="customerNew" type="number" min="0" inputmode="numeric" /></label>
+            <label>재등록 <input data-fitness-field="customerRenewal" type="number" min="0" inputmode="numeric" /></label>
+            <label>일일권 <input data-fitness-field="dayPass" type="number" min="0" inputmode="numeric" /></label>
+            <label>상담 <input data-fitness-field="consultation" type="number" min="0" inputmode="numeric" /></label>
+            <label>아웃바운드 <input data-fitness-field="outbound" type="number" min="0" inputmode="numeric" /></label>
+            <label>외부영업 <input data-fitness-field="outsideSales" type="number" min="0" inputmode="numeric" /></label>
+          </div>
+          <div class="fitness-ops-notes">
+            <label>근무/운영 메모 <textarea data-fitness-field="shiftNote" rows="2" placeholder="오픈, 센터관리, 마감, 시설 이슈 등"></textarea></label>
+            <label>특이사항 보고 <textarea data-fitness-field="specialReport" rows="2" placeholder="고객 민원, 안전, 시설, 인수인계가 필요한 내용을 기록"></textarea></label>
+          </div>
+        </article>
         <article class="planner-section">
           <h3>업무보고</h3>
           <textarea id="employeeReport" rows="7" placeholder="오늘 진행한 업무, 완료사항, 이슈, 지원 요청을 보고 형식으로 정리합니다."></textarea>

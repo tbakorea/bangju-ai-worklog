@@ -85,6 +85,23 @@ const employees = [
   { id: "dongcheon-site-manager", name: "동천체육관현장 소장", org: "(주)비제이종합건설 / 동천체육관현장", role: "현장소장" },
   { id: "beyond-company-director", name: "비욘드컴퍼니 총괄", org: "(주)비욘드컴퍼니", role: "총괄관리" },
 ];
+
+function createFitnessOps() {
+  return {
+    ptRegular: "",
+    ptFree: "",
+    ptOther: "",
+    customerNew: "",
+    customerRenewal: "",
+    dayPass: "",
+    consultation: "",
+    outbound: "",
+    outsideSales: "",
+    shiftNote: "",
+    specialReport: "",
+  };
+}
+
 const beyondAssets = [
   {
     building: "루클라쎄 1차",
@@ -219,6 +236,7 @@ function createEmployeeLog(employee = employees[0], profile = defaultProfile) {
     report: "",
     memo: "",
     record: "",
+    fitnessOps: createFitnessOps(),
   };
 }
 
@@ -248,6 +266,7 @@ function normalizeState() {
     log.report ||= log.record || "";
     log.memo ||= "";
     log.record ||= "";
+    log.fitnessOps = { ...createFitnessOps(), ...(log.fitnessOps || {}) };
   });
   if (state.entries?.[todayKey]?.length && getActiveDateKey() === todayKey && !state.employeeLogs[todayKey][employees[0].id].schedule.some((item) => item.text)) {
     state.employeeLogs[todayKey][employees[0].id].schedule = state.entries[todayKey].map((entry) => ({
@@ -1483,8 +1502,29 @@ function getNextScheduleEntry(log) {
 }
 
 function renderEmployeeDetailFields() {
-  document.getElementById("employeeReport").value = getSelectedLog().report || "";
-  document.getElementById("employeeMemo").value = getSelectedLog().memo || "";
+  const log = getSelectedLog();
+  document.getElementById("employeeReport").value = log.report || "";
+  document.getElementById("employeeMemo").value = log.memo || "";
+  renderFitnessOperations(log);
+}
+
+function renderFitnessOperations(log = getSelectedLog()) {
+  log.fitnessOps = { ...createFitnessOps(), ...(log.fitnessOps || {}) };
+  document.querySelectorAll("[data-fitness-field]").forEach((field) => {
+    field.value = log.fitnessOps[field.dataset.fitnessField] || "";
+  });
+}
+
+function formatFitnessOpsReport(fitnessOps = createFitnessOps()) {
+  const ops = { ...createFitnessOps(), ...(fitnessOps || {}) };
+  const ptTotal = ["ptRegular", "ptFree", "ptOther"].reduce((sum, key) => sum + Number(ops[key] || 0), 0);
+  const customerTotal = ["customerNew", "customerRenewal", "dayPass", "consultation", "outbound", "outsideSales"].reduce((sum, key) => sum + Number(ops[key] || 0), 0);
+  return [
+    `PT수업: 정규 ${ops.ptRegular || 0}, 무료 ${ops.ptFree || 0}, 기타 ${ops.ptOther || 0}, 합계 ${ptTotal}`,
+    `고객관리: 신규 ${ops.customerNew || 0}, 재등록 ${ops.customerRenewal || 0}, 일일권 ${ops.dayPass || 0}, 상담 ${ops.consultation || 0}, 아웃바운드 ${ops.outbound || 0}, 외부영업 ${ops.outsideSales || 0}, 합계 ${customerTotal}`,
+    `근무/운영 메모: ${ops.shiftNote || "-"}`,
+    `특이사항 보고: ${ops.specialReport || "-"}`,
+  ];
 }
 
 function renderClockPanel() {
@@ -1675,16 +1715,19 @@ function renderReport() {
     `2. 시간별 업무흐름: ${entries.length}건`,
     ...entries.map((entry) => `- ${entry.time || "--:--"} ${entry.text} (${entry.status})`),
     "",
-    `3. 완료 업무: ${completed.length}건`,
+    "3. 피트니스 운영기록",
+    ...formatFitnessOpsReport(log.fitnessOps),
+    "",
+    `4. 완료 업무: ${completed.length}건`,
     ...completed.map((task) => `- ${task.priority} ${task.text}`),
     "",
-    `4. 이슈/지원 필요: ${blocked.length}건`,
+    `5. 이슈/지원 필요: ${blocked.length}건`,
     ...blocked.map((entry) => `- ${entry.text} (${entry.status})`),
     "",
-    "5. 업무보고",
+    "6. 업무보고",
     log.report || "-",
     "",
-    "6. 메모",
+    "7. 메모",
     log.memo || "-",
   ].join("\n");
 }
@@ -1842,6 +1885,15 @@ document.getElementById("employeeMemo").oninput = (event) => {
   saveState();
   renderReport();
 };
+document.querySelectorAll("[data-fitness-field]").forEach((field) => {
+  field.oninput = (event) => {
+    const log = getSelectedLog();
+    log.fitnessOps = { ...createFitnessOps(), ...(log.fitnessOps || {}) };
+    log.fitnessOps[event.target.dataset.fitnessField] = event.target.value;
+    saveState({ fastSave: true });
+    renderReport();
+  };
+});
 document.getElementById("reportTone").onchange = (event) => {
   state.reportTone = event.target.value;
   saveState();
