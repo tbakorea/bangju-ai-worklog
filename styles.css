@@ -3439,3 +3439,85 @@ textarea:focus-visible {
     font-weight: 820;
   }
 }
+
+@media (max-width: 760px) {
+  .worklog-calendar-popover {
+    position: fixed;
+    top: calc(env(safe-area-inset-top) + 126px);
+    right: 10px;
+    bottom: auto;
+    left: 10px;
+    width: auto;
+    max-height: calc(100dvh - env(safe-area-inset-top) - 138px);
+    overflow: auto;
+    padding: 8px 10px 12px;
+    transform: translateY(8px) scale(0.99);
+    overscroll-behavior: contain;
+  }
+
+  .worklog-calendar-popover.is-open {
+    transform: translateY(0) scale(1);
+  }
+
+  .calendar-grabber {
+    display: none;
+  }
+
+  .calendar-topline {
+    margin-bottom: 7px;
+  }
+
+  .calendar-topline strong {
+    font-size: 15px;
+  }
+
+  .calendar-topline span {
+    font-size: 10px;
+  }
+
+  .calendar-topline button,
+  .calendar-footer button {
+    min-height: 28px;
+    padding: 4px 10px;
+    font-size: 11px;
+  }
+
+  .calendar-header {
+    grid-template-columns: 34px minmax(0, 1fr) 34px;
+    gap: 6px;
+    margin-bottom: 6px;
+  }
+
+  .calendar-header button,
+  .calendar-day-grid button {
+    min-height: 34px;
+    font-size: 13px;
+  }
+
+  .calendar-month-grid {
+    gap: 3px;
+    margin-bottom: 6px;
+  }
+
+  .calendar-month-grid button {
+    min-height: 26px;
+    font-size: 10px;
+  }
+
+  .calendar-weekdays {
+    margin-bottom: 3px;
+    font-size: 10px;
+  }
+
+  .calendar-day-grid {
+    gap: 4px;
+  }
+
+  .calendar-day-grid span {
+    min-height: 34px;
+  }
+
+  .calendar-footer {
+    margin-top: 8px;
+  }
+}
