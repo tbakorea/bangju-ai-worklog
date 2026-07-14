@@ -102,6 +102,15 @@ function createFitnessOps() {
   };
 }
 
+function createFitnessGoals() {
+  return {
+    monthlyRevenueTarget: "20000000",
+    memberTarget: "260",
+    ptTarget: "180",
+    consultationTarget: "80",
+  };
+}
+
 const beyondAssets = [
   {
     building: "루클라쎄 1차",
@@ -214,6 +223,7 @@ function createState() {
         { employeeId: "sales-office-staff", org: "홍보관", role: "분양/임대", name: "홍보관 담당", status: "정상", note: "" },
       ],
     },
+    fitnessGoals: createFitnessGoals(),
     reportTone: "executive",
   };
 }
@@ -248,6 +258,7 @@ function normalizeState() {
     state.selectedEmployeeId = "beyond-fitness-manager";
   }
   state.selectedDateKey ||= todayKey;
+  state.fitnessGoals = { ...createFitnessGoals(), ...(state.fitnessGoals || {}) };
   state.employeeLogs ||= {};
   state.employeeLogs[getActiveDateKey()] ||= {};
   getEmployeeOptions().forEach((employee) => {
@@ -1655,6 +1666,91 @@ function renderManagement() {
   ].map(([label, value]) => `<article><span>${label}</span><strong>${value}</strong></article>`).join("");
 }
 
+function numberValue(value) {
+  const number = Number(value || 0);
+  return Number.isFinite(number) ? number : 0;
+}
+
+function getFitnessOpsSummary() {
+  const logs = Object.values(state.employeeLogs?.[getActiveDateKey()] || {});
+  return logs.reduce((summary, log) => {
+    const ops = { ...createFitnessOps(), ...(log.fitnessOps || {}) };
+    summary.ptRegular += numberValue(ops.ptRegular);
+    summary.ptFree += numberValue(ops.ptFree);
+    summary.ptOther += numberValue(ops.ptOther);
+    summary.customerNew += numberValue(ops.customerNew);
+    summary.customerRenewal += numberValue(ops.customerRenewal);
+    summary.dayPass += numberValue(ops.dayPass);
+    summary.consultation += numberValue(ops.consultation);
+    summary.outbound += numberValue(ops.outbound);
+    summary.outsideSales += numberValue(ops.outsideSales);
+    if (ops.specialReport) summary.specialReports.push(ops.specialReport);
+    if (ops.shiftNote) summary.shiftNotes.push(ops.shiftNote);
+    return summary;
+  }, {
+    ptRegular: 0,
+    ptFree: 0,
+    ptOther: 0,
+    customerNew: 0,
+    customerRenewal: 0,
+    dayPass: 0,
+    consultation: 0,
+    outbound: 0,
+    outsideSales: 0,
+    specialReports: [],
+    shiftNotes: [],
+  });
+}
+
+function renderFitnessDashboard() {
+  const summary = getFitnessOpsSummary();
+  const goals = { ...createFitnessGoals(), ...(state.fitnessGoals || {}) };
+  const ptTotal = summary.ptRegular + summary.ptFree + summary.ptOther;
+  const customerActions = summary.customerNew + summary.customerRenewal + summary.dayPass + summary.consultation + summary.outbound + summary.outsideSales;
+  const consultationTarget = Math.max(1, numberValue(goals.consultationTarget));
+  const ptTarget = Math.max(1, numberValue(goals.ptTarget));
+  const memberTarget = Math.max(1, numberValue(goals.memberTarget));
+  const membersCurrent = 240 + summary.customerNew + summary.customerRenewal;
+  const consultationRate = Math.min(100, Math.round((summary.consultation / consultationTarget) * 100));
+  const ptRate = Math.min(100, Math.round((ptTotal / ptTarget) * 100));
+  const memberRate = Math.min(100, Math.round((membersCurrent / memberTarget) * 100));
+
+  document.querySelectorAll("[data-fitness-goal]").forEach((field) => {
+    field.value = goals[field.dataset.fitnessGoal] || "";
+  });
+
+  document.getElementById("fitnessKpiGrid").innerHTML = [
+    ["회원", `${membersCurrent}/${goals.memberTarget || 0}`, `${memberRate}%`],
+    ["PT", `${ptTotal}/${goals.ptTarget || 0}`, `${ptRate}%`],
+    ["상담", `${summary.consultation}/${goals.consultationTarget || 0}`, `${consultationRate}%`],
+    ["영업행동", `${customerActions}건`, "오늘"],
+    ["특이사항", `${summary.specialReports.length}건`, summary.specialReports.length ? "확인" : "정상"],
+    ["월매출 목표", `${Math.round(numberValue(goals.monthlyRevenueTarget) / 10000).toLocaleString()}만`, "목표"],
+  ].map(([label, value, meta]) => `<article><span>${label}</span><strong>${value}</strong><em>${meta}</em></article>`).join("");
+
+  const coaching = [
+    ["영업", summary.consultation < consultationTarget / 30 ? "오늘 상담 기록이 낮습니다. 신규 문의, 체험권, 기존 회원 재등록 대상자를 우선 콜백하세요." : "상담 활동이 기록되고 있습니다. 상담 결과를 등록/보류/재연락으로 분류하세요."],
+    ["운영", summary.shiftNotes.length ? "운영 메모가 있습니다. 마감 전 시설/청결/소모품 조치 여부를 확인하세요." : "오픈·센터관리·마감 체크가 비어 있습니다. 시간별일정에 운영 루틴을 배치하세요."],
+    ["관리", summary.specialReports.length ? "특이사항 보고가 있습니다. 고객 민원, 시설, 안전 이슈는 담당자와 처리기한을 지정하세요." : "특이사항이 없더라도 시설·고객·매출 이상 여부를 한 줄로 남기면 인수인계 품질이 올라갑니다."],
+    ["수익", ptTotal < ptTarget / 30 ? "PT 수행/상담 기록이 목표 대비 낮습니다. 무료 PT 후 정규 전환 스크립트를 적용하세요." : "PT 활동이 목표 흐름에 있습니다. 전환율과 객단가를 같이 기록하세요."],
+  ];
+  document.getElementById("fitnessCoachList").innerHTML = coaching.map(([title, text]) => `<article><b>${title}</b><span>${text}</span></article>`).join("");
+
+  document.getElementById("fitnessManualList").innerHTML = [
+    ["오픈", "조명·냉난방·음악·샤워실·안전 상태를 확인하고 06:00 전후 첫 회원 응대 준비"],
+    ["영업", "신규 문의는 당일 연락, 상담 후 다음 행동을 시간별일정에 예약, 재등록 후보는 만료 14일 전부터 관리"],
+    ["PT", "무료 PT → 니즈진단 → 목표제안 → 결제안내 → 다음 수업 예약 순서로 기록"],
+    ["마감", "정산, 탈의실/샤워실, 소모품, 기구 정리, 미해결 이슈 인수인계"],
+  ].map(([title, text]) => `<article><b>${title}</b><span>${text}</span></article>`).join("");
+
+  document.getElementById("fitnessAgentList").innerHTML = [
+    ["매출", "상담·PT·재등록 숫자가 목표선 아래면 영업 코칭을 우선 표시"],
+    ["운영", "운영 메모와 특이사항이 비어 있으면 마감 전 체크리스트 입력 유도"],
+    ["직원", "업무 완료율, 시간별일정 공백, 반복 미완료를 기준으로 개인 코칭 생성"],
+    ["대표 보고", "하루 종료 시 KPI, 이슈, 다음 조치를 보고서 초안에 자동 정리"],
+  ].map(([title, text]) => `<article><b>${title}</b><span>${text}</span></article>`).join("");
+}
+
 function renderOrganization() {
   const node = document.getElementById("organizationTree");
   const companyHtml = bangjuOrganization.map((company) => `
@@ -1740,6 +1836,7 @@ function switchView(view) {
   renderGlobalEmployeeIdentity();
   renderOsDashboard();
   renderAiCoach();
+  renderFitnessDashboard();
   renderAttendance();
   renderManagement();
   renderOrganization();
@@ -1749,6 +1846,7 @@ function renderAll() {
   renderGlobalEmployeeIdentity();
   renderOsDashboard();
   renderAiCoach();
+  renderFitnessDashboard();
   renderEmployeeSelect();
   renderProfileForm();
   renderEntries();
@@ -1892,7 +1990,20 @@ document.querySelectorAll("[data-fitness-field]").forEach((field) => {
     log.fitnessOps[event.target.dataset.fitnessField] = event.target.value;
     saveState({ fastSave: true });
     renderReport();
+    renderFitnessDashboard();
   };
+});
+document.querySelectorAll("[data-fitness-goal]").forEach((field) => {
+  field.oninput = (event) => {
+    state.fitnessGoals = { ...createFitnessGoals(), ...(state.fitnessGoals || {}) };
+    state.fitnessGoals[event.target.dataset.fitnessGoal] = event.target.value;
+    saveState({ fastSave: true });
+    renderFitnessDashboard();
+  };
+});
+document.getElementById("fitnessCoachButton")?.addEventListener("click", () => {
+  switchView("fitness");
+  alert("피트니스 OS는 업무일지의 PT, 고객관리, 특이사항, 시간별일정을 기준으로 영업·운영·관리 코칭을 생성합니다.");
 });
 document.getElementById("reportTone").onchange = (event) => {
   state.reportTone = event.target.value;

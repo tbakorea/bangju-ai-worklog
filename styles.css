@@ -3871,3 +3871,211 @@ textarea:focus-visible {
     min-height: 44px;
   }
 }
+
+.fitness-os-view {
+  display: none;
+}
+
+.fitness-os-view.is-active {
+  display: block;
+}
+
+.fitness-os-hero {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  border-bottom: 1px solid var(--hardline);
+  padding-bottom: 14px;
+  margin-bottom: 14px;
+}
+
+.fitness-os-hero p {
+  margin: 0 0 4px;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.fitness-os-hero h2 {
+  margin: 0;
+  color: var(--ink);
+  font-size: clamp(24px, 4vw, 42px);
+  font-weight: 950;
+  line-height: 1;
+}
+
+.fitness-os-hero button {
+  min-height: 42px;
+  border: 1px solid var(--hardline);
+  border-radius: 0;
+  background: var(--fitness-green);
+  color: var(--nordic-sheet);
+  padding: 8px 14px;
+  font-weight: 950;
+}
+
+.fitness-kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  border: 1px solid var(--hardline);
+  border-right: 0;
+  margin-bottom: 14px;
+}
+
+.fitness-kpi-grid article {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+  border-right: 1px solid var(--hardline);
+  background: rgba(252, 252, 247, 0.9);
+  padding: 10px;
+}
+
+.fitness-kpi-grid span,
+.fitness-kpi-grid em {
+  color: var(--muted);
+  font-size: 10px;
+  font-style: normal;
+  font-weight: 900;
+}
+
+.fitness-kpi-grid strong {
+  color: var(--ink);
+  font-size: 24px;
+  font-weight: 950;
+  line-height: 1;
+}
+
+.fitness-os-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr);
+  gap: 14px;
+  margin-bottom: 14px;
+}
+
+.fitness-os-panel {
+  border: 1px solid var(--hardline);
+  background: rgba(252, 252, 247, 0.92);
+  padding: 12px;
+}
+
+.fitness-os-panel h3 {
+  margin: 0 0 10px;
+  color: var(--ink);
+  font-size: 18px;
+  font-weight: 950;
+}
+
+.fitness-goal-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  border: 1px solid var(--hardline);
+  border-bottom: 0;
+}
+
+.fitness-goal-grid label {
+  display: grid;
+  gap: 4px;
+  border-bottom: 1px solid var(--hardline);
+  border-right: 1px solid var(--hardline);
+  color: var(--muted);
+  padding: 8px;
+  font-size: 11px;
+  font-weight: 900;
+}
+
+.fitness-goal-grid label:nth-child(2n) {
+  border-right: 0;
+}
+
+.fitness-goal-grid input {
+  border: 0;
+  background: transparent;
+  color: var(--ink);
+  padding: 0;
+  font-size: 18px;
+  font-weight: 900;
+  outline: 0;
+}
+
+.fitness-coach-list,
+.fitness-manual-list,
+.fitness-agent-list {
+  display: grid;
+  gap: 8px;
+}
+
+.fitness-coach-list article,
+.fitness-manual-list article,
+.fitness-agent-list article {
+  display: grid;
+  gap: 4px;
+  border-left: 5px solid var(--fitness-green);
+  background: rgba(15, 59, 46, 0.045);
+  padding: 8px 10px;
+}
+
+.fitness-coach-list b,
+.fitness-manual-list b,
+.fitness-agent-list b {
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 950;
+}
+
+.fitness-coach-list span,
+.fitness-manual-list span,
+.fitness-agent-list span {
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 750;
+  line-height: 1.35;
+}
+
+@media (max-width: 760px) {
+  .fitness-os-hero {
+    align-items: stretch;
+    padding-bottom: 9px;
+    margin-bottom: 9px;
+  }
+
+  .fitness-os-hero h2 {
+    font-size: 22px;
+  }
+
+  .fitness-os-hero button {
+    min-height: 34px;
+    padding-inline: 10px;
+    font-size: 12px;
+  }
+
+  .fitness-kpi-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    margin-bottom: 9px;
+  }
+
+  .fitness-kpi-grid article {
+    padding: 7px;
+  }
+
+  .fitness-kpi-grid strong {
+    font-size: 18px;
+  }
+
+  .fitness-os-layout {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 9px;
+    margin-bottom: 9px;
+  }
+
+  .fitness-os-panel {
+    padding: 9px;
+  }
+
+  .fitness-goal-grid input {
+    font-size: 15px;
+  }
+}
