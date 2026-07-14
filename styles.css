@@ -2344,6 +2344,7 @@ textarea:focus-visible {
   border: 1px solid var(--hardline);
   border-radius: 0;
   background: var(--nordic-sheet);
+  background-image: none;
   color: var(--ink);
   box-shadow: none;
   font-weight: 850;
@@ -3731,6 +3732,8 @@ textarea:focus-visible {
   font-weight: 950;
   text-align: center;
   cursor: pointer;
+  appearance: none;
+  -webkit-appearance: none;
 }
 
 .main-menu-wheel-select:focus-visible {
@@ -4099,25 +4102,62 @@ textarea:focus-visible {
   padding: 12px;
 }
 
-.fitness-log-title p,
-.fitness-log-title span {
-  margin: 0;
+.fitness-date-nav {
+  display: grid;
+  grid-template-columns: 36px minmax(0, 1fr) 36px auto;
+  gap: 0;
+  align-items: stretch;
+  min-width: 0;
+  flex: 1 1 auto;
+  border: 1px solid var(--hardline);
+  background: var(--nordic-sheet);
+}
+
+.fitness-date-nav button {
+  min-height: 46px;
+  border: 0;
+  border-right: 1px solid var(--hardline);
+  border-radius: 0;
+  background: transparent;
+  color: var(--ink);
+  font-weight: 950;
+}
+
+.fitness-date-nav button:last-of-type {
+  border-right: 0;
+  padding-inline: 10px;
+}
+
+#fitnessDateButton {
+  display: grid;
+  align-content: center;
+  justify-items: start;
+  min-width: 0;
+  padding: 3px 9px;
+  text-align: left;
+}
+
+#fitnessDateButton span {
+  overflow: hidden;
+  color: var(--ink);
+  font-size: clamp(22px, 4vw, 34px);
+  line-height: 0.95;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+#fitnessDateButton small {
+  overflow: hidden;
   color: var(--muted);
-  font-size: 11px;
+  font-size: 10px;
   font-weight: 900;
   letter-spacing: 0.06em;
+  text-overflow: ellipsis;
   text-transform: uppercase;
+  white-space: nowrap;
 }
 
-.fitness-log-title h2 {
-  margin: 2px 0;
-  color: var(--ink);
-  font-size: clamp(24px, 4vw, 40px);
-  font-weight: 950;
-  line-height: 1;
-}
-
-.fitness-log-title button {
+#fitnessLogCoachButton {
   min-height: 38px;
   border: 1px solid var(--hardline);
   border-radius: 0;
@@ -4157,14 +4197,26 @@ textarea:focus-visible {
     padding: 8px;
   }
 
-  .fitness-log-title h2 {
-    font-size: 22px;
+  .fitness-date-nav {
+    grid-template-columns: 28px minmax(0, 1fr) 28px auto;
   }
 
-  .fitness-log-title button {
+  #fitnessLogCoachButton {
     min-height: 32px;
     padding-inline: 10px;
     font-size: 12px;
+  }
+
+  #fitnessDateButton {
+    padding-inline: 5px;
+  }
+
+  #fitnessDateButton span {
+    font-size: clamp(19px, 5.6vw, 28px);
+  }
+
+  #fitnessDateButton small {
+    font-size: 8px;
   }
 
   .fitness-log-task-panel .task-row {

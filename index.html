@@ -194,10 +194,15 @@
 
       <section class="worklog-view fitness-log-view" id="view-fitness-log">
         <div class="fitness-log-title">
-          <div>
-            <p>Beyond Fitness Daily Worklog</p>
-            <h2>피트니스 업무일지</h2>
-            <span id="fitnessWorklogDate"></span>
+          <div class="fitness-date-nav">
+            <button type="button" id="fitnessPrevDateButton" aria-label="이전 날짜">‹</button>
+            <button type="button" id="fitnessDateButton" aria-label="피트니스 업무일지 날짜 선택">
+              <span id="fitnessWorklogDate"></span>
+              <small>Beyond Fitness 업무일지</small>
+            </button>
+            <button type="button" id="fitnessNextDateButton" aria-label="다음 날짜">›</button>
+            <button type="button" id="fitnessTodayButton">오늘</button>
+            <input id="fitnessDateInput" type="date" hidden />
           </div>
           <button type="button" id="fitnessLogCoachButton">AI 코칭</button>
         </div>

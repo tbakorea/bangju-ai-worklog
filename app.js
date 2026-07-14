@@ -1060,6 +1060,10 @@ function renderWorklogToday(log = getSelectedLog()) {
 function renderFitnessWorklog(log = getSelectedLog()) {
   const title = document.getElementById("fitnessWorklogDate");
   if (title) title.textContent = formatKoreanDate(getActiveDateKey());
+  const input = document.getElementById("fitnessDateInput");
+  if (input) input.value = getActiveDateKey();
+  const todayButton = document.getElementById("fitnessTodayButton");
+  if (todayButton) todayButton.hidden = getActiveDateKey() === todayKey;
   const unitButton = document.getElementById("fitnessScheduleUnitButton");
   if (unitButton) unitButton.textContent = log.scheduleUnit === "60" ? "1시간" : "30분";
   renderFitnessTaskBoard(log);
@@ -2008,6 +2012,19 @@ document.getElementById("fitnessScheduleUnitButton")?.addEventListener("click", 
   normalizeEmployeeLogRows(log);
   saveState();
   renderEntries();
+});
+document.getElementById("fitnessPrevDateButton")?.addEventListener("click", () => moveSelectedDate(-1));
+document.getElementById("fitnessNextDateButton")?.addEventListener("click", () => moveSelectedDate(1));
+document.getElementById("fitnessTodayButton")?.addEventListener("click", () => setSelectedDateKey(todayKey));
+document.getElementById("fitnessDateButton")?.addEventListener("click", () => {
+  const input = document.getElementById("fitnessDateInput");
+  if (!input) return;
+  input.value = getActiveDateKey();
+  if (typeof input.showPicker === "function") input.showPicker();
+  else input.click();
+});
+document.getElementById("fitnessDateInput")?.addEventListener("change", (event) => {
+  if (event.target.value) setSelectedDateKey(event.target.value);
 });
 document.getElementById("addEntryButton").onclick = () => {
   alert("시간별 일정 AI 추천은 이후 Beyond Work 오늘 섹션의 추천 로직과 연결합니다.");
