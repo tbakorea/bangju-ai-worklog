@@ -103,6 +103,10 @@ function createFitnessOps() {
   };
 }
 
+function createFitnessOpsManual() {
+  return Object.fromEntries(Object.keys(createFitnessOps()).map((key) => [key, false]));
+}
+
 function createFitnessGoals() {
   return {
     monthlyRevenueTarget: "20000000",
@@ -249,6 +253,7 @@ function createEmployeeLog(employee = employees[0], profile = defaultProfile) {
     memo: "",
     record: "",
     fitnessOps: createFitnessOps(),
+    fitnessOpsManual: createFitnessOpsManual(),
   };
 }
 
@@ -280,6 +285,8 @@ function normalizeState() {
     log.memo ||= "";
     log.record ||= "";
     log.fitnessOps = { ...createFitnessOps(), ...(log.fitnessOps || {}) };
+    log.fitnessOpsManual = { ...createFitnessOpsManual(), ...(log.fitnessOpsManual || {}) };
+    syncFitnessOpsFromSchedule(log);
   });
   if (state.entries?.[todayKey]?.length && getActiveDateKey() === todayKey && !state.employeeLogs[todayKey][employees[0].id].schedule.some((item) => getScheduleEntryText(item))) {
     state.employeeLogs[todayKey][employees[0].id].schedule = state.entries[todayKey].map((entry) => ({
@@ -1060,6 +1067,7 @@ function renderWorklogToday(log = getSelectedLog()) {
 }
 
 function renderFitnessWorklog(log = getSelectedLog()) {
+  syncFitnessOpsFromSchedule(log);
   const title = document.getElementById("fitnessWorklogDate");
   if (title) title.textContent = formatKoreanDate(getActiveDateKey());
   const input = document.getElementById("fitnessDateInput");
@@ -1070,6 +1078,7 @@ function renderFitnessWorklog(log = getSelectedLog()) {
   if (unitButton) unitButton.textContent = log.scheduleUnit === "60" ? "1시간" : "30분";
   renderFitnessTaskBoard(log);
   renderFitnessAppointments(log);
+  renderFitnessOperations(log);
 }
 
 function renderWorklogSummary(log) {
@@ -1653,9 +1662,13 @@ function closeFitnessScheduleEditor() {
 }
 
 function rerenderScheduleAfterFitnessEdit(log) {
+  syncFitnessOpsFromSchedule(log);
+  saveState({ fastSave: true });
   renderWorklogSummary(log);
   renderWorklogAppointments(log);
   renderFitnessAppointments(log);
+  renderFitnessOperations(log);
+  renderFitnessDashboard();
   renderTodayContext();
   renderReport();
 }
@@ -1868,10 +1881,77 @@ function renderEmployeeDetailFields() {
 }
 
 function renderFitnessOperations(log = getSelectedLog()) {
+  syncFitnessOpsFromSchedule(log);
   log.fitnessOps = { ...createFitnessOps(), ...(log.fitnessOps || {}) };
   document.querySelectorAll("[data-fitness-field]").forEach((field) => {
     field.value = log.fitnessOps[field.dataset.fitnessField] || "";
   });
+}
+
+function syncFitnessOpsFromSchedule(log = getSelectedLog()) {
+  if (!log) return;
+  log.fitnessOps = { ...createFitnessOps(), ...(log.fitnessOps || {}) };
+  log.fitnessOpsManual = { ...createFitnessOpsManual(), ...(log.fitnessOpsManual || {}) };
+  const autoOps = collectFitnessOpsFromSchedule(log);
+  Object.entries(autoOps).forEach(([key, value]) => {
+    if (log.fitnessOpsManual[key]) return;
+    log.fitnessOps[key] = value ? String(value) : "";
+  });
+}
+
+function collectFitnessOpsFromSchedule(log = getSelectedLog()) {
+  const totals = {
+    ptRegular: 0,
+    ptFree: 0,
+    ptOther: 0,
+    customerNew: 0,
+    customerRenewal: 0,
+    dayPass: 0,
+    consultation: 0,
+    outbound: 0,
+    outsideSales: 0,
+  };
+  (log.schedule || []).forEach((entry) => {
+    normalizeScheduleEntryItems(entry).forEach((item) => {
+      const text = String(item.text || "").trim();
+      if (!text) return;
+      applyFitnessOpsItemCount(totals, item.type || inferScheduleType(text), text);
+    });
+  });
+  return totals;
+}
+
+function applyFitnessOpsItemCount(totals, type = "업무", text = "") {
+  const source = `${type} ${text}`;
+  const count = countFitnessScheduleUnits(text);
+  if (type === "PT" || /pt|p\/t|피티|수업|운동지도/i.test(source)) {
+    if (/무료|체험|서비스|무상/.test(source)) totals.ptFree += count;
+    else if (/기타|보강|대체/.test(source)) totals.ptOther += count;
+    else totals.ptRegular += count;
+  }
+  if (/신규|신입|첫등록|등록상담/.test(source)) totals.customerNew += count;
+  if (/재등록|재가입|연장|갱신/.test(source)) totals.customerRenewal += count;
+  if (/일일권|1일권|데이패스|day\s*pass/i.test(source)) totals.dayPass += count;
+  if (type === "고객관리" || /상담|문의|회원관리|고객관리|인바운드/.test(source)) {
+    if (/상담|문의|인바운드|등록상담/.test(source)) totals.consultation += count;
+  }
+  if (type === "영업" || /아웃바운드|전화|콜|문자|디엠|dm|영업/i.test(source)) {
+    if (/외부영업|방문영업|외근|현장영업/.test(source)) totals.outsideSales += count;
+    else totals.outbound += count;
+  }
+  if (/외부영업|방문영업|외근|현장영업/.test(source) && type !== "영업") totals.outsideSales += count;
+}
+
+function countFitnessScheduleUnits(text = "") {
+  const cleaned = String(text || "")
+    .replace(/\([^)]*\)/g, " ")
+    .replace(/\b(상담|청소|점검|마감|오픈|관리|전화|문자|콜|수업|pt|p\/t)\b/gi, " ")
+    .trim();
+  const parts = cleaned
+    .split(/[,，、/·&+]|(?:\s+및\s+)|(?:\s+그리고\s+)/)
+    .map((part) => part.trim())
+    .filter(Boolean);
+  return Math.max(1, parts.length || 1);
 }
 
 function formatFitnessOpsReport(fitnessOps = createFitnessOps()) {
@@ -2022,6 +2102,7 @@ function numberValue(value) {
 function getFitnessOpsSummary() {
   const logs = Object.values(state.employeeLogs?.[getActiveDateKey()] || {});
   return logs.reduce((summary, log) => {
+    syncFitnessOpsFromSchedule(log);
     const ops = { ...createFitnessOps(), ...(log.fitnessOps || {}) };
     summary.ptRegular += numberValue(ops.ptRegular);
     summary.ptFree += numberValue(ops.ptFree);
@@ -2355,6 +2436,8 @@ document.querySelectorAll("[data-fitness-field]").forEach((field) => {
   field.oninput = (event) => {
     const log = getSelectedLog();
     log.fitnessOps = { ...createFitnessOps(), ...(log.fitnessOps || {}) };
+    log.fitnessOpsManual = { ...createFitnessOpsManual(), ...(log.fitnessOpsManual || {}) };
+    log.fitnessOpsManual[event.target.dataset.fitnessField] = true;
     log.fitnessOps[event.target.dataset.fitnessField] = event.target.value;
     saveState({ fastSave: true });
     renderReport();

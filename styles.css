@@ -3799,7 +3799,7 @@ textarea:focus-visible {
   background: rgba(252, 252, 247, 0.72);
   color: var(--muted);
   padding: 7px;
-  font-size: 11px;
+  font-size: 13px;
   font-weight: 900;
 }
 
@@ -3819,7 +3819,7 @@ textarea:focus-visible {
   background: transparent;
   color: var(--ink);
   padding: 0;
-  font-size: 17px;
+  font-size: 20px;
   font-weight: 850;
   outline: 0;
 }
@@ -3854,12 +3854,12 @@ textarea:focus-visible {
   .fitness-ops-grid label,
   .fitness-ops-notes label {
     padding: 5px;
-    font-size: 9px;
+    font-size: 11px;
   }
 
   .fitness-ops-grid input,
   .fitness-ops-notes textarea {
-    font-size: 13px;
+    font-size: 16px;
   }
 
   .fitness-ops-notes {
@@ -4178,6 +4178,28 @@ textarea:focus-visible {
   scroll-padding-bottom: 8px;
 }
 
+.fitness-log-task-panel .task-row {
+  grid-template-columns: 20px minmax(34px, max-content) minmax(0, 1fr) 22px;
+  column-gap: 6px;
+}
+
+.fitness-log-task-panel .task-cycle {
+  width: 18px;
+  height: 18px;
+  min-height: 18px;
+  border-width: 1.4px;
+  font-size: 12px;
+}
+
+.fitness-log-task-panel .task-row.marker-check .task-cycle {
+  font-size: 15px;
+}
+
+.fitness-log-task-panel .task-row.marker-dot .task-cycle {
+  font-size: 24px;
+  padding-bottom: 3px;
+}
+
 .fitness-task-list .task-row:nth-child(n + 6) {
   display: none;
 }
@@ -4220,7 +4242,24 @@ textarea:focus-visible {
   }
 
   .fitness-log-task-panel .task-row {
+    grid-template-columns: 18px minmax(30px, max-content) minmax(0, 1fr) 20px;
     min-height: 35px;
+  }
+
+  .fitness-log-task-panel .task-cycle {
+    width: 17px;
+    height: 17px;
+    min-height: 17px;
+    font-size: 11px;
+  }
+
+  .fitness-log-task-panel .task-row.marker-check .task-cycle {
+    font-size: 14px;
+  }
+
+  .fitness-log-task-panel .task-row.marker-dot .task-cycle {
+    font-size: 22px;
+    padding-bottom: 2px;
   }
 
   .fitness-log-schedule-panel .appointment-row {
