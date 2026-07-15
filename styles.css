@@ -4284,7 +4284,240 @@ textarea:focus-visible {
   padding-bottom: 3px;
 }
 
+.fitness-appointment-row {
+  grid-template-columns: 58px minmax(0, 1fr) 28px;
+}
+
+.fitness-appointment-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 3px 7px;
+  align-items: center;
+  min-width: 0;
+  min-height: 30px;
+  border: 0;
+  background: transparent;
+  color: var(--ink);
+  padding: 0;
+  text-align: left;
+  font-size: 15px;
+  font-weight: 830;
+  line-height: 1.25;
+}
+
+.fitness-appointment-summary span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.fitness-appointment-summary .empty {
+  color: rgba(17, 20, 17, 0.3);
+  font-weight: 800;
+}
+
+.fitness-schedule-editor-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 90;
+  background: rgba(17, 20, 17, 0.24);
+  backdrop-filter: blur(2px);
+}
+
+.fitness-schedule-editor {
+  position: fixed;
+  left: 50%;
+  bottom: max(14px, env(safe-area-inset-bottom));
+  z-index: 91;
+  display: grid;
+  gap: 10px;
+  width: min(520px, calc(100vw - 24px));
+  max-height: min(76dvh, 620px);
+  overflow: auto;
+  padding: 12px;
+  border: 1px solid var(--hardline);
+  background: rgba(252, 252, 247, 0.98);
+  box-shadow: 0 18px 50px rgba(17, 20, 17, 0.22);
+  transform: translate(-50%, 10px);
+  opacity: 0;
+  transition: transform 160ms ease, opacity 160ms ease;
+}
+
+.fitness-schedule-editor.is-open {
+  transform: translate(-50%, 0);
+  opacity: 1;
+}
+
+.fitness-schedule-editor-header {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  align-items: center;
+  border-bottom: 1px solid var(--hairline);
+  padding-bottom: 8px;
+}
+
+.fitness-schedule-editor-header div {
+  display: flex;
+  gap: 8px;
+  align-items: baseline;
+  min-width: 0;
+}
+
+.fitness-schedule-editor-header strong {
+  color: var(--fitness-green);
+  font-size: 24px;
+  font-weight: 950;
+  font-variant-numeric: tabular-nums;
+}
+
+.fitness-schedule-editor-header span {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.fitness-schedule-editor-header button {
+  width: 34px;
+  min-height: 34px;
+  border: 1px solid var(--hairline);
+  border-radius: 0;
+  background: transparent;
+  color: var(--ink);
+  padding: 0;
+  font-size: 21px;
+  font-weight: 850;
+}
+
+.fitness-schedule-existing {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  min-height: 31px;
+}
+
+.fitness-schedule-existing p {
+  margin: 0;
+  color: rgba(17, 20, 17, 0.45);
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.fitness-schedule-chip {
+  display: inline-flex;
+  gap: 6px;
+  align-items: center;
+  max-width: 100%;
+  min-height: 30px;
+  border: 1px solid var(--hairline);
+  border-radius: 999px;
+  background: rgba(20, 82, 61, 0.06);
+  color: var(--ink);
+  padding: 4px 9px;
+  font-size: 13px;
+  font-weight: 850;
+  text-align: left;
+}
+
+.fitness-schedule-chip span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.fitness-schedule-chip b {
+  color: rgba(216, 56, 47, 0.58);
+  font-size: 15px;
+}
+
+.fitness-schedule-type-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.fitness-schedule-type-grid button {
+  min-height: 36px;
+  border: 1px solid var(--hairline);
+  border-radius: 0;
+  background: var(--nordic-sheet);
+  color: var(--ink);
+  padding: 6px;
+  font-size: 13px;
+  font-weight: 900;
+}
+
+.fitness-schedule-type-grid button.is-selected {
+  border-color: var(--fitness-green);
+  background: var(--fitness-green);
+  color: var(--nordic-sheet);
+}
+
+.fitness-schedule-input-wrap {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  border: 1px solid var(--hardline);
+  background: var(--nordic-sheet);
+}
+
+.fitness-schedule-input-wrap span {
+  min-width: 76px;
+  border-right: 1px solid var(--hairline);
+  color: var(--fitness-green);
+  padding: 9px 10px;
+  font-size: 13px;
+  font-weight: 950;
+  text-align: center;
+}
+
+.fitness-schedule-input-wrap input {
+  min-width: 0;
+  min-height: 42px;
+  border: 0;
+  background: transparent;
+  color: var(--ink);
+  padding: 0 10px;
+  font-size: 16px;
+  font-weight: 820;
+  outline: 0;
+}
+
+.fitness-schedule-input-wrap input:disabled {
+  color: rgba(17, 20, 17, 0.35);
+}
+
+.fitness-schedule-editor-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+}
+
+.fitness-schedule-editor-actions button {
+  min-height: 40px;
+  border: 1px solid var(--hardline);
+  border-radius: 0;
+  background: var(--nordic-sheet);
+  color: var(--ink);
+  font-size: 15px;
+  font-weight: 950;
+}
+
+.fitness-schedule-editor-actions #fitnessScheduleEditorDone {
+  background: var(--fitness-green);
+  color: var(--nordic-sheet);
+}
+
 @media (max-width: 760px) {
+  .fitness-appointment-row {
+    grid-template-columns: 48px minmax(0, 1fr) 22px;
+  }
+
+  .fitness-appointment-summary {
+    min-height: 25px;
+    font-size: 12px;
+    line-height: 1.2;
+  }
+
   .appointment-item {
     grid-template-columns: minmax(48px, 0.35fr) minmax(0, 1fr) 18px;
     gap: 3px;
@@ -4300,6 +4533,26 @@ textarea:focus-visible {
   }
 
   .schedule-text-input {
+    font-size: 12px;
+  }
+
+  .fitness-schedule-editor {
+    width: calc(100vw - 16px);
+    max-height: 72dvh;
+    padding: 10px;
+  }
+
+  .fitness-schedule-type-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .fitness-schedule-input-wrap {
+    grid-template-columns: 72px minmax(0, 1fr);
+  }
+
+  .fitness-schedule-input-wrap span {
+    min-width: 0;
+    padding-inline: 6px;
     font-size: 12px;
   }
 }

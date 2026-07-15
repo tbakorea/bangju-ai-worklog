@@ -191,6 +191,7 @@ let calendarViewDate = parseDateKey(todayKey);
 let calendarPickerMode = "worklog";
 let calendarPostponeTask = null;
 let mobileDayFocusMode = "split";
+let fitnessScheduleEditorState = null;
 const dailyEditingState = {
   focused: false,
   composing: false,
@@ -1357,7 +1358,7 @@ function getScheduleEntryText(entry) {
   const items = normalizeScheduleEntryItems(entry);
   return items
     .filter((item) => String(item.text || "").trim())
-    .map((item) => `(${item.type || "업무"}) ${item.text.trim()}`)
+    .map((item) => `(${formatScheduleTypeLabel(item.type || "업무")}) ${item.text.trim()}`)
     .join(" / ");
 }
 
@@ -1365,12 +1366,22 @@ function syncScheduleEntryText(entry) {
   const items = Array.isArray(entry.items) ? entry.items : [];
   entry.text = items
     .filter((item) => String(item.text || "").trim())
-    .map((item) => `(${item.type || "업무"}) ${item.text.trim()}`)
+    .map((item) => `(${formatScheduleTypeLabel(item.type || "업무")}) ${item.text.trim()}`)
     .join(" / ");
 }
 
 function createScheduleItem(text = "", type = "") {
   return { type: type || inferScheduleType(text), text };
+}
+
+function formatScheduleTypeLabel(type = "업무") {
+  return type === "PT" ? "P/T" : type;
+}
+
+function formatScheduleItemInline(item) {
+  const text = String(item?.text || "").trim();
+  if (!text) return "";
+  return `(${formatScheduleTypeLabel(item.type || "업무")})${text}`;
 }
 
 function renderScheduleTypeOptions(selected = "업무") {
@@ -1394,8 +1405,26 @@ function renderFitnessAppointments(log) {
   list.innerHTML = "";
   (log.schedule || []).forEach((entry, index) => {
     if (index > 0 && log.schedule[index - 1]?.mergeDown) return;
-    list.appendChild(renderAppointmentRow(entry, log, "fitness"));
+    list.appendChild(renderFitnessAppointmentRow(entry, log));
   });
+}
+
+function renderFitnessAppointmentRow(entry, log) {
+  const items = normalizeScheduleEntryItems(entry);
+  const filledItems = items.filter((item) => String(item.text || "").trim());
+  const value = getScheduleEntryText(entry);
+  const row = document.createElement("div");
+  row.className = `appointment-row multi-appointment-row fitness-appointment-row ${value.trim() ? "is-filled" : ""} ${isCurrentScheduleSlot(entry, log) ? "is-current" : ""}`;
+  row.innerHTML = `
+    <span class="appointment-time">${escapeHtml(entry.time)}</span>
+    <button class="fitness-appointment-summary" type="button" aria-label="${escapeAttr(entry.time)} 일정 편집">
+      ${filledItems.length ? filledItems.map((item) => `<span>${escapeHtml(formatScheduleItemInline(item))}</span>`).join("") : `<span class="empty">업무 추가</span>`}
+    </button>
+    <button class="appointment-merge-button" type="button" aria-label="${escapeAttr(entry.time)} 일정 추가">+</button>
+  `;
+  row.querySelector(".fitness-appointment-summary").onclick = () => openFitnessScheduleEditor(entry, log);
+  row.querySelector(".appointment-merge-button").onclick = () => openFitnessScheduleEditor(entry, log);
+  return row;
 }
 
 function renderAppointmentRow(entry, log, scope = "worklog") {
@@ -1461,6 +1490,174 @@ function renderAppointmentRow(entry, log, scope = "worklog") {
     renderFitnessAppointments(log);
   };
   return row;
+}
+
+function getOrCreateFitnessScheduleEditor() {
+  let backdrop = document.getElementById("fitnessScheduleEditorBackdrop");
+  let editor = document.getElementById("fitnessScheduleEditor");
+  if (backdrop && editor) return { backdrop, editor };
+
+  backdrop = document.createElement("div");
+  backdrop.id = "fitnessScheduleEditorBackdrop";
+  backdrop.className = "fitness-schedule-editor-backdrop";
+  backdrop.hidden = true;
+
+  editor = document.createElement("section");
+  editor.id = "fitnessScheduleEditor";
+  editor.className = "fitness-schedule-editor";
+  editor.hidden = true;
+  editor.setAttribute("role", "dialog");
+  editor.setAttribute("aria-modal", "true");
+  editor.setAttribute("aria-label", "피트니스 시간별 일정 입력");
+  editor.innerHTML = `
+    <header class="fitness-schedule-editor-header">
+      <div>
+        <strong id="fitnessScheduleEditorTime">--:--</strong>
+        <span>시간별 일정</span>
+      </div>
+      <button type="button" id="fitnessScheduleEditorClose" aria-label="닫기">×</button>
+    </header>
+    <div class="fitness-schedule-existing" id="fitnessScheduleExisting"></div>
+    <div class="fitness-schedule-type-grid" id="fitnessScheduleTypeGrid" aria-label="업무종류 선택"></div>
+    <label class="fitness-schedule-input-wrap">
+      <span id="fitnessScheduleSelectedLabel">업무종류 선택</span>
+      <input id="fitnessScheduleEditorText" type="text" placeholder="구체적인 업무 내용" autocomplete="off" />
+    </label>
+    <footer class="fitness-schedule-editor-actions">
+      <button type="button" id="fitnessScheduleEditorAdd">입력</button>
+      <button type="button" id="fitnessScheduleEditorDone">확인</button>
+    </footer>
+  `;
+
+  document.body.append(backdrop, editor);
+  backdrop.onclick = closeFitnessScheduleEditor;
+  editor.querySelector("#fitnessScheduleEditorClose").onclick = closeFitnessScheduleEditor;
+  editor.querySelector("#fitnessScheduleEditorAdd").onclick = () => addFitnessScheduleEditorItem({ close: false });
+  editor.querySelector("#fitnessScheduleEditorDone").onclick = () => addFitnessScheduleEditorItem({ close: true });
+  editor.querySelector("#fitnessScheduleEditorText").onkeydown = (event) => {
+    if (event.key === "Enter") {
+      event.preventDefault();
+      addFitnessScheduleEditorItem({ close: false });
+    }
+    if (event.key === "Escape") closeFitnessScheduleEditor();
+  };
+  window.addEventListener("keydown", (event) => {
+    if (event.key === "Escape" && fitnessScheduleEditorState) closeFitnessScheduleEditor();
+  });
+  return { backdrop, editor };
+}
+
+function openFitnessScheduleEditor(entry, log) {
+  normalizeScheduleEntryItems(entry);
+  fitnessScheduleEditorState = {
+    entry,
+    log,
+    selectedType: "",
+  };
+  const { backdrop, editor } = getOrCreateFitnessScheduleEditor();
+  renderFitnessScheduleEditor();
+  backdrop.hidden = false;
+  editor.hidden = false;
+  requestAnimationFrame(() => editor.classList.add("is-open"));
+}
+
+function renderFitnessScheduleEditor() {
+  if (!fitnessScheduleEditorState) return;
+  const { editor } = getOrCreateFitnessScheduleEditor();
+  const { entry, selectedType } = fitnessScheduleEditorState;
+  const items = normalizeScheduleEntryItems(entry);
+  const existing = editor.querySelector("#fitnessScheduleExisting");
+  const typeGrid = editor.querySelector("#fitnessScheduleTypeGrid");
+  const label = editor.querySelector("#fitnessScheduleSelectedLabel");
+  const time = editor.querySelector("#fitnessScheduleEditorTime");
+  const input = editor.querySelector("#fitnessScheduleEditorText");
+
+  time.textContent = entry.time || "--:--";
+  const filledItems = items
+    .map((item, itemIndex) => ({ item, itemIndex }))
+    .filter(({ item }) => String(item.text || "").trim());
+  existing.innerHTML = filledItems.length
+    ? filledItems.map(({ item, itemIndex }) => `
+      <button class="fitness-schedule-chip" type="button" data-remove-schedule-item="${itemIndex}" aria-label="일정 삭제">
+        <span>${escapeHtml(formatScheduleItemInline(item))}</span>
+        <b>×</b>
+      </button>
+    `).join("")
+    : `<p>이 시간대에 등록된 업무가 없습니다.</p>`;
+
+  existing.querySelectorAll("[data-remove-schedule-item]").forEach((button) => {
+    button.onclick = () => {
+      const index = Number(button.dataset.removeScheduleItem);
+      items.splice(index, 1);
+      if (!items.length) items.push(createScheduleItem());
+      syncScheduleEntryText(entry);
+      saveState();
+      rerenderScheduleAfterFitnessEdit(fitnessScheduleEditorState.log);
+      renderFitnessScheduleEditor();
+    };
+  });
+
+  typeGrid.innerHTML = scheduleTypeOptions.map((type) => `
+    <button class="${type === selectedType ? "is-selected" : ""}" type="button" data-fitness-schedule-type="${escapeAttr(type)}">
+      ${escapeHtml(formatScheduleTypeLabel(type))}
+    </button>
+  `).join("");
+  typeGrid.querySelectorAll("[data-fitness-schedule-type]").forEach((button) => {
+    button.onclick = () => {
+      fitnessScheduleEditorState.selectedType = button.dataset.fitnessScheduleType || "업무";
+      renderFitnessScheduleEditor();
+      editor.querySelector("#fitnessScheduleEditorText").focus();
+    };
+  });
+  label.textContent = selectedType ? `(${formatScheduleTypeLabel(selectedType)})` : "업무종류 선택";
+  input.disabled = !selectedType;
+  input.placeholder = selectedType ? "구체적인 업무 내용" : "먼저 업무종류를 선택하세요";
+}
+
+function addFitnessScheduleEditorItem({ close = false } = {}) {
+  if (!fitnessScheduleEditorState) return;
+  const { editor } = getOrCreateFitnessScheduleEditor();
+  const { entry, log } = fitnessScheduleEditorState;
+  const input = editor.querySelector("#fitnessScheduleEditorText");
+  const selectedType = fitnessScheduleEditorState.selectedType || "업무";
+  const text = String(input.value || "").trim();
+
+  if (text) {
+    const items = normalizeScheduleEntryItems(entry);
+    if (items.length === 1 && !String(items[0].text || "").trim()) items.splice(0, 1);
+    items.push(createScheduleItem(text, selectedType));
+    syncScheduleEntryText(entry);
+    saveState({ fastSave: true });
+    rerenderScheduleAfterFitnessEdit(log);
+  }
+
+  input.value = "";
+  fitnessScheduleEditorState.selectedType = "";
+  if (close) {
+    closeFitnessScheduleEditor();
+    return;
+  }
+  renderFitnessScheduleEditor();
+}
+
+function closeFitnessScheduleEditor() {
+  const backdrop = document.getElementById("fitnessScheduleEditorBackdrop");
+  const editor = document.getElementById("fitnessScheduleEditor");
+  if (editor) {
+    editor.classList.remove("is-open");
+    editor.querySelector("#fitnessScheduleEditorText")?.blur();
+  }
+  if (backdrop) backdrop.hidden = true;
+  if (editor) editor.hidden = true;
+  fitnessScheduleEditorState = null;
+}
+
+function rerenderScheduleAfterFitnessEdit(log) {
+  renderWorklogSummary(log);
+  renderWorklogAppointments(log);
+  renderFitnessAppointments(log);
+  renderTodayContext();
+  renderReport();
 }
 
 function updateEntry(index, field, value) {
