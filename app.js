@@ -1896,6 +1896,17 @@ function renderFitnessOperations(log = getSelectedLog()) {
   document.querySelectorAll("[data-fitness-field]").forEach((field) => {
     field.value = log.fitnessOps[field.dataset.fitnessField] || "";
   });
+  renderFitnessOpsSummaryButton(log);
+}
+
+function renderFitnessOpsSummaryButton(log = getSelectedLog()) {
+  const button = document.getElementById("fitnessOpsSummaryButton");
+  if (!button) return;
+  const ops = { ...createFitnessOps(), ...(log.fitnessOps || {}) };
+  const ptTotal = ["ptRegular", "ptFree", "ptOther"].reduce((sum, key) => sum + numberValue(ops[key]), 0);
+  const salesTotal = ["customerNew", "customerRenewal", "dayPass", "consultation", "outbound", "outsideSales"].reduce((sum, key) => sum + numberValue(ops[key]), 0);
+  const memoState = ops.shiftNote || ops.specialReport ? "메모 있음" : "메모 없음";
+  button.textContent = `운영기록 · PT ${ptTotal} · 고객/영업 ${salesTotal} · ${memoState}`;
 }
 
 function syncFitnessOpsFromSchedule(log = getSelectedLog()) {
@@ -2408,6 +2419,12 @@ document.getElementById("fitnessDateButton")?.addEventListener("click", () => {
 document.getElementById("fitnessDateInput")?.addEventListener("change", (event) => {
   if (event.target.value) setSelectedDateKey(event.target.value);
 });
+document.getElementById("fitnessOpsSummaryButton")?.addEventListener("click", () => {
+  document.querySelector(".fitness-ops-section")?.classList.add("is-open");
+});
+document.getElementById("fitnessOpsCloseButton")?.addEventListener("click", () => {
+  document.querySelector(".fitness-ops-section")?.classList.remove("is-open");
+});
 document.getElementById("addEntryButton").onclick = () => {
   alert("시간별 일정 AI 추천은 이후 Beyond Work 오늘 섹션의 추천 로직과 연결합니다.");
 };
@@ -2456,6 +2473,7 @@ document.querySelectorAll("[data-fitness-field]").forEach((field) => {
     log.fitnessOpsManual[event.target.dataset.fitnessField] = true;
     log.fitnessOps[event.target.dataset.fitnessField] = event.target.value;
     saveState({ fastSave: true });
+    renderFitnessOpsSummaryButton(log);
     renderReport();
     renderFitnessDashboard();
   };
