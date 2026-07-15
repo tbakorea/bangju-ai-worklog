@@ -4144,6 +4144,161 @@ textarea:focus-visible {
   padding: 12px;
 }
 
+.fitness-log-pager {
+  display: grid;
+  grid-template-columns: 38px minmax(0, 1fr) 38px;
+  align-items: stretch;
+  border: 1px solid var(--hardline);
+  background: rgba(252, 252, 247, 0.94);
+}
+
+.fitness-log-pager button {
+  min-height: 42px;
+  border: 0;
+  border-right: 1px solid var(--hardline);
+  border-radius: 0;
+  background: var(--nordic-sheet);
+  color: var(--ink);
+  font-size: 22px;
+  font-weight: 950;
+}
+
+.fitness-log-pager button:last-child {
+  border-right: 0;
+  border-left: 1px solid var(--hardline);
+}
+
+.fitness-log-pager button:disabled {
+  color: rgba(17, 20, 17, 0.22);
+}
+
+.fitness-log-pager div {
+  display: grid;
+  align-content: center;
+  min-width: 0;
+  padding: 5px 10px;
+}
+
+.fitness-log-pager strong {
+  overflow: hidden;
+  color: var(--ink);
+  font-size: 17px;
+  font-weight: 950;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.fitness-log-pager span {
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 850;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.fitness-center-daily-panel {
+  display: grid;
+  gap: 10px;
+}
+
+.fitness-center-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  border: 1px solid var(--hardline);
+  border-bottom: 0;
+}
+
+.fitness-center-summary-grid article {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+  border-right: 1px solid var(--hardline);
+  border-bottom: 1px solid var(--hardline);
+  background: rgba(237, 244, 224, 0.78);
+  padding: 7px;
+}
+
+.fitness-center-summary-grid article:last-child {
+  border-right: 0;
+}
+
+.fitness-center-summary-grid span {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 900;
+}
+
+.fitness-center-summary-grid strong {
+  color: var(--ink);
+  font-size: 18px;
+  font-weight: 950;
+}
+
+.fitness-center-table-wrap {
+  overflow-x: auto;
+  border: 1px solid var(--hardline);
+  background: var(--nordic-sheet);
+}
+
+.fitness-center-table {
+  width: 100%;
+  min-width: 900px;
+  border-collapse: collapse;
+  color: var(--ink);
+  font-size: 13px;
+}
+
+.fitness-center-table th,
+.fitness-center-table td {
+  border: 1px solid var(--hardline);
+  padding: 6px 7px;
+  text-align: center;
+  vertical-align: middle;
+}
+
+.fitness-center-table th {
+  background: rgba(237, 244, 224, 0.9);
+  font-size: 12px;
+  font-weight: 950;
+}
+
+.fitness-center-table td:nth-child(3),
+.fitness-center-table td:nth-child(12) {
+  text-align: left;
+}
+
+.fitness-center-table tfoot td {
+  background: rgba(18, 59, 45, 0.08);
+  font-weight: 950;
+}
+
+.fitness-center-record {
+  display: grid;
+  grid-template-columns: 80px minmax(0, 1fr);
+  min-height: 52px;
+  border: 1px solid var(--hardline);
+  background: var(--nordic-sheet);
+}
+
+.fitness-center-record b {
+  display: grid;
+  place-items: center;
+  border-right: 1px solid var(--hardline);
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 950;
+}
+
+.fitness-center-record p {
+  margin: 0;
+  padding: 8px;
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 750;
+  line-height: 1.35;
+}
+
 .fitness-date-nav {
   display: grid;
   grid-template-columns: 36px minmax(0, 1fr) 36px auto;
@@ -4719,6 +4874,27 @@ body[data-layout-mode="phone"] .fitness-log-title {
   padding: 6px;
 }
 
+body[data-layout-mode="phone"] .fitness-log-pager {
+  grid-template-columns: 30px minmax(0, 1fr) 30px;
+}
+
+body[data-layout-mode="phone"] .fitness-log-pager button {
+  min-height: 34px;
+  font-size: 18px;
+}
+
+body[data-layout-mode="phone"] .fitness-log-pager div {
+  padding: 3px 7px;
+}
+
+body[data-layout-mode="phone"] .fitness-log-pager strong {
+  font-size: 14px;
+}
+
+body[data-layout-mode="phone"] .fitness-log-pager span {
+  font-size: 9px;
+}
+
 body[data-layout-mode="phone"] .fitness-date-nav {
   grid-template-columns: 30px minmax(0, 1fr) 30px 0;
 }
@@ -4761,6 +4937,53 @@ body[data-layout-mode="phone"] #fitnessLogCoachButton::after {
 body[data-layout-mode="phone"] .fitness-log-task-panel,
 body[data-layout-mode="phone"] .fitness-log-schedule-panel {
   padding: 7px;
+}
+
+body[data-layout-mode="phone"] .fitness-center-daily-panel {
+  gap: 7px;
+  padding: 7px;
+}
+
+body[data-layout-mode="phone"] .fitness-center-daily-panel h3 {
+  margin: -7px -7px 2px;
+  padding: 7px;
+  font-size: 18px;
+}
+
+body[data-layout-mode="phone"] .fitness-center-summary-grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+body[data-layout-mode="phone"] .fitness-center-summary-grid article {
+  padding: 5px;
+}
+
+body[data-layout-mode="phone"] .fitness-center-summary-grid span {
+  font-size: 9px;
+}
+
+body[data-layout-mode="phone"] .fitness-center-summary-grid strong {
+  font-size: 15px;
+}
+
+body[data-layout-mode="phone"] .fitness-center-table {
+  min-width: 760px;
+  font-size: 11px;
+}
+
+body[data-layout-mode="phone"] .fitness-center-table th,
+body[data-layout-mode="phone"] .fitness-center-table td {
+  padding: 4px 5px;
+}
+
+body[data-layout-mode="phone"] .fitness-center-record {
+  grid-template-columns: 62px minmax(0, 1fr);
+  min-height: 42px;
+}
+
+body[data-layout-mode="phone"] .fitness-center-record b,
+body[data-layout-mode="phone"] .fitness-center-record p {
+  font-size: 11px;
 }
 
 body[data-layout-mode="phone"] .fitness-log-task-panel h3,

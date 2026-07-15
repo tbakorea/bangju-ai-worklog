@@ -210,6 +210,44 @@
           </div>
           <button type="button" id="fitnessLogCoachButton">AI 코칭</button>
         </div>
+        <div class="fitness-log-pager" id="fitnessLogPager">
+          <button type="button" id="fitnessLogPrevPageButton" aria-label="이전 업무일지">‹</button>
+          <div>
+            <strong id="fitnessLogPageTitle">개인 업무일지</strong>
+            <span id="fitnessLogPageHint">좌우로 밀어서 센터/동료 업무일지를 봅니다</span>
+          </div>
+          <button type="button" id="fitnessLogNextPageButton" aria-label="다음 업무일지">›</button>
+        </div>
+        <article class="planner-section fitness-center-daily-panel" id="fitnessCenterDailyPanel" hidden>
+          <h3>센터일일 업무일지</h3>
+          <div class="fitness-center-summary-grid" id="fitnessCenterSummaryGrid"></div>
+          <div class="fitness-center-table-wrap">
+            <table class="fitness-center-table">
+              <thead>
+                <tr>
+                  <th>No.</th>
+                  <th>구분</th>
+                  <th>성명</th>
+                  <th>출근</th>
+                  <th>퇴근</th>
+                  <th>근무시간</th>
+                  <th>PT</th>
+                  <th>신규</th>
+                  <th>재등록</th>
+                  <th>상담</th>
+                  <th>아웃바운드</th>
+                  <th>특이사항</th>
+                </tr>
+              </thead>
+              <tbody id="fitnessCenterDailyBody"></tbody>
+              <tfoot id="fitnessCenterDailyFoot"></tfoot>
+            </table>
+          </div>
+          <div class="fitness-center-record">
+            <b>오늘의 기록</b>
+            <p id="fitnessCenterTodayRecord">-</p>
+          </div>
+        </article>
         <article class="worklog-panel fitness-log-task-panel">
           <h3>
             <span>오늘의 우선업무</span>
