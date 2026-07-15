@@ -4197,6 +4197,32 @@ textarea:focus-visible {
   white-space: nowrap;
 }
 
+.fitness-log-view.is-readonly .fitness-log-pager div::after {
+  content: "열람 전용";
+  justify-self: start;
+  margin-top: 3px;
+  border: 1px solid rgba(17, 20, 17, 0.22);
+  background: rgba(17, 20, 17, 0.045);
+  color: var(--muted);
+  padding: 2px 6px;
+  font-size: 10px;
+  font-weight: 950;
+}
+
+.fitness-log-view.is-readonly .fitness-log-task-panel,
+.fitness-log-view.is-readonly .fitness-log-schedule-panel,
+.fitness-log-view.is-readonly .fitness-ops-section {
+  background: rgba(252, 252, 247, 0.72);
+}
+
+.fitness-log-view.is-readonly .fitness-log-task-panel input,
+.fitness-log-view.is-readonly .fitness-log-schedule-panel button,
+.fitness-log-view.is-readonly .fitness-ops-section input,
+.fitness-log-view.is-readonly .fitness-ops-section textarea {
+  cursor: default;
+  opacity: 0.72;
+}
+
 .fitness-center-daily-panel {
   display: grid;
   gap: 10px;

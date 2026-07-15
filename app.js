@@ -237,6 +237,7 @@ function createState() {
     },
     fitnessGoals: createFitnessGoals(),
     fitnessLogPage: 1,
+    fitnessWritableEmployeeId: "beyond-fitness-manager",
     reportTone: "executive",
   };
 }
@@ -273,6 +274,7 @@ function normalizeState() {
   }
   state.selectedDateKey ||= todayKey;
   state.fitnessLogPage = Number.isFinite(Number(state.fitnessLogPage)) ? Number(state.fitnessLogPage) : 1;
+  state.fitnessWritableEmployeeId ||= "beyond-fitness-manager";
   state.fitnessGoals = { ...createFitnessGoals(), ...(state.fitnessGoals || {}) };
   state.employeeLogs ||= {};
   state.employeeLogs[getActiveDateKey()] ||= {};
@@ -389,6 +391,11 @@ function clampFitnessLogPage(index = state.fitnessLogPage) {
 
 function getCurrentFitnessLogPage() {
   return getFitnessLogPages()[clampFitnessLogPage()] || getFitnessLogPages()[1];
+}
+
+function isCurrentFitnessLogEditable() {
+  const page = getCurrentFitnessLogPage();
+  return page?.type === "employee" && page.id === state.fitnessWritableEmployeeId;
 }
 
 function setFitnessLogPage(index) {
@@ -1147,10 +1154,12 @@ function renderFitnessWorklog(log = getSelectedLog()) {
   document.querySelector(".fitness-log-task-panel")?.toggleAttribute("hidden", isCenter);
   document.querySelector(".fitness-log-schedule-panel")?.toggleAttribute("hidden", isCenter);
   document.querySelector(".fitness-ops-section")?.toggleAttribute("hidden", isCenter);
+  applyFitnessLogPermissionState();
   if (isCenter) return;
   renderFitnessTaskBoard(log);
   renderFitnessAppointments(log);
   renderFitnessOperations(log);
+  applyFitnessLogPermissionState();
 }
 
 function renderFitnessLogPager() {
@@ -1165,6 +1174,35 @@ function renderFitnessLogPager() {
   if (hint) hint.textContent = page?.type === "center" ? "오른쪽으로 밀면 개인/동료 업무일지" : "왼쪽은 센터 취합 · 오른쪽은 동료 업무일지";
   if (prev) prev.disabled = pageIndex === 0;
   if (next) next.disabled = pageIndex === pages.length - 1;
+}
+
+function applyFitnessLogPermissionState() {
+  const view = document.getElementById("view-fitness-log");
+  if (!view) return;
+  const page = getCurrentFitnessLogPage();
+  const readOnly = !isCurrentFitnessLogEditable();
+  view.classList.toggle("is-readonly", readOnly);
+  view.dataset.fitnessPermission = readOnly ? "readonly" : "editable";
+  const hint = document.getElementById("fitnessLogPageHint");
+  if (hint) {
+    if (page?.type === "center") hint.textContent = "센터 취합 일지는 열람 전용입니다";
+    else if (readOnly) hint.textContent = "동료 업무일지는 열람만 가능합니다";
+    else hint.textContent = "본인 업무일지입니다. 기록과 수정이 가능합니다";
+  }
+  view.querySelectorAll(`
+    .fitness-log-task-panel input,
+    .fitness-log-task-panel select,
+    .fitness-log-task-panel textarea,
+    .fitness-log-task-panel button,
+    .fitness-log-schedule-panel input,
+    .fitness-log-schedule-panel select,
+    .fitness-log-schedule-panel textarea,
+    .fitness-log-schedule-panel button,
+    .fitness-ops-section input,
+    .fitness-ops-section textarea
+  `).forEach((control) => {
+    control.disabled = readOnly;
+  });
 }
 
 function renderFitnessCenterDaily() {
@@ -1730,6 +1768,7 @@ function getOrCreateFitnessScheduleEditor() {
 }
 
 function openFitnessScheduleEditor(entry, log) {
+  if (!isCurrentFitnessLogEditable()) return;
   normalizeScheduleEntryItems(entry);
   fitnessScheduleEditorState = {
     entry,
@@ -1797,6 +1836,7 @@ function renderFitnessScheduleEditor() {
 }
 
 function addFitnessScheduleEditorItem({ close = false } = {}) {
+  if (!isCurrentFitnessLogEditable()) return;
   if (!fitnessScheduleEditorState) return;
   const { editor } = getOrCreateFitnessScheduleEditor();
   const { entry, log } = fitnessScheduleEditorState;
@@ -2652,6 +2692,7 @@ document.getElementById("employeeMemo").oninput = (event) => {
 };
 document.querySelectorAll("[data-fitness-field]").forEach((field) => {
   field.oninput = (event) => {
+    if (!isCurrentFitnessLogEditable()) return;
     const log = getSelectedLog();
     log.fitnessOps = { ...createFitnessOps(), ...(log.fitnessOps || {}) };
     log.fitnessOpsManual = { ...createFitnessOpsManual(), ...(log.fitnessOpsManual || {}) };
