@@ -1,4 +1,5 @@
 const storageKey = "beyond-worklog-state-v1";
+const layoutModeStorageKey = "beyond-worklog-layout-mode";
 const supabaseConfig = {
   url: "https://zllpfaijahyfppivkxzu.supabase.co",
   anonKey: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InpsbHBmYWlqYWh5ZnBwaXZreHp1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODMzMzQxNTUsImV4cCI6MjA5ODkxMDE1NX0.C4omaj-e_9PM-iF3-5GUUVX47Wo06UsNTOYMlMMVcZU",
@@ -462,8 +463,17 @@ function currentTimeValue() {
 }
 
 function renderResponsiveMode() {
-  const mode = window.matchMedia("(max-width: 760px)").matches ? "narrow" : "expanded";
+  const isNarrow = window.matchMedia("(max-width: 760px)").matches;
+  const isPhoneWidth = window.matchMedia("(max-width: 640px)").matches;
+  const mode = isNarrow ? "narrow" : "expanded";
+  const layoutMode = localStorage.getItem(layoutModeStorageKey) === "phone" ? "phone" : "wide";
   document.body.dataset.deviceMode = mode;
+  document.body.dataset.layoutMode = layoutMode;
+  document.body.classList.toggle("smartphone-device", layoutMode === "phone" || isPhoneWidth);
+  document.querySelectorAll("[data-layout-mode-choice]").forEach((button) => {
+    button.classList.toggle("is-active", button.dataset.layoutModeChoice === layoutMode);
+  });
+  applyMobileDayFocusMode();
 }
 
 function getAssetRows() {
@@ -2297,6 +2307,12 @@ document.querySelectorAll(".worklog-tabs button").forEach((button) => {
 });
 document.getElementById("mainMenuWheelSelect")?.addEventListener("change", (event) => {
   switchView(event.target.value);
+});
+document.querySelectorAll("[data-layout-mode-choice]").forEach((button) => {
+  button.onclick = () => {
+    localStorage.setItem(layoutModeStorageKey, button.dataset.layoutModeChoice || "wide");
+    renderResponsiveMode();
+  };
 });
 
 document.getElementById("settingsGearButton").onclick = () => {

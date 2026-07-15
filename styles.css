@@ -71,6 +71,36 @@ textarea {
   align-items: center;
 }
 
+.layout-mode-toggle {
+  display: grid;
+  grid-template-columns: repeat(2, auto);
+  gap: 0;
+  overflow: hidden;
+  border: 1px solid rgba(15, 59, 46, 0.16);
+  border-radius: 999px;
+  background: rgba(255, 253, 248, 0.86);
+}
+
+.layout-mode-toggle button {
+  min-height: 38px;
+  border: 0;
+  border-right: 1px solid rgba(15, 59, 46, 0.12);
+  background: transparent;
+  color: var(--ink);
+  padding: 7px 10px;
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.layout-mode-toggle button:last-child {
+  border-right: 0;
+}
+
+.layout-mode-toggle button.is-active {
+  background: var(--fitness-green);
+  color: var(--nordic-sheet);
+}
+
 .worklog-header button,
 .worklog-tabs button,
 .worklog-title-row button {
@@ -4593,5 +4623,92 @@ textarea:focus-visible {
     min-width: 0;
     padding-inline: 6px;
     font-size: 12px;
+  }
+}
+
+body[data-layout-mode="phone"] {
+  background:
+    linear-gradient(90deg, rgba(17, 20, 17, 0.045) 1px, transparent 1px) 0 0 / 44px 44px,
+    linear-gradient(180deg, rgba(17, 20, 17, 0.034) 1px, transparent 1px) 0 0 / 44px 44px,
+    var(--paper);
+}
+
+body[data-layout-mode="phone"] .worklog-shell {
+  width: min(430px, 100%);
+  min-height: 100dvh;
+  margin-left: clamp(6px, 2vw, 28px);
+  margin-right: auto;
+  padding: max(10px, env(safe-area-inset-top)) 8px 28px;
+  border-right: 1px solid rgba(17, 20, 17, 0.14);
+  background: rgba(252, 252, 247, 0.34);
+}
+
+body[data-layout-mode="phone"] .worklog-header {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: center;
+  border-radius: 0;
+  padding: 10px;
+}
+
+body[data-layout-mode="phone"] .worklog-header > div:first-child {
+  min-width: 0;
+}
+
+body[data-layout-mode="phone"] .worklog-header p {
+  overflow: hidden;
+  margin-bottom: 0;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+body[data-layout-mode="phone"] .main-menu-wheel-select {
+  grid-column: 1 / 2;
+  min-width: 0;
+  width: 100%;
+}
+
+body[data-layout-mode="phone"] .layout-mode-toggle {
+  grid-column: 1 / 2;
+  justify-self: start;
+}
+
+body[data-layout-mode="phone"] .layout-mode-toggle button {
+  min-height: 30px;
+  padding: 4px 8px;
+  font-size: 11px;
+}
+
+body[data-layout-mode="phone"] .header-actions {
+  grid-column: 2 / 3;
+  grid-row: 1 / 4;
+  align-self: stretch;
+  flex-direction: column;
+}
+
+body[data-layout-mode="phone"] .header-actions button {
+  width: 42px;
+  min-height: 38px;
+  padding-inline: 0;
+}
+
+body[data-layout-mode="phone"] .worklog-view {
+  border-radius: 0;
+  padding: 10px;
+}
+
+body[data-layout-mode="phone"] .daily-split,
+body[data-layout-mode="phone"] .os-layout,
+body[data-layout-mode="phone"] .fitness-layout,
+body[data-layout-mode="phone"] .settings-grid {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+@media (max-width: 760px) {
+  body[data-layout-mode="phone"] .worklog-shell {
+    width: 100%;
+    margin-left: 0;
+    border-right: 0;
   }
 }
