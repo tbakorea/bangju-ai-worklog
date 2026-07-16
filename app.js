@@ -67,6 +67,7 @@ const defaultProfile = {
   org: "(주)방주",
   role: "직원",
   name: "내 프로필",
+  nickname: "",
   phone: "",
   email: "",
   primaryWork: "",
@@ -80,18 +81,18 @@ const defaultProfile = {
 };
 const employees = [
   { id: "bangju-finance-1", name: "방주 재무담당", org: "(주)방주", role: "재무" },
-  { id: "beyond-fitness-manager", name: "비욘드 피트니스 센터장", org: "(주)방주 / 비욘드 피트니스 지사", role: "센터장" },
-  { id: "fitness-trainer-1", name: "피트니스 트레이너 1", org: "(주)방주 / 비욘드 피트니스 지사", role: "트레이너" },
-  { id: "fitness-trainer-2", name: "피트니스 트레이너 2", org: "(주)방주 / 비욘드 피트니스 지사", role: "트레이너" },
-  { id: "fitness-front-1", name: "피트니스 인포 1", org: "(주)방주 / 비욘드 피트니스 지사", role: "인포" },
-  { id: "fitness-front-2", name: "피트니스 인포 2", org: "(주)방주 / 비욘드 피트니스 지사", role: "인포" },
+  { id: "beyond-fitness-manager", name: "박주홍", nickname: "센터장", org: "(주)방주 / 비욘드 피트니스 지사", role: "센터장", workHours: "06:00-24:00", primaryWork: "운영총괄, PT 수업" },
+  { id: "fitness-trainer-1", name: "홍현규", nickname: "홍트", org: "(주)방주 / 비욘드 피트니스 지사", role: "트레이너", workHours: "06:00-24:00", primaryWork: "PT 수업", employmentType: "프리랜서" },
+  { id: "fitness-weekday-info", name: "주중 인포", nickname: "주중인포", org: "(주)방주 / 비욘드 피트니스 지사", role: "인포데스크", workHours: "16:00-20:00", primaryWork: "고객응대, 센터관리" },
+  { id: "fitness-saturday-info", name: "토요 인포", nickname: "토요인포", org: "(주)방주 / 비욘드 피트니스 지사", role: "토요 인포", workHours: "10:00-18:00", primaryWork: "토요일 고객응대, 센터관리" },
+  { id: "fitness-sunday-info", name: "일요 인포", nickname: "일요인포", org: "(주)방주 / 비욘드 피트니스 지사", role: "일요 인포", workHours: "10:00-18:00", primaryWork: "일요일 고객응대, 센터관리" },
   { id: "workbase-manager", name: "워크베이스 매니저", org: "(주)방주 / 워크베이스", role: "매니저" },
   { id: "sales-office-staff", name: "홍보관 담당", org: "(주)방주 / 홍보관", role: "분양/임대" },
   { id: "construction-hq", name: "비제이종합건설 본사", org: "(주)비제이종합건설", role: "본사관리" },
   { id: "dongcheon-site-manager", name: "동천체육관현장 소장", org: "(주)비제이종합건설 / 동천체육관현장", role: "현장소장" },
   { id: "beyond-company-director", name: "비욘드컴퍼니 총괄", org: "(주)비욘드컴퍼니", role: "총괄관리" },
 ];
-const fitnessEmployeeIds = ["beyond-fitness-manager", "fitness-trainer-1", "fitness-trainer-2", "fitness-front-1", "fitness-front-2"];
+const fitnessEmployeeIds = ["beyond-fitness-manager", "fitness-trainer-1", "fitness-weekday-info", "fitness-saturday-info", "fitness-sunday-info"];
 
 function createFitnessOps() {
   return {
@@ -245,7 +246,7 @@ function createState() {
     },
     attendance: {
       [todayKey]: [
-        { employeeId: "beyond-fitness-manager", org: "비욘드 피트니스 지사", role: "센터장", name: "비욘드 피트니스 센터장", status: "정상", note: "" },
+        { employeeId: "beyond-fitness-manager", org: "비욘드 피트니스 지사", role: "센터장", name: "박주홍", status: "정상", note: "" },
         { employeeId: "sales-office-staff", org: "홍보관", role: "분양/임대", name: "홍보관 담당", status: "정상", note: "" },
       ],
     },
@@ -283,7 +284,14 @@ function createEmployeeLog(employee = employees[0], profile = defaultProfile) {
 function normalizeState() {
   state.selectedEmployeeId ||= "beyond-fitness-manager";
   state.profile = { ...defaultProfile, ...(state.profile || {}) };
+  state.profile.nickname ||= "";
   if (state.profile.workHours === "12:00-19:00") state.profile.workHours = defaultProfile.workHours;
+  const retiredFitnessIds = {
+    "fitness-trainer-2": "fitness-weekday-info",
+    "fitness-front-1": "fitness-saturday-info",
+    "fitness-front-2": "fitness-sunday-info",
+  };
+  if (retiredFitnessIds[state.selectedEmployeeId]) state.selectedEmployeeId = retiredFitnessIds[state.selectedEmployeeId];
   if (state.selectedEmployeeId === "profile-user" && state.profile.name === defaultProfile.name) {
     state.selectedEmployeeId = "beyond-fitness-manager";
   }
@@ -389,6 +397,24 @@ function getFitnessEmployees() {
   return fitnessEmployeeIds
     .map((id) => employees.find((employee) => employee.id === id))
     .filter(Boolean);
+}
+
+function getEmployeeAdminLabel(employee = getSelectedEmployee()) {
+  return `${employee.role || "직원"} ${employee.name || ""}`.trim();
+}
+
+function getEmployeeOwnLabel(employee = getSelectedEmployee()) {
+  if (employee.id === state.fitnessWritableEmployeeId) {
+    return state.profile?.nickname || employee.nickname || employee.name || "내 업무일지";
+  }
+  if (employee.id === "profile-user") return state.profile?.nickname || employee.nickname || employee.name || "내 업무일지";
+  return employee.nickname || employee.name || getEmployeeAdminLabel(employee);
+}
+
+function getFitnessPageDisplayLabel(page = getCurrentFitnessLogPage()) {
+  if (page?.type === "center") return "센터 운영현황";
+  if (page?.type === "employee" && page.id === state.fitnessWritableEmployeeId) return getEmployeeOwnLabel(page.employee);
+  return getEmployeeAdminLabel(page?.employee || {});
 }
 
 function getFitnessLogPages() {
@@ -776,14 +802,14 @@ function shiftCalendarYear(delta) {
 
 function renderEmployeeTitle() {
   const employee = getSelectedEmployee();
-  document.getElementById("todayTitle").textContent = `${employee.org} 업무일지. ${employee.role} ${employee.name}`;
+  document.getElementById("todayTitle").textContent = `${employee.org} 업무일지. ${getEmployeeAdminLabel(employee)}`;
 }
 
 function renderGlobalEmployeeIdentity() {
   const employee = getSelectedEmployee();
   const [company, rawDepartment] = employee.org.split(" / ");
   const department = rawDepartment || employee.org.replace("(주)방주", "").trim() || "비욘드 피트니스";
-  document.getElementById("globalEmployeeIdentity").textContent = `${company || "(주)방주"} (부서: ${department}) ${employee.name} ${employee.role}`;
+  document.getElementById("globalEmployeeIdentity").textContent = `${company || "(주)방주"} (부서: ${department}) ${getEmployeeAdminLabel(employee)}`;
 }
 
 function renderProfileForm() {
@@ -1123,7 +1149,7 @@ function renderEmployeeSelect() {
   const select = document.getElementById("employeeSelect");
   select.innerHTML = getEmployeeOptions().map((employee) => `
     <option value="${escapeAttr(employee.id)}" ${employee.id === state.selectedEmployeeId ? "selected" : ""}>
-      ${escapeHtml(employee.name)} · ${escapeHtml(employee.role)}
+      ${escapeHtml(getEmployeeAdminLabel(employee))}
     </option>
   `).join("");
 }
@@ -1186,7 +1212,7 @@ function renderFitnessLogPager() {
   const hint = document.getElementById("fitnessLogPageHint");
   const prev = document.getElementById("fitnessLogPrevPageButton");
   const next = document.getElementById("fitnessLogNextPageButton");
-  if (title) title.textContent = page?.type === "center" ? "센터일일 업무일지" : `${page?.employee?.role || "직원"} · ${page?.title || ""}`;
+  if (title) title.textContent = getFitnessPageDisplayLabel(page);
   if (hint) hint.textContent = page?.type === "center" ? "오른쪽으로 밀면 개인/동료 업무일지" : "왼쪽은 센터 취합 · 오른쪽은 동료 업무일지";
   if (prev) prev.disabled = pageIndex === 0;
   if (next) next.disabled = pageIndex === pages.length - 1;
@@ -1261,7 +1287,7 @@ function renderFitnessCenterDaily() {
       <tr>
         <td>${row.index + 1}</td>
         <td>${escapeHtml(row.employee.role)}</td>
-        <td>${escapeHtml(row.employee.name)}</td>
+        <td>${escapeHtml(getEmployeeAdminLabel(row.employee))}</td>
         <td>${escapeHtml(row.log.clockIn || "-")}</td>
         <td>${escapeHtml(row.log.clockOut || "-")}</td>
         <td>${row.workMinutes ? formatWorkDuration(row.workMinutes) : "-"}</td>
@@ -1292,7 +1318,7 @@ function renderFitnessCenterDaily() {
 
   const record = document.getElementById("fitnessCenterTodayRecord");
   if (record) {
-    const notes = rows.flatMap((row) => [row.ops.shiftNote, row.ops.specialReport].filter(Boolean).map((note) => `${row.employee.name}: ${note}`));
+    const notes = rows.flatMap((row) => [row.ops.shiftNote, row.ops.specialReport].filter(Boolean).map((note) => `${getEmployeeAdminLabel(row.employee)}: ${note}`));
     record.textContent = notes.length ? notes.join(" / ") : "등록된 특이사항이 없습니다.";
   }
   renderFitnessCenterCoaching(total, rows);
