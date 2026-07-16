@@ -122,6 +122,20 @@ function createFitnessGoals() {
   };
 }
 
+function createDagymOps() {
+  return {
+    visits: "",
+    newMembers: "",
+    renewals: "",
+    expiring: "",
+    ptBookings: "",
+    noShows: "",
+    lockerExpiring: "",
+    sales: "",
+    importText: "",
+  };
+}
+
 const beyondAssets = [
   {
     building: "루클라쎄 1차",
@@ -236,6 +250,7 @@ function createState() {
       ],
     },
     fitnessGoals: createFitnessGoals(),
+    dagymOps: createDagymOps(),
     fitnessLogPage: 1,
     fitnessWritableEmployeeId: "beyond-fitness-manager",
     reportTone: "executive",
@@ -276,6 +291,7 @@ function normalizeState() {
   state.fitnessLogPage = Number.isFinite(Number(state.fitnessLogPage)) ? Number(state.fitnessLogPage) : 1;
   state.fitnessWritableEmployeeId ||= "beyond-fitness-manager";
   state.fitnessGoals = { ...createFitnessGoals(), ...(state.fitnessGoals || {}) };
+  state.dagymOps = { ...createDagymOps(), ...(state.dagymOps || {}) };
   state.employeeLogs ||= {};
   state.employeeLogs[getActiveDateKey()] ||= {};
   getEmployeeOptions().forEach((employee) => {
@@ -1208,6 +1224,7 @@ function applyFitnessLogPermissionState() {
 function renderFitnessCenterDaily() {
   const panel = document.getElementById("fitnessCenterDailyPanel");
   if (!panel) return;
+  renderDagymOpsFields();
   const employeesForCenter = getFitnessEmployees();
   const rows = employeesForCenter.map((employee, index) => {
     const log = getEmployeeLogForDate(employee.id);
@@ -1278,6 +1295,87 @@ function renderFitnessCenterDaily() {
     const notes = rows.flatMap((row) => [row.ops.shiftNote, row.ops.specialReport].filter(Boolean).map((note) => `${row.employee.name}: ${note}`));
     record.textContent = notes.length ? notes.join(" / ") : "등록된 특이사항이 없습니다.";
   }
+  renderFitnessCenterCoaching(total, rows);
+}
+
+function renderDagymOpsFields() {
+  state.dagymOps = { ...createDagymOps(), ...(state.dagymOps || {}) };
+  document.querySelectorAll("[data-dagym-field]").forEach((field) => {
+    field.value = state.dagymOps[field.dataset.dagymField] || "";
+  });
+  const importText = document.getElementById("dagymImportText");
+  if (importText) importText.value = state.dagymOps.importText || "";
+}
+
+function renderFitnessCenterCoaching(total, rows) {
+  const node = document.getElementById("fitnessCenterCoachingList");
+  if (!node) return;
+  const dagym = { ...createDagymOps(), ...(state.dagymOps || {}) };
+  const visits = numberValue(dagym.visits);
+  const ptBookings = numberValue(dagym.ptBookings);
+  const noShows = numberValue(dagym.noShows);
+  const expiring = numberValue(dagym.expiring);
+  const renewals = numberValue(dagym.renewals);
+  const lockerExpiring = numberValue(dagym.lockerExpiring);
+  const sales = numberValue(dagym.sales);
+  const staffPt = total.pt;
+  const staffSalesActions = total.new + total.renewal + total.consultation + total.outbound;
+  const notes = rows.flatMap((row) => [row.ops.shiftNote, row.ops.specialReport].filter(Boolean));
+  const messages = [];
+
+  if (visits && staffSalesActions < Math.max(2, Math.round(visits * 0.03))) {
+    messages.push(["영업", `오늘 출석 ${visits}명 대비 상담/영업 기록 ${staffSalesActions}건입니다. 프론트와 트레이너가 재등록 후보, 체험권, 만료 예정자를 우선 확인해야 합니다.`]);
+  } else {
+    messages.push(["영업", `직원 영업행동 ${staffSalesActions}건이 기록되었습니다. 상담 결과를 등록/보류/재연락으로 분류하면 다음 코칭 정확도가 올라갑니다.`]);
+  }
+  if (ptBookings && staffPt < ptBookings) {
+    messages.push(["PT", `다짐 PT 예약 ${ptBookings}건 대비 직원 PT 기록 ${staffPt}건입니다. 누락 수업 기록이나 노쇼 여부를 확인하세요.`]);
+  } else if (staffPt) {
+    messages.push(["PT", `직원 PT 기록 ${staffPt}건이 집계되었습니다. 수업 후 피드백과 다음 예약 여부를 남기면 재등록 관리에 연결됩니다.`]);
+  }
+  if (expiring > renewals) {
+    messages.push(["재등록", `만료 예정 ${expiring}명, 재등록 ${renewals}건입니다. 만료 14일 이내 회원을 우선 콜백 대상으로 배정하세요.`]);
+  }
+  if (noShows) {
+    messages.push(["예약", `노쇼/취소 ${noShows}건이 있습니다. 당일 재예약 안내와 사유 기록이 필요합니다.`]);
+  }
+  if (lockerExpiring) {
+    messages.push(["락커", `락커 만료 ${lockerExpiring}건이 있습니다. 만료 전 자동메시지 발송 여부와 현장 안내를 확인하세요.`]);
+  }
+  if (sales) {
+    messages.push(["매출", `다짐 결제/매출 ${sales.toLocaleString()}원이 입력되었습니다. 직원 행동 기록과 매출 발생 원인을 같이 남겨야 반복 가능한 영업 패턴이 보입니다.`]);
+  }
+  if (notes.length) {
+    messages.push(["운영", `특이사항 ${notes.length}건이 있습니다. 시설/고객/안전 이슈는 담당자와 처리기한을 지정하세요.`]);
+  }
+  node.innerHTML = messages.slice(0, 6).map(([title, text]) => `<article><b>${escapeHtml(title)}</b><span>${escapeHtml(text)}</span></article>`).join("");
+}
+
+function importDagymText() {
+  const text = document.getElementById("dagymImportText")?.value || "";
+  state.dagymOps = { ...createDagymOps(), ...(state.dagymOps || {}), importText: text };
+  const rules = [
+    ["visits", /(?:출석|입장|방문)\D{0,12}(\d[\d,]*)/i],
+    ["newMembers", /(?:신규|신규\s*등록)\D{0,12}(\d[\d,]*)/i],
+    ["renewals", /(?:재등록|연장|갱신)\D{0,12}(\d[\d,]*)/i],
+    ["expiring", /(?:만료\s*예정|만료예정|만료)\D{0,12}(\d[\d,]*)/i],
+    ["ptBookings", /(?:PT\s*예약|피티\s*예약|수업\s*예약|예약)\D{0,12}(\d[\d,]*)/i],
+    ["noShows", /(?:노쇼|취소|결석)\D{0,12}(\d[\d,]*)/i],
+    ["lockerExpiring", /(?:락커\s*만료|락커)\D{0,12}(\d[\d,]*)/i],
+    ["sales", /(?:매출|결제|판매)\D{0,12}(\d[\d,]*)/i],
+  ];
+  rules.forEach(([key, pattern]) => {
+    const match = text.match(pattern);
+    if (match) state.dagymOps[key] = match[1].replaceAll(",", "");
+  });
+  saveState({ fastSave: true });
+  renderFitnessCenterDaily();
+}
+
+function clearDagymOps() {
+  state.dagymOps = createDagymOps();
+  saveState();
+  renderFitnessCenterDaily();
 }
 
 function getWorkMinutes(start = "", end = "") {
@@ -2704,6 +2802,20 @@ document.querySelectorAll("[data-fitness-field]").forEach((field) => {
     renderFitnessDashboard();
   };
 });
+document.querySelectorAll("[data-dagym-field]").forEach((field) => {
+  field.oninput = (event) => {
+    state.dagymOps = { ...createDagymOps(), ...(state.dagymOps || {}) };
+    state.dagymOps[event.target.dataset.dagymField] = event.target.value;
+    saveState({ fastSave: true });
+    renderFitnessCenterDaily();
+  };
+});
+document.getElementById("dagymImportText")?.addEventListener("input", (event) => {
+  state.dagymOps = { ...createDagymOps(), ...(state.dagymOps || {}), importText: event.target.value };
+  saveState({ fastSave: true });
+});
+document.getElementById("dagymImportButton")?.addEventListener("click", importDagymText);
+document.getElementById("dagymClearButton")?.addEventListener("click", clearDagymOps);
 document.querySelectorAll("[data-fitness-goal]").forEach((field) => {
   field.oninput = (event) => {
     state.fitnessGoals = { ...createFitnessGoals(), ...(state.fitnessGoals || {}) };

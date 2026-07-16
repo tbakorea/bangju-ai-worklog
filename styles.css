@@ -4228,6 +4228,144 @@ textarea:focus-visible {
   gap: 10px;
 }
 
+.dagym-ops-panel,
+.fitness-ai-briefing {
+  display: grid;
+  gap: 8px;
+  border: 1px solid var(--hardline);
+  background: rgba(252, 252, 247, 0.86);
+  padding: 10px;
+}
+
+.dagym-ops-panel header {
+  display: grid;
+  gap: 2px;
+}
+
+.dagym-ops-panel header strong,
+.fitness-ai-briefing h4 {
+  margin: 0;
+  color: var(--ink);
+  font-size: 17px;
+  font-weight: 950;
+}
+
+.dagym-ops-panel header span {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.dagym-ops-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  border: 1px solid var(--hardline);
+  border-bottom: 0;
+}
+
+.dagym-ops-grid label {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+  border-right: 1px solid var(--hardline);
+  border-bottom: 1px solid var(--hardline);
+  color: var(--muted);
+  padding: 6px;
+  font-size: 11px;
+  font-weight: 900;
+}
+
+.dagym-ops-grid label:nth-child(4n) {
+  border-right: 0;
+}
+
+.dagym-ops-grid input {
+  min-width: 0;
+  border: 0;
+  background: transparent;
+  color: var(--ink);
+  padding: 0;
+  font-size: 18px;
+  font-weight: 950;
+  outline: 0;
+}
+
+.dagym-import-box {
+  display: grid;
+  gap: 4px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.dagym-import-box textarea {
+  width: 100%;
+  min-width: 0;
+  border: 1px solid var(--hardline);
+  border-radius: 0;
+  background: var(--nordic-sheet);
+  color: var(--ink);
+  padding: 8px;
+  font-size: 13px;
+  font-weight: 750;
+  line-height: 1.35;
+  resize: vertical;
+}
+
+.dagym-actions {
+  display: flex;
+  gap: 6px;
+  justify-content: flex-end;
+}
+
+.dagym-actions button {
+  min-height: 34px;
+  border: 1px solid var(--hardline);
+  border-radius: 0;
+  background: var(--nordic-sheet);
+  color: var(--ink);
+  padding: 5px 10px;
+  font-size: 13px;
+  font-weight: 950;
+}
+
+#dagymImportButton {
+  background: var(--fitness-green);
+  color: var(--nordic-sheet);
+}
+
+#fitnessCenterCoachingList {
+  display: grid;
+  gap: 6px;
+}
+
+#fitnessCenterCoachingList article {
+  display: grid;
+  grid-template-columns: 58px minmax(0, 1fr);
+  gap: 8px;
+  align-items: start;
+  border-top: 1px solid var(--hairline);
+  padding-top: 6px;
+}
+
+#fitnessCenterCoachingList article:first-child {
+  border-top: 0;
+  padding-top: 0;
+}
+
+#fitnessCenterCoachingList b {
+  color: var(--fitness-green);
+  font-size: 13px;
+  font-weight: 950;
+}
+
+#fitnessCenterCoachingList span {
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 760;
+  line-height: 1.35;
+}
+
 .fitness-center-summary-grid {
   display: grid;
   grid-template-columns: repeat(6, minmax(0, 1fr));
@@ -4968,6 +5106,55 @@ body[data-layout-mode="phone"] .fitness-log-schedule-panel {
 body[data-layout-mode="phone"] .fitness-center-daily-panel {
   gap: 7px;
   padding: 7px;
+}
+
+body[data-layout-mode="phone"] .dagym-ops-panel,
+body[data-layout-mode="phone"] .fitness-ai-briefing {
+  gap: 6px;
+  padding: 7px;
+}
+
+body[data-layout-mode="phone"] .dagym-ops-panel header strong,
+body[data-layout-mode="phone"] .fitness-ai-briefing h4 {
+  font-size: 16px;
+}
+
+body[data-layout-mode="phone"] .dagym-ops-panel header span {
+  font-size: 10px;
+}
+
+body[data-layout-mode="phone"] .dagym-ops-grid {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+body[data-layout-mode="phone"] .dagym-ops-grid label {
+  padding: 4px;
+  font-size: 9px;
+}
+
+body[data-layout-mode="phone"] .dagym-ops-grid input {
+  font-size: 14px;
+}
+
+body[data-layout-mode="phone"] .dagym-import-box textarea {
+  min-height: 52px;
+  font-size: 11px;
+}
+
+body[data-layout-mode="phone"] .dagym-actions button {
+  min-height: 30px;
+  padding-inline: 8px;
+  font-size: 11px;
+}
+
+body[data-layout-mode="phone"] #fitnessCenterCoachingList article {
+  grid-template-columns: 44px minmax(0, 1fr);
+  gap: 6px;
+}
+
+body[data-layout-mode="phone"] #fitnessCenterCoachingList b,
+body[data-layout-mode="phone"] #fitnessCenterCoachingList span {
+  font-size: 11px;
 }
 
 body[data-layout-mode="phone"] .fitness-center-daily-panel h3 {

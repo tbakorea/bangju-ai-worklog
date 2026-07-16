@@ -219,7 +219,35 @@
           <button type="button" id="fitnessLogNextPageButton" aria-label="다음 업무일지">›</button>
         </div>
         <article class="planner-section fitness-center-daily-panel" id="fitnessCenterDailyPanel" hidden>
-          <h3>센터일일 업무일지</h3>
+          <h3>센터 운영현황</h3>
+          <div class="dagym-ops-panel">
+            <header>
+              <strong>다짐 운영현황</strong>
+              <span>다짐매니저 자료를 입력하거나 붙여넣어 오늘 운영 상태를 분석합니다</span>
+            </header>
+            <div class="dagym-ops-grid">
+              <label>오늘 출석 <input data-dagym-field="visits" type="number" min="0" inputmode="numeric" /></label>
+              <label>신규 등록 <input data-dagym-field="newMembers" type="number" min="0" inputmode="numeric" /></label>
+              <label>재등록 <input data-dagym-field="renewals" type="number" min="0" inputmode="numeric" /></label>
+              <label>만료 예정 <input data-dagym-field="expiring" type="number" min="0" inputmode="numeric" /></label>
+              <label>PT 예약 <input data-dagym-field="ptBookings" type="number" min="0" inputmode="numeric" /></label>
+              <label>노쇼/취소 <input data-dagym-field="noShows" type="number" min="0" inputmode="numeric" /></label>
+              <label>락커 만료 <input data-dagym-field="lockerExpiring" type="number" min="0" inputmode="numeric" /></label>
+              <label>결제/매출 <input data-dagym-field="sales" type="number" min="0" inputmode="numeric" /></label>
+            </div>
+            <label class="dagym-import-box">
+              <span>다짐 자료 붙여넣기</span>
+              <textarea id="dagymImportText" rows="3" placeholder="다짐매니저에서 복사한 출석, 예약, 결제, 만료 예정 내용을 붙여넣습니다."></textarea>
+            </label>
+            <div class="dagym-actions">
+              <button type="button" id="dagymImportButton">붙여넣기 분석</button>
+              <button type="button" id="dagymClearButton">초기화</button>
+            </div>
+          </div>
+          <div class="fitness-ai-briefing">
+            <h4>AI 총괄 코칭</h4>
+            <div id="fitnessCenterCoachingList"></div>
+          </div>
           <div class="fitness-center-summary-grid" id="fitnessCenterSummaryGrid"></div>
           <div class="fitness-center-table-wrap">
             <table class="fitness-center-table">
