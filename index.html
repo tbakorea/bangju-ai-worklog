@@ -15,7 +15,7 @@
           <p id="globalHeaderTitle">비욘드 피트니스 업무일지</p>
           <h1 id="globalEmployeeIdentity"></h1>
         </div>
-        <select id="mainMenuWheelSelect" class="main-menu-wheel-select" aria-label="메인메뉴 선택">
+        <select id="mainMenuWheelSelect" class="main-menu-wheel-select" aria-label="메인메뉴 선택" hidden>
           <option value="today">업무일지</option>
           <option value="fitness-log">피트니스 업무일지</option>
           <option value="fitness">피트니스 OS</option>
@@ -28,13 +28,18 @@
           <option value="projects">프로젝트</option>
           <option value="settings">설정</option>
         </select>
-        <div class="layout-mode-toggle" aria-label="화면 구성 모드">
-          <button type="button" data-layout-mode-choice="wide">와이드</button>
-          <button type="button" data-layout-mode-choice="phone">폰</button>
-        </div>
         <div class="header-actions">
-          <button id="settingsGearButton" type="button" aria-label="로그인 및 설정">⚙</button>
+          <button id="settingsGearButton" type="button" aria-haspopup="menu" aria-expanded="false" aria-label="메뉴 열기">Menu</button>
           <button id="worklogAiButton" type="button">AI</button>
+        </div>
+        <div class="main-menu-popover" id="mainMenuPopover" role="menu" hidden>
+          <button type="button" data-menu-view="fitness-log">피트니스</button>
+          <button type="button" data-menu-view="fitness">센터 OS</button>
+          <button type="button" data-menu-view="today">업무일지</button>
+          <button type="button" data-menu-view="attendance">근태</button>
+          <button type="button" data-menu-view="management">사업장</button>
+          <button type="button" data-menu-view="settings">설정</button>
+          <button type="button" data-menu-view="auth">로그인</button>
         </div>
       </header>
 
@@ -197,6 +202,15 @@
       </section>
 
       <section class="worklog-view fitness-log-view" id="view-fitness-log">
+        <div class="fitness-coaching-row">
+          <button type="button" class="fitness-coaching-ticker" id="fitnessCoachingTicker" aria-label="AI 코칭 자세히 보기">
+            <span id="fitnessCoachingTickerText">AI 코칭을 준비 중입니다.</span>
+          </button>
+          <div class="layout-mode-toggle" aria-label="화면 구성 모드">
+            <button type="button" data-layout-mode-choice="wide">Studio</button>
+            <button type="button" data-layout-mode-choice="phone">Focus</button>
+          </div>
+        </div>
         <div class="fitness-log-title">
           <div class="fitness-date-nav">
             <button type="button" id="fitnessPrevDateButton" aria-label="이전 날짜">‹</button>
@@ -212,10 +226,34 @@
           <button type="button" id="fitnessLogPrevPageButton" aria-label="이전 업무일지">‹</button>
           <div>
             <strong id="fitnessLogPageTitle">개인 업무일지</strong>
-            <span id="fitnessLogPageHint">좌우로 밀어서 센터/동료 업무일지를 봅니다</span>
+            <span id="fitnessLogPageHint">센터운영현황 - 내 업무일지 - 동료 업무일지</span>
           </div>
           <button type="button" id="fitnessLogNextPageButton" aria-label="다음 업무일지">›</button>
         </div>
+        <article class="planner-section fitness-ops-section">
+          <h3>
+            <span>피트니스 운영기록</span>
+            <button type="button" id="fitnessOpsCloseButton">확인</button>
+          </h3>
+          <button type="button" class="fitness-ops-summary-button" id="fitnessOpsSummaryButton">운영기록 열기</button>
+          <div class="fitness-ops-body">
+            <div class="fitness-ops-grid">
+              <label>PT <input data-fitness-field="ptRegular" type="number" min="0" inputmode="numeric" /></label>
+              <label>무료 PT <input data-fitness-field="ptFree" type="number" min="0" inputmode="numeric" /></label>
+              <label>기타 PT <input data-fitness-field="ptOther" type="number" min="0" inputmode="numeric" /></label>
+              <label>신규 <input data-fitness-field="customerNew" type="number" min="0" inputmode="numeric" /></label>
+              <label>재등록 <input data-fitness-field="customerRenewal" type="number" min="0" inputmode="numeric" /></label>
+              <label>일일권 <input data-fitness-field="dayPass" type="number" min="0" inputmode="numeric" /></label>
+              <label>상담 <input data-fitness-field="consultation" type="number" min="0" inputmode="numeric" /></label>
+              <label>아웃바운드 <input data-fitness-field="outbound" type="number" min="0" inputmode="numeric" /></label>
+              <label>외부영업 <input data-fitness-field="outsideSales" type="number" min="0" inputmode="numeric" /></label>
+            </div>
+            <div class="fitness-ops-notes">
+              <label>운영 메모 <textarea data-fitness-field="shiftNote" rows="2" placeholder="오픈, 센터관리, 마감, 시설 이슈 등"></textarea></label>
+              <label>특이사항 <textarea data-fitness-field="specialReport" rows="2" placeholder="고객 민원, 안전, 시설, 인수인계가 필요한 내용을 기록"></textarea></label>
+            </div>
+          </div>
+        </article>
         <article class="planner-section fitness-center-daily-panel" id="fitnessCenterDailyPanel" hidden>
           <h3>센터 운영현황</h3>
           <div class="dagym-ops-panel">
@@ -289,30 +327,36 @@
           </h3>
           <div id="fitnessAppointmentList" class="worklog-appointment-list appointment-list"></div>
         </article>
-        <article class="planner-section fitness-ops-section">
-          <h3>
-            <span>피트니스 운영기록</span>
-            <button type="button" id="fitnessOpsCloseButton">확인</button>
-          </h3>
-          <button type="button" class="fitness-ops-summary-button" id="fitnessOpsSummaryButton">운영기록 열기</button>
-          <div class="fitness-ops-body">
-            <div class="fitness-ops-grid">
-              <label>정규 PT <input data-fitness-field="ptRegular" type="number" min="0" inputmode="numeric" /></label>
-              <label>무료 PT <input data-fitness-field="ptFree" type="number" min="0" inputmode="numeric" /></label>
-              <label>기타 PT <input data-fitness-field="ptOther" type="number" min="0" inputmode="numeric" /></label>
-              <label>신규 <input data-fitness-field="customerNew" type="number" min="0" inputmode="numeric" /></label>
-              <label>재등록 <input data-fitness-field="customerRenewal" type="number" min="0" inputmode="numeric" /></label>
-              <label>일일권 <input data-fitness-field="dayPass" type="number" min="0" inputmode="numeric" /></label>
-              <label>상담 <input data-fitness-field="consultation" type="number" min="0" inputmode="numeric" /></label>
-              <label>아웃바운드 <input data-fitness-field="outbound" type="number" min="0" inputmode="numeric" /></label>
-              <label>외부영업 <input data-fitness-field="outsideSales" type="number" min="0" inputmode="numeric" /></label>
-            </div>
-            <div class="fitness-ops-notes">
-              <label>근무/운영 메모 <textarea data-fitness-field="shiftNote" rows="2" placeholder="오픈, 센터관리, 마감, 시설 이슈 등"></textarea></label>
-              <label>특이사항 보고 <textarea data-fitness-field="specialReport" rows="2" placeholder="고객 민원, 안전, 시설, 인수인계가 필요한 내용을 기록"></textarea></label>
-            </div>
+        <button type="button" class="fitness-report-menu-button" id="fitnessReportMenuButton">보고서</button>
+      </section>
+
+      <div class="fitness-coaching-backdrop" id="fitnessCoachingBackdrop" hidden></div>
+      <section class="fitness-coaching-sheet" id="fitnessCoachingSheet" role="dialog" aria-modal="true" aria-label="AI 코칭" hidden>
+        <header>
+          <div>
+            <strong>AI Coaching</strong>
+            <span id="fitnessCoachingSheetSub">오늘의 운영 코칭</span>
           </div>
-        </article>
+          <button type="button" id="fitnessCoachingCloseButton" aria-label="닫기">×</button>
+        </header>
+        <div id="fitnessCoachingDetailList" class="fitness-coaching-detail-list"></div>
+      </section>
+
+      <div class="fitness-report-backdrop" id="fitnessReportBackdrop" hidden></div>
+      <section class="fitness-report-sheet" id="fitnessReportSheet" role="dialog" aria-modal="true" aria-label="피트니스 업무 보고서" hidden>
+        <header>
+          <div>
+            <strong>Daily Report</strong>
+            <span id="fitnessReportSubtitle">피트니스 업무 보고서</span>
+          </div>
+          <button type="button" id="fitnessReportCloseButton" aria-label="닫기">×</button>
+        </header>
+        <div class="fitness-report-preview" id="fitnessReportPreview"></div>
+        <footer>
+          <button type="button" id="fitnessReportImageButton">이미지 저장</button>
+          <button type="button" id="fitnessReportShareButton">보내기</button>
+          <button type="button" id="fitnessReportPrintButton">출력</button>
+        </footer>
       </section>
 
       <section class="worklog-view fitness-os-view" id="view-fitness">
