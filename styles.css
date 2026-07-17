@@ -792,11 +792,13 @@ body[data-device-mode="narrow"] .os-mode-switch span[data-device-mode="narrow"] 
 }
 
 .worklog-calendar-popover {
-  position: absolute;
-  top: calc(100% + 6px);
-  left: 10px;
+  position: fixed;
+  top: calc(env(safe-area-inset-top) + 132px);
+  left: max(12px, calc((100vw - 1180px) / 2 + 16px));
   z-index: 45;
   width: min(360px, calc(100vw - 28px));
+  max-height: calc(100dvh - env(safe-area-inset-top) - 150px);
+  overflow: auto;
   border: 1px solid rgba(15, 59, 46, 0.13);
   border-radius: 22px;
   background: rgba(255, 254, 250, 0.96);
@@ -4214,10 +4216,64 @@ textarea:focus-visible {
   font-weight: 950;
 }
 
+.fitness-log-view.is-center-page .fitness-log-pager {
+  background: rgba(18, 59, 45, 0.08);
+}
+
+.fitness-log-view.is-center-page .fitness-log-pager strong {
+  color: var(--fitness-green);
+}
+
+.fitness-log-view.is-center-page .fitness-log-pager div::after {
+  content: "센터 취합";
+  justify-self: start;
+  margin-top: 3px;
+  border: 1px solid rgba(18, 59, 45, 0.24);
+  background: rgba(18, 59, 45, 0.08);
+  color: var(--fitness-green);
+  padding: 2px 6px;
+  font-size: 10px;
+  font-weight: 950;
+}
+
+.fitness-log-view.is-own-page .fitness-log-pager {
+  box-shadow: inset 5px 0 0 var(--fitness-green);
+}
+
+.fitness-log-view.is-own-page .fitness-log-pager div::after {
+  content: "입력 가능";
+  justify-self: start;
+  margin-top: 3px;
+  border: 1px solid rgba(18, 59, 45, 0.28);
+  background: rgba(18, 59, 45, 0.1);
+  color: var(--fitness-green);
+  padding: 2px 6px;
+  font-size: 10px;
+  font-weight: 950;
+}
+
+.fitness-log-view.is-coworker-page .fitness-log-pager {
+  background: rgba(77, 86, 98, 0.075);
+  box-shadow: inset 5px 0 0 rgba(77, 86, 98, 0.48);
+}
+
 .fitness-log-view.is-readonly .fitness-log-task-panel,
 .fitness-log-view.is-readonly .fitness-log-schedule-panel,
 .fitness-log-view.is-readonly .fitness-ops-section {
   background: rgba(252, 252, 247, 0.72);
+}
+
+.fitness-log-view.is-coworker-page .fitness-log-task-panel,
+.fitness-log-view.is-coworker-page .fitness-log-schedule-panel,
+.fitness-log-view.is-coworker-page .fitness-ops-section {
+  background:
+    linear-gradient(90deg, rgba(77, 86, 98, 0.055), transparent 42%),
+    rgba(252, 252, 247, 0.72);
+}
+
+.fitness-log-view.is-coworker-page .fitness-log-task-panel h3,
+.fitness-log-view.is-coworker-page .fitness-log-schedule-panel h3 {
+  color: rgba(43, 51, 61, 0.9);
 }
 
 .fitness-log-view.is-readonly .fitness-log-task-panel input,
@@ -5008,6 +5064,10 @@ body[data-layout-mode="phone"] .main-menu-wheel-select {
 body[data-layout-mode="phone"] .layout-mode-toggle {
   grid-column: 1 / 2;
   justify-self: start;
+}
+
+body.physical-phone-device .layout-mode-toggle {
+  display: none;
 }
 
 body[data-layout-mode="phone"] .layout-mode-toggle button {

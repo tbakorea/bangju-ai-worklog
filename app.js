@@ -419,7 +419,10 @@ function getFitnessPageDisplayLabel(page = getCurrentFitnessLogPage()) {
 }
 
 function getFitnessLogPages() {
-  return [{ type: "center", id: "fitness-center", title: "센터일일 업무일지" }, ...getFitnessEmployees().map((employee) => ({
+  const fitnessEmployees = getFitnessEmployees();
+  const writableEmployee = fitnessEmployees.find((employee) => employee.id === state.fitnessWritableEmployeeId) || fitnessEmployees[0];
+  const coworkerEmployees = fitnessEmployees.filter((employee) => employee.id !== writableEmployee?.id);
+  return [{ type: "center", id: "fitness-center", title: "센터 운영현황" }, ...[writableEmployee, ...coworkerEmployees].filter(Boolean).map((employee) => ({
     type: "employee",
     id: employee.id,
     title: employee.name,
@@ -577,6 +580,9 @@ function renderResponsiveMode() {
   document.body.dataset.deviceMode = mode;
   document.body.dataset.layoutMode = layoutMode;
   document.body.classList.toggle("smartphone-device", layoutMode === "phone" || isPhoneWidth);
+  document.body.classList.toggle("physical-phone-device", isPhoneWidth);
+  const layoutToggle = document.querySelector(".layout-mode-toggle");
+  if (layoutToggle) layoutToggle.hidden = isPhoneWidth;
   document.querySelectorAll("[data-layout-mode-choice]").forEach((button) => {
     button.classList.toggle("is-active", button.dataset.layoutModeChoice === layoutMode);
   });
@@ -1235,7 +1241,11 @@ function renderFitnessLogPager() {
   const prev = document.getElementById("fitnessLogPrevPageButton");
   const next = document.getElementById("fitnessLogNextPageButton");
   if (title) title.textContent = getFitnessPageDisplayLabel(page);
-  if (hint) hint.textContent = page?.type === "center" ? "오른쪽으로 밀면 개인/동료 업무일지" : "왼쪽은 센터 취합 · 오른쪽은 동료 업무일지";
+  if (hint) {
+    if (page?.type === "center") hint.textContent = "1페이지 · 센터 운영현황";
+    else if (page?.id === state.fitnessWritableEmployeeId) hint.textContent = "2페이지 · 본인 입력 업무일지";
+    else hint.textContent = `${pageIndex + 1}페이지 · 동료 열람 업무일지`;
+  }
   if (prev) prev.disabled = pageIndex === 0;
   if (next) next.disabled = pageIndex === pages.length - 1;
 }
@@ -1245,11 +1255,17 @@ function applyFitnessLogPermissionState() {
   if (!view) return;
   const page = getCurrentFitnessLogPage();
   const readOnly = !isCurrentFitnessLogEditable();
+  const isCenter = page?.type === "center";
+  const isCoworker = page?.type === "employee" && page.id !== state.fitnessWritableEmployeeId;
   view.classList.toggle("is-readonly", readOnly);
+  view.classList.toggle("is-center-page", isCenter);
+  view.classList.toggle("is-own-page", isCurrentFitnessLogEditable());
+  view.classList.toggle("is-coworker-page", isCoworker);
   view.dataset.fitnessPermission = readOnly ? "readonly" : "editable";
+  view.dataset.fitnessPageType = isCenter ? "center" : isCoworker ? "coworker" : "own";
   const hint = document.getElementById("fitnessLogPageHint");
   if (hint) {
-    if (page?.type === "center") hint.textContent = "센터 취합 일지는 열람 전용입니다";
+    if (page?.type === "center") hint.textContent = "센터 운영현황은 직원 기록을 취합해 보여줍니다";
     else if (readOnly) hint.textContent = "동료 업무일지는 열람만 가능합니다";
     else hint.textContent = "본인 업무일지입니다. 기록과 수정이 가능합니다";
   }
