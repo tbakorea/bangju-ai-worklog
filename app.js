@@ -682,7 +682,11 @@ function renderDateNav() {
   if (dayTitle) dayTitle.textContent = formatKoreanDate(activeDateKey);
   selectedDateButton.setAttribute("aria-label", `${formatKoreanDate(activeDateKey)} 업무일지 날짜 선택`);
   if (todayJumpButton) {
-    todayJumpButton.hidden = activeDateKey === todayKey;
+    const isToday = activeDateKey === todayKey;
+    todayJumpButton.hidden = false;
+    todayJumpButton.disabled = isToday;
+    todayJumpButton.classList.toggle("is-current-date", isToday);
+    todayJumpButton.setAttribute("aria-disabled", String(isToday));
   }
   renderWorklogCalendar();
 }
@@ -1214,7 +1218,13 @@ function renderFitnessWorklog(log = getSelectedLog()) {
   const input = document.getElementById("fitnessDateInput");
   if (input) input.value = getActiveDateKey();
   const todayButton = document.getElementById("fitnessTodayButton");
-  if (todayButton) todayButton.hidden = getActiveDateKey() === todayKey;
+  if (todayButton) {
+    const isToday = getActiveDateKey() === todayKey;
+    todayButton.hidden = false;
+    todayButton.disabled = isToday;
+    todayButton.classList.toggle("is-current-date", isToday);
+    todayButton.setAttribute("aria-disabled", String(isToday));
+  }
   const unitButton = document.getElementById("fitnessScheduleUnitButton");
   if (unitButton) unitButton.textContent = log.scheduleUnit === "60" ? "1시간" : "30분";
   renderFitnessLogPager();

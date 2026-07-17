@@ -13,6 +13,10 @@
   box-sizing: border-box;
 }
 
+[hidden] {
+  display: none !important;
+}
+
 body {
   margin: 0;
   background: linear-gradient(180deg, rgba(15, 59, 46, 0.08), transparent 220px), var(--paper);
@@ -4579,7 +4583,7 @@ textarea:focus-visible {
   white-space: nowrap;
 }
 
-#fitnessLogCoachButton {
+#fitnessTodayButton {
   min-height: 38px;
   border: 1px solid var(--hardline);
   border-radius: 0;
@@ -4587,6 +4591,12 @@ textarea:focus-visible {
   color: var(--nordic-sheet);
   padding: 7px 12px;
   font-weight: 950;
+}
+
+#fitnessTodayButton.is-current-date,
+.today-jump.is-current-date {
+  opacity: 0.38;
+  cursor: default;
 }
 
 .fitness-log-task-panel,
@@ -4642,10 +4652,10 @@ textarea:focus-visible {
   }
 
   .fitness-date-nav {
-    grid-template-columns: 28px minmax(0, 1fr) 28px auto;
+    grid-template-columns: 28px minmax(0, 1fr) 28px;
   }
 
-  #fitnessLogCoachButton {
+  #fitnessTodayButton {
     min-height: 32px;
     padding-inline: 10px;
     font-size: 12px;
@@ -5125,15 +5135,7 @@ body[data-layout-mode="phone"] .fitness-log-pager span {
 }
 
 body[data-layout-mode="phone"] .fitness-date-nav {
-  grid-template-columns: 30px minmax(0, 1fr) 30px 0;
-}
-
-body[data-layout-mode="phone"] #fitnessTodayButton {
-  width: 0;
-  min-width: 0;
-  overflow: hidden;
-  padding: 0;
-  border-right: 0;
+  grid-template-columns: 30px minmax(0, 1fr) 30px;
 }
 
 body[data-layout-mode="phone"] #fitnessDateButton {
@@ -5145,22 +5147,12 @@ body[data-layout-mode="phone"] #fitnessDateButton span {
   line-height: 1;
 }
 
-body[data-layout-mode="phone"] #fitnessDateButton small {
-  font-size: 8px;
-}
-
-body[data-layout-mode="phone"] #fitnessLogCoachButton {
+body[data-layout-mode="phone"] #fitnessTodayButton {
   width: 56px;
   min-height: 42px;
-  padding: 0;
-  font-size: 0;
+  padding: 0 8px;
+  font-size: 12px;
   line-height: 1.05;
-}
-
-body[data-layout-mode="phone"] #fitnessLogCoachButton::after {
-  content: "AI\A코칭";
-  white-space: pre;
-  font-size: 11px;
 }
 
 body[data-layout-mode="phone"] .fitness-log-task-panel,
