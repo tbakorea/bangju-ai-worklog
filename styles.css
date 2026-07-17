@@ -510,19 +510,23 @@ body[data-device-mode="narrow"] .os-mode-switch span[data-device-mode="narrow"] 
   display: none;
 }
 
-#selectedDateButton.slide-out-next {
+#selectedDateButton.slide-out-next,
+#fitnessDateButton.slide-out-next {
   animation: dateSlideOutNext 150ms ease forwards;
 }
 
-#selectedDateButton.slide-out-prev {
+#selectedDateButton.slide-out-prev,
+#fitnessDateButton.slide-out-prev {
   animation: dateSlideOutPrev 150ms ease forwards;
 }
 
-#selectedDateButton.slide-in-next {
+#selectedDateButton.slide-in-next,
+#fitnessDateButton.slide-in-next {
   animation: dateSlideInNext 210ms ease both;
 }
 
-#selectedDateButton.slide-in-prev {
+#selectedDateButton.slide-in-prev,
+#fitnessDateButton.slide-in-prev {
   animation: dateSlideInPrev 210ms ease both;
 }
 
@@ -2322,16 +2326,7 @@ textarea:focus-visible {
 }
 
 .worklog-header::before {
-  content: "01";
-  display: grid;
-  place-items: center;
-  width: 46px;
-  margin-right: 6px;
-  background: var(--hardline);
-  color: var(--nordic-sheet);
-  font-size: 14px;
-  font-weight: 900;
-  line-height: 1;
+  content: none;
 }
 
 .worklog-header > div:first-child {
@@ -2341,17 +2336,18 @@ textarea:focus-visible {
 
 .worklog-header p {
   margin-bottom: 6px;
-  color: var(--muted);
-  font-size: 11px;
+  color: var(--ink);
+  font-size: 18px;
   font-weight: 850;
-  letter-spacing: 0.08em;
+  letter-spacing: 0;
 }
 
 .worklog-header h1 {
-  color: var(--ink);
-  font-size: clamp(24px, 4vw, 48px);
-  font-weight: 900;
-  line-height: 0.98;
+  margin: 0;
+  color: var(--fitness-green);
+  font-size: clamp(15px, 2.4vw, 24px);
+  font-weight: 950;
+  line-height: 1.05;
 }
 
 .header-actions {
@@ -3745,7 +3741,7 @@ textarea:focus-visible {
 
 .worklog-header {
   display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto auto;
+  grid-template-columns: minmax(0, 1fr) auto auto auto;
   align-items: stretch;
 }
 
@@ -3773,7 +3769,7 @@ textarea:focus-visible {
 
 @media (max-width: 760px) {
   .worklog-header {
-    grid-template-columns: 30px minmax(0, 1fr) 132px auto;
+    grid-template-columns: minmax(0, 1fr) 118px auto;
     gap: 7px;
   }
 
@@ -3784,6 +3780,15 @@ textarea:focus-visible {
   .worklog-header p {
     overflow: hidden;
     max-width: 100%;
+    margin-bottom: 3px;
+    font-size: 13px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .worklog-header h1 {
+    overflow: hidden;
+    font-size: 15px;
     text-overflow: ellipsis;
     white-space: nowrap;
   }

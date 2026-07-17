@@ -215,6 +215,7 @@ let dateSlideTimer = 0;
 let calendarViewDate = parseDateKey(todayKey);
 let calendarPickerMode = "worklog";
 let calendarPostponeTask = null;
+let calendarTriggerButtonId = "selectedDateButton";
 let mobileDayFocusMode = "split";
 let fitnessScheduleEditorState = null;
 const dailyEditingState = {
@@ -520,25 +521,33 @@ function moveSelectedDate(offsetDays, animate = true) {
 }
 
 function animateDateTitle(delta, nextDateKey) {
-  const titleButton = document.getElementById("selectedDateButton");
-  if (!titleButton) {
+  const titleButtons = ["selectedDateButton", "fitnessDateButton"]
+    .map((id) => document.getElementById(id))
+    .filter(Boolean);
+  if (!titleButtons.length) {
     setSelectedDateKey(nextDateKey);
     return;
   }
 
   clearTimeout(dateSlideTimer);
-  titleButton.classList.remove("slide-out-next", "slide-out-prev", "slide-in-next", "slide-in-prev");
-  void titleButton.offsetWidth;
-  titleButton.classList.add(delta > 0 ? "slide-out-next" : "slide-out-prev");
+  titleButtons.forEach((button) => {
+    button.classList.remove("slide-out-next", "slide-out-prev", "slide-in-next", "slide-in-prev");
+    void button.offsetWidth;
+    button.classList.add(delta > 0 ? "slide-out-next" : "slide-out-prev");
+  });
 
   dateSlideTimer = window.setTimeout(() => {
     setSelectedDateKey(nextDateKey);
-    const nextTitleButton = document.getElementById("selectedDateButton");
-    nextTitleButton.classList.remove("slide-out-next", "slide-out-prev", "slide-in-next", "slide-in-prev");
-    void nextTitleButton.offsetWidth;
-    nextTitleButton.classList.add(delta > 0 ? "slide-in-next" : "slide-in-prev");
+    const nextTitleButtons = ["selectedDateButton", "fitnessDateButton"]
+      .map((id) => document.getElementById(id))
+      .filter(Boolean);
+    nextTitleButtons.forEach((button) => {
+      button.classList.remove("slide-out-next", "slide-out-prev", "slide-in-next", "slide-in-prev");
+      void button.offsetWidth;
+      button.classList.add(delta > 0 ? "slide-in-next" : "slide-in-prev");
+    });
     window.setTimeout(() => {
-      nextTitleButton.classList.remove("slide-in-next", "slide-in-prev");
+      nextTitleButtons.forEach((button) => button.classList.remove("slide-in-next", "slide-in-prev"));
     }, 220);
   }, 150);
 }
@@ -674,12 +683,21 @@ function renderDateNav() {
 
 function openWorklogCalendar() {
   calendarPickerMode = "worklog";
+  calendarTriggerButtonId = "selectedDateButton";
+  calendarPostponeTask = null;
+  openCalendarSheet(parseDateKey(getActiveDateKey()));
+}
+
+function openFitnessCalendar() {
+  calendarPickerMode = "fitness";
+  calendarTriggerButtonId = "fitnessDateButton";
   calendarPostponeTask = null;
   openCalendarSheet(parseDateKey(getActiveDateKey()));
 }
 
 function openPostponeCalendar(task) {
   calendarPickerMode = "postpone";
+  calendarTriggerButtonId = "selectedDateButton";
   calendarPostponeTask = task;
   openCalendarSheet(parseDateKey(task.postponeDate || getActiveDateKey()));
 }
@@ -687,7 +705,7 @@ function openPostponeCalendar(task) {
 function openCalendarSheet(viewDate) {
   const popover = document.getElementById("worklogCalendarPopover");
   const backdrop = document.getElementById("worklogCalendarBackdrop");
-  const selectedDateButton = document.getElementById("selectedDateButton");
+  const selectedDateButton = document.getElementById(calendarTriggerButtonId);
   calendarViewDate = viewDate;
   popover.hidden = false;
   backdrop.hidden = false;
@@ -702,7 +720,7 @@ function openCalendarSheet(viewDate) {
 function closeWorklogCalendar() {
   const popover = document.getElementById("worklogCalendarPopover");
   const backdrop = document.getElementById("worklogCalendarBackdrop");
-  const selectedDateButton = document.getElementById("selectedDateButton");
+  const selectedDateButton = document.getElementById(calendarTriggerButtonId);
   if (!popover || popover.hidden) return;
   popover.classList.remove("is-open");
   backdrop?.classList.remove("is-open");
@@ -738,7 +756,9 @@ function renderWorklogCalendar() {
   monthTitle.textContent = `${year}년`;
   selectedLabel.textContent = calendarPickerMode === "postpone"
     ? `연기일 ${selectedDateKey ? formatKoreanDate(selectedDateKey) : "미정"}`
-    : formatKoreanDate(getActiveDateKey());
+    : calendarPickerMode === "fitness"
+      ? `피트니스 업무일지 ${formatKoreanDate(getActiveDateKey())}`
+      : formatKoreanDate(getActiveDateKey());
   todayButton.textContent = calendarPickerMode === "postpone" ? "오늘로 지정" : "오늘로 이동";
   dayGrid.innerHTML = "";
   const firstDay = new Date(year, month, 1).getDay();
@@ -806,10 +826,12 @@ function renderEmployeeTitle() {
 }
 
 function renderGlobalEmployeeIdentity() {
-  const employee = getSelectedEmployee();
-  const [company, rawDepartment] = employee.org.split(" / ");
-  const department = rawDepartment || employee.org.replace("(주)방주", "").trim() || "비욘드 피트니스";
-  document.getElementById("globalEmployeeIdentity").textContent = `${company || "(주)방주"} (부서: ${department}) ${getEmployeeAdminLabel(employee)}`;
+  const employee = employees.find((item) => item.id === state.fitnessWritableEmployeeId) || getSelectedEmployee();
+  const label = getEmployeeOwnLabel(employee);
+  const identity = document.getElementById("globalEmployeeIdentity");
+  if (identity) identity.textContent = `${employee.role || "직원"} ${label}`;
+  const title = document.getElementById("globalHeaderTitle");
+  if (title) title.textContent = "비욘드 피트니스 업무일지";
 }
 
 function renderProfileForm() {
@@ -2758,16 +2780,31 @@ document.getElementById("fitnessScheduleUnitButton")?.addEventListener("click", 
 document.getElementById("fitnessPrevDateButton")?.addEventListener("click", () => moveSelectedDate(-1));
 document.getElementById("fitnessNextDateButton")?.addEventListener("click", () => moveSelectedDate(1));
 document.getElementById("fitnessTodayButton")?.addEventListener("click", () => setSelectedDateKey(todayKey));
-document.getElementById("fitnessDateButton")?.addEventListener("click", () => {
-  const input = document.getElementById("fitnessDateInput");
-  if (!input) return;
-  input.value = getActiveDateKey();
-  if (typeof input.showPicker === "function") input.showPicker();
-  else input.click();
+document.getElementById("fitnessDateButton")?.addEventListener("click", (event) => {
+  event.stopPropagation();
+  openFitnessCalendar();
 });
 document.getElementById("fitnessDateInput")?.addEventListener("change", (event) => {
   if (event.target.value) setSelectedDateKey(event.target.value);
 });
+{
+  const fitnessDateNav = document.querySelector(".fitness-date-nav");
+  let startX = 0;
+  let startY = 0;
+  let blocked = false;
+  fitnessDateNav?.addEventListener("pointerdown", (event) => {
+    startX = event.clientX;
+    startY = event.clientY;
+    blocked = Boolean(event.target.closest("#fitnessPrevDateButton, #fitnessNextDateButton, #fitnessTodayButton"));
+  });
+  fitnessDateNav?.addEventListener("pointerup", (event) => {
+    if (blocked) return;
+    const dx = event.clientX - startX;
+    const dy = event.clientY - startY;
+    if (Math.abs(dx) < 38 || Math.abs(dx) < Math.abs(dy) * 1.25) return;
+    moveSelectedDate(dx < 0 ? 1 : -1);
+  });
+}
 document.getElementById("fitnessOpsSummaryButton")?.addEventListener("click", () => {
   document.querySelector(".fitness-ops-section")?.classList.add("is-open");
 });
@@ -2869,4 +2906,5 @@ document.getElementById("reportTone").value = state.reportTone;
 document.getElementById("authEmail").value = state.profile.email || "";
 renderAuthStatus();
 renderAll();
+switchView("fitness-log");
 initializeAuth();
