@@ -904,10 +904,12 @@ function renderEmployeeTitle() {
 function renderGlobalEmployeeIdentity() {
   const employee = employees.find((item) => item.id === state.fitnessWritableEmployeeId) || getSelectedEmployee();
   const label = getEmployeeOwnLabel(employee);
+  const role = employee.role || "직원";
+  const personLabel = label === role ? role : `${role} ${label}`;
   const identity = document.getElementById("globalEmployeeIdentity");
   if (identity) identity.textContent = "";
   const title = document.getElementById("globalHeaderTitle");
-  if (title) title.textContent = `beyond fitness · ${employee.role || "직원"} ${label}`;
+  if (title) title.textContent = `beyond fitness · ${personLabel}`;
 }
 
 function renderProfileForm() {
@@ -1324,8 +1326,17 @@ function renderFitnessLogPager() {
   const next = document.getElementById("fitnessLogNextPageButton");
   if (title) title.textContent = getFitnessPagerTitle();
   if (hint) hint.textContent = "";
-  if (prev) prev.disabled = pageIndex === 0;
-  if (next) next.disabled = pageIndex === pages.length - 1;
+  if (prev) {
+    prev.textContent = pageIndex <= 1 ? "<< 센터운영현황" : `<< ${getFitnessPageDisplayLabel(pages[pageIndex - 1])}`;
+    prev.disabled = pageIndex === 0;
+  }
+  if (next) {
+    const nextPage = pages[pageIndex + 1];
+    next.textContent = nextPage
+      ? `${nextPage.type === "employee" && nextPage.id === state.fitnessWritableEmployeeId ? getFitnessPageDisplayLabel(nextPage) + " 업무일지" : "동료업무일지"} >>`
+      : "동료업무일지 >>";
+    next.disabled = pageIndex === pages.length - 1;
+  }
 }
 
 function applyFitnessLogPermissionState() {
@@ -3081,6 +3092,10 @@ document.getElementById("fitnessOpsCloseButton")?.addEventListener("click", () =
 document.getElementById("fitnessCoachingTicker")?.addEventListener("click", openFitnessCoachingSheet);
 document.getElementById("fitnessCoachingCloseButton")?.addEventListener("click", closeFitnessCoachingSheet);
 document.getElementById("fitnessCoachingBackdrop")?.addEventListener("click", closeFitnessCoachingSheet);
+document.getElementById("fitnessCoachingAiButton")?.addEventListener("click", () => {
+  switchView("fitness");
+  closeFitnessCoachingSheet();
+});
 document.getElementById("fitnessReportMenuButton")?.addEventListener("click", openFitnessReportSheet);
 document.getElementById("fitnessReportCloseButton")?.addEventListener("click", closeFitnessReportSheet);
 document.getElementById("fitnessReportBackdrop")?.addEventListener("click", closeFitnessReportSheet);
@@ -3173,9 +3188,9 @@ document.getElementById("reportTone").onchange = (event) => {
   state.reportTone = event.target.value;
   saveState();
 };
-document.getElementById("worklogAiButton").onclick = () => {
+document.getElementById("worklogAiButton")?.addEventListener("click", () => {
   alert("Bangju AI는 업무일지, 근태, 경영 이슈를 모아 일일 보고·리스크 감지·다음 행동 추천으로 연결합니다.");
-};
+});
 window.addEventListener("resize", renderResponsiveMode);
 
 renderResponsiveMode();

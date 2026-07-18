@@ -29,8 +29,7 @@
           <option value="settings">설정</option>
         </select>
         <div class="header-actions">
-          <button id="settingsGearButton" type="button" aria-haspopup="menu" aria-expanded="false" aria-label="메뉴 열기">Menu</button>
-          <button id="worklogAiButton" type="button">AI</button>
+          <button id="settingsGearButton" type="button" aria-haspopup="menu" aria-expanded="false" aria-label="메뉴 열기">메뉴</button>
         </div>
         <div class="main-menu-popover" id="mainMenuPopover" role="menu" hidden>
           <button type="button" data-menu-view="fitness-log">피트니스</button>
@@ -223,12 +222,12 @@
           <button type="button" id="fitnessTodayButton">오늘</button>
         </div>
         <div class="fitness-log-pager" id="fitnessLogPager">
-          <button type="button" id="fitnessLogPrevPageButton" aria-label="이전 업무일지">‹</button>
+          <button type="button" id="fitnessLogPrevPageButton" aria-label="센터 운영현황으로 이동"><< 센터운영현황</button>
           <div>
             <strong id="fitnessLogPageTitle">개인 업무일지</strong>
             <span id="fitnessLogPageHint">센터운영현황 - 내 업무일지 - 동료 업무일지</span>
           </div>
-          <button type="button" id="fitnessLogNextPageButton" aria-label="다음 업무일지">›</button>
+          <button type="button" id="fitnessLogNextPageButton" aria-label="동료 업무일지로 이동">동료업무일지 >></button>
         </div>
         <article class="planner-section fitness-ops-section">
           <h3>
@@ -337,7 +336,10 @@
             <strong>AI Coaching</strong>
             <span id="fitnessCoachingSheetSub">오늘의 운영 코칭</span>
           </div>
-          <button type="button" id="fitnessCoachingCloseButton" aria-label="닫기">×</button>
+          <div class="fitness-coaching-sheet-actions">
+            <button type="button" id="fitnessCoachingAiButton">AI 코칭</button>
+            <button type="button" id="fitnessCoachingCloseButton" aria-label="닫기">×</button>
+          </div>
         </header>
         <div id="fitnessCoachingDetailList" class="fitness-coaching-detail-list"></div>
       </section>
