@@ -1436,8 +1436,8 @@ function renderFitnessLogPager() {
 function getFitnessPagerSideLabel(direction, pageIndex, pages = getFitnessLogPages()) {
   const page = pages[pageIndex];
   if (direction === "prev") {
-    if (page?.type === "center") return "센타운영";
-    if (page?.id === state.fitnessWritableEmployeeId) return "센타운영";
+    if (page?.type === "center") return "센터운영";
+    if (page?.id === state.fitnessWritableEmployeeId) return "센터운영";
     return getFitnessOwnIdentity().pageTitle;
   }
   if (page?.type === "center") return "업무일지";

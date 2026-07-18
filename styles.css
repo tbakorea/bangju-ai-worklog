@@ -7100,3 +7100,192 @@ body[data-layout-mode="phone"] .fitness-log-schedule-panel .appointment-merge-bu
     background: rgba(18, 59, 45, 0.035);
   }
 }
+
+/* Fitness navigation refinement */
+.worklog-header {
+  position: sticky;
+  top: max(8px, env(safe-area-inset-top));
+  z-index: 90;
+}
+
+#view-fitness-log .fitness-coaching-row,
+#view-fitness-log .fitness-log-title,
+#view-fitness-log .fitness-log-pager {
+  position: sticky;
+  z-index: 80;
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+}
+
+#view-fitness-log .fitness-coaching-row {
+  top: calc(max(8px, env(safe-area-inset-top)) + 82px);
+  z-index: 86;
+}
+
+#view-fitness-log .fitness-log-title {
+  top: calc(max(8px, env(safe-area-inset-top)) + 132px);
+  z-index: 85;
+}
+
+#view-fitness-log .fitness-log-pager {
+  top: calc(max(8px, env(safe-area-inset-top)) + 198px);
+  z-index: 84;
+}
+
+#view-fitness-log .fitness-date-nav {
+  grid-template-columns: 48px minmax(0, 1fr) 48px;
+  gap: 8px;
+  align-items: center;
+}
+
+#view-fitness-log #fitnessPrevDateButton,
+#view-fitness-log #fitnessNextDateButton {
+  display: grid;
+  place-items: center;
+  min-height: 50px;
+  border: 1px solid rgba(9, 45, 35, 0.24);
+  border-radius: 16px;
+  background:
+    linear-gradient(180deg, rgba(20, 76, 58, 0.98), rgba(9, 45, 35, 0.98)),
+    var(--fitness-green);
+  color: var(--nordic-sheet);
+  font-size: 32px;
+  font-weight: 850;
+  line-height: 0.82;
+  box-shadow:
+    0 10px 22px rgba(15, 59, 46, 0.18),
+    inset 0 1px 0 rgba(255, 255, 255, 0.18);
+}
+
+#view-fitness-log #fitnessPrevDateButton:active,
+#view-fitness-log #fitnessNextDateButton:active {
+  transform: translateY(1px) scale(0.98);
+  box-shadow:
+    0 5px 14px rgba(15, 59, 46, 0.14),
+    inset 0 1px 0 rgba(255, 255, 255, 0.14);
+}
+
+#view-fitness-log #fitnessDateButton {
+  min-height: 50px;
+  justify-items: center;
+  padding-inline: 6px;
+  border: 1px solid rgba(22, 56, 44, 0.1);
+  border-radius: 16px;
+  background: rgba(255, 254, 250, 0.94);
+}
+
+#view-fitness-log .fitness-log-pager {
+  grid-template-columns: minmax(96px, 0.9fr) minmax(0, 1.06fr) minmax(96px, 0.9fr);
+  gap: 8px;
+}
+
+#view-fitness-log .fitness-log-pager button,
+#view-fitness-log .fitness-log-pager div {
+  min-height: 48px;
+  border: 1px solid rgba(16, 53, 42, 0.18);
+  background: rgba(255, 254, 250, 0.95);
+  box-shadow:
+    0 8px 22px rgba(17, 20, 17, 0.055),
+    inset 0 1px 0 rgba(255, 255, 255, 0.72);
+}
+
+#view-fitness-log #fitnessLogPrevPageButton,
+#view-fitness-log #fitnessLogNextPageButton {
+  position: relative;
+  border-radius: 15px;
+  color: rgba(15, 59, 46, 0.92);
+  font-size: 13px;
+  font-weight: 950;
+  letter-spacing: 0;
+  overflow: visible;
+}
+
+#view-fitness-log #fitnessLogPrevPageButton {
+  padding: 5px 10px 5px 18px;
+  clip-path: polygon(14px 0, 100% 0, 100% 100%, 14px 100%, 0 50%);
+}
+
+#view-fitness-log #fitnessLogNextPageButton {
+  padding: 5px 18px 5px 10px;
+  clip-path: polygon(0 0, calc(100% - 14px) 0, 100% 50%, calc(100% - 14px) 100%, 0 100%);
+}
+
+#view-fitness-log #fitnessLogPrevPageButton::before,
+#view-fitness-log #fitnessLogNextPageButton::after {
+  color: var(--fitness-green);
+  font-size: 17px;
+  font-weight: 900;
+  line-height: 1;
+}
+
+#view-fitness-log #fitnessLogPrevPageButton::before {
+  content: "‹";
+  margin-right: 4px;
+}
+
+#view-fitness-log #fitnessLogNextPageButton::after {
+  content: "›";
+  margin-left: 4px;
+}
+
+#view-fitness-log .fitness-log-pager div {
+  border-color: rgba(15, 59, 46, 0.28);
+  background:
+    linear-gradient(180deg, rgba(255, 254, 250, 0.98), rgba(238, 244, 239, 0.96));
+}
+
+#view-fitness-log .fitness-log-pager strong {
+  color: var(--fitness-green);
+  font-size: clamp(14px, 3.4vw, 18px);
+  font-weight: 950;
+}
+
+#view-fitness-log .fitness-log-pager button:disabled {
+  opacity: 0.34;
+  box-shadow: none;
+}
+
+@media (max-width: 760px) {
+  .worklog-header {
+    top: max(6px, env(safe-area-inset-top));
+  }
+
+  #view-fitness-log .fitness-coaching-row {
+    top: calc(max(6px, env(safe-area-inset-top)) + 86px);
+  }
+
+  #view-fitness-log .fitness-log-title {
+    top: calc(max(6px, env(safe-area-inset-top)) + 138px);
+  }
+
+  #view-fitness-log .fitness-log-pager {
+    top: calc(max(6px, env(safe-area-inset-top)) + 204px);
+  }
+
+  #view-fitness-log .fitness-date-nav {
+    grid-template-columns: 44px minmax(0, 1fr) 44px;
+    gap: 6px;
+  }
+
+  #view-fitness-log #fitnessPrevDateButton,
+  #view-fitness-log #fitnessNextDateButton,
+  #view-fitness-log #fitnessDateButton {
+    min-height: 48px;
+    border-radius: 15px;
+  }
+
+  #view-fitness-log #fitnessPrevDateButton,
+  #view-fitness-log #fitnessNextDateButton {
+    font-size: 30px;
+  }
+
+  #view-fitness-log .fitness-log-pager {
+    grid-template-columns: minmax(92px, 0.86fr) minmax(0, 1.12fr) minmax(92px, 0.86fr);
+    gap: 6px;
+  }
+
+  #view-fitness-log #fitnessLogPrevPageButton,
+  #view-fitness-log #fitnessLogNextPageButton {
+    font-size: 12px;
+  }
+}
