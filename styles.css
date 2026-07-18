@@ -5534,7 +5534,7 @@ body[data-layout-mode="phone"] .fitness-log-schedule-panel .fitness-appointment-
 
 .fitness-coaching-ticker {
   display: grid;
-  grid-template-columns: auto minmax(0, 1fr);
+  grid-template-columns: max-content minmax(0, 1fr);
   align-items: center;
   overflow: hidden;
   min-height: 38px;
@@ -5546,10 +5546,13 @@ body[data-layout-mode="phone"] .fitness-log-schedule-panel .fitness-appointment-
 }
 
 .fitness-coaching-ticker b {
+  position: relative;
+  z-index: 2;
   display: grid;
   place-items: center;
   align-self: stretch;
   border-right: 1px solid rgba(255, 254, 250, 0.28);
+  background: var(--fitness-green);
   padding: 0 10px;
   font-size: 13px;
   font-weight: 950;
@@ -5557,11 +5560,28 @@ body[data-layout-mode="phone"] .fitness-log-schedule-panel .fitness-appointment-
 }
 
 .fitness-coaching-ticker span {
+  display: block;
+  overflow: hidden;
+  min-width: 0;
+  max-width: 100%;
+  height: 100%;
+  justify-self: stretch;
+  clip-path: inset(0);
+  color: transparent;
+  font-size: 0;
+  line-height: 0;
+  white-space: nowrap;
+}
+
+.fitness-coaching-ticker span::before {
+  content: attr(data-ticker-text);
   display: inline-block;
   min-width: 100%;
   padding: 9px 12px;
+  color: var(--nordic-sheet);
   font-size: 13px;
   font-weight: 850;
+  line-height: 1.2;
   white-space: nowrap;
   animation: fitnessTicker 34s linear infinite;
 }
@@ -6465,6 +6485,9 @@ body[data-layout-mode="phone"] .worklog-shell {
 }
 
 body[data-layout-mode="phone"] .worklog-header {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
   margin: 8px 8px 10px;
   border: 1px solid rgba(22, 56, 44, 0.14);
   border-radius: 18px;
@@ -6486,6 +6509,26 @@ body[data-layout-mode="phone"] .header-actions button {
   border-color: rgba(22, 56, 44, 0.16);
   border-radius: 14px;
   box-shadow: 0 2px 8px rgba(17, 20, 17, 0.05);
+}
+
+body[data-layout-mode="phone"] .header-actions {
+  display: grid;
+  grid-template-columns: repeat(2, 44px);
+  grid-auto-flow: column;
+  align-items: stretch;
+  justify-content: end;
+  gap: 6px;
+  width: auto;
+}
+
+body[data-layout-mode="phone"] .header-actions button,
+body[data-layout-mode="phone"] .header-actions .global-attendance-button {
+  display: grid;
+  place-items: center;
+  width: 44px;
+  max-width: 44px;
+  min-height: 42px;
+  padding-inline: 0;
 }
 
 body[data-layout-mode="phone"] .fitness-log-view {
@@ -6977,9 +7020,65 @@ body[data-layout-mode="phone"] .fitness-log-schedule-panel .appointment-merge-bu
   }
 
   #view-fitness-log .fitness-ops-summary-button {
+    display: grid;
+    grid-template-columns: auto repeat(4, minmax(40px, 1fr)) auto;
+    align-items: center;
+    gap: 5px;
     border: 0;
     background: rgba(18, 59, 45, 0.045);
+    padding: 8px;
+    overflow: visible;
+    white-space: normal;
     box-shadow: inset 0 0 0 1px rgba(22, 56, 44, 0.08);
+  }
+
+  #view-fitness-log .ops-summary-title {
+    color: var(--fitness-green);
+    font-size: 12px;
+    font-weight: 950;
+    white-space: nowrap;
+  }
+
+  #view-fitness-log .ops-summary-metric {
+    display: grid;
+    justify-items: center;
+    gap: 1px;
+    min-width: 0;
+    border-radius: 10px;
+    background: rgba(255, 254, 250, 0.72);
+    padding: 5px 3px;
+  }
+
+  #view-fitness-log .ops-summary-metric b {
+    color: rgba(38, 50, 56, 0.58);
+    font-size: 10px;
+    font-weight: 900;
+    line-height: 1;
+  }
+
+  #view-fitness-log .ops-summary-metric strong {
+    color: var(--ink);
+    font-size: 15px;
+    font-weight: 950;
+    line-height: 1;
+  }
+
+  #view-fitness-log .ops-summary-note {
+    color: rgba(38, 50, 56, 0.54);
+    font-size: 10px;
+    font-weight: 850;
+    white-space: nowrap;
+  }
+
+  @media (max-width: 390px) {
+    #view-fitness-log .fitness-ops-summary-button {
+      grid-template-columns: auto repeat(4, minmax(38px, 1fr));
+    }
+
+    #view-fitness-log .ops-summary-note {
+      grid-column: 1 / -1;
+      justify-self: end;
+    }
   }
 
   #view-fitness-log .task-row,

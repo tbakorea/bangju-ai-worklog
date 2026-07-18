@@ -1626,7 +1626,9 @@ function renderFitnessCoaching() {
   const messages = getFitnessCoachingMessages();
   const ticker = document.getElementById("fitnessCoachingTickerText");
   if (ticker) {
-    ticker.textContent = messages.map(([title, text]) => `${title}: ${text}`).join("   ·   ");
+    const tickerText = messages.map(([title, text]) => `${title}: ${text}`).join("   ·   ");
+    ticker.textContent = tickerText;
+    ticker.dataset.tickerText = tickerText;
   }
   const detail = document.getElementById("fitnessCoachingDetailList");
   if (detail) {
@@ -2511,7 +2513,15 @@ function renderFitnessOpsSummaryButton(log = getSelectedLog()) {
   const contractTotal = ["customerNew", "customerRenewal", "dayPass"].reduce((sum, key) => sum + numberValue(ops[key]), 0);
   const marketingTotal = ["outbound", "outsideSales"].reduce((sum, key) => sum + numberValue(ops[key]), 0);
   const memoState = ops.shiftNote || ops.specialReport ? "메모 있음" : "메모 없음";
-  button.textContent = `업무요약 · 수업 ${ptTotal} · 상담 ${numberValue(ops.consultation)} · 계약 ${contractTotal} · 홍보/마케팅 ${marketingTotal} · ${memoState}`;
+  button.innerHTML = `
+    <span class="ops-summary-title">업무요약</span>
+    <span class="ops-summary-metric"><b>수업</b><strong>${ptTotal}</strong></span>
+    <span class="ops-summary-metric"><b>상담</b><strong>${numberValue(ops.consultation)}</strong></span>
+    <span class="ops-summary-metric"><b>계약</b><strong>${contractTotal}</strong></span>
+    <span class="ops-summary-metric"><b>홍보</b><strong>${marketingTotal}</strong></span>
+    <span class="ops-summary-note">${memoState}</span>
+  `;
+  button.setAttribute("aria-label", `업무요약. 수업 ${ptTotal}건, 상담 ${numberValue(ops.consultation)}건, 계약 ${contractTotal}건, 홍보 마케팅 ${marketingTotal}건, ${memoState}`);
 }
 
 function syncFitnessOpsFromSchedule(log = getSelectedLog()) {
