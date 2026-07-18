@@ -5652,11 +5652,12 @@ body[data-layout-mode="phone"] .fitness-log-schedule-panel .fitness-appointment-
 
 .fitness-report-page {
   width: min(100%, 620px);
-  min-height: 760px;
+  min-height: 877px;
   margin: 0 auto;
-  border: 1px solid var(--hardline);
+  border: 2px solid var(--hardline);
   background: #fffefa;
-  padding: 26px;
+  padding: 18px;
+  color: var(--ink);
 }
 
 .fitness-report-page h2 {
@@ -5677,6 +5678,236 @@ body[data-layout-mode="phone"] .fitness-log-schedule-panel .fitness-appointment-
   border: 0;
   border-top: 1px solid var(--hairline);
   margin: 12px 0;
+}
+
+.fitness-paper-header {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(190px, 0.72fr);
+  border: 2px solid var(--hardline);
+}
+
+.fitness-paper-title {
+  display: grid;
+  align-content: center;
+  min-height: 76px;
+  background: var(--fitness-green);
+  color: var(--nordic-sheet);
+  padding: 10px 16px;
+}
+
+.fitness-paper-title strong {
+  display: block;
+  font-size: 25px;
+  line-height: 1.15;
+  font-weight: 950;
+  word-break: keep-all;
+}
+
+.fitness-paper-title span {
+  margin-top: 5px;
+  color: rgba(255, 254, 250, 0.72);
+  font-size: 10px;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.fitness-paper-meta {
+  display: grid;
+  grid-template-columns: 70px minmax(0, 1fr);
+  border-left: 2px solid var(--hardline);
+}
+
+.fitness-paper-meta b,
+.fitness-paper-meta span {
+  min-height: 28px;
+  border-bottom: 1px solid var(--hardline);
+  padding: 6px;
+  font-size: 12px;
+  line-height: 1.25;
+}
+
+.fitness-paper-meta b {
+  display: grid;
+  place-items: center;
+  background: rgba(237, 244, 224, 0.9);
+  border-right: 1px solid var(--hardline);
+  font-weight: 950;
+}
+
+.fitness-paper-meta span {
+  font-weight: 850;
+}
+
+.fitness-paper-meta b:nth-last-child(2),
+.fitness-paper-meta span:last-child {
+  border-bottom: 0;
+}
+
+.fitness-paper-priority,
+.fitness-paper-issues,
+.fitness-paper-coaching {
+  display: grid;
+  grid-template-columns: 112px minmax(0, 1fr);
+  border: 2px solid var(--hardline);
+  border-top: 0;
+}
+
+.fitness-paper-priority h3,
+.fitness-paper-issues h3,
+.fitness-paper-coaching h3 {
+  display: grid;
+  place-items: center;
+  margin: 0;
+  border-right: 1px solid var(--hardline);
+  background: rgba(252, 252, 247, 0.88);
+  color: var(--ink);
+  font-size: 16px;
+  line-height: 1.25;
+  font-weight: 950;
+  text-align: center;
+}
+
+.fitness-paper-priority > div {
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr);
+}
+
+.fitness-paper-priority b,
+.fitness-paper-priority span,
+.fitness-paper-issues b,
+.fitness-paper-issues span {
+  min-height: 31px;
+  border-bottom: 1px solid var(--hardline);
+  padding: 6px 8px;
+  font-size: 13px;
+  font-weight: 850;
+}
+
+.fitness-paper-priority b,
+.fitness-paper-issues b {
+  display: grid;
+  place-items: center;
+  border-right: 1px solid var(--hardline);
+  font-weight: 950;
+}
+
+.fitness-paper-priority b:nth-last-child(2),
+.fitness-paper-priority span:last-child,
+.fitness-paper-issues b:nth-last-child(2),
+.fitness-paper-issues span:last-child {
+  border-bottom: 0;
+}
+
+.fitness-paper-kpi {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  border: 2px solid var(--hardline);
+  border-top: 0;
+}
+
+.fitness-paper-kpi div {
+  display: grid;
+  gap: 2px;
+  border-right: 1px solid var(--hardline);
+  background: rgba(237, 244, 224, 0.58);
+  padding: 7px;
+}
+
+.fitness-paper-kpi div:last-child {
+  border-right: 0;
+}
+
+.fitness-paper-kpi span {
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 900;
+}
+
+.fitness-paper-kpi strong {
+  color: var(--ink);
+  font-size: 17px;
+  font-weight: 950;
+}
+
+.fitness-paper-schedule table {
+  width: 100%;
+  border-collapse: collapse;
+  border: 2px solid var(--hardline);
+  border-top: 0;
+  table-layout: fixed;
+}
+
+.fitness-paper-schedule th,
+.fitness-paper-schedule td {
+  border: 1px solid var(--hardline);
+  padding: 5px 7px;
+  font-size: 12px;
+  line-height: 1.25;
+  vertical-align: middle;
+}
+
+.fitness-paper-schedule th {
+  background: rgba(237, 244, 224, 0.9);
+  font-weight: 950;
+  text-align: center;
+}
+
+.fitness-paper-schedule th:nth-child(1),
+.fitness-paper-schedule td:nth-child(1) {
+  width: 96px;
+  text-align: center;
+  font-weight: 900;
+}
+
+.fitness-paper-schedule th:nth-child(3),
+.fitness-paper-schedule td:nth-child(3) {
+  width: 74px;
+  text-align: center;
+}
+
+.fitness-paper-schedule th:nth-child(4),
+.fitness-paper-schedule td:nth-child(4) {
+  width: 44px;
+  text-align: center;
+}
+
+.fitness-paper-schedule td {
+  min-height: 24px;
+}
+
+.fitness-paper-issues {
+  grid-template-columns: 92px minmax(0, 1fr);
+}
+
+.fitness-paper-issue-list,
+.fitness-paper-coaching-list {
+  min-width: 0;
+}
+
+.fitness-paper-issue-list > div {
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr);
+}
+
+.fitness-paper-coaching {
+  grid-template-columns: 92px minmax(0, 1fr);
+}
+
+.fitness-paper-coaching-list p {
+  margin: 0;
+  border-bottom: 1px solid var(--hardline);
+  padding: 7px 8px;
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.fitness-paper-coaching-list p:last-child {
+  border-bottom: 0;
+}
+
+.fitness-paper-coaching-list p b {
+  color: var(--fitness-green);
+  font-weight: 950;
 }
 
 @media (max-width: 760px) {
@@ -5725,6 +5956,11 @@ body[data-layout-mode="phone"] .fitness-log-schedule-panel .fitness-appointment-
 }
 
 @media print {
+  @page {
+    size: A4 portrait;
+    margin: 12mm;
+  }
+
   body.is-printing-fitness-report .worklog-shell > *:not(.fitness-report-sheet) {
     display: none !important;
   }
@@ -5756,6 +5992,48 @@ body[data-layout-mode="phone"] .fitness-log-schedule-panel .fitness-appointment-
     width: auto;
     min-height: auto;
     border: 0;
+    padding: 0;
+  }
+}
+
+@media (max-width: 760px) {
+  .fitness-paper-header {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .fitness-paper-meta {
+    border-left: 0;
+    border-top: 2px solid var(--hardline);
+  }
+
+  .fitness-paper-title strong {
+    font-size: 20px;
+  }
+
+  .fitness-paper-kpi {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .fitness-paper-priority,
+  .fitness-paper-issues,
+  .fitness-paper-coaching {
+    grid-template-columns: 78px minmax(0, 1fr);
+  }
+
+  .fitness-paper-schedule th,
+  .fitness-paper-schedule td {
+    padding: 4px;
+    font-size: 10px;
+  }
+
+  .fitness-paper-schedule th:nth-child(1),
+  .fitness-paper-schedule td:nth-child(1) {
+    width: 70px;
+  }
+
+  .fitness-paper-schedule th:nth-child(3),
+  .fitness-paper-schedule td:nth-child(3) {
+    width: 54px;
   }
 }
 
