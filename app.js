@@ -422,6 +422,21 @@ function getEmployeeOwnLabel(employee = getSelectedEmployee()) {
   return employee.nickname || employee.name || getEmployeeAdminLabel(employee);
 }
 
+function isBennyExecutiveProfile() {
+  const email = String(authState.user?.email || state.profile?.email || "").trim().toLowerCase();
+  const nickname = String(state.profile?.nickname || "").trim().toLowerCase();
+  return email === "j3010@ymail.com" || nickname === "베니" || nickname === "benny";
+}
+
+function getFitnessOwnIdentity(employee = employees.find((item) => item.id === state.fitnessWritableEmployeeId) || getSelectedEmployee()) {
+  if (isBennyExecutiveProfile()) {
+    return { role: "대표", label: "베니", pageTitle: "benny 업무일지" };
+  }
+  const label = getEmployeeOwnLabel(employee);
+  const role = employee.role || "직원";
+  return { role, label, pageTitle: "업무일지(본인용)" };
+}
+
 function syncFitnessWritableEmployeeFromProfile() {
   const profile = state.profile || {};
   const source = `${profile.org || ""} ${profile.workplace || ""} ${profile.primaryWork || ""}`.toLowerCase();
@@ -447,7 +462,7 @@ function getFitnessPageDisplayLabel(page = getCurrentFitnessLogPage()) {
 function getFitnessPagerTitle() {
   const current = getCurrentFitnessLogPage();
   if (current?.type === "center") return "센터운영현황";
-  if (current?.id === state.fitnessWritableEmployeeId) return "업무일지(본인용)";
+  if (current?.id === state.fitnessWritableEmployeeId) return getFitnessOwnIdentity(current.employee).pageTitle;
   return getEmployeeAdminLabel(current?.employee || {});
 }
 
@@ -957,8 +972,7 @@ function renderEmployeeTitle() {
 
 function renderGlobalEmployeeIdentity() {
   const employee = employees.find((item) => item.id === state.fitnessWritableEmployeeId) || getSelectedEmployee();
-  const label = getEmployeeOwnLabel(employee);
-  const role = employee.role || "직원";
+  const { label, role } = getFitnessOwnIdentity(employee);
   const personLabel = label === role ? role : `${role} ${label}`;
   const identity = document.getElementById("globalEmployeeIdentity");
   if (identity) identity.textContent = "";
@@ -1424,7 +1438,7 @@ function getFitnessPagerSideLabel(direction, pageIndex, pages = getFitnessLogPag
   if (direction === "prev") {
     if (page?.type === "center") return "센타운영";
     if (page?.id === state.fitnessWritableEmployeeId) return "센타운영";
-    return "업무일지(본인용)";
+    return getFitnessOwnIdentity().pageTitle;
   }
   if (page?.type === "center") return "업무일지";
   if (page?.id === state.fitnessWritableEmployeeId) return "동료업무";
@@ -1734,7 +1748,10 @@ function renderFitnessTaskBoard(log) {
   board.innerHTML = "";
   const list = document.createElement("section");
   list.className = "worklog-task-list fitness-task-list";
-  getWorklogTaskRefs(log).slice(0, 5).forEach((ref) => {
+  const refs = getWorklogTaskRefs(log);
+  const hasActiveTask = refs.some((ref) => isActiveTask(ref.task));
+  const visibleRefs = hasActiveTask ? refs.slice(0, 5) : refs.slice(0, 3);
+  visibleRefs.forEach((ref) => {
     list.appendChild(renderWorklogTaskRow(ref, log));
   });
   board.appendChild(list);

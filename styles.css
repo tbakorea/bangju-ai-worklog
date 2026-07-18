@@ -5364,6 +5364,11 @@ body[data-layout-mode="phone"] .fitness-log-schedule-panel .fitness-appointment-
   white-space: nowrap;
 }
 
+.worklog-header .header-actions #settingsGearButton,
+.worklog-header .header-actions .global-attendance-button {
+  font-size: 12px;
+}
+
 .header-actions .global-attendance-button {
   width: 44px;
   max-width: 44px;
