@@ -5309,6 +5309,8 @@ body[data-layout-mode="phone"] .fitness-log-schedule-panel .fitness-appointment-
 }
 
 .worklog-header > div:first-child {
+  display: grid;
+  gap: 2px;
   min-width: 0;
 }
 
@@ -5331,6 +5333,23 @@ body[data-layout-mode="phone"] .fitness-log-schedule-panel .fitness-appointment-
   display: none;
 }
 
+.global-attendance-summary {
+  display: block;
+  overflow: hidden;
+  color: rgba(38, 50, 56, 0.62);
+  font-size: clamp(10px, 2.7vw, 12px);
+  font-weight: 850;
+  line-height: 1.2;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.header-actions {
+  display: flex;
+  align-items: stretch;
+  gap: 6px;
+}
+
 .header-actions button {
   width: 48px;
   max-width: 48px;
@@ -5343,6 +5362,13 @@ body[data-layout-mode="phone"] .fitness-log-schedule-panel .fitness-appointment-
   line-height: 1;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.header-actions .global-attendance-button {
+  width: 44px;
+  max-width: 44px;
+  background: var(--fitness-green);
+  color: var(--nordic-sheet);
 }
 
 .main-menu-popover {
@@ -5358,6 +5384,86 @@ body[data-layout-mode="phone"] .fitness-log-schedule-panel .fitness-appointment-
   background: rgba(252, 252, 247, 0.98);
   padding: 8px;
   box-shadow: 0 18px 45px rgba(17, 20, 17, 0.18);
+}
+
+.attendance-popover {
+  position: absolute;
+  top: calc(100% + 7px);
+  right: 64px;
+  z-index: 72;
+  display: grid;
+  grid-template-columns: 72px minmax(150px, 1fr);
+  gap: 0;
+  width: min(292px, calc(100vw - 28px));
+  border: 1px solid var(--hardline);
+  background: rgba(252, 252, 247, 0.99);
+  box-shadow: 0 18px 45px rgba(17, 20, 17, 0.18);
+}
+
+.attendance-popover[hidden] {
+  display: none;
+}
+
+.attendance-popover-actions {
+  display: grid;
+  border-right: 1px solid var(--hardline);
+}
+
+.attendance-popover-actions button {
+  min-height: 34px;
+  border: 0;
+  border-bottom: 1px solid var(--hairline);
+  border-radius: 0;
+  background: transparent;
+  color: var(--ink);
+  font-size: 12px;
+  font-weight: 920;
+}
+
+.attendance-popover-actions button.is-active {
+  background: var(--fitness-green);
+  color: var(--nordic-sheet);
+}
+
+.attendance-popover-wheel {
+  display: grid;
+  gap: 7px;
+  padding: 10px;
+}
+
+.attendance-popover-wheel strong {
+  font-size: 13px;
+  font-weight: 950;
+}
+
+.attendance-popover-wheel label {
+  display: grid;
+  grid-template-columns: 42px minmax(0, 1fr);
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  font-weight: 900;
+}
+
+.attendance-popover-wheel select {
+  min-width: 0;
+  min-height: 34px;
+  border: 1px solid var(--hardline);
+  border-radius: 0;
+  background: var(--nordic-sheet);
+  color: var(--ink);
+  font-size: 15px;
+  font-weight: 950;
+}
+
+#attendanceApplyButton {
+  min-height: 34px;
+  border: 1px solid var(--hardline);
+  border-radius: 0;
+  background: var(--ink);
+  color: var(--nordic-sheet);
+  font-size: 13px;
+  font-weight: 950;
 }
 
 .main-menu-popover[hidden] {
@@ -5379,6 +5485,9 @@ body[data-layout-mode="phone"] .fitness-log-schedule-panel .fitness-appointment-
 }
 
 .fitness-coaching-ticker {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
   overflow: hidden;
   min-height: 38px;
   border: 1px solid var(--hardline);
@@ -5386,6 +5495,17 @@ body[data-layout-mode="phone"] .fitness-log-schedule-panel .fitness-appointment-
   color: var(--nordic-sheet);
   padding: 0;
   text-align: left;
+}
+
+.fitness-coaching-ticker b {
+  display: grid;
+  place-items: center;
+  align-self: stretch;
+  border-right: 1px solid rgba(255, 254, 250, 0.28);
+  padding: 0 10px;
+  font-size: 13px;
+  font-weight: 950;
+  white-space: nowrap;
 }
 
 .fitness-coaching-ticker span {
@@ -5418,20 +5538,48 @@ body[data-layout-mode="phone"] .fitness-log-schedule-panel .fitness-appointment-
   position: relative;
   min-height: 50px;
   perspective: 900px;
-  grid-template-columns: minmax(82px, 0.72fr) minmax(0, 1.15fr) minmax(82px, 0.72fr);
+  grid-template-columns: minmax(104px, 0.82fr) minmax(0, 1.05fr) minmax(104px, 0.82fr);
+  gap: 6px;
+  border: 0;
+  background: transparent;
 }
 
 .fitness-log-pager button {
   display: grid;
   place-items: center;
   min-height: 48px;
-  padding: 4px 5px;
+  border: 1px solid var(--hardline);
+  padding: 4px 10px;
   overflow: hidden;
-  font-size: clamp(10px, 2.5vw, 14px);
+  background: var(--nordic-sheet);
+  font-size: clamp(11px, 2.6vw, 15px);
   line-height: 1.1;
   text-align: center;
   white-space: normal;
   word-break: keep-all;
+}
+
+#fitnessLogPrevPageButton {
+  clip-path: polygon(12px 0, 100% 0, 100% 100%, 12px 100%, 0 50%);
+  padding-left: 16px;
+}
+
+#fitnessLogNextPageButton {
+  clip-path: polygon(0 0, calc(100% - 12px) 0, 100% 50%, calc(100% - 12px) 100%, 0 100%);
+  padding-right: 16px;
+}
+
+.fitness-log-pager button:disabled {
+  opacity: 0.28;
+  filter: grayscale(0.6);
+}
+
+.fitness-log-pager div {
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--hardline);
+  background: rgba(18, 59, 45, 0.08);
+  min-width: 0;
 }
 
 .fitness-log-pager strong {
@@ -5652,13 +5800,15 @@ body[data-layout-mode="phone"] .fitness-log-schedule-panel .fitness-appointment-
 
 .fitness-report-page {
   box-sizing: border-box;
-  width: min(100%, 190mm);
-  min-height: 267mm;
+  width: min(100%, 210mm);
+  min-height: auto;
+  aspect-ratio: 210 / 297;
   margin: 0 auto;
   border: 2px solid var(--hardline);
   background: #fffefa;
-  padding: 8mm;
+  padding: 7mm;
   color: var(--ink);
+  overflow: hidden;
 }
 
 .fitness-report-page h2 {
@@ -5683,14 +5833,14 @@ body[data-layout-mode="phone"] .fitness-log-schedule-panel .fitness-appointment-
 
 .fitness-paper-header {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(190px, 0.72fr);
+  grid-template-columns: minmax(0, 1fr) minmax(180px, 0.56fr);
   border: 2px solid var(--hardline);
 }
 
 .fitness-paper-title {
   display: grid;
   align-content: center;
-  min-height: 19mm;
+  min-height: 18mm;
   background: var(--fitness-green);
   color: var(--nordic-sheet);
   padding: 7px 12px;
@@ -5698,7 +5848,7 @@ body[data-layout-mode="phone"] .fitness-log-schedule-panel .fitness-appointment-
 
 .fitness-paper-title strong {
   display: block;
-  font-size: 21px;
+  font-size: 23px;
   line-height: 1.15;
   font-weight: 950;
   word-break: keep-all;
@@ -5707,7 +5857,7 @@ body[data-layout-mode="phone"] .fitness-log-schedule-panel .fitness-appointment-
 .fitness-paper-title span {
   margin-top: 3px;
   color: rgba(255, 254, 250, 0.72);
-  font-size: 10px;
+  font-size: 12px;
   font-weight: 900;
   text-transform: uppercase;
 }
@@ -5720,7 +5870,7 @@ body[data-layout-mode="phone"] .fitness-log-schedule-panel .fitness-appointment-
 
 .fitness-paper-meta b,
 .fitness-paper-meta span {
-  min-height: 22px;
+  min-height: 21px;
   border-bottom: 1px solid var(--hardline);
   padding: 4px 5px;
   font-size: 10px;
@@ -5744,16 +5894,32 @@ body[data-layout-mode="phone"] .fitness-log-schedule-panel .fitness-appointment-
   border-bottom: 0;
 }
 
-.fitness-paper-priority,
-.fitness-paper-issues,
-.fitness-paper-coaching {
+.fitness-paper-main {
   display: grid;
-  grid-template-columns: 112px minmax(0, 1fr);
+  grid-template-columns: minmax(0, 0.78fr) minmax(0, 1.22fr);
+  align-items: stretch;
   border: 2px solid var(--hardline);
   border-top: 0;
 }
 
+.fitness-paper-left {
+  display: grid;
+  align-content: start;
+  border-right: 2px solid var(--hardline);
+}
+
+.fitness-paper-priority,
+.fitness-paper-attendance,
+.fitness-paper-issues,
+.fitness-paper-coaching {
+  display: grid;
+  grid-template-columns: 76px minmax(0, 1fr);
+  border: 0;
+  border-bottom: 1px solid var(--hardline);
+}
+
 .fitness-paper-priority h3,
+.fitness-paper-attendance h3,
 .fitness-paper-issues h3,
 .fitness-paper-coaching h3 {
   display: grid;
@@ -5762,8 +5928,53 @@ body[data-layout-mode="phone"] .fitness-log-schedule-panel .fitness-appointment-
   border-right: 1px solid var(--hardline);
   background: rgba(252, 252, 247, 0.88);
   color: var(--ink);
-  font-size: 16px;
+  font-size: 13px;
   line-height: 1.25;
+  font-weight: 950;
+  text-align: center;
+}
+
+.fitness-paper-attendance > div {
+  display: grid;
+}
+
+.fitness-paper-attendance p {
+  display: grid;
+  grid-template-columns: 42px minmax(0, 1fr) 70px 42px;
+  align-items: center;
+  min-height: 18px;
+  border-bottom: 1px solid var(--hardline);
+  margin: 0;
+  font-size: 9.3px;
+  line-height: 1.1;
+}
+
+.fitness-paper-attendance p:last-child {
+  border-bottom: 0;
+}
+
+.fitness-paper-attendance b,
+.fitness-paper-attendance span,
+.fitness-paper-attendance em,
+.fitness-paper-attendance strong {
+  overflow: hidden;
+  padding: 2px 4px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.fitness-paper-attendance b,
+.fitness-paper-attendance em {
+  border-right: 1px solid var(--hairline);
+}
+
+.fitness-paper-attendance em {
+  font-style: normal;
+  text-align: center;
+}
+
+.fitness-paper-attendance strong {
+  color: var(--fitness-green);
   font-weight: 950;
   text-align: center;
 }
@@ -5777,7 +5988,7 @@ body[data-layout-mode="phone"] .fitness-log-schedule-panel .fitness-appointment-
 .fitness-paper-priority span,
 .fitness-paper-issues b,
 .fitness-paper-issues span {
-  min-height: 24px;
+  min-height: 22px;
   border-bottom: 1px solid var(--hardline);
   padding: 4px 6px;
   font-size: 11px;
@@ -5801,9 +6012,9 @@ body[data-layout-mode="phone"] .fitness-log-schedule-panel .fitness-appointment-
 
 .fitness-paper-kpi {
   display: grid;
-  grid-template-columns: repeat(6, minmax(0, 1fr));
-  border: 2px solid var(--hardline);
-  border-top: 0;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  border: 0;
+  border-bottom: 1px solid var(--hardline);
 }
 
 .fitness-paper-kpi div {
@@ -5814,8 +6025,12 @@ body[data-layout-mode="phone"] .fitness-log-schedule-panel .fitness-appointment-
   padding: 4px 6px;
 }
 
-.fitness-paper-kpi div:last-child {
+.fitness-paper-kpi div:nth-child(3n) {
   border-right: 0;
+}
+
+.fitness-paper-kpi div:nth-last-child(-n + 3) {
+  border-bottom: 0;
 }
 
 .fitness-paper-kpi span {
@@ -5833,8 +6048,7 @@ body[data-layout-mode="phone"] .fitness-log-schedule-panel .fitness-appointment-
 .fitness-paper-schedule table {
   width: 100%;
   border-collapse: collapse;
-  border: 2px solid var(--hardline);
-  border-top: 0;
+  border: 0;
   table-layout: fixed;
 }
 
@@ -5842,7 +6056,7 @@ body[data-layout-mode="phone"] .fitness-log-schedule-panel .fitness-appointment-
 .fitness-paper-schedule td {
   border: 1px solid var(--hardline);
   padding: 2px 5px;
-  font-size: 10.5px;
+  font-size: 10.2px;
   line-height: 1.18;
   vertical-align: middle;
 }
@@ -5855,31 +6069,25 @@ body[data-layout-mode="phone"] .fitness-log-schedule-panel .fitness-appointment-
 
 .fitness-paper-schedule th:nth-child(1),
 .fitness-paper-schedule td:nth-child(1) {
-  width: 96px;
+  width: 78px;
   text-align: center;
   font-weight: 900;
 }
 
 .fitness-paper-schedule th:nth-child(3),
 .fitness-paper-schedule td:nth-child(3) {
-  width: 74px;
-  text-align: center;
-}
-
-.fitness-paper-schedule th:nth-child(4),
-.fitness-paper-schedule td:nth-child(4) {
-  width: 44px;
+  width: 58px;
   text-align: center;
 }
 
 .fitness-paper-schedule td {
-  height: 19px;
+  height: 17px;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
 .fitness-paper-issues {
-  grid-template-columns: 92px minmax(0, 1fr);
+  grid-template-columns: 76px minmax(0, 1fr);
 }
 
 .fitness-paper-issue-list,
@@ -5893,7 +6101,8 @@ body[data-layout-mode="phone"] .fitness-log-schedule-panel .fitness-appointment-
 }
 
 .fitness-paper-coaching {
-  grid-template-columns: 92px minmax(0, 1fr);
+  grid-template-columns: 76px minmax(0, 1fr);
+  border-bottom: 0;
 }
 
 .fitness-paper-coaching-list p {
@@ -5992,8 +6201,10 @@ body[data-layout-mode="phone"] .fitness-log-schedule-panel .fitness-appointment-
     overflow: visible;
   }
 
-  body.is-printing-fitness-report .fitness-report-page {
+body.is-printing-fitness-report .fitness-report-page {
+    box-sizing: border-box;
     width: 194mm;
+    aspect-ratio: auto;
     min-height: auto;
     max-height: 281mm;
     overflow: hidden;
@@ -6014,22 +6225,13 @@ body[data-layout-mode="phone"] .fitness-log-schedule-panel .fitness-appointment-
   }
 
   body.is-printing-fitness-report .fitness-paper-schedule td {
-    height: 17px;
+    height: 16.5px;
   }
 }
 
 @media (max-width: 760px) {
-  .fitness-paper-header {
-    grid-template-columns: minmax(0, 1fr);
-  }
-
-  .fitness-paper-meta {
-    border-left: 0;
-    border-top: 2px solid var(--hardline);
-  }
-
   .fitness-paper-title strong {
-    font-size: 20px;
+    font-size: clamp(16px, 4.8vw, 20px);
   }
 
   .fitness-paper-kpi {
@@ -6037,6 +6239,7 @@ body[data-layout-mode="phone"] .fitness-log-schedule-panel .fitness-appointment-
   }
 
   .fitness-paper-priority,
+  .fitness-paper-attendance,
   .fitness-paper-issues,
   .fitness-paper-coaching {
     grid-template-columns: 78px minmax(0, 1fr);

@@ -63,6 +63,8 @@ const taskStatusGuideLabels = {
   "미완료": "미완료",
 };
 const defaultScheduleTimes = ["08:00", "08:30", "09:00", "09:30", "10:00", "10:30", "11:00", "11:30", "12:00", "12:30", "13:00", "13:30", "14:00", "14:30", "15:00", "15:30", "16:00", "16:30", "17:00", "17:30", "18:00"];
+const attendanceActions = ["출근", "퇴근", "조퇴", "외출"];
+let attendancePopoverAction = "출근";
 const defaultProfile = {
   org: "(주)방주",
   role: "직원",
@@ -267,6 +269,7 @@ function createEmployeeLog(employee = employees[0], profile = defaultProfile) {
     role: employee.role,
     clockIn: "",
     clockOut: "",
+    attendanceBreaks: [],
     tasks: [
       { priority: "A", text: "", status: "진행", done: false },
       { priority: "B", text: "", status: "예정", done: false },
@@ -313,6 +316,7 @@ function normalizeState() {
     log.role ||= employee.role;
     log.clockIn ||= "";
     log.clockOut ||= "";
+    log.attendanceBreaks = Array.isArray(log.attendanceBreaks) ? log.attendanceBreaks : [];
     log.attendanceStatus ||= "";
     log.attendanceStep ||= log.attendanceStatus === "조퇴" ? "early" : log.clockOut ? "out" : log.clockIn ? "in" : "ready";
     log.tasks ||= createEmployeeLog(employee).tasks;
@@ -441,15 +445,10 @@ function getFitnessPageDisplayLabel(page = getCurrentFitnessLogPage()) {
 }
 
 function getFitnessPagerTitle() {
-  const pages = getFitnessLogPages();
-  const ownPage = pages.find((page) => page.type === "employee" && page.id === state.fitnessWritableEmployeeId);
   const current = getCurrentFitnessLogPage();
-  const left = current?.type === "center" ? "센터운영현황" : "센터운영현황";
-  const own = `${getFitnessPageDisplayLabel(ownPage)} 업무일지`;
-  const right = current?.type === "employee" && current.id !== state.fitnessWritableEmployeeId
-    ? `${getFitnessPageDisplayLabel(current)} 열람`
-    : "동료 업무일지";
-  return `<< ${left} - ${own} - ${right} >>`;
+  if (current?.type === "center") return "센터운영현황";
+  if (current?.id === state.fitnessWritableEmployeeId) return "업무일지(본인용)";
+  return getEmployeeAdminLabel(current?.employee || {});
 }
 
 function getFitnessLogPages() {
@@ -491,6 +490,22 @@ function setFitnessLogPage(index) {
 function moveFitnessLogPage(delta) {
   animateFitnessPageTurn(delta);
   setFitnessLogPage(clampFitnessLogPage(state.fitnessLogPage) + delta);
+}
+
+function moveFitnessLogPrevPage() {
+  const pages = getFitnessLogPages();
+  const pageIndex = clampFitnessLogPage(state.fitnessLogPage);
+  const page = pages[pageIndex];
+  if (page?.type === "employee" && page.id !== state.fitnessWritableEmployeeId) {
+    animateFitnessPageTurn(-1);
+    setFitnessLogPage(1);
+    return;
+  }
+  moveFitnessLogPage(-1);
+}
+
+function moveFitnessLogNextPage() {
+  moveFitnessLogPage(1);
 }
 
 function animateFitnessPageTurn(delta) {
@@ -554,6 +569,9 @@ function getEmployeeLogForDate(employeeId, key = getActiveDateKey()) {
   state.employeeLogs ||= {};
   state.employeeLogs[key] ||= {};
   state.employeeLogs[key][employee.id] ||= createEmployeeLog(employee);
+  state.employeeLogs[key][employee.id].attendanceBreaks = Array.isArray(state.employeeLogs[key][employee.id].attendanceBreaks)
+    ? state.employeeLogs[key][employee.id].attendanceBreaks
+    : [];
   return state.employeeLogs[key][employee.id];
 }
 
@@ -636,6 +654,25 @@ function formatShortDate(key) {
 function currentTimeValue() {
   const now = new Date();
   return `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
+}
+
+function roundTimeToFiveMinutes(value = currentTimeValue()) {
+  const minutes = timeToMinutes(value);
+  if (!Number.isFinite(minutes)) return "08:00";
+  return minutesToTime(Math.min(24 * 60, Math.round(minutes / 5) * 5));
+}
+
+function getFiveMinuteTimeOptions() {
+  return Array.from({ length: (24 * 60) / 5 + 1 }, (_, index) => minutesToTime(index * 5));
+}
+
+function setupAttendancePopover() {
+  const primary = document.getElementById("attendancePrimaryTimeSelect");
+  const secondary = document.getElementById("attendanceSecondaryTimeSelect");
+  if (!primary || primary.options.length) return;
+  const options = getFiveMinuteTimeOptions().map((time) => `<option value="${time}">${time}</option>`).join("");
+  primary.innerHTML = options;
+  if (secondary) secondary.innerHTML = options;
 }
 
 function renderResponsiveMode() {
@@ -910,6 +947,29 @@ function renderGlobalEmployeeIdentity() {
   if (identity) identity.textContent = "";
   const title = document.getElementById("globalHeaderTitle");
   if (title) title.textContent = `beyond fitness · ${personLabel}`;
+  renderGlobalAttendanceSummary(employee);
+}
+
+function renderGlobalAttendanceSummary(employee = employees.find((item) => item.id === state.fitnessWritableEmployeeId) || getSelectedEmployee()) {
+  const node = document.getElementById("globalAttendanceSummary");
+  if (!node) return;
+  const log = getEmployeeLogForDate(employee.id);
+  const summary = formatAttendanceSummary(log);
+  node.textContent = summary || "출결 미기록";
+}
+
+function formatAttendanceSummary(log = getSelectedLog()) {
+  const parts = [];
+  if (log.clockIn) parts.push(`(출근) ${log.clockIn}`);
+  if (log.clockOut) parts.push(`(퇴근) ${log.clockOut}`);
+  (log.attendanceBreaks || []).forEach((item) => {
+    if (item.start || item.end) parts.push(`(${item.type || "외출"}) ${item.start || "--:--"}~${item.end || "--:--"}`);
+  });
+  if (log.attendanceStatus === "조퇴" && log.clockOut) {
+    const outIndex = parts.findIndex((part) => part.startsWith("(퇴근)"));
+    if (outIndex >= 0) parts[outIndex] = `(조퇴) ${log.clockOut}`;
+  }
+  return parts.join(", ");
 }
 
 function renderProfileForm() {
@@ -1327,16 +1387,26 @@ function renderFitnessLogPager() {
   if (title) title.textContent = getFitnessPagerTitle();
   if (hint) hint.textContent = "";
   if (prev) {
-    prev.textContent = pageIndex <= 1 ? "<< 센터운영현황" : `<< ${getFitnessPageDisplayLabel(pages[pageIndex - 1])}`;
+    prev.textContent = getFitnessPagerSideLabel("prev", pageIndex, pages);
     prev.disabled = pageIndex === 0;
   }
   if (next) {
-    const nextPage = pages[pageIndex + 1];
-    next.textContent = nextPage
-      ? `${nextPage.type === "employee" && nextPage.id === state.fitnessWritableEmployeeId ? getFitnessPageDisplayLabel(nextPage) + " 업무일지" : "동료업무일지"} >>`
-      : "동료업무일지 >>";
+    next.textContent = getFitnessPagerSideLabel("next", pageIndex, pages);
     next.disabled = pageIndex === pages.length - 1;
   }
+}
+
+function getFitnessPagerSideLabel(direction, pageIndex, pages = getFitnessLogPages()) {
+  const page = pages[pageIndex];
+  if (direction === "prev") {
+    if (page?.type === "center") return "센타운영";
+    if (page?.id === state.fitnessWritableEmployeeId) return "센타운영";
+    return "업무일지(본인용)";
+  }
+  if (page?.type === "center") return "업무일지";
+  if (page?.id === state.fitnessWritableEmployeeId) return "동료업무";
+  const nextPage = pages[pageIndex + 1];
+  return nextPage?.employee ? getEmployeeAdminLabel(nextPage.employee) : "동료업무";
 }
 
 function applyFitnessLogPermissionState() {
@@ -1380,10 +1450,13 @@ function renderFitnessCenterDaily() {
   const rows = employeesForCenter.map((employee, index) => {
     const log = getEmployeeLogForDate(employee.id);
     syncFitnessOpsFromSchedule(log);
+    syncAttendanceRecordFromLog(employee, log);
     const ops = { ...createFitnessOps(), ...(log.fitnessOps || {}) };
     const ptTotal = ["ptRegular", "ptFree", "ptOther"].reduce((sum, key) => sum + numberValue(ops[key]), 0);
     const workMinutes = getWorkMinutes(log.clockIn, log.clockOut);
-    return { employee, log, ops, ptTotal, workMinutes, index };
+    const attendanceStatus = getAttendanceStatusForLog(employee, log);
+    const breakSummary = (log.attendanceBreaks || []).map((item) => `${item.start || "--:--"}~${item.end || "--:--"}`).join(" / ");
+    return { employee, log, ops, ptTotal, workMinutes, attendanceStatus, breakSummary, index };
   });
   const total = rows.reduce((summary, row) => {
     summary.pt += row.ptTotal;
@@ -1416,6 +1489,8 @@ function renderFitnessCenterDaily() {
         <td>${escapeHtml(row.log.clockIn || "-")}</td>
         <td>${escapeHtml(row.log.clockOut || "-")}</td>
         <td>${row.workMinutes ? formatWorkDuration(row.workMinutes) : "-"}</td>
+        <td>${escapeHtml(row.attendanceStatus)}</td>
+        <td>${escapeHtml(row.breakSummary || "-")}</td>
         <td>${row.ptTotal || ""}</td>
         <td>${escapeHtml(row.ops.customerNew || "")}</td>
         <td>${escapeHtml(row.ops.customerRenewal || "")}</td>
@@ -1430,7 +1505,7 @@ function renderFitnessCenterDaily() {
   if (foot) {
     foot.innerHTML = `
       <tr>
-        <td colspan="6">합계</td>
+        <td colspan="8">합계</td>
         <td>${total.pt}</td>
         <td>${total.new}</td>
         <td>${total.renewal}</td>
@@ -2410,9 +2485,10 @@ function renderFitnessOpsSummaryButton(log = getSelectedLog()) {
   if (!button) return;
   const ops = { ...createFitnessOps(), ...(log.fitnessOps || {}) };
   const ptTotal = ["ptRegular", "ptFree", "ptOther"].reduce((sum, key) => sum + numberValue(ops[key]), 0);
-  const salesTotal = ["customerNew", "customerRenewal", "dayPass", "consultation", "outbound", "outsideSales"].reduce((sum, key) => sum + numberValue(ops[key]), 0);
+  const contractTotal = ["customerNew", "customerRenewal", "dayPass"].reduce((sum, key) => sum + numberValue(ops[key]), 0);
+  const marketingTotal = ["outbound", "outsideSales"].reduce((sum, key) => sum + numberValue(ops[key]), 0);
   const memoState = ops.shiftNote || ops.specialReport ? "메모 있음" : "메모 없음";
-  button.textContent = `운영기록 · PT ${ptTotal} · 고객/영업 ${salesTotal} · ${memoState}`;
+  button.textContent = `업무요약 · 수업 ${ptTotal} · 상담 ${numberValue(ops.consultation)} · 계약 ${contractTotal} · 홍보/마케팅 ${marketingTotal} · ${memoState}`;
 }
 
 function syncFitnessOpsFromSchedule(log = getSelectedLog()) {
@@ -2484,11 +2560,13 @@ function countFitnessScheduleUnits(text = "") {
 function formatFitnessOpsReport(fitnessOps = createFitnessOps()) {
   const ops = { ...createFitnessOps(), ...(fitnessOps || {}) };
   const ptTotal = ["ptRegular", "ptFree", "ptOther"].reduce((sum, key) => sum + Number(ops[key] || 0), 0);
-  const customerTotal = ["customerNew", "customerRenewal", "dayPass", "consultation", "outbound", "outsideSales"].reduce((sum, key) => sum + Number(ops[key] || 0), 0);
+  const contractTotal = ["customerNew", "customerRenewal", "dayPass"].reduce((sum, key) => sum + Number(ops[key] || 0), 0);
+  const marketingTotal = ["outbound", "outsideSales"].reduce((sum, key) => sum + Number(ops[key] || 0), 0);
   return [
-    `PT수업: 정규 ${ops.ptRegular || 0}, 무료 ${ops.ptFree || 0}, 기타 ${ops.ptOther || 0}, 합계 ${ptTotal}`,
-    `고객관리: 신규 ${ops.customerNew || 0}, 재등록 ${ops.customerRenewal || 0}, 일일권 ${ops.dayPass || 0}, 상담 ${ops.consultation || 0}, 아웃바운드 ${ops.outbound || 0}, 외부영업 ${ops.outsideSales || 0}, 합계 ${customerTotal}`,
-    `근무/운영 메모: ${ops.shiftNote || "-"}`,
+    `수업현황: 정규 ${ops.ptRegular || 0}, 체험/무료 ${ops.ptFree || 0}, 보강/기타 ${ops.ptOther || 0}, 합계 ${ptTotal}`,
+    `상담/계약: 상담 ${ops.consultation || 0}, 신규 ${ops.customerNew || 0}, 재등록 ${ops.customerRenewal || 0}, 일일권 ${ops.dayPass || 0}, 합계 ${contractTotal}`,
+    `홍보/마케팅: 홍보 ${ops.outbound || 0}, 마케팅 ${ops.outsideSales || 0}, 합계 ${marketingTotal}`,
+    `업무 메모: ${ops.shiftNote || "-"}`,
     `특이사항 보고: ${ops.specialReport || "-"}`,
   ];
 }
@@ -2499,6 +2577,76 @@ function renderClockPanel() {
   document.getElementById("clockOutTime").value = log.clockOut || "";
   const button = document.getElementById("attendanceCycleButton");
   if (button) button.textContent = getNextAttendanceAction(log);
+  renderGlobalAttendanceSummary();
+}
+
+function openAttendancePopover(action = attendancePopoverAction) {
+  setupAttendancePopover();
+  closeMainMenuPopover();
+  attendancePopoverAction = attendanceActions.includes(action) ? action : "출근";
+  const popover = document.getElementById("attendancePopover");
+  const button = document.getElementById("globalAttendanceButton");
+  if (!popover) return;
+  popover.hidden = false;
+  button?.setAttribute("aria-expanded", "true");
+  renderAttendancePopover();
+}
+
+function closeAttendancePopover() {
+  const popover = document.getElementById("attendancePopover");
+  const button = document.getElementById("globalAttendanceButton");
+  if (!popover || popover.hidden) return;
+  popover.hidden = true;
+  button?.setAttribute("aria-expanded", "false");
+}
+
+function renderAttendancePopover() {
+  const log = getEmployeeLogForDate(state.fitnessWritableEmployeeId);
+  const title = document.getElementById("attendancePopoverTitle");
+  const primaryLabel = document.getElementById("attendancePrimaryTimeLabel");
+  const primary = document.getElementById("attendancePrimaryTimeSelect");
+  const secondary = document.getElementById("attendanceSecondaryTimeSelect");
+  const secondaryField = document.getElementById("attendanceSecondaryTimeField");
+  document.querySelectorAll("[data-attendance-action]").forEach((button) => {
+    button.classList.toggle("is-active", button.dataset.attendanceAction === attendancePopoverAction);
+  });
+  if (title) title.textContent = `${attendancePopoverAction} 시간`;
+  if (primaryLabel) primaryLabel.textContent = attendancePopoverAction === "외출" ? "외출" : "시간";
+  const now = roundTimeToFiveMinutes();
+  if (primary) {
+    const saved = attendancePopoverAction === "출근" ? log.clockIn : attendancePopoverAction === "퇴근" || attendancePopoverAction === "조퇴" ? log.clockOut : log.attendanceBreaks?.at(-1)?.start;
+    primary.value = saved || now;
+  }
+  if (secondaryField) secondaryField.hidden = attendancePopoverAction !== "외출";
+  if (secondary) secondary.value = log.attendanceBreaks?.at(-1)?.end || now;
+}
+
+function applyAttendancePopoverSelection() {
+  const employee = employees.find((item) => item.id === state.fitnessWritableEmployeeId) || getSelectedEmployee();
+  const log = getEmployeeLogForDate(employee.id);
+  const primary = document.getElementById("attendancePrimaryTimeSelect")?.value || roundTimeToFiveMinutes();
+  const secondary = document.getElementById("attendanceSecondaryTimeSelect")?.value || "";
+  if (attendancePopoverAction === "출근") {
+    log.clockIn = primary;
+    log.attendanceStatus = "출근";
+    log.attendanceStep = "in";
+  } else if (attendancePopoverAction === "퇴근") {
+    log.clockOut = primary;
+    log.attendanceStatus = "퇴근";
+    log.attendanceStep = "out";
+  } else if (attendancePopoverAction === "조퇴") {
+    log.clockOut = primary;
+    log.attendanceStatus = "조퇴";
+    log.attendanceStep = "early";
+  } else {
+    log.attendanceBreaks ||= [];
+    log.attendanceBreaks.push({ type: "외출", start: primary, end: secondary });
+    log.attendanceStatus = "외출";
+  }
+  syncAttendanceRecordFromLog(employee, log);
+  saveState();
+  renderAll();
+  closeAttendancePopover();
 }
 
 function getNextAttendanceAction(log = getSelectedLog()) {
@@ -2526,10 +2674,50 @@ function applyAttendanceCycle() {
     log.attendanceStatus = "조퇴";
     log.attendanceStep = "early";
   }
+  syncAttendanceRecordFromLog(getSelectedEmployee(), log);
   saveState();
   renderClockPanel();
   renderTodayContext();
   renderReport();
+}
+
+function getAttendanceStatusForLog(employee, log = getEmployeeLogForDate(employee.id)) {
+  if (log.attendanceStatus === "조퇴") return "조퇴";
+  if (log.clockIn) {
+    const [start] = String(employee.workHours || getEmployeeWorkHours(employee.id)).split("-");
+    const startMinutes = timeToMinutes(start);
+    const inMinutes = timeToMinutes(log.clockIn);
+    const isLate = Number.isFinite(startMinutes) && Number.isFinite(inMinutes) && inMinutes > startMinutes + 5;
+    if (isLate && log.attendanceStatus === "외출") return "지각·외출";
+    if (isLate) return "지각";
+    if (log.attendanceStatus === "외출") return "외출";
+    return "정상";
+  }
+  const todayMinutes = new Date().getHours() * 60 + new Date().getMinutes();
+  const activeDate = getActiveDateKey();
+  const [start] = String(employee.workHours || getEmployeeWorkHours(employee.id)).split("-");
+  const startMinutes = timeToMinutes(start);
+  if (activeDate < todayKey || (activeDate === todayKey && Number.isFinite(startMinutes) && todayMinutes > startMinutes + 30)) return "결석";
+  return "미기록";
+}
+
+function syncAttendanceRecordFromLog(employee = getSelectedEmployee(), log = getEmployeeLogForDate(employee.id)) {
+  state.attendance ||= {};
+  state.attendance[getActiveDateKey()] ||= [];
+  const status = getAttendanceStatusForLog(employee, log);
+  const note = formatAttendanceSummary(log);
+  const rows = state.attendance[getActiveDateKey()];
+  const index = rows.findIndex((item) => item.employeeId === employee.id);
+  const row = {
+    employeeId: employee.id,
+    org: employee.org?.split(" / ").at(-1) || employee.org || "",
+    role: employee.role || "",
+    name: employee.name || getEmployeeOwnLabel(employee),
+    status,
+    note,
+  };
+  if (index >= 0) rows[index] = { ...rows[index], ...row };
+  else rows.push(row);
 }
 
 function renderTodayContext() {
@@ -2767,7 +2955,7 @@ function renderReport() {
     `2. 시간별 업무흐름: ${entries.length}건`,
     ...entries.map((entry) => `- ${entry.time || "--:--"} ${getScheduleEntryText(entry)} (${entry.status})`),
     "",
-    "3. 피트니스 운영기록",
+    "3. 업무요약",
     ...formatFitnessOpsReport(log.fitnessOps),
     "",
     `4. 완료 업무: ${completed.length}건`,
@@ -2813,18 +3001,34 @@ function buildFitnessReportModel() {
   const page = getCurrentFitnessLogPage();
   const employee = page?.employee || employees.find((item) => item.id === state.fitnessWritableEmployeeId) || getSelectedEmployee();
   const log = page?.type === "center" ? getEmployeeLogForDate(state.fitnessWritableEmployeeId) : getSelectedLog();
+  const isCenter = page?.type === "center";
   const tasks = getWorklogTaskRefs(log).map((ref) => ref.task).filter(isActiveTask);
   const entries = (log.schedule || []).filter((entry) => entry.time);
   const ops = { ...createFitnessOps(), ...(log.fitnessOps || {}) };
   const ptTotal = ["ptRegular", "ptFree", "ptOther"].reduce((sum, key) => sum + numberValue(ops[key]), 0);
-  const salesTotal = ["customerNew", "customerRenewal", "dayPass", "consultation", "outbound", "outsideSales"].reduce((sum, key) => sum + numberValue(ops[key]), 0);
-  const title = page?.type === "center" ? "비욘드 피트니스 센터 운영보고서" : "비욘드 피트니스 직원업무보고서";
+  const contractTotal = ["customerNew", "customerRenewal"].reduce((sum, key) => sum + numberValue(ops[key]), 0);
+  const marketingTotal = ["outbound", "outsideSales"].reduce((sum, key) => sum + numberValue(ops[key]), 0);
+  const centerAttendanceRows = getFitnessEmployees().map((item) => {
+    const rowLog = getEmployeeLogForDate(item.id);
+    const breakSummary = (rowLog.attendanceBreaks || []).map((record) => `${record.start || "--:--"}~${record.end || "--:--"}`).join(" / ");
+    return {
+      role: item.role || "",
+      name: item.name || getEmployeeOwnLabel(item),
+      clock: `${rowLog.clockIn || "-"}~${rowLog.clockOut || "-"}`,
+      status: getAttendanceStatusForLog(item, rowLog),
+      breaks: breakSummary || "-",
+    };
+  });
+  const title = isCenter ? "< 비욘드 피트니스 운영일지 >" : "< 비욘드 피트니스 업무일지 >";
   return {
     title,
+    isCenter,
     dateLabel: formatKoreanDate(getActiveDateKey()),
-    writer: page?.type === "center" ? "센터 전체" : getEmployeeAdminLabel(employee),
-    role: page?.type === "center" ? "운영 취합" : employee.role || "직원",
+    writer: isCenter ? "센터 전체" : employee.name || getEmployeeOwnLabel(employee),
+    role: isCenter ? "운영 취합" : employee.role || "직원",
+    ownerLabel: isCenter ? "담당 : 센터 운영 취합" : `담당 : ${employee.role || "직원"} ${employee.name || getEmployeeOwnLabel(employee)}`,
     clock: `${log.clockIn || "-"} ~ ${log.clockOut || "-"}`,
+    centerAttendanceRows,
     topTasks: Array.from({ length: 3 }, (_, index) => {
       const task = tasks[index];
       if (!task) return "";
@@ -2835,12 +3039,12 @@ function buildFitnessReportModel() {
       text: getScheduleEntryText(entry),
     })),
     kpis: [
-      ["PT", `${ptTotal}건`],
-      ["신규", `${ops.customerNew || 0}건`],
-      ["재등록", `${ops.customerRenewal || 0}건`],
-      ["상담", `${ops.consultation || 0}건`],
-      ["아웃바운드", `${ops.outbound || 0}건`],
-      ["일일권", `${ops.dayPass || 0}건`],
+      ["수업", `${ptTotal}건`],
+      ["상담", `${numberValue(ops.consultation)}건`],
+      ["계약", `${contractTotal}건`],
+      ["홍보", `${numberValue(ops.outbound)}건`],
+      ["마케팅", `${marketingTotal}건`],
+      ["일일권", `${numberValue(ops.dayPass)}건`],
     ],
     issueRows: [ops.specialReport, ops.shiftNote, log.memo].filter(Boolean).slice(0, 3).concat(Array(3).fill("")).slice(0, 3),
     coaching: getFitnessCoachingMessages(),
@@ -2865,44 +3069,56 @@ function renderFitnessReportTemplate(model = buildFitnessReportModel()) {
       <header class="fitness-paper-header">
         <div class="fitness-paper-title">
           <strong>${escapeHtml(model.title)}</strong>
-          <span>Beyond Fitness Daily Work Report</span>
+          <span>${escapeHtml(model.ownerLabel)}</span>
         </div>
         <div class="fitness-paper-meta">
-          <b>작성일자</b><span>${escapeHtml(model.dateLabel)}</span>
+          <b>작성일</b><span>${escapeHtml(model.dateLabel)}</span>
           <b>작성자</b><span>${escapeHtml(model.writer)}</span>
-          <b>직함</b><span>${escapeHtml(model.role)}</span>
+          <b>구분</b><span>${escapeHtml(model.role)}</span>
           <b>출퇴근</b><span>${escapeHtml(model.clock)}</span>
         </div>
       </header>
-      <section class="fitness-paper-priority">
-        <h3>금일 주요업무</h3>
-        <div>
-          ${model.topTasks.map((task, index) => `<b>${index + 1}</b><span>${escapeHtml(task)}</span>`).join("")}
+      <div class="fitness-paper-main">
+        <div class="fitness-paper-left">
+          <section class="fitness-paper-priority">
+            <h3>금일 주요업무</h3>
+            <div>
+              ${model.topTasks.map((task, index) => `<b>${index + 1}</b><span>${escapeHtml(task)}</span>`).join("")}
+            </div>
+          </section>
+          <section class="fitness-paper-kpi">
+            ${model.kpis.map(([label, value]) => `<div><span>${escapeHtml(label)}</span><strong>${escapeHtml(value)}</strong></div>`).join("")}
+          </section>
+          ${model.isCenter ? `
+            <section class="fitness-paper-attendance">
+              <h3>전직원 출결</h3>
+              <div>
+                ${model.centerAttendanceRows.map((row) => `<p><b>${escapeHtml(row.role)}</b><span>${escapeHtml(row.name)}</span><em>${escapeHtml(row.clock)}</em><strong>${escapeHtml(row.status)}</strong></p>`).join("")}
+              </div>
+            </section>
+          ` : ""}
+          <section class="fitness-paper-issues">
+            <h3>특이사항 / 인수인계</h3>
+            <div class="fitness-paper-issue-list">
+              ${model.issueRows.map((row, index) => `<div><b>${index + 1}</b><span>${escapeHtml(row)}</span></div>`).join("")}
+            </div>
+          </section>
+          <section class="fitness-paper-coaching">
+            <h3>AI 코칭</h3>
+            <div class="fitness-paper-coaching-list">
+              ${model.coaching.slice(0, 3).map(([title, text]) => `<p><b>${escapeHtml(title)}</b> ${escapeHtml(text)}</p>`).join("")}
+            </div>
+          </section>
         </div>
-      </section>
-      <section class="fitness-paper-kpi">
-        ${model.kpis.map(([label, value]) => `<div><span>${escapeHtml(label)}</span><strong>${escapeHtml(value)}</strong></div>`).join("")}
-      </section>
-      <section class="fitness-paper-schedule">
-        <table>
-          <thead><tr><th>업무시간</th><th>세부업무내용</th><th>분류</th><th>완료</th></tr></thead>
-          <tbody>
-            ${scheduleRows.map((entry) => `<tr><td>${escapeHtml(entry.time)}</td><td>${escapeHtml(entry.text || "")}</td><td>${escapeHtml(inferScheduleType(entry.text || ""))}</td><td></td></tr>`).join("")}
-          </tbody>
-        </table>
-      </section>
-      <section class="fitness-paper-issues">
-        <h3>특이사항 보고 / 인수인계</h3>
-        <div class="fitness-paper-issue-list">
-          ${model.issueRows.map((row, index) => `<div><b>${index + 1}</b><span>${escapeHtml(row)}</span></div>`).join("")}
-        </div>
-      </section>
-      <section class="fitness-paper-coaching">
-        <h3>AI 보완 코칭</h3>
-        <div class="fitness-paper-coaching-list">
-          ${model.coaching.slice(0, 3).map(([title, text]) => `<p><b>${escapeHtml(title)}</b> ${escapeHtml(text)}</p>`).join("")}
-        </div>
-      </section>
+        <section class="fitness-paper-schedule">
+          <table>
+            <thead><tr><th>업무시간</th><th>세부업무내용</th><th>분류</th></tr></thead>
+            <tbody>
+              ${scheduleRows.map((entry) => `<tr><td>${escapeHtml(entry.time)}</td><td>${escapeHtml(entry.text || "")}</td><td>${escapeHtml(inferScheduleType(entry.text || ""))}</td></tr>`).join("")}
+            </tbody>
+          </table>
+        </section>
+      </div>
     </article>
   `;
 }
@@ -3000,6 +3216,7 @@ function toggleMainMenuPopover() {
   const willOpen = popover.hidden;
   popover.hidden = !willOpen;
   button?.setAttribute("aria-expanded", String(willOpen));
+  if (willOpen) closeAttendancePopover();
   if (willOpen) popover.querySelector("button")?.focus();
 }
 
@@ -3038,14 +3255,28 @@ document.querySelectorAll(".worklog-tabs button").forEach((button) => {
 document.getElementById("mainMenuWheelSelect")?.addEventListener("change", (event) => {
   switchView(event.target.value);
 });
+document.getElementById("globalAttendanceButton")?.addEventListener("click", (event) => {
+  event.stopPropagation();
+  const popover = document.getElementById("attendancePopover");
+  if (popover && !popover.hidden) closeAttendancePopover();
+  else openAttendancePopover();
+});
+document.getElementById("attendancePopover")?.addEventListener("click", (event) => event.stopPropagation());
+document.querySelectorAll("[data-attendance-action]").forEach((button) => {
+  button.addEventListener("click", () => {
+    attendancePopoverAction = button.dataset.attendanceAction || "출근";
+    renderAttendancePopover();
+  });
+});
+document.getElementById("attendanceApplyButton")?.addEventListener("click", applyAttendancePopoverSelection);
 document.querySelectorAll("[data-layout-mode-choice]").forEach((button) => {
   button.onclick = () => {
     localStorage.setItem(layoutModeStorageKey, button.dataset.layoutModeChoice || "wide");
     renderResponsiveMode();
   };
 });
-document.getElementById("fitnessLogPrevPageButton")?.addEventListener("click", () => moveFitnessLogPage(-1));
-document.getElementById("fitnessLogNextPageButton")?.addEventListener("click", () => moveFitnessLogPage(1));
+document.getElementById("fitnessLogPrevPageButton")?.addEventListener("click", moveFitnessLogPrevPage);
+document.getElementById("fitnessLogNextPageButton")?.addEventListener("click", moveFitnessLogNextPage);
 {
   const pager = document.getElementById("view-fitness-log");
   let startX = 0;
@@ -3077,7 +3308,10 @@ document.querySelectorAll("[data-menu-view]").forEach((button) => {
   };
 });
 document.getElementById("mainMenuPopover")?.addEventListener("click", (event) => event.stopPropagation());
-document.addEventListener("click", closeMainMenuPopover);
+document.addEventListener("click", () => {
+  closeMainMenuPopover();
+  closeAttendancePopover();
+});
 document.getElementById("closeAuthButton").onclick = () => switchView("fitness-log");
 document.querySelectorAll("[data-auth-tab]").forEach((button) => {
   button.onclick = () => switchAuthTab(button.dataset.authTab);
@@ -3218,18 +3452,22 @@ setupMobileDayFocus();
 document.getElementById("addAttendanceButton").onclick = addAttendance;
 document.getElementById("attendanceCycleButton").onclick = applyAttendanceCycle;
 document.getElementById("clockInTime").oninput = (event) => {
-  getSelectedLog().clockIn = event.target.value;
-  getSelectedLog().attendanceStep = event.target.value ? "in" : "ready";
-  getSelectedLog().attendanceStatus = event.target.value ? "출근" : "";
+  const log = getSelectedLog();
+  log.clockIn = event.target.value;
+  log.attendanceStep = event.target.value ? "in" : "ready";
+  log.attendanceStatus = event.target.value ? "출근" : "";
+  syncAttendanceRecordFromLog(getSelectedEmployee(), log);
   saveState();
   renderClockPanel();
   renderTodayContext();
   renderReport();
 };
 document.getElementById("clockOutTime").oninput = (event) => {
-  getSelectedLog().clockOut = event.target.value;
-  getSelectedLog().attendanceStep = event.target.value ? "out" : "in";
-  getSelectedLog().attendanceStatus = event.target.value ? "퇴근" : "출근";
+  const log = getSelectedLog();
+  log.clockOut = event.target.value;
+  log.attendanceStep = event.target.value ? "out" : "in";
+  log.attendanceStatus = event.target.value ? "퇴근" : "출근";
+  syncAttendanceRecordFromLog(getSelectedEmployee(), log);
   saveState();
   renderClockPanel();
   renderTodayContext();
