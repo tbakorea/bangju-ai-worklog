@@ -2859,7 +2859,7 @@ function formatReportTime(value = "") {
 }
 
 function renderFitnessReportTemplate(model = buildFitnessReportModel()) {
-  const scheduleRows = model.schedule.length ? model.schedule : getScheduleTimes(getEmployeeWorkHours(state.selectedEmployeeId)).map((time) => ({ time: formatReportTime(time), text: "" }));
+  const scheduleRows = getFitnessReportScheduleRows(model.schedule);
   return `
     <article class="fitness-report-page">
       <header class="fitness-paper-header">
@@ -2905,6 +2905,18 @@ function renderFitnessReportTemplate(model = buildFitnessReportModel()) {
       </section>
     </article>
   `;
+}
+
+function getFitnessReportScheduleRows(schedule = []) {
+  const baseTimes = ["06:00", "07:00", "08:00", "09:00", "10:00", "11:00", "12:00", "13:00", "14:00", "15:00", "16:00", "17:00", "18:00", "19:00", "20:00", "21:00", "22:00", "23:00", "00:00"];
+  const filled = new Map((schedule || []).filter((entry) => entry.time).map((entry) => [entry.time, entry.text || ""]));
+  const rows = baseTimes.map((time) => ({ time: formatReportTime(time), text: filled.get(time) || "" }));
+  const extraFilled = (schedule || []).filter((entry) => entry.text && !baseTimes.map(formatReportTime).includes(entry.time));
+  extraFilled.slice(0, 3).forEach((entry, index) => {
+    const target = rows[rows.length - 3 + index];
+    if (target && !target.text) target.text = `${entry.time} ${entry.text}`;
+  });
+  return rows;
 }
 
 function openFitnessReportSheet() {

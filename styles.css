@@ -5651,12 +5651,13 @@ body[data-layout-mode="phone"] .fitness-log-schedule-panel .fitness-appointment-
 }
 
 .fitness-report-page {
-  width: min(100%, 620px);
-  min-height: 877px;
+  box-sizing: border-box;
+  width: min(100%, 190mm);
+  min-height: 267mm;
   margin: 0 auto;
   border: 2px solid var(--hardline);
   background: #fffefa;
-  padding: 18px;
+  padding: 8mm;
   color: var(--ink);
 }
 
@@ -5689,22 +5690,22 @@ body[data-layout-mode="phone"] .fitness-log-schedule-panel .fitness-appointment-
 .fitness-paper-title {
   display: grid;
   align-content: center;
-  min-height: 76px;
+  min-height: 19mm;
   background: var(--fitness-green);
   color: var(--nordic-sheet);
-  padding: 10px 16px;
+  padding: 7px 12px;
 }
 
 .fitness-paper-title strong {
   display: block;
-  font-size: 25px;
+  font-size: 21px;
   line-height: 1.15;
   font-weight: 950;
   word-break: keep-all;
 }
 
 .fitness-paper-title span {
-  margin-top: 5px;
+  margin-top: 3px;
   color: rgba(255, 254, 250, 0.72);
   font-size: 10px;
   font-weight: 900;
@@ -5719,10 +5720,10 @@ body[data-layout-mode="phone"] .fitness-log-schedule-panel .fitness-appointment-
 
 .fitness-paper-meta b,
 .fitness-paper-meta span {
-  min-height: 28px;
+  min-height: 22px;
   border-bottom: 1px solid var(--hardline);
-  padding: 6px;
-  font-size: 12px;
+  padding: 4px 5px;
+  font-size: 10px;
   line-height: 1.25;
 }
 
@@ -5776,10 +5777,10 @@ body[data-layout-mode="phone"] .fitness-log-schedule-panel .fitness-appointment-
 .fitness-paper-priority span,
 .fitness-paper-issues b,
 .fitness-paper-issues span {
-  min-height: 31px;
+  min-height: 24px;
   border-bottom: 1px solid var(--hardline);
-  padding: 6px 8px;
-  font-size: 13px;
+  padding: 4px 6px;
+  font-size: 11px;
   font-weight: 850;
 }
 
@@ -5810,7 +5811,7 @@ body[data-layout-mode="phone"] .fitness-log-schedule-panel .fitness-appointment-
   gap: 2px;
   border-right: 1px solid var(--hardline);
   background: rgba(237, 244, 224, 0.58);
-  padding: 7px;
+  padding: 4px 6px;
 }
 
 .fitness-paper-kpi div:last-child {
@@ -5825,7 +5826,7 @@ body[data-layout-mode="phone"] .fitness-log-schedule-panel .fitness-appointment-
 
 .fitness-paper-kpi strong {
   color: var(--ink);
-  font-size: 17px;
+  font-size: 14px;
   font-weight: 950;
 }
 
@@ -5840,9 +5841,9 @@ body[data-layout-mode="phone"] .fitness-log-schedule-panel .fitness-appointment-
 .fitness-paper-schedule th,
 .fitness-paper-schedule td {
   border: 1px solid var(--hardline);
-  padding: 5px 7px;
-  font-size: 12px;
-  line-height: 1.25;
+  padding: 2px 5px;
+  font-size: 10.5px;
+  line-height: 1.18;
   vertical-align: middle;
 }
 
@@ -5872,7 +5873,9 @@ body[data-layout-mode="phone"] .fitness-log-schedule-panel .fitness-appointment-
 }
 
 .fitness-paper-schedule td {
-  min-height: 24px;
+  height: 19px;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .fitness-paper-issues {
@@ -5896,9 +5899,9 @@ body[data-layout-mode="phone"] .fitness-log-schedule-panel .fitness-appointment-
 .fitness-paper-coaching-list p {
   margin: 0;
   border-bottom: 1px solid var(--hardline);
-  padding: 7px 8px;
-  font-size: 12px;
-  line-height: 1.35;
+  padding: 4px 6px;
+  font-size: 10.5px;
+  line-height: 1.25;
 }
 
 .fitness-paper-coaching-list p:last-child {
@@ -5958,7 +5961,7 @@ body[data-layout-mode="phone"] .fitness-log-schedule-panel .fitness-appointment-
 @media print {
   @page {
     size: A4 portrait;
-    margin: 12mm;
+    margin: 8mm;
   }
 
   body.is-printing-fitness-report .worklog-shell > *:not(.fitness-report-sheet) {
@@ -5986,13 +5989,32 @@ body[data-layout-mode="phone"] .fitness-log-schedule-panel .fitness-appointment-
   body.is-printing-fitness-report .fitness-report-preview {
     padding: 0;
     background: transparent;
+    overflow: visible;
   }
 
   body.is-printing-fitness-report .fitness-report-page {
-    width: auto;
+    width: 194mm;
     min-height: auto;
+    max-height: 281mm;
+    overflow: hidden;
     border: 0;
     padding: 0;
+  }
+
+  body.is-printing-fitness-report .fitness-paper-title strong {
+    font-size: 20px;
+  }
+
+  body.is-printing-fitness-report .fitness-paper-schedule th,
+  body.is-printing-fitness-report .fitness-paper-schedule td {
+    font-size: 9.5px;
+    line-height: 1.12;
+    padding-top: 1.5px;
+    padding-bottom: 1.5px;
+  }
+
+  body.is-printing-fitness-report .fitness-paper-schedule td {
+    height: 17px;
   }
 }
 
