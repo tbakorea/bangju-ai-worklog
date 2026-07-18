@@ -3088,61 +3088,70 @@ function formatReportTime(value = "") {
 
 function renderFitnessReportTemplate(model = buildFitnessReportModel()) {
   const scheduleRows = getFitnessReportScheduleRows(model.schedule);
+  const taskRows = model.topTasks.map((task, index) => `<p><b>${index + 1}</b><span>${escapeHtml(task || "")}</span></p>`).join("");
+  const attendanceRows = model.centerAttendanceRows.map((row) => `
+    <tr>
+      <td>${escapeHtml(row.role)}</td>
+      <td>${escapeHtml(row.name)}</td>
+      <td>${escapeHtml(row.clock)}</td>
+      <td>${escapeHtml(row.status)}</td>
+    </tr>
+  `).join("");
   return `
-    <article class="fitness-report-page">
-      <header class="fitness-paper-header">
-        <div class="fitness-paper-title">
+    <article class="fitness-report-page ${model.isCenter ? "is-center-report" : "is-personal-report"}">
+      <header class="fitness-paper-top">
+        <div>
           <strong>${escapeHtml(model.title)}</strong>
           <span>${escapeHtml(model.ownerLabel)}</span>
         </div>
-        <div class="fitness-paper-meta">
-          <b>작성일</b><span>${escapeHtml(model.dateLabel)}</span>
-          <b>작성자</b><span>${escapeHtml(model.writer)}</span>
-          <b>구분</b><span>${escapeHtml(model.role)}</span>
-          <b>출퇴근</b><span>${escapeHtml(model.clock)}</span>
-        </div>
+        <dl>
+          <dt>작성일</dt><dd>${escapeHtml(model.dateLabel)}</dd>
+          <dt>작성자</dt><dd>${escapeHtml(model.writer)}</dd>
+          <dt>구분</dt><dd>${escapeHtml(model.role)}</dd>
+          <dt>출퇴근</dt><dd>${escapeHtml(model.clock)}</dd>
+        </dl>
       </header>
-      <div class="fitness-paper-main">
-        <div class="fitness-paper-left">
-          <section class="fitness-paper-priority">
-            <h3>금일 주요업무</h3>
-            <div>
-              ${model.topTasks.map((task, index) => `<b>${index + 1}</b><span>${escapeHtml(task)}</span>`).join("")}
-            </div>
-          </section>
-          <section class="fitness-paper-kpi">
-            ${model.kpis.map(([label, value]) => `<div><span>${escapeHtml(label)}</span><strong>${escapeHtml(value)}</strong></div>`).join("")}
-          </section>
-          ${model.isCenter ? `
-            <section class="fitness-paper-attendance">
-              <h3>전직원 출결</h3>
-              <div>
-                ${model.centerAttendanceRows.map((row) => `<p><b>${escapeHtml(row.role)}</b><span>${escapeHtml(row.name)}</span><em>${escapeHtml(row.clock)}</em><strong>${escapeHtml(row.status)}</strong></p>`).join("")}
-              </div>
-            </section>
-          ` : ""}
-          <section class="fitness-paper-issues">
-            <h3>특이사항 / 인수인계</h3>
-            <div class="fitness-paper-issue-list">
-              ${model.issueRows.map((row, index) => `<div><b>${index + 1}</b><span>${escapeHtml(row)}</span></div>`).join("")}
-            </div>
-          </section>
-          <section class="fitness-paper-coaching">
-            <h3>AI 코칭</h3>
-            <div class="fitness-paper-coaching-list">
-              ${model.coaching.slice(0, 3).map(([title, text]) => `<p><b>${escapeHtml(title)}</b> ${escapeHtml(text)}</p>`).join("")}
-            </div>
-          </section>
+
+      <section class="fitness-paper-summary">
+        <div class="fitness-paper-tasks">
+          <h3>금일 주요업무</h3>
+          ${taskRows}
         </div>
-        <section class="fitness-paper-schedule">
+        <div class="fitness-paper-kpi">
+          ${model.kpis.map(([label, value]) => `<div><span>${escapeHtml(label)}</span><strong>${escapeHtml(value)}</strong></div>`).join("")}
+        </div>
+      </section>
+
+      ${model.isCenter ? `
+        <section class="fitness-paper-attendance-table">
+          <h3>전직원 출결현황</h3>
           <table>
-            <thead><tr><th>업무시간</th><th>세부업무내용</th><th>분류</th></tr></thead>
-            <tbody>
-              ${scheduleRows.map((entry) => `<tr><td>${escapeHtml(entry.time)}</td><td>${escapeHtml(entry.text || "")}</td><td>${escapeHtml(inferScheduleType(entry.text || ""))}</td></tr>`).join("")}
-            </tbody>
+            <thead><tr><th>직함</th><th>이름</th><th>출퇴근</th><th>근태</th></tr></thead>
+            <tbody>${attendanceRows}</tbody>
           </table>
         </section>
-      </div>
+      ` : ""}
+
+      <section class="fitness-paper-schedule">
+        <h3>시간별 세부업무</h3>
+        <table>
+          <thead><tr><th>업무시간</th><th>세부업무내용</th><th>분류</th></tr></thead>
+          <tbody>
+            ${scheduleRows.map((entry) => `<tr><td>${escapeHtml(entry.time)}</td><td>${escapeHtml(entry.text || "")}</td><td>${escapeHtml(inferScheduleType(entry.text || ""))}</td></tr>`).join("")}
+          </tbody>
+        </table>
+      </section>
+
+      <section class="fitness-paper-footer-grid">
+        <div>
+          <h3>특이사항 / 인수인계</h3>
+          ${model.issueRows.map((row, index) => `<p><b>${index + 1}</b><span>${escapeHtml(row || "")}</span></p>`).join("")}
+        </div>
+        <div>
+          <h3>AI 코칭</h3>
+          ${model.coaching.slice(0, 3).map(([title, text]) => `<p><b>${escapeHtml(title)}</b><span>${escapeHtml(text)}</span></p>`).join("")}
+        </div>
+      </section>
     </article>
   `;
 }
@@ -3170,7 +3179,23 @@ function openFitnessReportSheet() {
   preview.innerHTML = renderFitnessReportTemplate(model);
   backdrop.hidden = false;
   sheet.hidden = false;
-  requestAnimationFrame(() => sheet.classList.add("is-open"));
+  requestAnimationFrame(() => {
+    sheet.classList.add("is-open");
+    fitFitnessReportPreview();
+  });
+}
+
+function fitFitnessReportPreview() {
+  const preview = document.getElementById("fitnessReportPreview");
+  const page = preview?.querySelector(".fitness-report-page");
+  if (!preview || !page) return;
+  preview.style.removeProperty("--fitness-report-scale");
+  preview.style.removeProperty("height");
+  if (!window.matchMedia("(max-width: 760px)").matches) return;
+  const pageWidth = 720;
+  const scale = Math.min(1, Math.max(0.42, (preview.clientWidth - 2) / pageWidth));
+  preview.style.setProperty("--fitness-report-scale", String(scale));
+  preview.style.height = `${Math.ceil(page.offsetHeight * scale) + 4}px`;
 }
 
 function closeFitnessReportSheet() {
@@ -3554,7 +3579,10 @@ document.getElementById("reportTone").onchange = (event) => {
 document.getElementById("worklogAiButton")?.addEventListener("click", () => {
   alert("Bangju AI는 업무일지, 근태, 경영 이슈를 모아 일일 보고·리스크 감지·다음 행동 추천으로 연결합니다.");
 });
-window.addEventListener("resize", renderResponsiveMode);
+window.addEventListener("resize", () => {
+  renderResponsiveMode();
+  fitFitnessReportPreview();
+});
 
 renderResponsiveMode();
 normalizeState();

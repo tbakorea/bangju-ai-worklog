@@ -6372,6 +6372,46 @@ body[data-layout-mode="phone"] .fitness-ops-section.is-open .fitness-ops-body {
   gap: 0;
 }
 
+@media (max-width: 640px) {
+  body .worklog-header {
+    margin: 8px 8px 10px;
+    border: 1px solid rgba(22, 56, 44, 0.12);
+    border-radius: 18px;
+    background: rgba(255, 254, 250, 0.94);
+    box-shadow: 0 8px 26px rgba(17, 20, 17, 0.06);
+  }
+
+  body .worklog-header button {
+    border-color: rgba(22, 56, 44, 0.16);
+    border-radius: 14px;
+  }
+
+  body .fitness-ops-section:not(.is-open) .fitness-ops-body {
+    display: none;
+  }
+
+  body .fitness-ops-summary-button {
+    display: block;
+    min-height: 42px;
+    border: 1px solid rgba(22, 56, 44, 0.12);
+    border-radius: 12px;
+    background: rgba(18, 59, 45, 0.04);
+    color: var(--ink);
+    padding: 10px 12px;
+    overflow: hidden;
+    font-size: 14px;
+    font-weight: 900;
+    text-align: left;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  body .fitness-ops-section.is-open .fitness-ops-body {
+    display: grid;
+    gap: 0;
+  }
+}
+
 body[data-layout-mode="phone"] .daily-split,
 body[data-layout-mode="phone"] .os-layout,
 body[data-layout-mode="phone"] .fitness-layout,
@@ -6407,11 +6447,552 @@ body[data-layout-mode="phone"] .header-actions button,
     font-size: clamp(13px, 3.9vw, 16px);
   }
 
-  body[data-layout-mode="phone"] .header-actions button,
-  .worklog-header .header-actions button {
-    width: 44px;
-    max-width: 44px;
-    min-height: 38px;
-    font-size: 11px;
+body[data-layout-mode="phone"] .header-actions button,
+.worklog-header .header-actions button {
+  width: 44px;
+  max-width: 44px;
+  min-height: 38px;
+  font-size: 11px;
+  }
+}
+
+/* App Store polish pass */
+body[data-layout-mode="phone"] .worklog-shell {
+  border: 0;
+  background:
+    linear-gradient(180deg, rgba(255, 254, 250, 0.96), rgba(246, 245, 239, 0.96)),
+    var(--nordic-bg);
+}
+
+body[data-layout-mode="phone"] .worklog-header {
+  margin: 8px 8px 10px;
+  border: 1px solid rgba(22, 56, 44, 0.14);
+  border-radius: 18px;
+  background: rgba(255, 254, 250, 0.94);
+  box-shadow: 0 8px 26px rgba(17, 20, 17, 0.06);
+}
+
+body[data-layout-mode="phone"] .worklog-header p {
+  font-size: clamp(18px, 5vw, 21px);
+  letter-spacing: 0;
+}
+
+body[data-layout-mode="phone"] .global-attendance-summary {
+  color: rgba(38, 50, 56, 0.58);
+  font-size: 12px;
+}
+
+body[data-layout-mode="phone"] .header-actions button {
+  border-color: rgba(22, 56, 44, 0.16);
+  border-radius: 14px;
+  box-shadow: 0 2px 8px rgba(17, 20, 17, 0.05);
+}
+
+body[data-layout-mode="phone"] .fitness-log-view {
+  gap: 10px;
+  padding: 0 10px 24px;
+}
+
+body[data-layout-mode="phone"] .fitness-coaching-ticker,
+body[data-layout-mode="phone"] .fitness-log-title,
+body[data-layout-mode="phone"] .fitness-log-pager,
+body[data-layout-mode="phone"] .fitness-ops-section,
+body[data-layout-mode="phone"] .fitness-log-task-panel,
+body[data-layout-mode="phone"] .fitness-log-schedule-panel {
+  border-color: rgba(22, 56, 44, 0.14);
+  border-radius: 16px;
+  box-shadow: 0 8px 24px rgba(17, 20, 17, 0.055);
+}
+
+body[data-layout-mode="phone"] .fitness-coaching-ticker {
+  min-height: 40px;
+  overflow: hidden;
+}
+
+body[data-layout-mode="phone"] .fitness-log-title {
+  padding: 7px;
+  background: rgba(255, 254, 250, 0.92);
+}
+
+body[data-layout-mode="phone"] .fitness-date-nav button,
+body[data-layout-mode="phone"] #fitnessTodayButton {
+  border-radius: 12px;
+  border-color: rgba(22, 56, 44, 0.14);
+}
+
+body[data-layout-mode="phone"] #fitnessDateButton {
+  min-width: 0;
+}
+
+body[data-layout-mode="phone"] #fitnessWorklogDate {
+  font-size: clamp(31px, 9.2vw, 39px);
+  letter-spacing: 0;
+  white-space: nowrap;
+}
+
+body[data-layout-mode="phone"] .fitness-log-pager {
+  grid-template-columns: minmax(82px, 0.72fr) minmax(0, 1.18fr) minmax(82px, 0.72fr);
+  gap: 6px;
+  min-height: 46px;
+  padding: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+body[data-layout-mode="phone"] .fitness-log-pager button,
+body[data-layout-mode="phone"] .fitness-log-pager div {
+  min-height: 46px;
+  border: 1px solid rgba(22, 56, 44, 0.14);
+  border-radius: 15px;
+  background: rgba(255, 254, 250, 0.92);
+  box-shadow: 0 5px 16px rgba(17, 20, 17, 0.045);
+}
+
+body[data-layout-mode="phone"] #fitnessLogPrevPageButton,
+body[data-layout-mode="phone"] #fitnessLogNextPageButton {
+  clip-path: none;
+  padding: 0 8px;
+  color: rgba(18, 59, 45, 0.84);
+  font-size: 12px;
+  font-weight: 950;
+}
+
+body[data-layout-mode="phone"] #fitnessLogPrevPageButton::before {
+  content: "‹";
+  margin-right: 2px;
+}
+
+body[data-layout-mode="phone"] #fitnessLogNextPageButton::after {
+  content: "›";
+  margin-left: 2px;
+}
+
+body[data-layout-mode="phone"] .fitness-log-pager strong {
+  color: var(--ink);
+  font-size: 15px;
+  line-height: 1.15;
+}
+
+body[data-layout-mode="phone"] .fitness-ops-section {
+  order: 2;
+  background: rgba(255, 254, 250, 0.9);
+}
+
+body[data-layout-mode="phone"] .fitness-ops-section h3 {
+  justify-content: start;
+  color: var(--ink);
+  font-size: 18px;
+}
+
+body[data-layout-mode="phone"] .fitness-ops-summary-button {
+  border-color: rgba(22, 56, 44, 0.12);
+  border-radius: 12px;
+  background: rgba(18, 59, 45, 0.04);
+  padding: 10px 12px;
+}
+
+body[data-layout-mode="phone"] .fitness-log-task-panel,
+body[data-layout-mode="phone"] .fitness-log-schedule-panel {
+  overflow: hidden;
+  background: rgba(255, 254, 250, 0.92);
+  padding: 0;
+}
+
+body[data-layout-mode="phone"] .fitness-log-task-panel h3,
+body[data-layout-mode="phone"] .fitness-log-schedule-panel h3 {
+  margin: 0;
+  border-bottom: 1px solid rgba(22, 56, 44, 0.1);
+  background: rgba(255, 254, 250, 0.86);
+  padding: 12px 12px;
+}
+
+body[data-layout-mode="phone"] .fitness-log-task-panel .task-row,
+body[data-layout-mode="phone"] .fitness-log-schedule-panel .appointment-row {
+  margin: 0 12px;
+  border-bottom-color: rgba(22, 56, 44, 0.09);
+}
+
+body[data-layout-mode="phone"] .fitness-log-task-panel .priority-select,
+body[data-layout-mode="phone"] .fitness-log-task-panel .task-cycle,
+body[data-layout-mode="phone"] .fitness-log-schedule-panel .appointment-merge-button {
+  border-color: rgba(22, 56, 44, 0.18);
+  border-radius: 8px;
+  background: rgba(255, 254, 250, 0.92);
+}
+
+.fitness-report-sheet {
+  border: 0;
+  border-radius: 22px;
+  background: rgba(255, 254, 250, 0.98);
+  box-shadow: 0 26px 70px rgba(17, 20, 17, 0.24);
+}
+
+.fitness-report-sheet header,
+.fitness-report-sheet footer {
+  padding-inline: 4px;
+}
+
+.fitness-report-sheet header button,
+.fitness-report-sheet footer button {
+  border-color: rgba(22, 56, 44, 0.16);
+  border-radius: 14px;
+}
+
+.fitness-report-preview {
+  border-radius: 18px;
+  background: #f2f1eb;
+  padding: 12px;
+}
+
+.fitness-report-page {
+  width: min(100%, 210mm);
+  aspect-ratio: 210 / 297;
+  border: 0;
+  border-radius: 3px;
+  background: #fffefa;
+  box-shadow: 0 10px 34px rgba(17, 20, 17, 0.1);
+  padding: 8mm;
+}
+
+.fitness-paper-top {
+  display: grid;
+  grid-template-columns: minmax(0, 1.15fr) minmax(178px, 0.85fr);
+  gap: 8px;
+  border-bottom: 2px solid rgba(18, 59, 45, 0.92);
+  padding-bottom: 8px;
+}
+
+.fitness-paper-top > div {
+  display: grid;
+  align-content: center;
+  min-height: 52px;
+  border-radius: 8px;
+  background: var(--fitness-green);
+  color: var(--nordic-sheet);
+  padding: 10px 12px;
+}
+
+.fitness-paper-top strong {
+  font-size: 21px;
+  line-height: 1.1;
+  font-weight: 950;
+}
+
+.fitness-paper-top span {
+  margin-top: 4px;
+  color: rgba(255, 254, 250, 0.78);
+  font-size: 11px;
+  font-weight: 850;
+}
+
+.fitness-paper-top dl {
+  display: grid;
+  grid-template-columns: 58px minmax(0, 1fr);
+  margin: 0;
+  border: 1px solid rgba(18, 59, 45, 0.28);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.fitness-paper-top dt,
+.fitness-paper-top dd {
+  min-height: 24px;
+  border-bottom: 1px solid rgba(18, 59, 45, 0.18);
+  margin: 0;
+  padding: 4px 6px;
+  font-size: 10px;
+  line-height: 1.2;
+}
+
+.fitness-paper-top dt {
+  display: grid;
+  place-items: center;
+  background: rgba(237, 244, 224, 0.9);
+  border-right: 1px solid rgba(18, 59, 45, 0.18);
+  font-weight: 950;
+}
+
+.fitness-paper-top dd {
+  font-weight: 850;
+}
+
+.fitness-paper-top dt:nth-last-child(2),
+.fitness-paper-top dd:last-child {
+  border-bottom: 0;
+}
+
+.fitness-paper-summary {
+  display: grid;
+  grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr);
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.fitness-paper-tasks,
+.fitness-paper-kpi,
+.fitness-paper-attendance-table,
+.fitness-paper-schedule,
+.fitness-paper-footer-grid > div {
+  border: 1px solid rgba(18, 59, 45, 0.22);
+  border-radius: 8px;
+  overflow: hidden;
+  background: rgba(255, 254, 250, 0.9);
+}
+
+.fitness-paper-tasks h3,
+.fitness-paper-attendance-table h3,
+.fitness-paper-schedule h3,
+.fitness-paper-footer-grid h3 {
+  margin: 0;
+  background: rgba(237, 244, 224, 0.82);
+  color: var(--ink);
+  padding: 6px 8px;
+  font-size: 11px;
+  font-weight: 950;
+}
+
+.fitness-paper-tasks p,
+.fitness-paper-footer-grid p {
+  display: grid;
+  grid-template-columns: 26px minmax(0, 1fr);
+  min-height: 24px;
+  margin: 0;
+  border-top: 1px solid rgba(18, 59, 45, 0.12);
+}
+
+.fitness-paper-tasks p b,
+.fitness-paper-footer-grid p b {
+  display: grid;
+  place-items: center;
+  border-right: 1px solid rgba(18, 59, 45, 0.12);
+  font-size: 10px;
+  font-weight: 950;
+}
+
+.fitness-paper-tasks p span,
+.fitness-paper-footer-grid p span {
+  padding: 5px 7px;
+  font-size: 10.5px;
+  line-height: 1.25;
+  font-weight: 820;
+}
+
+.fitness-paper-summary .fitness-paper-kpi {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  border: 1px solid rgba(18, 59, 45, 0.22);
+}
+
+.fitness-paper-summary .fitness-paper-kpi div {
+  min-height: 43px;
+  border-right: 1px solid rgba(18, 59, 45, 0.12);
+  border-bottom: 1px solid rgba(18, 59, 45, 0.12);
+  padding: 7px;
+}
+
+.fitness-paper-attendance-table {
+  margin-top: 8px;
+}
+
+.fitness-paper-attendance-table table,
+.fitness-paper-schedule table {
+  width: 100%;
+  border-collapse: collapse;
+  table-layout: fixed;
+}
+
+.fitness-paper-attendance-table th,
+.fitness-paper-attendance-table td,
+.fitness-paper-schedule th,
+.fitness-paper-schedule td {
+  border-top: 1px solid rgba(18, 59, 45, 0.13);
+  border-right: 1px solid rgba(18, 59, 45, 0.13);
+  padding: 4px 6px;
+  font-size: 10px;
+  line-height: 1.18;
+}
+
+.fitness-paper-attendance-table th,
+.fitness-paper-schedule th {
+  background: rgba(250, 250, 245, 0.95);
+  font-weight: 950;
+}
+
+.fitness-paper-attendance-table th:last-child,
+.fitness-paper-attendance-table td:last-child,
+.fitness-paper-schedule th:last-child,
+.fitness-paper-schedule td:last-child {
+  border-right: 0;
+}
+
+.fitness-paper-schedule {
+  margin-top: 8px;
+}
+
+.fitness-paper-schedule th:nth-child(1),
+.fitness-paper-schedule td:nth-child(1) {
+  width: 86px;
+  text-align: center;
+}
+
+.fitness-paper-schedule th:nth-child(3),
+.fitness-paper-schedule td:nth-child(3) {
+  width: 64px;
+  text-align: center;
+}
+
+.fitness-paper-schedule td {
+  height: 18px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.fitness-paper-footer-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 0.95fr) minmax(0, 1.05fr);
+  gap: 8px;
+  margin-top: 8px;
+}
+
+@media (max-width: 760px) {
+  .fitness-report-sheet {
+    inset: auto 10px max(10px, env(safe-area-inset-bottom));
+    left: 10px;
+    width: auto;
+    max-height: min(88dvh, 760px);
+    transform: translateY(12px);
+  }
+
+  .fitness-report-sheet.is-open {
+    transform: translateY(0);
+  }
+
+  .fitness-report-preview {
+    overflow: hidden;
+    padding: 10px;
+  }
+
+  .fitness-report-page {
+    width: 720px;
+    max-width: none;
+    transform: scale(var(--fitness-report-scale, 0.48));
+    transform-origin: top left;
+  }
+}
+
+@media (max-width: 640px) {
+  #view-fitness-log,
+  #view-fitness-log * {
+    border-color: rgba(22, 56, 44, 0.12);
+  }
+
+  #view-fitness-log :is(button, input, textarea, select) {
+    border-color: rgba(22, 56, 44, 0.16);
+  }
+
+  #view-fitness-log .fitness-coaching-ticker {
+    border: 0;
+    border-radius: 14px;
+    box-shadow: 0 8px 22px rgba(18, 59, 45, 0.16);
+  }
+
+  #view-fitness-log .fitness-log-title {
+    border: 0;
+    border-radius: 18px;
+    background: rgba(255, 254, 250, 0.94);
+    box-shadow: 0 8px 24px rgba(17, 20, 17, 0.06);
+  }
+
+  #view-fitness-log .fitness-date-nav {
+    gap: 6px;
+    border: 0;
+    background: transparent;
+  }
+
+  #view-fitness-log .fitness-date-nav button,
+  #view-fitness-log #fitnessTodayButton {
+    border: 1px solid rgba(22, 56, 44, 0.12);
+    border-radius: 14px;
+    background: rgba(255, 254, 250, 0.9);
+    color: var(--fitness-green);
+    box-shadow: none;
+  }
+
+  #view-fitness-log #fitnessTodayButton {
+    display: grid;
+    place-items: center;
+    min-width: 48px;
+    color: var(--nordic-sheet);
+    background: var(--fitness-green);
+    font-size: 13px;
+    font-weight: 950;
+    opacity: 1;
+  }
+
+  #view-fitness-log #fitnessTodayButton.is-current-date {
+    color: rgba(18, 59, 45, 0.52);
+    background: rgba(18, 59, 45, 0.08);
+    opacity: 1;
+  }
+
+  #view-fitness-log #fitnessDateButton {
+    background: rgba(18, 59, 45, 0.035);
+  }
+
+  #view-fitness-log .fitness-log-pager {
+    border: 0;
+    background: transparent;
+  }
+
+  #view-fitness-log #fitnessLogPrevPageButton,
+  #view-fitness-log #fitnessLogNextPageButton {
+    clip-path: none;
+  }
+
+  #view-fitness-log .fitness-log-pager button,
+  #view-fitness-log .fitness-log-pager div {
+    border: 1px solid rgba(22, 56, 44, 0.12);
+    border-radius: 16px;
+    background: rgba(255, 254, 250, 0.92);
+  }
+
+  #view-fitness-log .fitness-ops-section,
+  #view-fitness-log .fitness-log-task-panel,
+  #view-fitness-log .fitness-log-schedule-panel {
+    border: 0;
+    border-radius: 18px;
+    background: rgba(255, 254, 250, 0.94);
+    box-shadow: 0 9px 26px rgba(17, 20, 17, 0.065);
+  }
+
+  #view-fitness-log .fitness-ops-section::before {
+    display: none;
+  }
+
+  #view-fitness-log .fitness-ops-section h3,
+  #view-fitness-log .fitness-log-task-panel h3,
+  #view-fitness-log .fitness-log-schedule-panel h3 {
+    border-bottom: 1px solid rgba(22, 56, 44, 0.09);
+    background: transparent;
+  }
+
+  #view-fitness-log .fitness-ops-summary-button {
+    border: 0;
+    background: rgba(18, 59, 45, 0.045);
+    box-shadow: inset 0 0 0 1px rgba(22, 56, 44, 0.08);
+  }
+
+  #view-fitness-log .task-row,
+  #view-fitness-log .appointment-row {
+    border-bottom: 1px solid rgba(22, 56, 44, 0.08);
+  }
+
+  #view-fitness-log .task-delete {
+    color: rgba(188, 68, 68, 0.38);
+  }
+
+  #view-fitness-log .appointment-merge-button {
+    border-radius: 10px;
+    background: rgba(18, 59, 45, 0.035);
   }
 }
