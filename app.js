@@ -538,6 +538,23 @@ function showFitnessPageToast(page = getCurrentFitnessLogPage()) {
   window.setTimeout(() => toast.classList.remove("is-visible"), 1200);
 }
 
+function showAppToast(message = "") {
+  const shell = document.querySelector(".worklog-shell");
+  if (!shell || !message) return;
+  let toast = document.getElementById("appToast");
+  if (!toast) {
+    toast = document.createElement("div");
+    toast.id = "appToast";
+    toast.className = "app-toast";
+    shell.appendChild(toast);
+  }
+  toast.textContent = message;
+  toast.classList.remove("is-visible");
+  void toast.offsetWidth;
+  toast.classList.add("is-visible");
+  window.setTimeout(() => toast.classList.remove("is-visible"), 1400);
+}
+
 function getScheduleTimes(workHoursValue) {
   const workHours = workHoursValue || state?.profile?.workHours || defaultProfile.workHours;
   const match = workHours.match(/(\d{1,2}):(\d{2})\s*[-~]\s*(\d{1,2}):(\d{2})/);
@@ -952,10 +969,16 @@ function renderGlobalEmployeeIdentity() {
 
 function renderGlobalAttendanceSummary(employee = employees.find((item) => item.id === state.fitnessWritableEmployeeId) || getSelectedEmployee()) {
   const node = document.getElementById("globalAttendanceSummary");
-  if (!node) return;
+  const button = document.getElementById("globalAttendanceButton");
+  if (!node && !button) return;
   const log = getEmployeeLogForDate(employee.id);
   const summary = formatAttendanceSummary(log);
-  node.textContent = summary || "출결 미기록";
+  if (node) node.textContent = summary || "출결 미기록";
+  if (button) {
+    const hasRecord = Boolean(log.clockIn || log.clockOut || log.attendanceBreaks?.length);
+    button.classList.toggle("is-recorded", hasRecord);
+    button.title = summary ? `출결현황: ${summary}` : "출결현황 기록";
+  }
 }
 
 function formatAttendanceSummary(log = getSelectedLog()) {
@@ -2647,6 +2670,7 @@ function applyAttendancePopoverSelection() {
   saveState();
   renderAll();
   closeAttendancePopover();
+  showAppToast(`${attendancePopoverAction} ${primary} 기록`);
 }
 
 function getNextAttendanceAction(log = getSelectedLog()) {

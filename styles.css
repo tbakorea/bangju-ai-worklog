@@ -5371,6 +5371,18 @@ body[data-layout-mode="phone"] .fitness-log-schedule-panel .fitness-appointment-
   color: var(--nordic-sheet);
 }
 
+.header-actions .global-attendance-button.is-recorded {
+  background: #0b241c;
+  box-shadow: inset 0 -3px 0 rgba(255, 254, 250, 0.18);
+}
+
+.worklog-header button:focus-visible,
+.attendance-popover select:focus-visible,
+#attendanceApplyButton:focus-visible {
+  outline: 2px solid rgba(19, 91, 69, 0.42);
+  outline-offset: 2px;
+}
+
 .main-menu-popover {
   position: absolute;
   top: calc(100% + 7px);
@@ -5464,6 +5476,42 @@ body[data-layout-mode="phone"] .fitness-log-schedule-panel .fitness-appointment-
   color: var(--nordic-sheet);
   font-size: 13px;
   font-weight: 950;
+}
+
+.app-toast {
+  position: fixed;
+  top: calc(env(safe-area-inset-top) + 76px);
+  left: 50%;
+  z-index: 110;
+  max-width: min(320px, calc(100vw - 40px));
+  border: 1px solid rgba(18, 59, 45, 0.18);
+  border-radius: 999px;
+  background: rgba(18, 59, 45, 0.94);
+  color: var(--nordic-sheet);
+  padding: 8px 14px;
+  font-size: 13px;
+  font-weight: 920;
+  text-align: center;
+  opacity: 0;
+  pointer-events: none;
+  transform: translate(-50%, -8px);
+  transition: opacity 160ms ease, transform 160ms ease;
+}
+
+.app-toast.is-visible {
+  opacity: 1;
+  transform: translate(-50%, 0);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
 }
 
 .main-menu-popover[hidden] {
