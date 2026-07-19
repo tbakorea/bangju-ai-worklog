@@ -76,10 +76,96 @@ const defaultProfile = {
   secondaryWork: "",
   workplace: "",
   workHours: "08:00-18:00",
+  weeklyWorkHours: {},
+  manualSettings: {
+    roleKey: "manager",
+    employeeId: "beyond-fitness-manager",
+    customByRole: {},
+    missionsByEmployee: {},
+  },
   extra: "",
   strengths: "",
   weaknesses: "",
   developmentGoals: "",
+};
+const fitnessManualTemplates = {
+  manager: {
+    title: "센터장 운영총괄 매뉴얼",
+    text: [
+      "1. 매일 오픈 전 센터 컨디션, 매출 목표, 예약 현황, 직원 배치를 확인한다.",
+      "2. 전 직원 출결, 시간별 일정, PT/상담/계약/시설 이슈를 업무일지로 취합한다.",
+      "3. 당일 핵심 지표는 PT 진행, 신규 상담, 재등록, 이탈 위험, 클레임, 시설 문제로 구분한다.",
+      "4. 직원별 업무 공백이 생기면 즉시 센터관리, 고객응대, 홍보, 상담 후속으로 재배치한다.",
+      "5. 마감 전 현금/결제/계약/상담 결과와 미처리 이슈를 다음 근무자에게 인수인계한다.",
+      "6. 매주 직원 역량, 고객 경험, 청결 상태, 장비 상태, 매출 전환율을 리뷰하고 개선 과제를 부여한다.",
+    ].join("\n"),
+  },
+  frontDesk: {
+    title: "인포데스크 고객응대 매뉴얼",
+    text: [
+      "1. 첫 인사는 3초 안에 밝게 하고, 회원 이름을 확인해 개인화된 응대를 한다.",
+      "2. 방문 목적을 신규상담, PT예약, 회원권, 민원, 시설문의로 분류하고 업무일지에 남긴다.",
+      "3. 상담 후보는 연락처, 관심목표, 예산, 운동경험, 방문경로, 후속 연락일을 기록한다.",
+      "4. 전화/카톡/방문 문의는 10분 안에 1차 응답하고 미해결 건은 센터장에게 즉시 공유한다.",
+      "5. 피크타임에는 체크인 흐름, 락커/수건/결제 대기, 상담 대기자를 우선 관리한다.",
+      "6. 마감 전 일일권, 신규, 재등록, 상담, 아웃바운드, 특이사항을 정리한다.",
+    ].join("\n"),
+  },
+  trainer: {
+    title: "트레이너 PT 운영 매뉴얼",
+    text: [
+      "1. 수업 전 회원 목표, 통증, 컨디션, 지난 수업 기록을 확인한다.",
+      "2. 세션은 안전 체크, 워밍업, 본운동, 피드백, 다음 과제 순서로 진행한다.",
+      "3. 수업 후 운동내용, 강도, 반응, 다음 예약, 재등록 가능성을 업무일지에 기록한다.",
+      "4. 신규/휴면/이탈위험 회원은 운동 목표와 장애요인을 파악해 센터장과 공유한다.",
+      "5. PT 전환 후보는 무료 점검, 체형/목표 상담, 체험 수업 제안 흐름으로 관리한다.",
+      "6. 장비 사용 중 위험요소나 파손을 발견하면 즉시 사용 중지 표시 후 시설관리 항목에 기록한다.",
+    ].join("\n"),
+  },
+  sales: {
+    title: "상담·계약 전환 매뉴얼",
+    text: [
+      "1. 상담은 목표, 문제, 기간, 예산, 결정권자, 시작 가능일을 확인하는 순서로 진행한다.",
+      "2. 상품 설명보다 회원의 목표 달성 경로와 실패 방지 계획을 먼저 제시한다.",
+      "3. 가격 제시는 옵션 2~3개로 단순화하고, 추천안의 이유를 명확히 말한다.",
+      "4. 미계약자는 당일 감사 메시지, 24시간 내 추가 안내, 3일 내 재방문 제안으로 추적한다.",
+      "5. 계약 완료 후 결제, 약관, 예약, OT, 담당자 배정을 한 번에 마무리한다.",
+      "6. 상담 결과는 신규, 재등록, 보류, 실패 사유로 분류해 운영기록에 반영한다.",
+    ].join("\n"),
+  },
+  marketing: {
+    title: "홍보·마케팅 실행 매뉴얼",
+    text: [
+      "1. 매일 센터의 실제 변화, 회원 성과, 청결, 수업 현장 중 게시 가능한 소재를 수집한다.",
+      "2. 콘텐츠는 시설 신뢰, 트레이너 전문성, 회원 후기, 이벤트, 지역 키워드로 분류한다.",
+      "3. 신규 문의 유입경로를 블로그, 인스타, 지도, 소개, 현수막, 기타로 기록한다.",
+      "4. 행사/이벤트는 목표, 대상, 기간, 혜택, 마감일, 후속 상담 루트를 먼저 정한다.",
+      "5. 댓글/DM/전화 문의는 응답 속도를 관리하고 상담 예약으로 연결한다.",
+      "6. 주간 리뷰에서 어떤 콘텐츠가 상담과 계약으로 이어졌는지 확인한다.",
+    ].join("\n"),
+  },
+  facility: {
+    title: "시설·장비관리 매뉴얼",
+    text: [
+      "1. 오픈 전 조명, 냉난방, 음악, 환기, 수압, 락커, 샤워실, 키오스크 상태를 확인한다.",
+      "2. 장비는 안전핀, 케이블, 패드, 볼트, 러닝벨트, 소음, 흔들림을 우선 점검한다.",
+      "3. 위험 장비는 즉시 사용 중지 표시를 하고 수리 요청, 사진, 담당자, 완료기한을 기록한다.",
+      "4. 피크타임 전 바닥, 동선, 수건, 소모품, 정수기, 탈의실 상태를 재점검한다.",
+      "5. 시설 이슈는 회원 불편도와 안전위험도를 기준으로 즉시/당일/주간 조치로 나눈다.",
+      "6. 반복 고장은 교체주기와 비용을 기록해 월간 시설계획에 반영한다.",
+    ].join("\n"),
+  },
+  cleaning: {
+    title: "청결·위생관리 매뉴얼",
+    text: [
+      "1. 청소는 눈에 보이는 정리, 접촉면 소독, 냄새 관리, 바닥 안전 순서로 수행한다.",
+      "2. 화장실, 샤워실, 탈의실, 손잡이, 운동기구 접촉면은 시간대별 체크리스트로 관리한다.",
+      "3. 세제와 소독제는 용도와 희석 기준을 구분하고, 표면 손상이나 미끄럼을 방지한다.",
+      "4. 수건, 휴지, 비누, 소독티슈, 쓰레기통은 부족해지기 전에 보충한다.",
+      "5. 청결 문제를 발견하면 사진, 위치, 조치내용, 재발방지 포인트를 기록한다.",
+      "6. 신규 직원은 숙련자와 동행해 청소 순서와 기준을 현장에서 배운다.",
+    ].join("\n"),
+  },
 };
 const employees = [
   { id: "bangju-finance-1", name: "방주 재무담당", org: "(주)방주", role: "재무" },
@@ -289,6 +375,13 @@ function normalizeState() {
   state.selectedEmployeeId ||= "beyond-fitness-manager";
   state.profile = { ...defaultProfile, ...(state.profile || {}) };
   state.profile.nickname ||= "";
+  state.profile.weeklyWorkHours = { ...(state.profile.weeklyWorkHours || {}) };
+  state.profile.manualSettings = {
+    ...defaultProfile.manualSettings,
+    ...(state.profile.manualSettings || {}),
+    customByRole: { ...(state.profile.manualSettings?.customByRole || {}) },
+    missionsByEmployee: { ...(state.profile.manualSettings?.missionsByEmployee || {}) },
+  };
   syncFitnessWritableEmployeeFromProfile();
   if (state.profile.workHours === "12:00-19:00") state.profile.workHours = defaultProfile.workHours;
   const retiredFitnessIds = {
@@ -397,11 +490,23 @@ function getProfileEmployee() {
 }
 
 function getEmployeeWorkHours(employeeId = state?.selectedEmployeeId, profile = state?.profile) {
-  if (employeeId === "profile-user") {
-    return profile?.workHours || state?.profile?.workHours || defaultProfile.workHours;
+  const profileHours = getProfileWorkHoursForDate(profile, getActiveDateKey());
+  if (employeeId === "profile-user" || employeeId === state?.fitnessWritableEmployeeId) {
+    return profileHours || profile?.workHours || state?.profile?.workHours || defaultProfile.workHours;
   }
   const employee = employees.find((item) => item.id === employeeId);
   return employee?.workHours || defaultProfile.workHours;
+}
+
+function getProfileWorkHoursForDate(profile = state?.profile, dateKey = getActiveDateKey()) {
+  const dayKey = getWorkdayKey(dateKey);
+  const weeklyHours = profile?.weeklyWorkHours || {};
+  return String(weeklyHours[dayKey] || "").trim() || String(profile?.workHours || "").trim();
+}
+
+function getWorkdayKey(dateKey = getActiveDateKey()) {
+  const date = parseDateKey(dateKey);
+  return ["sun", "mon", "tue", "wed", "thu", "fri", "sat"][date.getDay()] || "mon";
 }
 
 function getFitnessEmployees() {
@@ -572,6 +677,7 @@ function showAppToast(message = "") {
 
 function getScheduleTimes(workHoursValue) {
   const workHours = workHoursValue || state?.profile?.workHours || defaultProfile.workHours;
+  if (/휴무|off|closed|none|없음/i.test(String(workHours))) return [];
   const match = workHours.match(/(\d{1,2}):(\d{2})\s*[-~]\s*(\d{1,2}):(\d{2})/);
   if (!match) return defaultScheduleTimes;
   const start = Number(match[1]) * 60 + Number(match[2]);
@@ -1020,6 +1126,60 @@ function renderSettingsForm() {
   document.querySelectorAll("[data-settings-profile-field]").forEach((field) => {
     field.value = state.profile?.[field.dataset.settingsProfileField] || "";
   });
+  document.querySelectorAll("[data-settings-work-hours-day]").forEach((field) => {
+    field.value = state.profile?.weeklyWorkHours?.[field.dataset.settingsWorkHoursDay] || "";
+  });
+  renderManualSettings();
+}
+
+function getManualSettings() {
+  state.profile = { ...defaultProfile, ...(state.profile || {}) };
+  state.profile.manualSettings = {
+    ...defaultProfile.manualSettings,
+    ...(state.profile.manualSettings || {}),
+    customByRole: { ...(state.profile.manualSettings?.customByRole || {}) },
+    missionsByEmployee: { ...(state.profile.manualSettings?.missionsByEmployee || {}) },
+  };
+  return state.profile.manualSettings;
+}
+
+function renderManualSettings() {
+  const settings = getManualSettings();
+  const roleSelect = document.getElementById("manualRoleSelect");
+  const employeeSelect = document.getElementById("manualEmployeeSelect");
+  const manualEditor = document.getElementById("manualEditor");
+  const missionEditor = document.getElementById("manualMissionEditor");
+  if (!roleSelect || !employeeSelect || !manualEditor || !missionEditor) return;
+  roleSelect.value = settings.roleKey || "manager";
+  employeeSelect.innerHTML = getFitnessEmployees()
+    .map((employee) => `<option value="${escapeAttr(employee.id)}">${escapeHtml(getEmployeeAdminLabel(employee))}</option>`)
+    .join("");
+  employeeSelect.value = settings.employeeId || state.fitnessWritableEmployeeId || "beyond-fitness-manager";
+  const template = fitnessManualTemplates[roleSelect.value] || fitnessManualTemplates.manager;
+  manualEditor.value = settings.customByRole?.[roleSelect.value] || template.text;
+  missionEditor.value = settings.missionsByEmployee?.[employeeSelect.value] || "";
+}
+
+function saveManualSettingsFromForm() {
+  const settings = getManualSettings();
+  const roleKey = document.getElementById("manualRoleSelect")?.value || "manager";
+  const employeeId = document.getElementById("manualEmployeeSelect")?.value || state.fitnessWritableEmployeeId;
+  const manualText = document.getElementById("manualEditor")?.value.trim() || "";
+  const missionText = document.getElementById("manualMissionEditor")?.value.trim() || "";
+  settings.roleKey = roleKey;
+  settings.employeeId = employeeId;
+  if (manualText) settings.customByRole[roleKey] = manualText;
+  else delete settings.customByRole[roleKey];
+  if (missionText) settings.missionsByEmployee[employeeId] = missionText;
+  else delete settings.missionsByEmployee[employeeId];
+}
+
+function loadDefaultManualForSelectedRole() {
+  const roleKey = document.getElementById("manualRoleSelect")?.value || "manager";
+  const editor = document.getElementById("manualEditor");
+  if (!editor) return;
+  editor.value = (fitnessManualTemplates[roleKey] || fitnessManualTemplates.manager).text;
+  saveManualSettingsFromForm();
 }
 
 function applyProfileFields(selector, datasetKey) {
@@ -1036,6 +1196,14 @@ function saveProfileFromForm() {
 
 function saveSettingsProfileFromForm() {
   applyProfileFields("[data-settings-profile-field]", "settingsProfileField");
+  state.profile.weeklyWorkHours = { ...(state.profile.weeklyWorkHours || {}) };
+  document.querySelectorAll("[data-settings-work-hours-day]").forEach((field) => {
+    const key = field.dataset.settingsWorkHoursDay;
+    const value = field.value.trim();
+    if (value) state.profile.weeklyWorkHours[key] = value;
+    else delete state.profile.weeklyWorkHours[key];
+  });
+  saveManualSettingsFromForm();
   saveProfileChanges({ stayInSettings: true });
 }
 
@@ -1048,6 +1216,7 @@ function saveProfileChanges({ stayInSettings = false } = {}) {
   }
   normalizeState();
   normalizeEmployeeLogRows(getSelectedLog());
+  normalizeEmployeeLogRows(getEmployeeLogForDate(state.fitnessWritableEmployeeId));
   saveState();
   saveRemoteProfile();
   renderAll();
@@ -1063,13 +1232,19 @@ function renderAuthStatus(message) {
   renderMainMenuAuthButton();
 }
 
+function isKnownLoggedInProfile() {
+  const email = String(authState.user?.email || state.profile?.email || "").trim().toLowerCase();
+  return Boolean(authState.user) || email === "j3010@ymail.com";
+}
+
 function renderMainMenuAuthButton() {
   const button = document.querySelector('[data-menu-view="auth"]');
   if (!button) return;
-  const email = authState.user?.email || "";
-  button.textContent = authState.user ? "로그아웃" : "로그인";
-  button.dataset.menuAction = authState.user ? "logout" : "login";
-  button.setAttribute("aria-label", authState.user ? `${email || "현재 계정"} 로그아웃` : "로그인 페이지 열기");
+  const email = authState.user?.email || state.profile?.email || "";
+  const isLoggedIn = isKnownLoggedInProfile();
+  button.textContent = isLoggedIn ? "로그아웃" : "로그인";
+  button.dataset.menuAction = isLoggedIn ? "logout" : "login";
+  button.setAttribute("aria-label", isLoggedIn ? `${email || "현재 계정"} 로그아웃` : "로그인 페이지 열기");
 }
 
 function getAuthCredentials() {
@@ -1112,8 +1287,7 @@ async function signInWithSupabase() {
 }
 
 async function signOutWithSupabase() {
-  if (!supabaseClient) return;
-  await supabaseClient.auth.signOut();
+  if (supabaseClient) await supabaseClient.auth.signOut();
   authState.session = null;
   authState.user = null;
   renderAuthStatus("로그아웃되었습니다. 입력 내용은 이 기기에 계속 보관됩니다.");
@@ -2502,6 +2676,7 @@ function getWorklogScheduleSlots(log) {
     .filter(Boolean);
   const taskTimes = (log?.tasks || []).map((task) => extractWorklogTaskTimeHint(task.text)?.slot).filter(Boolean);
   const allTimes = [...baseTimes, ...scheduleTimes, ...taskTimes];
+  if (!allTimes.length) return [];
   let start = 8 * 60;
   let end = 18 * 60;
   allTimes.forEach((time) => {
@@ -3421,7 +3596,7 @@ document.getElementById("settingsGearButton").onclick = (event) => {
 document.querySelectorAll("[data-menu-view]").forEach((button) => {
   button.onclick = async () => {
     const view = button.dataset.menuView;
-    if (view === "auth" && authState.user) {
+    if (view === "auth" && isKnownLoggedInProfile()) {
       closeMainMenuPopover();
       await signOutWithSupabase();
       return;
@@ -3446,6 +3621,23 @@ document.querySelectorAll("[data-settings-tab]").forEach((button) => {
 document.getElementById("closeSettingsButton")?.addEventListener("click", () => switchView("fitness-log"));
 document.getElementById("saveProfileButton").onclick = saveProfileFromForm;
 document.getElementById("saveSettingsProfileButton")?.addEventListener("click", saveSettingsProfileFromForm);
+document.getElementById("manualRoleSelect")?.addEventListener("change", () => {
+  getManualSettings().roleKey = document.getElementById("manualRoleSelect")?.value || "manager";
+  renderManualSettings();
+});
+document.getElementById("manualEmployeeSelect")?.addEventListener("change", () => {
+  getManualSettings().employeeId = document.getElementById("manualEmployeeSelect")?.value || state.fitnessWritableEmployeeId;
+  renderManualSettings();
+});
+document.getElementById("manualEditor")?.addEventListener("input", () => {
+  saveManualSettingsFromForm();
+  saveState({ fastSave: true });
+});
+document.getElementById("manualMissionEditor")?.addEventListener("input", () => {
+  saveManualSettingsFromForm();
+  saveState({ fastSave: true });
+});
+document.getElementById("loadDefaultManualButton")?.addEventListener("click", loadDefaultManualForSelectedRole);
 document.getElementById("loginButton").onclick = signInWithSupabase;
 document.getElementById("signupButton").onclick = signUpWithSupabase;
 document.getElementById("logoutButton").onclick = signOutWithSupabase;

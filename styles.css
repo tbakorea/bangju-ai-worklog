@@ -1833,6 +1833,102 @@ body[data-device-mode="narrow"] .os-mode-switch span[data-device-mode="narrow"] 
   font-weight: 760;
 }
 
+.weekly-work-hours {
+  margin-top: 14px;
+  border: 1px solid rgba(33, 55, 45, 0.1);
+  border-radius: 14px;
+  background: rgba(255, 253, 248, 0.72);
+  padding: 12px;
+}
+
+.weekly-work-hours h3 {
+  margin: 0;
+  color: var(--ink);
+  font-size: 15px;
+  font-weight: 950;
+}
+
+.weekly-work-hours p {
+  margin: 4px 0 10px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 780;
+}
+
+.weekly-work-hours-grid {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 7px;
+}
+
+.weekly-work-hours-grid label {
+  display: grid;
+  gap: 5px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.weekly-work-hours-grid input {
+  min-width: 0;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: rgba(255, 253, 248, 0.95);
+  color: var(--ink);
+  padding: 9px 8px;
+  font-size: 13px;
+  font-weight: 850;
+}
+
+.manual-settings-card {
+  display: grid;
+  gap: 12px;
+  border: 1px solid rgba(33, 55, 45, 0.1);
+  border-radius: 16px;
+  background: rgba(255, 253, 248, 0.74);
+  padding: 13px;
+}
+
+.manual-settings-toolbar {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto;
+  gap: 9px;
+  align-items: end;
+}
+
+.manual-settings-toolbar label,
+.manual-editor-wrap {
+  display: grid;
+  gap: 6px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 880;
+}
+
+.manual-settings-toolbar select,
+.manual-settings-toolbar button,
+.manual-editor-wrap textarea {
+  min-width: 0;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: rgba(255, 253, 248, 0.96);
+  color: var(--ink);
+  padding: 10px 11px;
+  font-weight: 850;
+}
+
+.manual-settings-toolbar button {
+  min-height: 42px;
+  background: var(--fitness-green);
+  color: var(--nordic-sheet);
+  white-space: nowrap;
+}
+
+.manual-editor-wrap textarea {
+  resize: vertical;
+  line-height: 1.55;
+}
+
 .auth-actions,
 .settings-actions {
   display: flex;
@@ -2268,6 +2364,14 @@ body[data-device-mode="narrow"] .os-mode-switch span[data-device-mode="narrow"] 
   }
 
   .profile-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .weekly-work-hours-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .manual-settings-toolbar {
     grid-template-columns: 1fr;
   }
 
