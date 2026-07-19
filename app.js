@@ -1013,13 +1013,33 @@ function renderProfileForm() {
   document.querySelectorAll("[data-profile-field]").forEach((field) => {
     field.value = state.profile?.[field.dataset.profileField] || "";
   });
+  renderSettingsForm();
+}
+
+function renderSettingsForm() {
+  document.querySelectorAll("[data-settings-profile-field]").forEach((field) => {
+    field.value = state.profile?.[field.dataset.settingsProfileField] || "";
+  });
+}
+
+function applyProfileFields(selector, datasetKey) {
+  state.profile = { ...defaultProfile, ...(state.profile || {}) };
+  document.querySelectorAll(selector).forEach((field) => {
+    state.profile[field.dataset[datasetKey]] = field.value.trim();
+  });
 }
 
 function saveProfileFromForm() {
-  state.profile = { ...defaultProfile, ...(state.profile || {}) };
-  document.querySelectorAll("[data-profile-field]").forEach((field) => {
-    state.profile[field.dataset.profileField] = field.value.trim();
-  });
+  applyProfileFields("[data-profile-field]", "profileField");
+  saveProfileChanges();
+}
+
+function saveSettingsProfileFromForm() {
+  applyProfileFields("[data-settings-profile-field]", "settingsProfileField");
+  saveProfileChanges({ stayInSettings: true });
+}
+
+function saveProfileChanges({ stayInSettings = false } = {}) {
   const profileSource = `${state.profile.org || ""} ${state.profile.workplace || ""} ${state.profile.primaryWork || ""}`;
   if (/피트니스|fitness|beyond/i.test(profileSource)) {
     syncFitnessWritableEmployeeFromProfile();
@@ -1031,7 +1051,7 @@ function saveProfileFromForm() {
   saveState();
   saveRemoteProfile();
   renderAll();
-  switchView(state.selectedEmployeeId === "profile-user" ? "today" : "fitness-log");
+  switchView(stayInSettings ? "settings" : state.selectedEmployeeId === "profile-user" ? "today" : "fitness-log");
 }
 
 function renderAuthStatus(message) {
@@ -1040,6 +1060,16 @@ function renderAuthStatus(message) {
   const readyText = authState.remoteReady ? "Supabase 연결 준비됨" : "Supabase 스크립트 로딩 필요";
   status.textContent = message || (email ? `${email} 로그인됨 · 원격 저장 켜짐` : `${readyText} · 로그인하면 원격 저장됩니다.`);
   document.getElementById("logoutButton").disabled = !authState.user;
+  renderMainMenuAuthButton();
+}
+
+function renderMainMenuAuthButton() {
+  const button = document.querySelector('[data-menu-view="auth"]');
+  if (!button) return;
+  const email = authState.user?.email || "";
+  button.textContent = authState.user ? "로그아웃" : "로그인";
+  button.dataset.menuAction = authState.user ? "logout" : "login";
+  button.setAttribute("aria-label", authState.user ? `${email || "현재 계정"} 로그아웃` : "로그인 페이지 열기");
 }
 
 function getAuthCredentials() {
@@ -1087,6 +1117,7 @@ async function signOutWithSupabase() {
   authState.session = null;
   authState.user = null;
   renderAuthStatus("로그아웃되었습니다. 입력 내용은 이 기기에 계속 보관됩니다.");
+  renderAll();
 }
 
 async function applySession(session) {
@@ -1248,6 +1279,15 @@ function switchAuthTab(tab) {
   });
   document.querySelectorAll(".auth-panel").forEach((panel) => {
     panel.classList.toggle("is-active", panel.id === `auth-panel-${tab}`);
+  });
+}
+
+function switchSettingsTab(tab = "employee") {
+  document.querySelectorAll("[data-settings-tab]").forEach((button) => {
+    button.classList.toggle("is-active", button.dataset.settingsTab === tab);
+  });
+  document.querySelectorAll(".settings-panel").forEach((panel) => {
+    panel.classList.toggle("is-active", panel.id === `settings-panel-${tab}`);
   });
 }
 
@@ -3290,6 +3330,7 @@ function toggleMainMenuPopover() {
   const button = document.getElementById("settingsGearButton");
   if (!popover) return;
   const willOpen = popover.hidden;
+  if (willOpen) renderMainMenuAuthButton();
   popover.hidden = !willOpen;
   button?.setAttribute("aria-expanded", String(willOpen));
   if (willOpen) closeAttendancePopover();
@@ -3306,6 +3347,7 @@ function closeMainMenuPopover() {
 
 function renderAll() {
   renderGlobalEmployeeIdentity();
+  renderMainMenuAuthButton();
   renderOsDashboard();
   renderAiCoach();
   renderFitnessDashboard();
@@ -3377,9 +3419,15 @@ document.getElementById("settingsGearButton").onclick = (event) => {
   toggleMainMenuPopover();
 };
 document.querySelectorAll("[data-menu-view]").forEach((button) => {
-  button.onclick = () => {
+  button.onclick = async () => {
     const view = button.dataset.menuView;
+    if (view === "auth" && authState.user) {
+      closeMainMenuPopover();
+      await signOutWithSupabase();
+      return;
+    }
     if (view === "auth" || view === "settings") renderProfileForm();
+    if (view === "settings") switchSettingsTab("employee");
     switchView(view);
   };
 });
@@ -3392,7 +3440,12 @@ document.getElementById("closeAuthButton").onclick = () => switchView("fitness-l
 document.querySelectorAll("[data-auth-tab]").forEach((button) => {
   button.onclick = () => switchAuthTab(button.dataset.authTab);
 });
+document.querySelectorAll("[data-settings-tab]").forEach((button) => {
+  button.onclick = () => switchSettingsTab(button.dataset.settingsTab);
+});
+document.getElementById("closeSettingsButton")?.addEventListener("click", () => switchView("fitness-log"));
 document.getElementById("saveProfileButton").onclick = saveProfileFromForm;
+document.getElementById("saveSettingsProfileButton")?.addEventListener("click", saveSettingsProfileFromForm);
 document.getElementById("loginButton").onclick = signInWithSupabase;
 document.getElementById("signupButton").onclick = signUpWithSupabase;
 document.getElementById("logoutButton").onclick = signOutWithSupabase;

@@ -456,15 +456,52 @@
       </section>
 
       <section class="worklog-view" id="view-settings">
-        <h2>Beyond OS 설정</h2>
-        <label>
-          보고 스타일
-          <select id="reportTone">
-            <option value="executive">임원 보고형</option>
-            <option value="team">팀 공유형</option>
-            <option value="personal">개인 회고형</option>
-          </select>
-        </label>
+        <div class="settings-heading">
+          <div>
+            <p>Settings</p>
+            <h2>설정</h2>
+          </div>
+          <button class="icon-close" id="closeSettingsButton" type="button" aria-label="설정 닫기">×</button>
+        </div>
+        <div class="settings-tabs" aria-label="설정 메뉴">
+          <button class="is-active" type="button" data-settings-tab="employee">직원설정</button>
+          <button type="button" data-settings-tab="app">앱설정</button>
+        </div>
+        <div class="settings-panel is-active" id="settings-panel-employee">
+          <div class="profile-grid">
+            <label>소속 <input data-settings-profile-field="org" type="text" placeholder="예: (주)방주 / 비욘드 피트니스 지사" /></label>
+            <label>직급 <input data-settings-profile-field="role" type="text" placeholder="예: 센터장 / 대표 / 트레이너" /></label>
+            <label>이름 <input data-settings-profile-field="name" type="text" placeholder="예: 홍길동" /></label>
+            <label>닉네임 <input data-settings-profile-field="nickname" type="text" placeholder="본인 업무일지 표시명" /></label>
+            <label>전화 <input data-settings-profile-field="phone" type="tel" placeholder="010-0000-0000" /></label>
+            <label>이메일 <input data-settings-profile-field="email" type="email" placeholder="name@example.com" /></label>
+            <label>주업무 <input data-settings-profile-field="primaryWork" type="text" placeholder="주요 담당 업무" /></label>
+            <label>부업무 <input data-settings-profile-field="secondaryWork" type="text" placeholder="보조 담당 업무" /></label>
+            <label>근무지 <input data-settings-profile-field="workplace" type="text" placeholder="근무지 / 현장 / 지점" /></label>
+            <label>근무시간 <input data-settings-profile-field="workHours" type="text" placeholder="예: 09:00-18:00" /></label>
+          </div>
+          <p class="profile-note">회원가입 시 입력한 직원 정보를 수정합니다. 근무시간은 피트니스 업무일지의 시간별 일정 기준으로 사용됩니다.</p>
+        </div>
+        <div class="settings-panel" id="settings-panel-app">
+          <div class="profile-grid profile-grid-wide">
+            <label>
+              보고 스타일
+              <select id="reportTone">
+                <option value="executive">임원 보고형</option>
+                <option value="team">팀 공유형</option>
+                <option value="personal">개인 회고형</option>
+              </select>
+            </label>
+            <label>기타 <textarea data-settings-profile-field="extra" rows="4" placeholder="업무 환경, 자격, 관심 분야, 필요한 지원"></textarea></label>
+            <label>장점 <textarea data-settings-profile-field="strengths" rows="4" placeholder="강점, 잘하는 업무, 성과 패턴"></textarea></label>
+            <label>단점 <textarea data-settings-profile-field="weaknesses" rows="4" placeholder="보완점, 어려운 업무, 개선 필요 역량"></textarea></label>
+            <label>자기개발 목표 <textarea data-settings-profile-field="developmentGoals" rows="4" placeholder="학습 목표, 역량강화 계획, 필요한 교육"></textarea></label>
+          </div>
+          <p class="profile-note">앱설정의 자기개발 데이터는 AI 코칭과 업무 배치 제안의 기초 자료로 사용됩니다.</p>
+        </div>
+        <div class="settings-actions">
+          <button id="saveSettingsProfileButton" type="button">저장하고 적용</button>
+        </div>
       </section>
 
       <section class="worklog-view auth-view" id="view-auth">
