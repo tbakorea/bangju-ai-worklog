@@ -784,6 +784,10 @@ function formatKoreanDate(key) {
   return `${date.getFullYear()}.${String(date.getMonth() + 1).padStart(2, "0")}.${String(date.getDate()).padStart(2, "0")}(${weekdays[date.getDay()]})`;
 }
 
+function formatCompactDate(key) {
+  return formatKoreanDate(key).replaceAll(" ", "");
+}
+
 function formatShortDate(key) {
   if (!key) return "미정";
   const date = parseDateKey(key);
@@ -1599,7 +1603,7 @@ function renderFitnessWorklog(log = getSelectedLog()) {
   }
   syncFitnessOpsFromSchedule(log);
   const title = document.getElementById("fitnessWorklogDate");
-  if (title) title.textContent = formatKoreanDate(getActiveDateKey());
+  if (title) title.textContent = formatCompactDate(getActiveDateKey());
   const input = document.getElementById("fitnessDateInput");
   if (input) input.value = getActiveDateKey();
   const todayButton = document.getElementById("fitnessTodayButton");
