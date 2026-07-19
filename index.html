@@ -277,7 +277,15 @@
           </div>
         </article>
         <article class="planner-section fitness-center-daily-panel" id="fitnessCenterDailyPanel" hidden>
-          <h3>센터 운영현황</h3>
+          <div class="fitness-center-month-nav">
+            <button type="button" id="fitnessCenterPrevMonthButton" aria-label="이전 달">‹</button>
+            <button type="button" id="fitnessCenterMonthButton" aria-label="센터 운영현황 월 선택">
+              <strong id="fitnessCenterMonthTitle">센터 운영현황</strong>
+              <span>월별 운영 집계</span>
+            </button>
+            <button type="button" id="fitnessCenterNextMonthButton" aria-label="다음 달">›</button>
+            <input id="fitnessCenterMonthInput" type="month" hidden />
+          </div>
           <div class="dagym-ops-panel">
             <header>
               <strong>다짐 운영현황</strong>
@@ -426,8 +434,8 @@
 
       <section class="worklog-view" id="view-attendance">
         <div class="worklog-title-row">
-          <h2>근무이력</h2>
-          <button type="button" id="addAttendanceButton">이력 메모 추가</button>
+          <h2>월별 근무대장</h2>
+          <button type="button" id="addAttendanceButton" hidden>이력 메모 추가</button>
         </div>
         <div class="work-history-summary" id="workHistorySummary"></div>
         <div class="worklog-attendance-list" id="attendanceList"></div>

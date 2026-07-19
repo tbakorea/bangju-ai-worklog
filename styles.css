@@ -1734,6 +1734,132 @@ body[data-device-mode="narrow"] .os-mode-switch span[data-device-mode="narrow"] 
   line-height: 1.45;
 }
 
+.labor-archive-card,
+.labor-register-card {
+  display: grid;
+  gap: 10px;
+  border: 1px solid rgba(33, 55, 45, 0.12);
+  border-radius: 18px;
+  background: rgba(255, 253, 248, 0.9);
+  padding: 14px;
+}
+
+.labor-archive-card header,
+.labor-register-card header {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.labor-archive-card header span,
+.labor-register-card header span {
+  display: block;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.labor-archive-card h3,
+.labor-register-card h3 {
+  margin: 2px 0 0;
+  color: var(--ink);
+  font-size: 19px;
+  font-weight: 950;
+}
+
+.labor-register-card p {
+  margin: 4px 0 0;
+  color: rgba(38, 50, 56, 0.62);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.labor-register-table {
+  overflow-x: auto;
+  border: 1px solid rgba(33, 55, 45, 0.12);
+  border-radius: 14px;
+  background: rgba(255, 254, 250, 0.72);
+}
+
+.labor-register-head,
+.labor-register-row {
+  display: grid;
+  grid-template-columns: 52px 44px 86px 74px 74px 110px 86px 74px 86px;
+  min-width: 686px;
+  align-items: center;
+}
+
+.labor-register-head {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: rgba(239, 243, 235, 0.96);
+  color: rgba(33, 55, 45, 0.74);
+  font-size: 11px;
+  font-weight: 950;
+}
+
+.labor-register-head span,
+.labor-register-row span,
+.labor-register-row strong {
+  min-height: 34px;
+  padding: 8px 7px;
+  border-right: 1px solid rgba(33, 55, 45, 0.08);
+  border-bottom: 1px solid rgba(33, 55, 45, 0.08);
+}
+
+.labor-register-row {
+  color: var(--ink);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.labor-register-row:nth-child(odd) {
+  background: rgba(246, 245, 239, 0.48);
+}
+
+.labor-register-row.is-weekend {
+  background: rgba(15, 59, 46, 0.045);
+}
+
+.labor-register-row strong {
+  color: var(--fitness-green);
+  font-weight: 950;
+}
+
+.labor-archive-list {
+  display: grid;
+  gap: 7px;
+}
+
+.labor-archive-list button {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  min-height: 42px;
+  border: 1px solid rgba(33, 55, 45, 0.1);
+  border-radius: 13px;
+  background: rgba(255, 254, 250, 0.82);
+  color: var(--ink);
+  padding: 8px 10px;
+  text-align: left;
+}
+
+.labor-archive-list b {
+  font-size: 14px;
+  font-weight: 950;
+}
+
+.labor-archive-list span,
+.labor-archive-list p {
+  margin: 0;
+  color: rgba(38, 50, 56, 0.62);
+  font-size: 12px;
+  font-weight: 820;
+}
+
 .attendance-row {
   display: grid;
   grid-template-columns: minmax(160px, 1.2fr) 100px 100px 88px minmax(0, 1fr);
@@ -4577,6 +4703,57 @@ textarea:focus-visible {
 .fitness-center-daily-panel {
   display: grid;
   gap: 10px;
+}
+
+.fitness-center-month-nav {
+  display: grid;
+  grid-template-columns: 42px minmax(0, 1fr) 42px;
+  gap: 6px;
+  align-items: center;
+  border: 1px solid rgba(15, 59, 46, 0.12);
+  border-radius: 18px;
+  background: rgba(255, 254, 250, 0.9);
+  padding: 6px;
+  box-shadow: 0 10px 24px rgba(17, 20, 17, 0.055);
+}
+
+.fitness-center-month-nav button {
+  min-width: 0;
+  min-height: 42px;
+  border: 1px solid rgba(15, 59, 46, 0.1);
+  border-radius: 14px;
+  background: rgba(247, 249, 245, 0.92);
+  color: var(--fitness-green);
+  font-weight: 950;
+}
+
+#fitnessCenterPrevMonthButton,
+#fitnessCenterNextMonthButton {
+  font-size: 24px;
+  line-height: 1;
+}
+
+#fitnessCenterMonthButton {
+  display: grid;
+  place-items: center;
+  gap: 2px;
+  background: rgba(255, 254, 250, 0.96);
+}
+
+#fitnessCenterMonthButton strong {
+  overflow: hidden;
+  max-width: 100%;
+  color: var(--ink);
+  font-size: clamp(18px, 4.2vw, 24px);
+  line-height: 1.05;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+#fitnessCenterMonthButton span {
+  color: rgba(15, 59, 46, 0.58);
+  font-size: 11px;
+  font-weight: 900;
 }
 
 .dagym-ops-panel,
@@ -8122,4 +8299,128 @@ body[data-layout-mode="phone"] #view-fitness-log .ai-section-button {
   body[data-layout-mode="phone"] #view-fitness-log .fitness-ops-summary-button {
     grid-template-columns: 46px repeat(4, minmax(0, 1fr));
   }
+}
+
+/* Fitness phone compact header: preserve polish while reducing vertical weight */
+body[data-layout-mode="phone"] .worklog-shell {
+  gap: 10px;
+  padding-top: max(10px, env(safe-area-inset-top));
+}
+
+body[data-layout-mode="phone"] .worklog-header {
+  min-height: 88px;
+  padding: 11px 12px;
+  border-radius: 24px;
+}
+
+body[data-layout-mode="phone"] .worklog-header h1 {
+  font-size: clamp(21px, 5.7vw, 27px);
+}
+
+body[data-layout-mode="phone"] .global-attendance-summary {
+  margin-top: 2px;
+  font-size: 12px;
+}
+
+body[data-layout-mode="phone"] .header-actions .global-attendance-button,
+body[data-layout-mode="phone"] #settingsGearButton {
+  width: 50px;
+  min-width: 50px;
+  min-height: 54px;
+  border-radius: 17px;
+}
+
+body[data-layout-mode="phone"] #view-fitness-log {
+  gap: 9px;
+}
+
+body[data-layout-mode="phone"] #view-fitness-log .fitness-coaching-row {
+  gap: 6px;
+}
+
+body[data-layout-mode="phone"] #view-fitness-log .fitness-coaching-ticker {
+  align-items: center;
+  min-height: 44px;
+  padding: 0 12px;
+  border-radius: 16px;
+}
+
+body[data-layout-mode="phone"] #view-fitness-log .fitness-coaching-ticker b {
+  min-width: 60px;
+  min-height: 28px;
+  font-size: 15px;
+  line-height: 1;
+}
+
+body[data-layout-mode="phone"] #view-fitness-log .fitness-coaching-ticker span {
+  display: flex;
+  align-items: center;
+  height: 100%;
+  font-size: 16px;
+  line-height: 1.15;
+}
+
+body[data-layout-mode="phone"] #view-fitness-log .fitness-log-title {
+  grid-template-columns: minmax(0, 1fr) 50px;
+  gap: 6px;
+  padding: 6px;
+  border-radius: 22px;
+}
+
+body[data-layout-mode="phone"] #view-fitness-log .fitness-date-nav {
+  grid-template-columns: 40px minmax(0, 1fr) 40px;
+  gap: 4px;
+}
+
+body[data-layout-mode="phone"] #view-fitness-log #fitnessPrevDateButton,
+body[data-layout-mode="phone"] #view-fitness-log #fitnessNextDateButton,
+body[data-layout-mode="phone"] #view-fitness-log #fitnessDateButton,
+body[data-layout-mode="phone"] #view-fitness-log #fitnessTodayButton {
+  min-height: 44px;
+  border-radius: 16px;
+}
+
+body[data-layout-mode="phone"] #view-fitness-log #fitnessTodayButton {
+  width: 50px;
+}
+
+body[data-layout-mode="phone"] #view-fitness-log .fitness-log-pager {
+  grid-template-columns: minmax(84px, 0.8fr) minmax(0, 1.22fr) minmax(84px, 0.8fr);
+  gap: 6px;
+  min-height: 50px;
+}
+
+body[data-layout-mode="phone"] #view-fitness-log .fitness-log-pager button,
+body[data-layout-mode="phone"] #view-fitness-log .fitness-log-pager div {
+  min-height: 50px;
+  border-radius: 19px;
+}
+
+body[data-layout-mode="phone"] #view-fitness-log .fitness-log-pager strong {
+  font-size: clamp(15px, 4vw, 17px);
+}
+
+body[data-layout-mode="phone"] #view-fitness-log .fitness-ops-section {
+  padding: 12px;
+}
+
+body[data-layout-mode="phone"] #view-fitness-log .fitness-ops-section h3 {
+  margin-bottom: 7px;
+  padding-bottom: 6px;
+  font-size: 23px;
+}
+
+body[data-layout-mode="phone"] #view-fitness-log .fitness-ops-summary-button {
+  min-height: 58px;
+  padding: 6px;
+  border-radius: 18px;
+}
+
+body[data-layout-mode="phone"] #view-fitness-log .ops-summary-metric {
+  min-height: 42px;
+  border-radius: 13px;
+}
+
+body[data-layout-mode="phone"] #view-fitness-log .ops-summary-metric strong {
+  font-size: 21px;
 }

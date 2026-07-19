@@ -343,6 +343,7 @@ function createState() {
     fitnessGoals: createFitnessGoals(),
     dagymOps: createDagymOps(),
     fitnessLogPage: 1,
+    fitnessCenterMonth: todayKey.slice(0, 7),
     fitnessWritableEmployeeId: "beyond-fitness-manager",
     reportTone: "executive",
   };
@@ -396,6 +397,9 @@ function normalizeState() {
   }
   state.selectedDateKey ||= todayKey;
   state.fitnessLogPage = Number.isFinite(Number(state.fitnessLogPage)) ? Number(state.fitnessLogPage) : 1;
+  if (!/^\d{4}-\d{2}$/.test(String(state.fitnessCenterMonth || ""))) {
+    state.fitnessCenterMonth = getActiveDateKey().slice(0, 7);
+  }
   state.fitnessWritableEmployeeId ||= "beyond-fitness-manager";
   state.fitnessGoals = { ...createFitnessGoals(), ...(state.fitnessGoals || {}) };
   state.dagymOps = { ...createDagymOps(), ...(state.dagymOps || {}) };
@@ -1702,19 +1706,12 @@ function renderFitnessCenterDaily() {
   const panel = document.getElementById("fitnessCenterDailyPanel");
   if (!panel) return;
   renderDagymOpsFields();
+  renderFitnessCenterMonthNav();
+  const centerMonth = getFitnessCenterMonth();
   const employeesForCenter = getFitnessEmployees();
   const rows = employeesForCenter.map((employee, index) => {
-    const log = getEmployeeLogForDate(employee.id);
-    syncFitnessOpsFromSchedule(log);
-    syncAttendanceRecordFromLog(employee, log);
-    const ops = { ...createFitnessOps(), ...(log.fitnessOps || {}) };
-    const paidPtTotal = numberValue(ops.ptRegular);
-    const freePtTotal = numberValue(ops.ptFree);
-    const ptTotal = paidPtTotal + freePtTotal;
-    const workMinutes = getWorkMinutes(log.clockIn, log.clockOut);
-    const attendanceStatus = getAttendanceStatusForLog(employee, log);
-    const breakSummary = (log.attendanceBreaks || []).map((item) => `${item.start || "--:--"}~${item.end || "--:--"}`).join(" / ");
-    return { employee, log, ops, paidPtTotal, freePtTotal, ptTotal, workMinutes, attendanceStatus, breakSummary, index };
+    const aggregate = buildFitnessCenterEmployeeMonthRow(employee, centerMonth);
+    return { ...aggregate, index };
   });
   const total = rows.reduce((summary, row) => {
     summary.ptPaid += row.paidPtTotal;
@@ -1725,13 +1722,17 @@ function renderFitnessCenterDaily() {
     summary.renewal += numberValue(row.ops.customerRenewal);
     summary.consultation += numberValue(row.ops.consultation);
     summary.outbound += numberValue(row.ops.outbound);
+    summary.workMinutes += row.workMinutes;
+    summary.recordedDays += row.recordedDays;
     return summary;
-  }, { pt: 0, ptPaid: 0, ptFree: 0, ptOther: 0, new: 0, renewal: 0, consultation: 0, outbound: 0 });
+  }, { pt: 0, ptPaid: 0, ptFree: 0, ptOther: 0, new: 0, renewal: 0, consultation: 0, outbound: 0, workMinutes: 0, recordedDays: 0 });
 
   const summaryGrid = document.getElementById("fitnessCenterSummaryGrid");
   if (summaryGrid) {
     summaryGrid.innerHTML = [
-      ["근무자", `${rows.length}명`],
+      ["기준월", formatCenterMonthLabel(centerMonth)],
+      ["기록일", `${total.recordedDays}일`],
+      ["총 근무", formatWorkDuration(total.workMinutes)],
       ["유료 PT", `${total.ptPaid}건`],
       ["무료 PT", `${total.ptFree}건`],
       ["신규", `${total.new}건`],
@@ -1748,8 +1749,8 @@ function renderFitnessCenterDaily() {
         <td>${row.index + 1}</td>
         <td>${escapeHtml(row.employee.role)}</td>
         <td>${escapeHtml(getEmployeeAdminLabel(row.employee))}</td>
-        <td>${escapeHtml(row.log.clockIn || "-")}</td>
-        <td>${escapeHtml(row.log.clockOut || "-")}</td>
+        <td>${escapeHtml(row.firstClockIn || "-")}</td>
+        <td>${escapeHtml(row.lastClockOut || "-")}</td>
         <td>${row.workMinutes ? formatWorkDuration(row.workMinutes) : "-"}</td>
         <td>${escapeHtml(row.attendanceStatus)}</td>
         <td>${escapeHtml(row.breakSummary || "-")}</td>
@@ -1784,10 +1785,107 @@ function renderFitnessCenterDaily() {
 
   const record = document.getElementById("fitnessCenterTodayRecord");
   if (record) {
-    const notes = rows.flatMap((row) => [row.ops.shiftNote, row.ops.specialReport].filter(Boolean).map((note) => `${getEmployeeAdminLabel(row.employee)}: ${note}`));
-    record.textContent = notes.length ? notes.join(" / ") : "등록된 특이사항이 없습니다.";
+    const notes = rows.flatMap((row) => row.notes);
+    record.textContent = notes.length ? notes.slice(0, 12).join(" / ") : "선택 월에 등록된 특이사항이 없습니다.";
   }
   renderFitnessCenterCoaching(total, rows);
+}
+
+function getFitnessCenterMonth() {
+  if (!/^\d{4}-\d{2}$/.test(String(state.fitnessCenterMonth || ""))) {
+    state.fitnessCenterMonth = getActiveDateKey().slice(0, 7);
+  }
+  return state.fitnessCenterMonth;
+}
+
+function setFitnessCenterMonth(month) {
+  if (!/^\d{4}-\d{2}$/.test(String(month || ""))) return;
+  state.fitnessCenterMonth = month;
+  saveState();
+  renderFitnessCenterDaily();
+}
+
+function shiftFitnessCenterMonth(delta) {
+  const [year, month] = getFitnessCenterMonth().split("-").map(Number);
+  const date = new Date(year, month - 1 + delta, 1);
+  setFitnessCenterMonth(`${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`);
+}
+
+function formatCenterMonthLabel(month = getFitnessCenterMonth()) {
+  const [year, monthNumber] = String(month).split("-");
+  return `${year}.${monthNumber}`;
+}
+
+function renderFitnessCenterMonthNav() {
+  const month = getFitnessCenterMonth();
+  const title = document.getElementById("fitnessCenterMonthTitle");
+  const input = document.getElementById("fitnessCenterMonthInput");
+  if (title) title.textContent = `${formatCenterMonthLabel(month)} 센터 운영현황`;
+  if (input) input.value = month;
+}
+
+function buildFitnessCenterEmployeeMonthRow(employee, monthPrefix) {
+  const ops = createFitnessOps();
+  let paidPtTotal = 0;
+  let freePtTotal = 0;
+  let ptTotal = 0;
+  let workMinutes = 0;
+  let recordedDays = 0;
+  let firstClockIn = "";
+  let lastClockOut = "";
+  let breakCount = 0;
+  let lateCount = 0;
+  let earlyCount = 0;
+  let absenceCount = 0;
+  const notes = [];
+  getMonthDateKeys(monthPrefix).forEach((dateKey) => {
+    const log = state.employeeLogs?.[dateKey]?.[employee.id];
+    if (!log) return;
+    syncFitnessOpsFromSchedule(log);
+    if (dateKey === getActiveDateKey()) syncAttendanceRecordFromLog(employee, log);
+    const dayOps = { ...createFitnessOps(), ...(log.fitnessOps || {}) };
+    Object.keys(ops).forEach((key) => {
+      if (["shiftNote", "specialReport"].includes(key)) return;
+      ops[key] = String(numberValue(ops[key]) + numberValue(dayOps[key]) || "");
+    });
+    const paid = numberValue(dayOps.ptRegular);
+    const free = numberValue(dayOps.ptFree);
+    paidPtTotal += paid;
+    freePtTotal += free;
+    ptTotal += paid + free;
+    const minutes = getWorkMinutes(log.clockIn, log.clockOut);
+    if (minutes || log.clockIn || log.clockOut || log.attendanceStatus || paid || free || numberValue(dayOps.ptOther)) recordedDays += 1;
+    workMinutes += minutes;
+    if (log.clockIn && (!firstClockIn || log.clockIn < firstClockIn)) firstClockIn = log.clockIn;
+    if (log.clockOut && (!lastClockOut || log.clockOut > lastClockOut)) lastClockOut = log.clockOut;
+    const status = getAttendanceStatusForLog(employee, log);
+    if (status.includes("지각")) lateCount += 1;
+    if (status.includes("조퇴")) earlyCount += 1;
+    if (status.includes("결근")) absenceCount += 1;
+    breakCount += (log.attendanceBreaks || []).filter((item) => item.start || item.end).length;
+    [dayOps.shiftNote, dayOps.specialReport].filter(Boolean).forEach((note) => {
+      notes.push(`${dateKey.slice(5)} ${getEmployeeAdminLabel(employee)}: ${note}`);
+    });
+  });
+  const statusParts = [];
+  if (lateCount) statusParts.push(`지각 ${lateCount}`);
+  if (earlyCount) statusParts.push(`조퇴 ${earlyCount}`);
+  if (absenceCount) statusParts.push(`결근 ${absenceCount}`);
+  const attendanceStatus = statusParts.join(" · ") || (recordedDays ? "기록" : "미기록");
+  return {
+    employee,
+    ops,
+    paidPtTotal,
+    freePtTotal,
+    ptTotal,
+    workMinutes,
+    recordedDays,
+    firstClockIn,
+    lastClockOut,
+    attendanceStatus,
+    breakSummary: breakCount ? `${breakCount}건` : "-",
+    notes,
+  };
 }
 
 function renderDagymOpsFields() {
@@ -3049,39 +3147,45 @@ function renderTodayContext() {
 
 function renderAttendance() {
   const list = document.getElementById("attendanceList");
+  const addButton = document.getElementById("addAttendanceButton");
+  if (addButton) addButton.hidden = true;
   renderWorkHistorySummary();
-  state.attendance ||= {};
-  state.attendance[getActiveDateKey()] ||= [];
-  list.innerHTML = "";
-  state.attendance[getActiveDateKey()].forEach((item, index) => {
-    const row = document.createElement("div");
-    row.className = "attendance-row";
-    row.innerHTML = `
-      <select aria-label="소속">
-        ${organizationOptions.map((option) => `<option value="${escapeAttr(option)}" ${item.org === option ? "selected" : ""}>${escapeHtml(option)}</option>`).join("")}
-      </select>
-      <input type="text" value="${escapeAttr(item.role)}" placeholder="직책" aria-label="직책" />
-      <input type="text" value="${escapeAttr(item.name)}" placeholder="이름" aria-label="이름" />
-      <select aria-label="근무상태">
-        ${["정상", "지각", "조퇴", "휴무", "외근", "결근"].map((status) => `<option value="${status}" ${item.status === status ? "selected" : ""}>${status}</option>`).join("")}
-      </select>
-      <input type="text" value="${escapeAttr(item.note)}" placeholder="메모" aria-label="메모" />
-    `;
-    const [org, role, name, status, note] = row.querySelectorAll("select, input");
-    org.onchange = () => updateAttendance(index, "org", org.value);
-    role.oninput = () => updateAttendance(index, "role", role.value);
-    name.oninput = () => updateAttendance(index, "name", name.value);
-    status.onchange = () => updateAttendance(index, "status", status.value);
-    note.oninput = () => updateAttendance(index, "note", note.value);
-    list.appendChild(row);
-  });
+  if (!list) return;
+  const employeeId = getOwnLaborEmployeeId();
+  const employee = getOwnLaborEmployee();
+  const labor = buildMonthlyLaborSummary(employeeId, employee);
+  list.innerHTML = `
+    <section class="labor-register-card">
+      <header>
+        <div>
+          <span>Personal Labor Register</span>
+          <h3>${escapeHtml(labor.monthLabel)} 근무시간 현황</h3>
+          <p>${escapeHtml(getEmployeeAdminLabel(employee))} 본인 자료만 표시됩니다.</p>
+        </div>
+      </header>
+      <div class="labor-register-table" role="table" aria-label="월별 근무시간 현황">
+        <div class="labor-register-head" role="row">
+          <span>일자</span>
+          <span>요일</span>
+          <span>소정</span>
+          <span>출근</span>
+          <span>퇴근</span>
+          <span>외출</span>
+          <span>실근무</span>
+          <span>상태</span>
+          <span>유료/무료 PT</span>
+        </div>
+        ${labor.dayRows.map(renderLaborDayRow).join("")}
+      </div>
+    </section>
+  `;
 }
 
 function renderWorkHistorySummary() {
   const node = document.getElementById("workHistorySummary");
   if (!node) return;
-  const employeeId = state.fitnessWritableEmployeeId || state.selectedEmployeeId;
-  const employee = employees.find((item) => item.id === employeeId) || getSelectedEmployee();
+  const employeeId = getOwnLaborEmployeeId();
+  const employee = getOwnLaborEmployee();
   const log = getEmployeeLogForDate(employeeId);
   const monthPrefix = getActiveDateKey().slice(0, 7);
   let recordedDays = 0;
@@ -3102,6 +3206,7 @@ function renderWorkHistorySummary() {
     .map((item) => `${item.type || "외출"} ${item.start || "--:--"}~${item.end || "--:--"}`)
     .join(" · ");
   const labor = buildMonthlyLaborSummary(employeeId, employee);
+  const archives = buildLaborMonthArchives(employeeId, employee);
   const cards = [
     ["오늘 상태", getAttendanceStatusForLog(employee, log)],
     ["출근", log.clockIn || "미기록"],
@@ -3125,8 +3230,8 @@ function renderWorkHistorySummary() {
     <section class="labor-month-card">
       <header>
         <div>
-          <span>Monthly Labor Draft</span>
-          <h3>${escapeHtml(labor.monthLabel)} 노무자료 초안</h3>
+          <span>Labor Submission Draft</span>
+          <h3>${escapeHtml(labor.monthLabel)} 노무신고 제출용 초안</h3>
         </div>
         <button type="button" id="copyLaborMonthButton">복사</button>
       </header>
@@ -3135,8 +3240,25 @@ function renderWorkHistorySummary() {
       </div>
       <p>${escapeHtml("임금대장·노무신고 전 검토용 자료입니다. 급여 산정, 4대보험, 세무 신고 전에는 최신 법령과 노무사 확인을 권장합니다.")}</p>
     </section>
+    <section class="labor-archive-card">
+      <header>
+        <span>Monthly Archive</span>
+        <h3>기록 시작 이후 월별 보관</h3>
+      </header>
+      <div class="labor-archive-list">
+        ${archives.map((item) => `
+          <button type="button" data-labor-month="${escapeAttr(item.month)}">
+            <b>${escapeHtml(item.monthLabel)}</b>
+            <span>${escapeHtml(item.recordedDays)}일 · ${escapeHtml(formatMinutesAsHours(item.actualMinutes))} · PT ${escapeHtml(String(item.settlementPtCount))}건</span>
+          </button>
+        `).join("") || "<p>아직 보관된 월별 기록이 없습니다.</p>"}
+      </div>
+    </section>
   `;
   document.getElementById("copyLaborMonthButton")?.addEventListener("click", () => copyMonthlyLaborSummary(labor));
+  node.querySelectorAll("[data-labor-month]").forEach((button) => {
+    button.addEventListener("click", () => setSelectedDateKey(`${button.dataset.laborMonth}-01`));
+  });
 }
 
 function formatMinutesAsHours(minutes) {
@@ -3150,6 +3272,7 @@ function buildMonthlyLaborSummary(employeeId, employee) {
   const monthPrefix = getActiveDateKey().slice(0, 7);
   const monthLabel = monthPrefix.replace("-", ".");
   const logs = [];
+  const dayRows = [];
   let scheduledMinutes = 0;
   let actualMinutes = 0;
   let overtimeMinutes = 0;
@@ -3162,20 +3285,24 @@ function buildMonthlyLaborSummary(employeeId, employee) {
   let lateCount = 0;
   let earlyCount = 0;
   let absenceCount = 0;
-  Object.entries(state.employeeLogs || {}).forEach(([dateKey, logsByEmployee]) => {
+  getMonthDateKeys(monthPrefix).forEach((dateKey) => {
+    const logsByEmployee = state.employeeLogs?.[dateKey] || {};
     if (!dateKey.startsWith(monthPrefix)) return;
     const dayLog = logsByEmployee?.[employeeId];
-    if (!dayLog) return;
-    syncFitnessOpsFromSchedule(dayLog);
-    const ops = { ...createFitnessOps(), ...(dayLog.fitnessOps || {}) };
-    paidPtCount += numberValue(ops.ptRegular);
-    freePtCount += numberValue(ops.ptFree);
-    otherPtCount += numberValue(ops.ptOther);
-    const status = getAttendanceStatusForLog(employee, dayLog);
     const scheduled = getWorkHoursDurationMinutes(getEmployeeWorkHours(employeeId, state.profile, dateKey));
     scheduledMinutes += scheduled;
     let worked = 0;
-    if (dayLog.clockIn && dayLog.clockOut) {
+    let ops = createFitnessOps();
+    let status = scheduled ? "미기록" : "휴무";
+    if (dayLog) {
+      syncFitnessOpsFromSchedule(dayLog);
+      ops = { ...createFitnessOps(), ...(dayLog.fitnessOps || {}) };
+      paidPtCount += numberValue(ops.ptRegular);
+      freePtCount += numberValue(ops.ptFree);
+      otherPtCount += numberValue(ops.ptOther);
+      status = getAttendanceStatusForLog(employee, dayLog);
+    }
+    if (dayLog?.clockIn && dayLog?.clockOut) {
       const range = getTimeRangeMinutes(dayLog.clockIn, dayLog.clockOut);
       worked = range.duration;
       actualMinutes += worked;
@@ -3183,11 +3310,28 @@ function buildMonthlyLaborSummary(employeeId, employee) {
       nightMinutes += getNightWorkMinutes(range.start, range.end);
       if ([0, 6].includes(parseDateKey(dateKey).getDay())) holidayMinutes += worked;
     }
-    breakCount += (dayLog.attendanceBreaks || []).filter((item) => item.start || item.end).length;
+    breakCount += (dayLog?.attendanceBreaks || []).filter((item) => item.start || item.end).length;
     if (status.includes("지각")) lateCount += 1;
     if (status.includes("조퇴")) earlyCount += 1;
     if (status.includes("결근")) absenceCount += 1;
-    if (worked || dayLog.clockIn || dayLog.clockOut || dayLog.attendanceStatus) {
+    const breakSummary = (dayLog?.attendanceBreaks || [])
+      .filter((item) => item.start || item.end)
+      .map((item) => `${item.start || "--:--"}~${item.end || "--:--"}`)
+      .join(" / ");
+    const row = {
+      dateKey,
+      weekday: ["일", "월", "화", "수", "목", "금", "토"][parseDateKey(dateKey).getDay()],
+      scheduled,
+      clockIn: dayLog?.clockIn || "",
+      clockOut: dayLog?.clockOut || "",
+      breakSummary,
+      worked,
+      status,
+      paidPt: numberValue(ops.ptRegular) + numberValue(ops.ptOther),
+      freePt: numberValue(ops.ptFree),
+    };
+    dayRows.push(row);
+    if (worked || dayLog?.clockIn || dayLog?.clockOut || dayLog?.attendanceStatus) {
       logs.push({ dateKey, clockIn: dayLog.clockIn || "", clockOut: dayLog.clockOut || "", status, worked });
     }
   });
@@ -3210,7 +3354,71 @@ function buildMonthlyLaborSummary(employeeId, employee) {
     ["결근", `${absenceCount}건`],
     ["외출", `${breakCount}건`],
   ];
-  return { employee, monthLabel, cards, logs, scheduledMinutes, actualMinutes, overtimeMinutes, nightMinutes, holidayMinutes, paidPtCount, freePtCount, otherPtCount, settlementPtCount, lateCount, earlyCount, absenceCount, breakCount };
+  return { employee, monthLabel, month: monthPrefix, cards, logs, dayRows, scheduledMinutes, actualMinutes, overtimeMinutes, nightMinutes, holidayMinutes, paidPtCount, freePtCount, otherPtCount, settlementPtCount, lateCount, earlyCount, absenceCount, breakCount, recordedDays: logs.length };
+}
+
+function getOwnLaborEmployeeId() {
+  return state.fitnessWritableEmployeeId || state.selectedEmployeeId || "profile-user";
+}
+
+function getOwnLaborEmployee() {
+  const employeeId = getOwnLaborEmployeeId();
+  return getEmployeeOptions().find((item) => item.id === employeeId) || getProfileEmployee();
+}
+
+function getMonthDateKeys(monthPrefix) {
+  const [year, month] = monthPrefix.split("-").map(Number);
+  const days = new Date(year, month, 0).getDate();
+  return Array.from({ length: days }, (_, index) => `${monthPrefix}-${String(index + 1).padStart(2, "0")}`);
+}
+
+function renderLaborDayRow(row) {
+  const isWeekend = row.weekday === "토" || row.weekday === "일";
+  return `
+    <div class="labor-register-row ${isWeekend ? "is-weekend" : ""}" role="row">
+      <span>${escapeHtml(row.dateKey.slice(8))}</span>
+      <span>${escapeHtml(row.weekday)}</span>
+      <span>${escapeHtml(row.scheduled ? formatMinutesAsHours(row.scheduled) : "-")}</span>
+      <span>${escapeHtml(row.clockIn || "-")}</span>
+      <span>${escapeHtml(row.clockOut || "-")}</span>
+      <span>${escapeHtml(row.breakSummary || "-")}</span>
+      <strong>${escapeHtml(row.worked ? formatMinutesAsHours(row.worked) : "-")}</strong>
+      <span>${escapeHtml(row.status)}</span>
+      <span>${escapeHtml(`${row.paidPt}/${row.freePt}`)}</span>
+    </div>
+  `;
+}
+
+function buildLaborMonthArchives(employeeId, employee) {
+  const months = new Set([getActiveDateKey().slice(0, 7)]);
+  Object.entries(state.employeeLogs || {}).forEach(([dateKey, logsByEmployee]) => {
+    const log = logsByEmployee?.[employeeId];
+    if (log && (log.clockIn || log.clockOut || log.attendanceStatus || getLoggedPtCount(log))) {
+      months.add(dateKey.slice(0, 7));
+    }
+  });
+  const activeMonth = getActiveDateKey().slice(0, 7);
+  return [...months]
+    .sort((a, b) => b.localeCompare(a))
+    .map((month) => {
+      const originalDate = state.selectedDateKey;
+      state.selectedDateKey = `${month}-01`;
+      const labor = buildMonthlyLaborSummary(employeeId, employee);
+      state.selectedDateKey = originalDate;
+      return {
+        month,
+        monthLabel: month.replace("-", "."),
+        recordedDays: labor.recordedDays,
+        actualMinutes: labor.actualMinutes,
+        settlementPtCount: labor.settlementPtCount,
+        isActive: month === activeMonth,
+      };
+    });
+}
+
+function getLoggedPtCount(log = {}) {
+  const ops = { ...createFitnessOps(), ...(log.fitnessOps || {}) };
+  return numberValue(ops.ptRegular) + numberValue(ops.ptOther) + numberValue(ops.ptFree);
 }
 
 function getWorkHoursDurationMinutes(workHours = "") {
@@ -3246,8 +3454,8 @@ async function copyMonthlyLaborSummary(labor) {
     `무료 PT 제외: ${labor.freePtCount}건`,
     ...labor.cards.slice(2).map(([label, value]) => `${label}: ${value}`),
     "",
-    "일자\t출근\t퇴근\t상태\t실근무",
-    ...labor.logs.map((row) => `${row.dateKey}\t${row.clockIn || "-"}\t${row.clockOut || "-"}\t${row.status}\t${formatMinutesAsHours(row.worked)}`),
+    "일자\t요일\t소정근무\t출근\t퇴근\t외출\t실근무\t상태\t유료PT\t무료PT",
+    ...labor.dayRows.map((row) => `${row.dateKey}\t${row.weekday}\t${row.scheduled ? formatMinutesAsHours(row.scheduled) : "-"}\t${row.clockIn || "-"}\t${row.clockOut || "-"}\t${row.breakSummary || "-"}\t${row.worked ? formatMinutesAsHours(row.worked) : "-"}\t${row.status}\t${row.paidPt}\t${row.freePt}`),
   ].join("\n");
   await navigator.clipboard?.writeText(text);
   showAppToast("월 노무자료 초안을 복사했습니다.");
@@ -3936,6 +4144,16 @@ document.getElementById("fitnessDateButton")?.addEventListener("click", (event) 
 });
 document.getElementById("fitnessDateInput")?.addEventListener("change", (event) => {
   if (event.target.value) setSelectedDateKey(event.target.value);
+});
+document.getElementById("fitnessCenterPrevMonthButton")?.addEventListener("click", () => shiftFitnessCenterMonth(-1));
+document.getElementById("fitnessCenterNextMonthButton")?.addEventListener("click", () => shiftFitnessCenterMonth(1));
+document.getElementById("fitnessCenterMonthButton")?.addEventListener("click", () => {
+  const input = document.getElementById("fitnessCenterMonthInput");
+  if (input?.showPicker) input.showPicker();
+  else input?.click();
+});
+document.getElementById("fitnessCenterMonthInput")?.addEventListener("change", (event) => {
+  if (event.target.value) setFitnessCenterMonth(event.target.value);
 });
 {
   const fitnessDateNav = document.querySelector(".fitness-date-nav");
