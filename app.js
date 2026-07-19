@@ -53,7 +53,7 @@ const priorityOptions = [
   ["?", "?"],
 ];
 const taskPriorityOptions = ["?", "A", "B", "C", "취소", "연기"];
-const scheduleTypeOptions = ["업무", "PT", "센터관리", "청결", "고객관리", "영업", "행정", "오픈마감", "휴게", "시설점검", "정산", "인수인계"];
+const scheduleTypeOptions = ["업무", "PT", "무료PT", "고객/상담", "영업/홍보", "시설/청결", "행정/정산", "오픈/마감", "휴게"];
 const taskStatusCycle = ["미완료", "완료", "진행중", "위임", "연기"];
 const taskStatusGuideLabels = {
   "완료": "완료",
@@ -75,6 +75,7 @@ const defaultProfile = {
   primaryWork: "",
   secondaryWork: "",
   workplace: "",
+  employmentType: "직원",
   workHours: "08:00-18:00",
   weeklyWorkHours: {},
   manualSettings: {
@@ -266,7 +267,7 @@ const beyondAssets = [
 ];
 const beyondModules = [
   ["직원관리", "직원 기본정보, 미션, 목표, 교육, 역량학습", "운영"],
-  ["근태관리", "출퇴근, 외근, 휴가, GPS/QR/Face ID 확장", "운영"],
+  ["근무이력", "출퇴근, 외출, 조퇴, 근무 흐름 요약", "운영"],
   ["업무일지", "우선업무, 시간별 일정, 보고, AI 요약", "운영"],
   ["사업장 운영관리", "청결, 시설, 공실, 회원, 방문객, 운영점수", "설계"],
   ["마케팅관리", "SNS, 광고, 블로그, 리뷰, 이벤트 감지", "설계"],
@@ -489,8 +490,8 @@ function getProfileEmployee() {
   };
 }
 
-function getEmployeeWorkHours(employeeId = state?.selectedEmployeeId, profile = state?.profile) {
-  const profileHours = getProfileWorkHoursForDate(profile, getActiveDateKey());
+function getEmployeeWorkHours(employeeId = state?.selectedEmployeeId, profile = state?.profile, dateKey = getActiveDateKey()) {
+  const profileHours = getProfileWorkHoursForDate(profile, dateKey);
   if (employeeId === "profile-user" || employeeId === state?.fitnessWritableEmployeeId) {
     return profileHours || profile?.workHours || state?.profile?.workHours || defaultProfile.workHours;
   }
@@ -1204,7 +1205,7 @@ function saveSettingsProfileFromForm() {
     else delete state.profile.weeklyWorkHours[key];
   });
   saveManualSettingsFromForm();
-  saveProfileChanges({ stayInSettings: true });
+  saveProfileChanges();
 }
 
 function saveProfileChanges({ stayInSettings = false } = {}) {
@@ -1703,26 +1704,32 @@ function renderFitnessCenterDaily() {
     syncFitnessOpsFromSchedule(log);
     syncAttendanceRecordFromLog(employee, log);
     const ops = { ...createFitnessOps(), ...(log.fitnessOps || {}) };
-    const ptTotal = ["ptRegular", "ptFree", "ptOther"].reduce((sum, key) => sum + numberValue(ops[key]), 0);
+    const paidPtTotal = numberValue(ops.ptRegular);
+    const freePtTotal = numberValue(ops.ptFree);
+    const ptTotal = paidPtTotal + freePtTotal;
     const workMinutes = getWorkMinutes(log.clockIn, log.clockOut);
     const attendanceStatus = getAttendanceStatusForLog(employee, log);
     const breakSummary = (log.attendanceBreaks || []).map((item) => `${item.start || "--:--"}~${item.end || "--:--"}`).join(" / ");
-    return { employee, log, ops, ptTotal, workMinutes, attendanceStatus, breakSummary, index };
+    return { employee, log, ops, paidPtTotal, freePtTotal, ptTotal, workMinutes, attendanceStatus, breakSummary, index };
   });
   const total = rows.reduce((summary, row) => {
+    summary.ptPaid += row.paidPtTotal;
+    summary.ptFree += row.freePtTotal;
+    summary.ptOther += numberValue(row.ops.ptOther);
     summary.pt += row.ptTotal;
     summary.new += numberValue(row.ops.customerNew);
     summary.renewal += numberValue(row.ops.customerRenewal);
     summary.consultation += numberValue(row.ops.consultation);
     summary.outbound += numberValue(row.ops.outbound);
     return summary;
-  }, { pt: 0, new: 0, renewal: 0, consultation: 0, outbound: 0 });
+  }, { pt: 0, ptPaid: 0, ptFree: 0, ptOther: 0, new: 0, renewal: 0, consultation: 0, outbound: 0 });
 
   const summaryGrid = document.getElementById("fitnessCenterSummaryGrid");
   if (summaryGrid) {
     summaryGrid.innerHTML = [
       ["근무자", `${rows.length}명`],
-      ["PT", `${total.pt}건`],
+      ["유료 PT", `${total.ptPaid}건`],
+      ["무료 PT", `${total.ptFree}건`],
       ["신규", `${total.new}건`],
       ["재등록", `${total.renewal}건`],
       ["상담", `${total.consultation}건`],
@@ -1742,7 +1749,9 @@ function renderFitnessCenterDaily() {
         <td>${row.workMinutes ? formatWorkDuration(row.workMinutes) : "-"}</td>
         <td>${escapeHtml(row.attendanceStatus)}</td>
         <td>${escapeHtml(row.breakSummary || "-")}</td>
-        <td>${row.ptTotal || ""}</td>
+        <td>${row.paidPtTotal || ""}</td>
+        <td>${row.freePtTotal || ""}</td>
+        <td>${escapeHtml(row.ops.ptOther || "")}</td>
         <td>${escapeHtml(row.ops.customerNew || "")}</td>
         <td>${escapeHtml(row.ops.customerRenewal || "")}</td>
         <td>${escapeHtml(row.ops.consultation || "")}</td>
@@ -1757,7 +1766,9 @@ function renderFitnessCenterDaily() {
     foot.innerHTML = `
       <tr>
         <td colspan="8">합계</td>
-        <td>${total.pt}</td>
+        <td>${total.ptPaid}</td>
+        <td>${total.ptFree}</td>
+        <td>${total.ptOther}</td>
         <td>${total.new}</td>
         <td>${total.renewal}</td>
         <td>${total.consultation}</td>
@@ -2182,15 +2193,33 @@ function updateTaskRowTags(row, task) {
 }
 
 function inferScheduleType(text = "") {
+  if (/무료|체험|서비스|무상/.test(text) && /pt|p\/t|피티|수업|운동지도/i.test(text)) return "무료PT";
   if (/pt|피티|수업|운동지도/i.test(text)) return "PT";
-  if (/센터관리|센타관리|기구|시설|냉난방|조명/.test(text)) return "센터관리";
-  if (/청소|세탁|쓰레기|샤워실|탈의실|정리|위생/.test(text)) return "청결";
-  if (/상담|회원|고객|문의|재등록|민원/.test(text)) return "고객관리";
-  if (/영업|아웃바운드|전화|콜|체험권|매출|결제/.test(text)) return "영업";
-  if (/정산|보고|업무일지|서류|행정/.test(text)) return "행정";
-  if (/오픈|마감/.test(text)) return "오픈마감";
+  if (/센터관리|센타관리|기구|시설|냉난방|조명|청소|세탁|쓰레기|샤워실|탈의실|정리|위생/.test(text)) return "시설/청결";
+  if (/상담|회원|고객|문의|재등록|민원/.test(text)) return "고객/상담";
+  if (/영업|홍보|마케팅|아웃바운드|전화|콜|체험권|매출|결제/.test(text)) return "영업/홍보";
+  if (/정산|보고|업무일지|서류|행정|인수인계/.test(text)) return "행정/정산";
+  if (/오픈|마감/.test(text)) return "오픈/마감";
   if (/식사|휴식|대기/.test(text)) return "휴게";
   return "업무";
+}
+
+function normalizeScheduleType(type = "업무", text = "") {
+  if (scheduleTypeOptions.includes(type)) return type;
+  const aliases = {
+    고객관리: "고객/상담",
+    영업: "영업/홍보",
+    홍보: "영업/홍보",
+    마케팅: "영업/홍보",
+    센터관리: "시설/청결",
+    청결: "시설/청결",
+    시설점검: "시설/청결",
+    행정: "행정/정산",
+    정산: "행정/정산",
+    인수인계: "행정/정산",
+    오픈마감: "오픈/마감",
+  };
+  return aliases[type] || inferScheduleType(text);
 }
 
 function normalizeScheduleEntryItems(entry) {
@@ -2201,7 +2230,7 @@ function normalizeScheduleEntryItems(entry) {
   }
   if (!entry.items.length) entry.items.push({ type: "업무", text: "" });
   entry.items.forEach((item) => {
-    item.type = scheduleTypeOptions.includes(item.type) ? item.type : inferScheduleType(item.text);
+    item.type = normalizeScheduleType(item.type, item.text);
     item.text ||= "";
   });
   syncScheduleEntryText(entry);
@@ -2229,7 +2258,10 @@ function createScheduleItem(text = "", type = "") {
 }
 
 function formatScheduleTypeLabel(type = "업무") {
-  return type === "PT" ? "P/T" : type;
+  const normalized = normalizeScheduleType(type);
+  if (normalized === "무료PT") return "무료P/T";
+  if (normalized === "PT") return "P/T";
+  return normalized;
 }
 
 function formatScheduleItemInline(item) {
@@ -2239,7 +2271,8 @@ function formatScheduleItemInline(item) {
 }
 
 function renderScheduleTypeOptions(selected = "업무") {
-  return scheduleTypeOptions.map((value) => `<option value="${escapeAttr(value)}" ${value === selected ? "selected" : ""}>${escapeHtml(value)}</option>`).join("");
+  const normalizedSelected = normalizeScheduleType(selected);
+  return scheduleTypeOptions.map((value) => `<option value="${escapeAttr(value)}" ${value === normalizedSelected ? "selected" : ""}>${escapeHtml(formatScheduleTypeLabel(value))}</option>`).join("");
 }
 
 function renderWorklogAppointments(log) {
@@ -2741,19 +2774,20 @@ function renderFitnessOpsSummaryButton(log = getSelectedLog()) {
   const button = document.getElementById("fitnessOpsSummaryButton");
   if (!button) return;
   const ops = { ...createFitnessOps(), ...(log.fitnessOps || {}) };
-  const ptTotal = ["ptRegular", "ptFree", "ptOther"].reduce((sum, key) => sum + numberValue(ops[key]), 0);
+  const paidPtTotal = numberValue(ops.ptRegular) + numberValue(ops.ptOther);
+  const freePtTotal = numberValue(ops.ptFree);
   const contractTotal = ["customerNew", "customerRenewal", "dayPass"].reduce((sum, key) => sum + numberValue(ops[key]), 0);
   const marketingTotal = ["outbound", "outsideSales"].reduce((sum, key) => sum + numberValue(ops[key]), 0);
   const memoState = ops.shiftNote || ops.specialReport ? "메모 있음" : "메모 없음";
   button.innerHTML = `
     <span class="ops-summary-title">업무요약</span>
-    <span class="ops-summary-metric"><b>수업</b><strong>${ptTotal}</strong></span>
+    <span class="ops-summary-metric"><b>유료PT</b><strong>${paidPtTotal}</strong></span>
+    <span class="ops-summary-metric"><b>무료PT</b><strong>${freePtTotal}</strong></span>
     <span class="ops-summary-metric"><b>상담</b><strong>${numberValue(ops.consultation)}</strong></span>
     <span class="ops-summary-metric"><b>계약</b><strong>${contractTotal}</strong></span>
-    <span class="ops-summary-metric"><b>홍보</b><strong>${marketingTotal}</strong></span>
     <span class="ops-summary-note">${memoState}</span>
   `;
-  button.setAttribute("aria-label", `업무요약. 수업 ${ptTotal}건, 상담 ${numberValue(ops.consultation)}건, 계약 ${contractTotal}건, 홍보 마케팅 ${marketingTotal}건, ${memoState}`);
+  button.setAttribute("aria-label", `업무요약. 유료 PT ${paidPtTotal}건, 무료 PT ${freePtTotal}건, 상담 ${numberValue(ops.consultation)}건, 계약 ${contractTotal}건, 홍보 마케팅 ${marketingTotal}건, ${memoState}`);
 }
 
 function syncFitnessOpsFromSchedule(log = getSelectedLog()) {
@@ -2790,24 +2824,25 @@ function collectFitnessOpsFromSchedule(log = getSelectedLog()) {
 }
 
 function applyFitnessOpsItemCount(totals, type = "업무", text = "") {
-  const source = `${type} ${text}`;
+  const normalizedType = normalizeScheduleType(type, text);
+  const source = `${normalizedType} ${text}`;
   const count = countFitnessScheduleUnits(text);
-  if (type === "PT" || /pt|p\/t|피티|수업|운동지도/i.test(source)) {
-    if (/무료|체험|서비스|무상/.test(source)) totals.ptFree += count;
+  if (normalizedType === "무료PT" || normalizedType === "PT" || /pt|p\/t|피티|수업|운동지도/i.test(source)) {
+    if (normalizedType === "무료PT" || /무료|체험|서비스|무상/.test(source)) totals.ptFree += count;
     else if (/기타|보강|대체/.test(source)) totals.ptOther += count;
     else totals.ptRegular += count;
   }
   if (/신규|신입|첫등록|등록상담/.test(source)) totals.customerNew += count;
   if (/재등록|재가입|연장|갱신/.test(source)) totals.customerRenewal += count;
   if (/일일권|1일권|데이패스|day\s*pass/i.test(source)) totals.dayPass += count;
-  if (type === "고객관리" || /상담|문의|회원관리|고객관리|인바운드/.test(source)) {
+  if (normalizedType === "고객/상담" || /상담|문의|회원관리|고객관리|인바운드/.test(source)) {
     if (/상담|문의|인바운드|등록상담/.test(source)) totals.consultation += count;
   }
-  if (type === "영업" || /아웃바운드|전화|콜|문자|디엠|dm|영업/i.test(source)) {
+  if (normalizedType === "영업/홍보" || /아웃바운드|전화|콜|문자|디엠|dm|영업/i.test(source)) {
     if (/외부영업|방문영업|외근|현장영업/.test(source)) totals.outsideSales += count;
     else totals.outbound += count;
   }
-  if (/외부영업|방문영업|외근|현장영업/.test(source) && type !== "영업") totals.outsideSales += count;
+  if (/외부영업|방문영업|외근|현장영업/.test(source) && normalizedType !== "영업/홍보") totals.outsideSales += count;
 }
 
 function countFitnessScheduleUnits(text = "") {
@@ -3010,6 +3045,7 @@ function renderTodayContext() {
 
 function renderAttendance() {
   const list = document.getElementById("attendanceList");
+  renderWorkHistorySummary();
   state.attendance ||= {};
   state.attendance[getActiveDateKey()] ||= [];
   list.innerHTML = "";
@@ -3022,7 +3058,7 @@ function renderAttendance() {
       </select>
       <input type="text" value="${escapeAttr(item.role)}" placeholder="직책" aria-label="직책" />
       <input type="text" value="${escapeAttr(item.name)}" placeholder="이름" aria-label="이름" />
-      <select aria-label="근태">
+      <select aria-label="근무상태">
         ${["정상", "지각", "조퇴", "휴무", "외근", "결근"].map((status) => `<option value="${status}" ${item.status === status ? "selected" : ""}>${status}</option>`).join("")}
       </select>
       <input type="text" value="${escapeAttr(item.note)}" placeholder="메모" aria-label="메모" />
@@ -3035,6 +3071,182 @@ function renderAttendance() {
     note.oninput = () => updateAttendance(index, "note", note.value);
     list.appendChild(row);
   });
+}
+
+function renderWorkHistorySummary() {
+  const node = document.getElementById("workHistorySummary");
+  if (!node) return;
+  const employeeId = state.fitnessWritableEmployeeId || state.selectedEmployeeId;
+  const employee = employees.find((item) => item.id === employeeId) || getSelectedEmployee();
+  const log = getEmployeeLogForDate(employeeId);
+  const monthPrefix = getActiveDateKey().slice(0, 7);
+  let recordedDays = 0;
+  let earlyOrLate = 0;
+  let totalMinutes = 0;
+  Object.entries(state.employeeLogs || {}).forEach(([dateKey, logsByEmployee]) => {
+    if (!dateKey.startsWith(monthPrefix)) return;
+    const dayLog = logsByEmployee?.[employeeId];
+    if (!dayLog || (!dayLog.clockIn && !dayLog.clockOut && !dayLog.attendanceStatus)) return;
+    recordedDays += 1;
+    if (["지각", "조퇴", "결근"].includes(getAttendanceStatusForLog(employee, dayLog))) earlyOrLate += 1;
+    if (dayLog.clockIn && dayLog.clockOut) {
+      const minutes = timeToMinutes(dayLog.clockOut) - timeToMinutes(dayLog.clockIn);
+      if (Number.isFinite(minutes) && minutes > 0) totalMinutes += minutes;
+    }
+  });
+  const breakSummary = (log.attendanceBreaks || [])
+    .map((item) => `${item.type || "외출"} ${item.start || "--:--"}~${item.end || "--:--"}`)
+    .join(" · ");
+  const labor = buildMonthlyLaborSummary(employeeId, employee);
+  const cards = [
+    ["오늘 상태", getAttendanceStatusForLog(employee, log)],
+    ["출근", log.clockIn || "미기록"],
+    ["퇴근/조퇴", log.clockOut || "미기록"],
+    ["이번 달 기록", `${recordedDays}일`],
+    ["누적 근무", totalMinutes ? formatMinutesAsHours(totalMinutes) : "집계 전"],
+    ["확인 필요", earlyOrLate ? `${earlyOrLate}건` : "없음"],
+  ];
+  node.innerHTML = `
+    <article class="work-history-hero">
+      <div>
+        <span>${escapeHtml(getEmployeeAdminLabel(employee))}</span>
+        <strong>${escapeHtml(formatKoreanDate(getActiveDateKey()))} 근무이력</strong>
+        <p>${escapeHtml(formatAttendanceSummary(log) || "아직 출결 시간이 기록되지 않았습니다.")}</p>
+      </div>
+    </article>
+    <div class="work-history-card-grid">
+      ${cards.map(([label, value]) => `<span><b>${escapeHtml(label)}</b><strong>${escapeHtml(value)}</strong></span>`).join("")}
+    </div>
+    <p class="work-history-note">${escapeHtml(breakSummary || "외출/복귀 기록이 있으면 이곳에 요약됩니다.")}</p>
+    <section class="labor-month-card">
+      <header>
+        <div>
+          <span>Monthly Labor Draft</span>
+          <h3>${escapeHtml(labor.monthLabel)} 노무자료 초안</h3>
+        </div>
+        <button type="button" id="copyLaborMonthButton">복사</button>
+      </header>
+      <div class="labor-month-grid">
+        ${labor.cards.map(([label, value]) => `<span><b>${escapeHtml(label)}</b><strong>${escapeHtml(value)}</strong></span>`).join("")}
+      </div>
+      <p>${escapeHtml("임금대장·노무신고 전 검토용 자료입니다. 급여 산정, 4대보험, 세무 신고 전에는 최신 법령과 노무사 확인을 권장합니다.")}</p>
+    </section>
+  `;
+  document.getElementById("copyLaborMonthButton")?.addEventListener("click", () => copyMonthlyLaborSummary(labor));
+}
+
+function formatMinutesAsHours(minutes) {
+  const hours = Math.floor(minutes / 60);
+  const mins = minutes % 60;
+  if (!hours) return `${mins}분`;
+  return mins ? `${hours}시간 ${mins}분` : `${hours}시간`;
+}
+
+function buildMonthlyLaborSummary(employeeId, employee) {
+  const monthPrefix = getActiveDateKey().slice(0, 7);
+  const monthLabel = monthPrefix.replace("-", ".");
+  const logs = [];
+  let scheduledMinutes = 0;
+  let actualMinutes = 0;
+  let overtimeMinutes = 0;
+  let nightMinutes = 0;
+  let holidayMinutes = 0;
+  let paidPtCount = 0;
+  let freePtCount = 0;
+  let otherPtCount = 0;
+  let breakCount = 0;
+  let lateCount = 0;
+  let earlyCount = 0;
+  let absenceCount = 0;
+  Object.entries(state.employeeLogs || {}).forEach(([dateKey, logsByEmployee]) => {
+    if (!dateKey.startsWith(monthPrefix)) return;
+    const dayLog = logsByEmployee?.[employeeId];
+    if (!dayLog) return;
+    syncFitnessOpsFromSchedule(dayLog);
+    const ops = { ...createFitnessOps(), ...(dayLog.fitnessOps || {}) };
+    paidPtCount += numberValue(ops.ptRegular);
+    freePtCount += numberValue(ops.ptFree);
+    otherPtCount += numberValue(ops.ptOther);
+    const status = getAttendanceStatusForLog(employee, dayLog);
+    const scheduled = getWorkHoursDurationMinutes(getEmployeeWorkHours(employeeId, state.profile, dateKey));
+    scheduledMinutes += scheduled;
+    let worked = 0;
+    if (dayLog.clockIn && dayLog.clockOut) {
+      const range = getTimeRangeMinutes(dayLog.clockIn, dayLog.clockOut);
+      worked = range.duration;
+      actualMinutes += worked;
+      overtimeMinutes += Math.max(0, worked - Math.min(scheduled || 8 * 60, 8 * 60));
+      nightMinutes += getNightWorkMinutes(range.start, range.end);
+      if ([0, 6].includes(parseDateKey(dateKey).getDay())) holidayMinutes += worked;
+    }
+    breakCount += (dayLog.attendanceBreaks || []).filter((item) => item.start || item.end).length;
+    if (status.includes("지각")) lateCount += 1;
+    if (status.includes("조퇴")) earlyCount += 1;
+    if (status.includes("결근")) absenceCount += 1;
+    if (worked || dayLog.clockIn || dayLog.clockOut || dayLog.attendanceStatus) {
+      logs.push({ dateKey, clockIn: dayLog.clockIn || "", clockOut: dayLog.clockOut || "", status, worked });
+    }
+  });
+  const employmentType = String(state.profile?.employmentType || employee.employmentType || "직원");
+  const settlementPtCount = paidPtCount + otherPtCount;
+  const cards = [
+    ["직원", getEmployeeAdminLabel(employee)],
+    ["고용형태", employmentType],
+    ["근무월", monthLabel],
+    ["기록일", `${logs.length}일`],
+    ["소정근무", formatMinutesAsHours(scheduledMinutes)],
+    ["실근무", formatMinutesAsHours(actualMinutes)],
+    ["연장추정", formatMinutesAsHours(overtimeMinutes)],
+    ["야간추정", formatMinutesAsHours(nightMinutes)],
+    ["휴일/주말", formatMinutesAsHours(holidayMinutes)],
+    ["유료 PT", `${settlementPtCount}건`],
+    ["무료 PT", `${freePtCount}건`],
+    ["지각", `${lateCount}건`],
+    ["조퇴", `${earlyCount}건`],
+    ["결근", `${absenceCount}건`],
+    ["외출", `${breakCount}건`],
+  ];
+  return { employee, monthLabel, cards, logs, scheduledMinutes, actualMinutes, overtimeMinutes, nightMinutes, holidayMinutes, paidPtCount, freePtCount, otherPtCount, settlementPtCount, lateCount, earlyCount, absenceCount, breakCount };
+}
+
+function getWorkHoursDurationMinutes(workHours = "") {
+  if (/휴무|off|closed|none|없음/i.test(String(workHours))) return 0;
+  const match = String(workHours || "").match(/(\d{1,2}):(\d{2})\s*[-~]\s*(\d{1,2}):(\d{2})/);
+  if (!match) return 0;
+  const range = getTimeRangeMinutes(`${match[1].padStart(2, "0")}:${match[2]}`, `${match[3].padStart(2, "0")}:${match[4]}`);
+  return range.duration;
+}
+
+function getTimeRangeMinutes(startTime, endTime) {
+  const start = timeToMinutes(startTime);
+  let end = timeToMinutes(endTime);
+  if (!Number.isFinite(start) || !Number.isFinite(end)) return { start: 0, end: 0, duration: 0 };
+  if (end < start) end += 24 * 60;
+  return { start, end, duration: Math.max(0, end - start) };
+}
+
+function getNightWorkMinutes(start, end) {
+  let total = 0;
+  const windows = [[22 * 60, 30 * 60], [46 * 60, 54 * 60]];
+  windows.forEach(([nightStart, nightEnd]) => {
+    total += Math.max(0, Math.min(end, nightEnd) - Math.max(start, nightStart));
+  });
+  return total;
+}
+
+async function copyMonthlyLaborSummary(labor) {
+  const text = [
+    `[${labor.monthLabel} 노무자료 초안]`,
+    `직원: ${getEmployeeAdminLabel(labor.employee)}`,
+    `유료 PT 정산: ${labor.settlementPtCount}건`,
+    `무료 PT 제외: ${labor.freePtCount}건`,
+    ...labor.cards.slice(2).map(([label, value]) => `${label}: ${value}`),
+    "",
+    "일자\t출근\t퇴근\t상태\t실근무",
+    ...labor.logs.map((row) => `${row.dateKey}\t${row.clockIn || "-"}\t${row.clockOut || "-"}\t${row.status}\t${formatMinutesAsHours(row.worked)}`),
+  ].join("\n");
+  await navigator.clipboard?.writeText(text);
+  showAppToast("월 노무자료 초안을 복사했습니다.");
 }
 
 function updateAttendance(index, field, value) {

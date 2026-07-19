@@ -21,7 +21,7 @@
           <option value="fitness-log">피트니스 업무일지</option>
           <option value="fitness">피트니스 OS</option>
           <option value="os">OS</option>
-          <option value="attendance">근태</option>
+          <option value="attendance">근무이력</option>
           <option value="management">사업장</option>
           <option value="organization">조직</option>
           <option value="ai">AI 코칭</option>
@@ -37,7 +37,7 @@
           <button type="button" data-menu-view="fitness-log">피트니스</button>
           <button type="button" data-menu-view="fitness">센터 OS</button>
           <button type="button" data-menu-view="today">업무일지</button>
-          <button type="button" data-menu-view="attendance">근태</button>
+          <button type="button" data-menu-view="attendance">근무이력</button>
           <button type="button" data-menu-view="management">사업장</button>
           <button type="button" data-menu-view="settings">설정</button>
           <button type="button" data-menu-view="auth">로그인</button>
@@ -69,7 +69,7 @@
         <button type="button" data-view="fitness-log">피트니스 업무일지</button>
         <button type="button" data-view="fitness">피트니스 OS</button>
         <button type="button" data-view="os">OS</button>
-        <button type="button" data-view="attendance">근태</button>
+        <button type="button" data-view="attendance">근무이력</button>
         <button type="button" data-view="management">사업장</button>
         <button type="button" data-view="organization">조직</button>
         <button type="button" data-view="ai">AI 코칭</button>
@@ -319,7 +319,9 @@
                   <th>근무시간</th>
                   <th>근태</th>
                   <th>외출</th>
-                  <th>PT</th>
+                  <th>유료PT</th>
+                  <th>무료PT</th>
+                  <th>기타PT</th>
                   <th>신규</th>
                   <th>재등록</th>
                   <th>상담</th>
@@ -424,9 +426,10 @@
 
       <section class="worklog-view" id="view-attendance">
         <div class="worklog-title-row">
-          <h2>근태관리</h2>
-          <button type="button" id="addAttendanceButton">근태 기록 추가</button>
+          <h2>근무이력</h2>
+          <button type="button" id="addAttendanceButton">이력 메모 추가</button>
         </div>
+        <div class="work-history-summary" id="workHistorySummary"></div>
         <div class="worklog-attendance-list" id="attendanceList"></div>
       </section>
 
@@ -479,6 +482,15 @@
             <label>주업무 <input data-settings-profile-field="primaryWork" type="text" placeholder="주요 담당 업무" /></label>
             <label>부업무 <input data-settings-profile-field="secondaryWork" type="text" placeholder="보조 담당 업무" /></label>
             <label>근무지 <input data-settings-profile-field="workplace" type="text" placeholder="근무지 / 현장 / 지점" /></label>
+            <label>
+              고용형태
+              <select data-settings-profile-field="employmentType">
+                <option value="직원">직원</option>
+                <option value="프리랜서">프리랜서</option>
+                <option value="파트타임">파트타임</option>
+                <option value="관리자">관리자</option>
+              </select>
+            </label>
             <label>근무시간 <input data-settings-profile-field="workHours" type="text" placeholder="예: 09:00-18:00" /></label>
           </div>
           <section class="weekly-work-hours" aria-label="요일별 근무시간">
