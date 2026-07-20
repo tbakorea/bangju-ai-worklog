@@ -3154,7 +3154,56 @@ function renderAttendance() {
   const employeeId = getOwnLaborEmployeeId();
   const employee = getOwnLaborEmployee();
   const labor = buildMonthlyLaborSummary(employeeId, employee);
+  const ledger = buildLaborCostLedger(labor, employee);
   list.innerHTML = `
+    <section class="labor-cost-ledger-card">
+      <header>
+        <div>
+          <span>Labor Cost Ledger</span>
+          <h3>${escapeHtml(ledger.title)}</h3>
+          <p>${escapeHtml(ledger.site)} · ${escapeHtml(ledger.employeeLabel)}</p>
+        </div>
+        <button type="button" id="copyLaborCostLedgerButton">대장 복사</button>
+      </header>
+      <div class="labor-cost-ledger-meta">
+        <span><b>사업장</b><strong>${escapeHtml(ledger.site)}</strong></span>
+        <span><b>대상월</b><strong>${escapeHtml(ledger.monthLabel)}</strong></span>
+        <span><b>출역일수</b><strong>${escapeHtml(String(ledger.workDays))}일</strong></span>
+        <span><b>총근무</b><strong>${escapeHtml(formatMinutesAsHours(ledger.actualMinutes))}</strong></span>
+        <span><b>임금단가</b><strong>${escapeHtml(ledger.wageLabel)}</strong></span>
+        <span><b>총금액</b><strong>${escapeHtml(ledger.totalPayLabel)}</strong></span>
+      </div>
+      <div class="labor-cost-ledger-wrap">
+        <table class="labor-cost-ledger-table" aria-label="노무비 지급 대장">
+          <thead>
+            <tr>
+              <th>구분</th>
+              <th>성명</th>
+              <th>주민등록번호</th>
+              <th>주소</th>
+              ${ledger.dayNumbers.map((day) => `<th>${day}</th>`).join("")}
+              <th>출역일수</th>
+              <th>임금</th>
+              <th>총금액</th>
+              <th>확인</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>${escapeHtml(ledger.employmentType)}</td>
+              <td>${escapeHtml(ledger.name)}</td>
+              <td>${escapeHtml(ledger.laborId)}</td>
+              <td>${escapeHtml(ledger.address)}</td>
+              ${ledger.dayCells.map((cell) => `<td class="${cell.worked ? "is-worked" : ""}">${escapeHtml(cell.label)}</td>`).join("")}
+              <td>${escapeHtml(String(ledger.workDays))}</td>
+              <td>${escapeHtml(ledger.wageLabel)}</td>
+              <td>${escapeHtml(ledger.totalPayLabel)}</td>
+              <td>${escapeHtml(ledger.confirmLabel)}</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
     <section class="labor-register-card">
       <header>
         <div>
@@ -3179,6 +3228,7 @@ function renderAttendance() {
       </div>
     </section>
   `;
+  document.getElementById("copyLaborCostLedgerButton")?.addEventListener("click", () => copyLaborCostLedger(ledger));
 }
 
 function renderWorkHistorySummary() {
@@ -3387,6 +3437,101 @@ function renderLaborDayRow(row) {
       <span>${escapeHtml(`${row.paidPt}/${row.freePt}`)}</span>
     </div>
   `;
+}
+
+function buildLaborCostLedger(labor, employee) {
+  const profile = { ...(state.profile || {}) };
+  const site = profile.workplace || employee.org?.split(" / ").at(-1) || employee.org || "사업장 미지정";
+  const employmentType = String(profile.employmentType || employee.employmentType || "직원");
+  const dailyWage = numberValue(profile.dailyWage);
+  const hourlyWage = numberValue(profile.hourlyWage);
+  const dayNumbers = Array.from({ length: 31 }, (_, index) => index + 1);
+  const rowByDay = new Map(labor.dayRows.map((row) => [Number(row.dateKey.slice(8)), row]));
+  const dayCells = dayNumbers.map((day) => {
+    const row = rowByDay.get(day);
+    const worked = Boolean(row?.worked);
+    return {
+      day,
+      worked,
+      label: worked ? formatLaborDayCell(row.worked) : "",
+      minutes: row?.worked || 0,
+    };
+  });
+  const workDays = dayCells.filter((cell) => cell.worked).length;
+  const actualMinutes = dayCells.reduce((sum, cell) => sum + cell.minutes, 0);
+  let totalPay = 0;
+  let wageLabel = "단가 미입력";
+  if (dailyWage) {
+    totalPay = dailyWage * workDays;
+    wageLabel = `${formatCurrency(dailyWage)} / 일`;
+  } else if (hourlyWage) {
+    totalPay = Math.round((actualMinutes / 60) * hourlyWage);
+    wageLabel = `${formatCurrency(hourlyWage)} / 시간`;
+  }
+  return {
+    title: `${labor.monthLabel} 노무비 지급 대장`,
+    monthLabel: labor.monthLabel,
+    site,
+    employeeLabel: getEmployeeAdminLabel(employee),
+    employmentType,
+    name: employee.name || profile.name || "이름 미입력",
+    laborId: maskLaborId(profile.laborId || ""),
+    address: profile.address || "주소 미입력",
+    dayNumbers,
+    dayCells,
+    workDays,
+    actualMinutes,
+    wageLabel,
+    totalPay,
+    totalPayLabel: totalPay ? formatCurrency(totalPay) : "계산 대기",
+    confirmLabel: "",
+  };
+}
+
+function formatLaborDayCell(minutes) {
+  if (!minutes) return "";
+  const hours = minutes / 60;
+  return Number.isInteger(hours) ? String(hours) : hours.toFixed(1);
+}
+
+function formatCurrency(value = 0) {
+  const amount = Number(value) || 0;
+  return amount ? `${Math.round(amount).toLocaleString()}원` : "";
+}
+
+function maskLaborId(value = "") {
+  const source = String(value || "").trim();
+  if (!source) return "식별번호 미입력";
+  if (source.length <= 6) return source;
+  return `${source.slice(0, 6)}-${"*".repeat(Math.max(4, source.length - 7))}`;
+}
+
+async function copyLaborCostLedger(ledger) {
+  const text = [
+    `[${ledger.title}]`,
+    `사업장: ${ledger.site}`,
+    `직원: ${ledger.employeeLabel}`,
+    `구분: ${ledger.employmentType}`,
+    `출역일수: ${ledger.workDays}일`,
+    `총근무: ${formatMinutesAsHours(ledger.actualMinutes)}`,
+    `임금: ${ledger.wageLabel}`,
+    `총금액: ${ledger.totalPayLabel}`,
+    "",
+    ["구분", "성명", "주민등록번호", "주소", ...ledger.dayNumbers, "출역일수", "임금", "총금액", "확인"].join("\t"),
+    [
+      ledger.employmentType,
+      ledger.name,
+      ledger.laborId,
+      ledger.address,
+      ...ledger.dayCells.map((cell) => cell.label),
+      `${ledger.workDays}일`,
+      ledger.wageLabel,
+      ledger.totalPayLabel,
+      ledger.confirmLabel,
+    ].join("\t"),
+  ].join("\n");
+  await navigator.clipboard?.writeText(text);
+  showAppToast("노무비 지급 대장을 복사했습니다.");
 }
 
 function buildLaborMonthArchives(employeeId, employee) {
