@@ -17,6 +17,7 @@
           <h1 id="globalEmployeeIdentity"></h1>
         </div>
         <select id="mainMenuWheelSelect" class="main-menu-wheel-select" aria-label="메인메뉴 선택" hidden>
+          <option value="control">통합관제</option>
           <option value="fitness-log">피트니스 업무일지</option>
           <option value="bangju-log">방주 업무일지</option>
           <option value="beyond-log">비욘드 업무일지</option>
@@ -35,6 +36,7 @@
           <button id="settingsGearButton" type="button" aria-haspopup="menu" aria-expanded="false" aria-label="메뉴 열기">메뉴</button>
         </div>
         <div class="main-menu-popover" id="mainMenuPopover" role="menu" hidden>
+          <button type="button" data-menu-view="control">통합관제</button>
           <button type="button" data-menu-view="fitness-log">피트니스 업무일지</button>
           <button type="button" data-menu-view="bangju-log">방주 업무일지</button>
           <button type="button" data-menu-view="beyond-log">비욘드 업무일지</button>
@@ -67,6 +69,7 @@
       </header>
 
       <nav class="worklog-tabs" aria-label="Beyond OS 메뉴">
+        <button type="button" data-view="control">통합관제</button>
         <button class="is-active" type="button" data-view="fitness-log">피트니스 업무일지</button>
         <button type="button" data-view="bangju-log">방주 업무일지</button>
         <button type="button" data-view="beyond-log">비욘드 업무일지</button>
@@ -108,6 +111,68 @@
           <button type="button" id="calendarTodaySheetButton">오늘로 이동</button>
         </div>
       </div>
+
+      <section class="worklog-view control-tower-view" id="view-control">
+        <div class="control-tower-hero">
+          <div>
+            <p>Beyond Control Tower</p>
+            <h2>방주그룹 통합관제</h2>
+            <span id="controlTowerAccessLabel">대표·지정 관리자 전용</span>
+          </div>
+          <button type="button" id="controlTowerRefreshButton">오늘 기준</button>
+        </div>
+        <div class="control-access-card" id="controlAccessCard" hidden>
+          <strong>접근 권한이 필요한 메뉴입니다</strong>
+          <p>통합관제는 대표와 대표가 지정한 관리자만 볼 수 있습니다. 직원설정의 직함 또는 지정 이메일 권한을 확인해주세요.</p>
+        </div>
+        <div class="control-tower-body" id="controlTowerBody">
+          <div class="control-kpi-grid" id="controlKpiGrid"></div>
+          <section class="control-briefing-card">
+            <header>
+              <span>AI Executive Briefing</span>
+              <h3>대표 브리핑</h3>
+            </header>
+            <div id="controlBriefingList" class="control-briefing-list"></div>
+          </section>
+          <section class="control-panel">
+            <header>
+              <span>Sites</span>
+              <h3>사업장 현황</h3>
+            </header>
+            <div class="control-site-grid" id="controlSiteGrid"></div>
+          </section>
+          <section class="control-panel">
+            <header>
+              <span>People</span>
+              <h3>전체 직원 명부</h3>
+            </header>
+            <div class="control-staff-table-wrap">
+              <table class="control-staff-table">
+                <thead>
+                  <tr>
+                    <th>소속</th>
+                    <th>직함</th>
+                    <th>성명</th>
+                    <th>고용</th>
+                    <th>근무시간</th>
+                    <th>오늘 출결</th>
+                    <th>업무</th>
+                    <th>AI 신호</th>
+                  </tr>
+                </thead>
+                <tbody id="controlStaffBody"></tbody>
+              </table>
+            </div>
+          </section>
+          <section class="control-panel">
+            <header>
+              <span>Operations</span>
+              <h3>근태·노무·보고</h3>
+            </header>
+            <div class="control-ops-grid" id="controlOpsGrid"></div>
+          </section>
+        </div>
+      </section>
 
       <section class="worklog-view os-view" id="view-os">
         <div class="os-hero">

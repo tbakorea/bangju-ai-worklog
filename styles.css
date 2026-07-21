@@ -8585,3 +8585,376 @@ body[data-layout-mode="phone"] #view-fitness-log .ops-summary-metric {
 body[data-layout-mode="phone"] #view-fitness-log .ops-summary-metric strong {
   font-size: 21px;
 }
+
+/* Beyond Control Tower */
+.control-tower-view {
+  display: none;
+  gap: 14px;
+}
+
+.control-tower-view.is-active {
+  display: grid;
+}
+
+.control-tower-hero {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  border: 1px solid rgba(15, 59, 46, 0.12);
+  border-radius: 24px;
+  background:
+    linear-gradient(135deg, rgba(15, 59, 46, 0.96), rgba(31, 76, 59, 0.88)),
+    var(--fitness-green);
+  color: var(--nordic-sheet);
+  padding: 18px;
+  box-shadow: 0 18px 42px rgba(15, 59, 46, 0.16);
+}
+
+.control-tower-hero p,
+.control-tower-hero span {
+  margin: 0;
+  color: rgba(255, 254, 250, 0.72);
+  font-size: 12px;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.control-tower-hero h2 {
+  margin: 4px 0;
+  font-size: clamp(26px, 5vw, 42px);
+  line-height: 1;
+}
+
+.control-tower-hero button {
+  min-height: 42px;
+  border: 1px solid rgba(255, 254, 250, 0.26);
+  border-radius: 999px;
+  background: rgba(255, 254, 250, 0.12);
+  color: var(--nordic-sheet);
+  padding: 8px 14px;
+  font-weight: 950;
+}
+
+.control-access-card,
+.control-briefing-card,
+.control-panel {
+  display: grid;
+  gap: 10px;
+  border: 1px solid rgba(33, 55, 45, 0.12);
+  border-radius: 20px;
+  background: rgba(255, 253, 248, 0.9);
+  padding: 14px;
+  box-shadow: 0 12px 32px rgba(17, 20, 17, 0.055);
+}
+
+.control-access-card strong {
+  color: var(--fitness-green);
+  font-size: 20px;
+  font-weight: 950;
+}
+
+.control-access-card p {
+  margin: 0;
+  color: var(--muted);
+  font-weight: 780;
+  line-height: 1.45;
+}
+
+.control-tower-body {
+  display: grid;
+  gap: 12px;
+}
+
+.control-kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.control-kpi-grid article {
+  display: grid;
+  gap: 4px;
+  border: 1px solid rgba(33, 55, 45, 0.1);
+  border-radius: 18px;
+  background: rgba(255, 254, 250, 0.9);
+  padding: 12px;
+}
+
+.control-kpi-grid span,
+.control-panel header span,
+.control-briefing-card header span {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.control-kpi-grid strong {
+  color: var(--ink);
+  font-size: 24px;
+  font-weight: 950;
+  line-height: 1;
+}
+
+.control-kpi-grid em {
+  color: rgba(15, 59, 46, 0.64);
+  font-size: 12px;
+  font-style: normal;
+  font-weight: 850;
+}
+
+.control-panel h3,
+.control-briefing-card h3 {
+  margin: 2px 0 0;
+  color: var(--ink);
+  font-size: 22px;
+  font-weight: 950;
+}
+
+.control-briefing-list,
+.control-site-grid,
+.control-ops-grid {
+  display: grid;
+  gap: 8px;
+}
+
+.control-briefing-list {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.control-briefing-list article,
+.control-site-grid article,
+.control-ops-grid article {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+  border: 1px solid rgba(33, 55, 45, 0.09);
+  border-radius: 16px;
+  background: rgba(246, 245, 239, 0.58);
+  padding: 11px;
+}
+
+.control-briefing-list article[data-level="warn"] {
+  border-color: rgba(170, 83, 36, 0.2);
+  background: rgba(255, 246, 237, 0.72);
+}
+
+.control-briefing-list b,
+.control-ops-grid b {
+  color: var(--fitness-green);
+  font-size: 14px;
+  font-weight: 950;
+}
+
+.control-briefing-list span,
+.control-ops-grid span,
+.control-site-grid p,
+.control-site-grid em {
+  color: rgba(38, 50, 56, 0.68);
+  font-size: 12px;
+  font-style: normal;
+  font-weight: 780;
+  line-height: 1.38;
+}
+
+.control-site-grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.control-site-grid strong {
+  color: var(--ink);
+  font-size: 16px;
+  font-weight: 950;
+}
+
+.control-site-grid span {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 900;
+}
+
+.control-staff-table-wrap {
+  overflow-x: auto;
+  border: 1px solid rgba(33, 55, 45, 0.12);
+  border-radius: 14px;
+  background: var(--nordic-sheet);
+}
+
+.control-staff-table {
+  width: 100%;
+  min-width: 820px;
+  border-collapse: collapse;
+  color: var(--ink);
+  font-size: 12px;
+}
+
+.control-staff-table th,
+.control-staff-table td {
+  border-bottom: 1px solid rgba(33, 55, 45, 0.08);
+  padding: 8px;
+  text-align: left;
+  vertical-align: middle;
+}
+
+.control-staff-table th {
+  background: rgba(239, 243, 235, 0.92);
+  color: rgba(33, 55, 45, 0.74);
+  font-size: 11px;
+  font-weight: 950;
+}
+
+.control-staff-table span[data-signal] {
+  display: inline-grid;
+  place-items: center;
+  min-height: 24px;
+  border-radius: 999px;
+  background: rgba(15, 59, 46, 0.08);
+  color: var(--fitness-green);
+  padding: 3px 8px;
+  font-size: 11px;
+  font-weight: 950;
+}
+
+.control-staff-table span[data-signal="결석확인"],
+.control-staff-table span[data-signal="업무점검"] {
+  background: rgba(170, 83, 36, 0.12);
+  color: #8d3f18;
+}
+
+.control-ops-grid {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.control-ops-grid em {
+  justify-self: start;
+  border-radius: 999px;
+  background: rgba(15, 59, 46, 0.08);
+  color: var(--fitness-green);
+  padding: 3px 8px;
+  font-size: 11px;
+  font-style: normal;
+  font-weight: 950;
+}
+
+@media (max-width: 760px) {
+  .control-tower-hero {
+    display: grid;
+    padding: 16px;
+  }
+
+  .control-kpi-grid,
+  .control-briefing-list,
+  .control-site-grid,
+  .control-ops-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 420px) {
+  .control-kpi-grid,
+  .control-briefing-list,
+  .control-site-grid,
+  .control-ops-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/* Final pass: fitness journal controls must win over earlier accumulated mobile rules. */
+#view-fitness-log #fitnessPrevDateButton,
+#view-fitness-log #fitnessNextDateButton {
+  display: inline-grid !important;
+  place-items: center !important;
+  width: 46px !important;
+  min-width: 46px !important;
+  min-height: 46px !important;
+  border: 1px solid rgba(15, 59, 46, 0.16) !important;
+  border-radius: 16px !important;
+  background:
+    linear-gradient(180deg, rgba(255, 254, 250, 0.98), rgba(242, 247, 243, 0.96)) !important;
+  color: var(--fitness-green) !important;
+  font-size: 30px !important;
+  font-weight: 950 !important;
+  line-height: 1 !important;
+  box-shadow:
+    0 9px 20px rgba(17, 20, 17, 0.065),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.72) !important;
+}
+
+#view-fitness-log #fitnessLogPrevPageButton,
+#view-fitness-log #fitnessLogNextPageButton {
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  gap: 6px !important;
+  min-height: 46px !important;
+  border: 1px solid rgba(15, 59, 46, 0.16) !important;
+  border-radius: 16px !important;
+  background:
+    linear-gradient(180deg, rgba(255, 254, 250, 0.98), rgba(242, 247, 243, 0.96)) !important;
+  color: rgba(15, 59, 46, 0.9) !important;
+  padding: 6px 10px !important;
+  font-size: 12px !important;
+  font-weight: 950 !important;
+  line-height: 1.08 !important;
+  word-break: keep-all !important;
+  box-shadow:
+    0 9px 20px rgba(17, 20, 17, 0.06),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.68) !important;
+}
+
+#view-fitness-log #fitnessPrevDateButton:active,
+#view-fitness-log #fitnessNextDateButton:active,
+#view-fitness-log #fitnessLogPrevPageButton:active,
+#view-fitness-log #fitnessLogNextPageButton:active {
+  transform: translateY(1px) scale(0.985) !important;
+  background: rgba(15, 59, 46, 0.08) !important;
+}
+
+#view-fitness-log #fitnessLogPrevPageButton::before,
+#view-fitness-log #fitnessLogNextPageButton::after {
+  display: inline-grid !important;
+  place-items: center !important;
+  width: 22px !important;
+  height: 22px !important;
+  margin: 0 !important;
+  border-radius: 50% !important;
+  background: rgba(15, 59, 46, 0.1) !important;
+  color: var(--fitness-green) !important;
+  font-size: 18px !important;
+  font-weight: 950 !important;
+  line-height: 1 !important;
+}
+
+#view-fitness-log #fitnessLogPrevPageButton:disabled,
+#view-fitness-log #fitnessLogNextPageButton:disabled {
+  opacity: 0.42 !important;
+  box-shadow: none !important;
+}
+
+#view-fitness-log .fitness-task-list {
+  min-height: 0 !important;
+}
+
+.app-toast {
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  min-height: 38px !important;
+  border-color: rgba(15, 59, 46, 0.2) !important;
+  background:
+    linear-gradient(180deg, rgba(18, 59, 45, 0.96), rgba(12, 42, 32, 0.94)) !important;
+  padding: 8px 16px !important;
+  box-shadow:
+    0 16px 34px rgba(15, 59, 46, 0.18),
+    inset 0 1px 0 rgba(255, 255, 255, 0.12) !important;
+}
+
+body[data-layout-mode="phone"] #view-fitness-log .fitness-date-nav {
+  grid-template-columns: 46px minmax(0, 1fr) 46px !important;
+}
+
+body[data-layout-mode="phone"] #view-fitness-log .fitness-log-pager {
+  grid-template-columns: minmax(86px, 0.82fr) minmax(0, 1.18fr) minmax(86px, 0.82fr) !important;
+}
