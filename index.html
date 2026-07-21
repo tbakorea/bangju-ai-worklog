@@ -244,36 +244,38 @@
           </header>
           <div class="worklog-pulse-row">
             <button type="button" class="worklog-side-nav" data-worklog-panel="weekly">공통일정</button>
-            <button type="button" class="worklog-pulse" id="worklogPulse">오늘 실행 0/0 · 다음 일정 없음 · 이월 0</button>
+            <button type="button" class="worklog-pulse" id="worklogPulse" aria-label="AI 코칭 열기">
+              <span id="worklogPulseText">오늘 실행 0/0 · 다음 일정 없음 · 이월 0</span>
+            </button>
             <button type="button" class="worklog-side-nav" data-worklog-panel="memo">동료업무</button>
           </div>
-          <div class="shared-worklog-panels" id="sharedWorklogPanels">
-            <article class="shared-worklog-panel">
+          <div class="worklog-main day-main-panel day-swipe" id="worklogMain" data-today-page="daily">
+            <article class="worklog-panel shared-worklog-panel worklog-common-page">
               <h3>공통일정</h3>
               <div id="commonScheduleBoard"></div>
             </article>
-            <article class="shared-worklog-panel">
+            <div class="worklog-daily-page">
+              <article class="worklog-panel worklog-task-panel day-task-panel" data-mobile-focus-panel="tasks">
+                <h3>
+                  <span>오늘의 업무</span>
+                  <button type="button" class="ai-section-button" data-section-ai="tasks">AI</button>
+                  <button type="button" class="mobile-focus-done" data-mobile-focus-close>확인</button>
+                </h3>
+                <div id="worklogTaskBoard" class="worklog-task-board task-board"></div>
+              </article>
+              <article class="worklog-panel worklog-schedule-panel day-schedule-panel" data-mobile-focus-panel="schedule">
+                <h3>
+                  <span>시간별일정</span>
+                  <button type="button" class="schedule-unit-button" id="scheduleUnitButton">30분</button>
+                  <button id="addEntryButton" type="button" class="ai-section-button" data-section-ai="schedule">AI</button>
+                  <button type="button" class="mobile-focus-done" data-mobile-focus-close>확인</button>
+                </h3>
+                <div id="worklogAppointmentList" class="worklog-appointment-list appointment-list"></div>
+              </article>
+            </div>
+            <article class="worklog-panel shared-worklog-panel worklog-coworker-page">
               <h3>동료업무</h3>
               <div id="coworkerWorklogBoard"></div>
-            </article>
-          </div>
-          <div class="worklog-main day-main-panel day-swipe" id="worklogMain">
-            <article class="worklog-panel worklog-task-panel day-task-panel" data-mobile-focus-panel="tasks">
-              <h3>
-                <span>오늘의 업무</span>
-                <button type="button" class="ai-section-button" data-section-ai="tasks">AI</button>
-                <button type="button" class="mobile-focus-done" data-mobile-focus-close>확인</button>
-              </h3>
-              <div id="worklogTaskBoard" class="worklog-task-board task-board"></div>
-            </article>
-            <article class="worklog-panel worklog-schedule-panel day-schedule-panel" data-mobile-focus-panel="schedule">
-              <h3>
-                <span>시간별일정</span>
-                <button type="button" class="schedule-unit-button" id="scheduleUnitButton">30분</button>
-                <button id="addEntryButton" type="button" class="ai-section-button" data-section-ai="schedule">AI</button>
-                <button type="button" class="mobile-focus-done" data-mobile-focus-close>확인</button>
-              </h3>
-              <div id="worklogAppointmentList" class="worklog-appointment-list appointment-list"></div>
             </article>
           </div>
         </section>

@@ -15,6 +15,7 @@ const attendanceEnabledViews = new Set(["fitness-log", "bangju-log", "beyond-log
 const controlTowerEmails = new Set(["j3010@ymail.com", "tbakorea@gmail.com"]);
 let activeView = "fitness-log";
 let attendancePromptLastAt = 0;
+let todayPageMode = "daily";
 const bangjuOrganization = [
   {
     name: "(주)방주",
@@ -2229,9 +2230,35 @@ function renderWorklogSummary(log) {
   const nextEntry = getNextScheduleEntry(log);
   document.getElementById("worklogDayTitle").textContent = formatKoreanDate(getActiveDateKey());
   document.getElementById("worklogCompletion").textContent = `${completed}/${tasks.length}`;
-  document.getElementById("worklogPulse").textContent = `오늘 실행 ${completed}/${tasks.length} · 다음 일정 ${nextEntry ? `${nextEntry.time} ${getScheduleEntryText(nextEntry)}` : "없음"} · 미완료 ${pending} · AI 운영 신호 ${pending ? "추적" : "정상"}`;
+  const pulseText = document.getElementById("worklogPulseText");
+  if (pulseText) {
+    pulseText.textContent = `AI 코칭 · 오늘 실행 ${completed}/${tasks.length} · 다음 일정 ${nextEntry ? `${nextEntry.time} ${getScheduleEntryText(nextEntry)}` : "없음"} · 미완료 ${pending} · AI 운영 신호 ${pending ? "추적" : "정상"} · 공통일정과 동료업무를 함께 확인하세요`;
+  }
   const unitButton = document.getElementById("scheduleUnitButton");
   if (unitButton) unitButton.textContent = log.scheduleUnit === "60" ? "1시간" : "30분";
+  applyTodayPageMode();
+}
+
+function setTodayPageMode(mode) {
+  todayPageMode = ["common", "daily", "coworker"].includes(mode) ? mode : "daily";
+  resetMobileDayFocusToSplit({ blur: true });
+  applyTodayPageMode();
+}
+
+function moveTodayPage(delta) {
+  const modes = ["common", "daily", "coworker"];
+  const index = modes.indexOf(todayPageMode);
+  setTodayPageMode(modes[Math.max(0, Math.min(modes.length - 1, index + delta))]);
+}
+
+function applyTodayPageMode() {
+  const main = document.getElementById("worklogMain");
+  if (!main) return;
+  main.dataset.todayPage = todayPageMode;
+  document.querySelectorAll("[data-worklog-panel]").forEach((button) => {
+    const mode = button.dataset.worklogPanel === "weekly" ? "common" : "coworker";
+    button.classList.toggle("is-active", todayPageMode === mode);
+  });
 }
 
 function renderSharedWorklogPanels(log = getSelectedLog()) {
@@ -4415,6 +4442,9 @@ document.querySelectorAll("[data-layout-mode-choice]").forEach((button) => {
 });
 document.getElementById("fitnessLogPrevPageButton")?.addEventListener("click", moveFitnessLogPrevPage);
 document.getElementById("fitnessLogNextPageButton")?.addEventListener("click", moveFitnessLogNextPage);
+document.querySelector('[data-worklog-panel="weekly"]')?.addEventListener("click", () => setTodayPageMode("common"));
+document.querySelector('[data-worklog-panel="memo"]')?.addEventListener("click", () => setTodayPageMode("coworker"));
+document.getElementById("worklogPulse")?.addEventListener("click", () => switchView("ai"));
 {
   const pager = document.getElementById("view-fitness-log");
   let startX = 0;
@@ -4431,6 +4461,24 @@ document.getElementById("fitnessLogNextPageButton")?.addEventListener("click", m
     const dy = event.clientY - startY;
     if (Math.abs(dx) < 52 || Math.abs(dx) < Math.abs(dy) * 1.2) return;
     moveFitnessLogPage(dx < 0 ? 1 : -1);
+  });
+}
+{
+  const pager = document.getElementById("worklogMain");
+  let startX = 0;
+  let startY = 0;
+  let blocked = false;
+  pager?.addEventListener("pointerdown", (event) => {
+    startX = event.clientX;
+    startY = event.clientY;
+    blocked = Boolean(event.target.closest("button, input, textarea, select"));
+  });
+  pager?.addEventListener("pointerup", (event) => {
+    if (blocked || isEditingDailyField()) return;
+    const dx = event.clientX - startX;
+    const dy = event.clientY - startY;
+    if (Math.abs(dx) < 56 || Math.abs(dx) < Math.abs(dy) * 1.25) return;
+    moveTodayPage(dx < 0 ? 1 : -1);
   });
 }
 
