@@ -17,8 +17,9 @@
           <h1 id="globalEmployeeIdentity"></h1>
         </div>
         <select id="mainMenuWheelSelect" class="main-menu-wheel-select" aria-label="메인메뉴 선택" hidden>
-          <option value="today">업무일지</option>
           <option value="fitness-log">피트니스 업무일지</option>
+          <option value="bangju-log">방주 업무일지</option>
+          <option value="beyond-log">비욘드 업무일지</option>
           <option value="fitness">피트니스 OS</option>
           <option value="os">OS</option>
           <option value="attendance">근무이력</option>
@@ -34,9 +35,10 @@
           <button id="settingsGearButton" type="button" aria-haspopup="menu" aria-expanded="false" aria-label="메뉴 열기">메뉴</button>
         </div>
         <div class="main-menu-popover" id="mainMenuPopover" role="menu" hidden>
-          <button type="button" data-menu-view="fitness-log">피트니스</button>
+          <button type="button" data-menu-view="fitness-log">피트니스 업무일지</button>
+          <button type="button" data-menu-view="bangju-log">방주 업무일지</button>
+          <button type="button" data-menu-view="beyond-log">비욘드 업무일지</button>
           <button type="button" data-menu-view="fitness">센터 OS</button>
-          <button type="button" data-menu-view="today">업무일지</button>
           <button type="button" data-menu-view="attendance">근무이력</button>
           <button type="button" data-menu-view="management">사업장</button>
           <button type="button" data-menu-view="settings">설정</button>
@@ -65,8 +67,9 @@
       </header>
 
       <nav class="worklog-tabs" aria-label="Beyond OS 메뉴">
-        <button class="is-active" type="button" data-view="today">업무일지</button>
-        <button type="button" data-view="fitness-log">피트니스 업무일지</button>
+        <button class="is-active" type="button" data-view="fitness-log">피트니스 업무일지</button>
+        <button type="button" data-view="bangju-log">방주 업무일지</button>
+        <button type="button" data-view="beyond-log">비욘드 업무일지</button>
         <button type="button" data-view="fitness">피트니스 OS</button>
         <button type="button" data-view="os">OS</button>
         <button type="button" data-view="attendance">근무이력</button>

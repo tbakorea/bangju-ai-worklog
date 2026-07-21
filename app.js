@@ -6,6 +6,13 @@ const supabaseConfig = {
 };
 const supabaseClient = window.supabase?.createClient(supabaseConfig.url, supabaseConfig.anonKey) || null;
 const todayKey = formatDateKey(new Date());
+const worklogViewAliases = {
+  today: "bangju-log",
+  "bangju-log": "today",
+  "beyond-log": "today",
+};
+const attendanceEnabledViews = new Set(["fitness-log", "bangju-log", "beyond-log", "today"]);
+let activeView = "fitness-log";
 const bangjuOrganization = [
   {
     name: "(주)방주",
@@ -1082,7 +1089,8 @@ function shiftCalendarYear(delta) {
 
 function renderEmployeeTitle() {
   const employee = getSelectedEmployee();
-  document.getElementById("todayTitle").textContent = `${employee.org} 업무일지. ${getEmployeeAdminLabel(employee)}`;
+  const title = getGeneralWorklogTitle(activeView);
+  document.getElementById("todayTitle").textContent = `${employee.org} ${title}. ${getEmployeeAdminLabel(employee)}`;
 }
 
 function renderGlobalEmployeeIdentity() {
@@ -1092,8 +1100,37 @@ function renderGlobalEmployeeIdentity() {
   const identity = document.getElementById("globalEmployeeIdentity");
   if (identity) identity.textContent = "";
   const title = document.getElementById("globalHeaderTitle");
-  if (title) title.textContent = `beyond fitness · ${personLabel}`;
+  if (title) title.textContent = getGlobalHeaderTitle(activeView, personLabel);
   renderGlobalAttendanceSummary(employee);
+  updateGlobalAttendanceVisibility();
+}
+
+function getGeneralWorklogTitle(view = activeView) {
+  if (view === "beyond-log") return "비욘드 업무일지";
+  return "방주 업무일지";
+}
+
+function getGlobalHeaderTitle(view = activeView, personLabel = "") {
+  if (view === "fitness-log") return `beyond fitness · ${personLabel}`;
+  if (view === "beyond-log") return `비욘드 업무일지 · ${personLabel}`;
+  if (view === "bangju-log" || view === "today") return `방주 업무일지 · ${personLabel}`;
+  if (view === "fitness") return "비욘드 피트니스 OS";
+  if (view === "attendance") return "월별 근무대장";
+  if (view === "management") return "사업장 운영관리";
+  if (view === "organization") return "조직";
+  if (view === "ai") return "AI 코칭";
+  if (view === "report") return "보고";
+  if (view === "projects") return "프로젝트";
+  if (view === "settings") return "설정";
+  return "Beyond OS";
+}
+
+function updateGlobalAttendanceVisibility(view = activeView) {
+  const show = attendanceEnabledViews.has(view);
+  const summary = document.getElementById("globalAttendanceSummary");
+  const button = document.getElementById("globalAttendanceButton");
+  if (summary) summary.hidden = !show;
+  if (button) button.hidden = !show;
 }
 
 function renderGlobalAttendanceSummary(employee = employees.find((item) => item.id === state.fitnessWritableEmployeeId) || getSelectedEmployee()) {
@@ -4054,11 +4091,15 @@ async function shareFitnessReport() {
 }
 
 function switchView(view) {
+  view = view === "today" ? "bangju-log" : view;
+  activeView = view;
   closeMainMenuPopover();
   document.querySelectorAll(".worklog-tabs button").forEach((button) => button.classList.toggle("is-active", button.dataset.view === view));
-  document.querySelectorAll(".worklog-view").forEach((panel) => panel.classList.toggle("is-active", panel.id === `view-${view}`));
+  const panelView = worklogViewAliases[view] || view;
+  document.querySelectorAll(".worklog-view").forEach((panel) => panel.classList.toggle("is-active", panel.id === `view-${panelView}`));
   const menuSelect = document.getElementById("mainMenuWheelSelect");
   if (menuSelect && menuSelect.value !== view) menuSelect.value = view;
+  renderEmployeeTitle();
   renderGlobalEmployeeIdentity();
   renderOsDashboard();
   renderAiCoach();
@@ -4066,6 +4107,7 @@ function switchView(view) {
   renderAttendance();
   renderManagement();
   renderOrganization();
+  updateGlobalAttendanceVisibility(view);
   if (view === "fitness-log") window.setTimeout(() => showFitnessPageToast(), 80);
 }
 
