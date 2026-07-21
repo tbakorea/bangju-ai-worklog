@@ -1680,13 +1680,15 @@ function setupMobileDayFocus() {
 function setupSplitEditGate(node, mode) {
   node.addEventListener("pointerdown", (event) => {
     if (!isMobilePhoneFocusLayout() || mobileDayFocusMode !== "split") return;
-    if (!isEditableDayControl(event.target)) return;
+    const shouldFocus = isEditableDayControl(event.target) || Boolean(event.target.closest(".day-task-panel, .day-schedule-panel"));
+    if (!shouldFocus || event.target.closest("[data-mobile-focus-close], .ai-section-button, .schedule-unit-button")) return;
     event.preventDefault();
     setMobileDayFocusMode(mode);
   }, true);
   node.addEventListener("click", (event) => {
     if (!isMobilePhoneFocusLayout() || mobileDayFocusMode !== "split") return;
-    if (!isEditableDayControl(event.target)) return;
+    const shouldFocus = isEditableDayControl(event.target) || Boolean(event.target.closest(".day-task-panel, .day-schedule-panel"));
+    if (!shouldFocus || event.target.closest("[data-mobile-focus-close], .ai-section-button, .schedule-unit-button")) return;
     event.preventDefault();
     event.stopPropagation();
   }, true);
@@ -1766,6 +1768,7 @@ function renderEntries() {
   const log = getSelectedLog();
   normalizeEmployeeLogRows(log);
   renderWorklogToday(log);
+  renderSharedWorklogPanels(log);
   renderFitnessWorklog(log);
   renderEmployeeDetailFields();
   renderClockPanel();
@@ -2231,6 +2234,81 @@ function renderWorklogSummary(log) {
   if (unitButton) unitButton.textContent = log.scheduleUnit === "60" ? "1시간" : "30분";
 }
 
+function renderSharedWorklogPanels(log = getSelectedLog()) {
+  const common = document.getElementById("commonScheduleBoard");
+  const coworkers = document.getElementById("coworkerWorklogBoard");
+  if (!common || !coworkers) return;
+  const dateKey = getActiveDateKey();
+  const monthPrefix = dateKey.slice(0, 7);
+  const selectedEmployee = getSelectedEmployee();
+  const monthTasks = [];
+  const weekTasks = [];
+  const weekRange = getWeekDateKeys(dateKey);
+  Object.entries(state.employeeLogs || {}).forEach(([key, logsByEmployee]) => {
+    const dayLog = logsByEmployee?.[selectedEmployee.id];
+    if (!dayLog) return;
+    const activeTexts = (dayLog.tasks || []).filter(isActiveTask).map((task) => task.text).filter(Boolean);
+    if (key.startsWith(monthPrefix)) monthTasks.push(...activeTexts.map((text) => ({ dateKey: key, text })));
+    if (weekRange.includes(key)) weekTasks.push(...activeTexts.map((text) => ({ dateKey: key, text })));
+  });
+  common.innerHTML = `
+    <section>
+      <b>월간 주요업무</b>
+      ${renderSharedTaskList(monthTasks.slice(0, 6), "이번 달 기록된 주요업무가 없습니다.")}
+    </section>
+    <section>
+      <b>금주 주요업무</b>
+      <div class="weekly-common-grid">
+        ${weekRange.map((key) => {
+          const items = weekTasks.filter((item) => item.dateKey === key).slice(0, 2);
+          return `<article><span>${escapeHtml(formatWeekdayShort(key))}</span>${renderSharedTaskList(items, "없음")}</article>`;
+        }).join("")}
+      </div>
+    </section>
+  `;
+
+  const siteKey = selectedEmployee.org?.split(" / ").at(-1) || selectedEmployee.org || "";
+  const coworkerRows = getEmployeeOptions()
+    .filter((employee) => employee.id !== selectedEmployee.id)
+    .filter((employee) => !siteKey || employee.org?.includes(siteKey) || selectedEmployee.org?.includes(employee.org?.split(" / ").at(-1) || ""))
+    .slice(0, 8)
+    .map((employee) => {
+      const dayLog = state.employeeLogs?.[dateKey]?.[employee.id] || createEmployeeLog(employee);
+      const tasks = (dayLog.tasks || []).filter(isActiveTask).slice(0, 3);
+      const completed = tasks.filter((task) => task.done || task.status === "완료").length;
+      return { employee, tasks, completed };
+    });
+  coworkers.innerHTML = coworkerRows.length
+    ? coworkerRows.map((row) => `
+      <article class="coworker-worklog-item">
+        <header><b>${escapeHtml(getEmployeeAdminLabel(row.employee))}</b><span>${row.completed}/${row.tasks.length}</span></header>
+        ${renderSharedTaskList(row.tasks.map((task) => ({ text: task.text || task.status || "업무" })), "공유된 업무가 없습니다.")}
+      </article>
+    `).join("")
+    : `<p class="shared-empty">같은 사업장 동료 업무일지가 아직 없습니다.</p>`;
+}
+
+function renderSharedTaskList(items, emptyText) {
+  if (!items.length) return `<p class="shared-empty">${escapeHtml(emptyText)}</p>`;
+  return `<ul>${items.map((item) => `<li>${item.dateKey ? `<span>${escapeHtml(formatShortDate(item.dateKey))}</span>` : ""}${escapeHtml(item.text || "")}</li>`).join("")}</ul>`;
+}
+
+function getWeekDateKeys(dateKey) {
+  const date = parseDateKey(dateKey);
+  const start = new Date(date);
+  start.setDate(date.getDate() - date.getDay());
+  return Array.from({ length: 7 }, (_, index) => {
+    const day = new Date(start);
+    day.setDate(start.getDate() + index);
+    return formatDateKey(day);
+  });
+}
+
+function formatWeekdayShort(dateKey) {
+  const date = parseDateKey(dateKey);
+  return `${date.getMonth() + 1}/${date.getDate()} ${["일", "월", "화", "수", "목", "금", "토"][date.getDay()]}`;
+}
+
 function renderWorklogTaskBoard(log) {
   const board = document.getElementById("worklogTaskBoard");
   board.innerHTML = "";
@@ -2620,15 +2698,12 @@ function renderAppointmentRow(entry, log, scope = "worklog") {
   const items = normalizeScheduleEntryItems(entry);
   const row = document.createElement("div");
   const value = getScheduleEntryText(entry);
-  row.className = `appointment-row multi-appointment-row ${value.trim() ? "is-filled" : ""} ${isCurrentScheduleSlot(entry, log) ? "is-current" : ""}`;
+  row.className = `appointment-row multi-appointment-row plain-appointment-row ${value.trim() ? "is-filled" : ""} ${isCurrentScheduleSlot(entry, log) ? "is-current" : ""}`;
   row.innerHTML = `
     <span class="appointment-time">${escapeHtml(entry.time)}</span>
     <div class="appointment-items">
       ${items.map((item, itemIndex) => `
         <div class="appointment-item" data-schedule-item-index="${itemIndex}">
-          <select class="schedule-type-select" aria-label="${escapeAttr(entry.time)} 업무종류">
-            ${renderScheduleTypeOptions(item.type)}
-          </select>
           <input class="schedule-text-input" type="text" value="${escapeAttr(item.text)}" placeholder="일정" aria-label="${escapeAttr(entry.time)} 일정" />
           <button class="schedule-item-delete" type="button" aria-label="일정 삭제">×</button>
         </div>
@@ -2639,18 +2714,8 @@ function renderAppointmentRow(entry, log, scope = "worklog") {
   row.querySelectorAll(".appointment-item").forEach((itemRow) => {
     const itemIndex = Number(itemRow.dataset.scheduleItemIndex);
     const item = items[itemIndex];
-    const type = itemRow.querySelector(".schedule-type-select");
     const text = itemRow.querySelector(".schedule-text-input");
     const remove = itemRow.querySelector(".schedule-item-delete");
-    type.onchange = () => {
-      item.type = type.value;
-      syncScheduleEntryText(entry);
-      saveState({ fastSave: true });
-      renderWorklogSummary(log);
-      renderReport();
-      renderWorklogAppointments(log);
-      renderFitnessAppointments(log);
-    };
     text.oninput = () => {
       item.text = text.value;
       promptAttendanceBeforeWorklogInput(log, item.text);
@@ -3177,8 +3242,10 @@ function formatFitnessOpsReport(fitnessOps = createFitnessOps()) {
 
 function renderClockPanel() {
   const log = getSelectedLog();
-  document.getElementById("clockInTime").value = log.clockIn || "";
-  document.getElementById("clockOutTime").value = log.clockOut || "";
+  const clockIn = document.getElementById("clockInTime");
+  const clockOut = document.getElementById("clockOutTime");
+  if (clockIn) clockIn.value = log.clockIn || "";
+  if (clockOut) clockOut.value = log.clockOut || "";
   const button = document.getElementById("attendanceCycleButton");
   if (button) button.textContent = getNextAttendanceAction(log);
   renderGlobalAttendanceSummary();
@@ -4558,9 +4625,9 @@ document.querySelectorAll("[data-os-action]").forEach((button) => {
   button.onclick = () => alert("Beyond OS AI는 마스터 데이터, 운영점수, 리스크, 실행 추적 데이터를 기준으로 코칭합니다.");
 });
 setupMobileDayFocus();
-document.getElementById("addAttendanceButton").onclick = addAttendance;
-document.getElementById("attendanceCycleButton").onclick = applyAttendanceCycle;
-document.getElementById("clockInTime").oninput = (event) => {
+document.getElementById("addAttendanceButton")?.addEventListener("click", addAttendance);
+document.getElementById("attendanceCycleButton")?.addEventListener("click", applyAttendanceCycle);
+document.getElementById("clockInTime")?.addEventListener("input", (event) => {
   const log = getSelectedLog();
   log.clockIn = event.target.value;
   log.attendanceStep = event.target.value ? "in" : "ready";
@@ -4570,8 +4637,8 @@ document.getElementById("clockInTime").oninput = (event) => {
   renderClockPanel();
   renderTodayContext();
   renderReport();
-};
-document.getElementById("clockOutTime").oninput = (event) => {
+});
+document.getElementById("clockOutTime")?.addEventListener("input", (event) => {
   const log = getSelectedLog();
   log.clockOut = event.target.value;
   log.attendanceStep = event.target.value ? "out" : "in";
@@ -4581,7 +4648,7 @@ document.getElementById("clockOutTime").oninput = (event) => {
   renderClockPanel();
   renderTodayContext();
   renderReport();
-};
+});
 document.getElementById("employeeReport").oninput = (event) => {
   const log = getSelectedLog();
   log.report = event.target.value;

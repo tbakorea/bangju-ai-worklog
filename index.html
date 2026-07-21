@@ -235,19 +235,6 @@
               <button class="date-arrow-button" id="nextDateButton" type="button" aria-label="다음 날짜">›</button>
             </div>
             <div class="worklog-title-actions">
-              <div class="employee-log-topbar">
-                <div class="worklog-control-strip" aria-label="근태 기록">
-                  <button class="attendance-cycle-button" id="attendanceCycleButton" type="button">출근</button>
-                  <label class="attendance-time-field">
-                    <span>출근</span>
-                    <input id="clockInTime" type="time" />
-                  </label>
-                  <label class="attendance-time-field">
-                    <span>퇴근/조퇴</span>
-                    <input id="clockOutTime" type="time" />
-                  </label>
-                </div>
-              </div>
               <button class="today-jump" id="todayJumpButton" type="button" hidden>오늘</button>
               <div class="worklog-completion">
                 <span>완료</span>
@@ -256,9 +243,19 @@
             </div>
           </header>
           <div class="worklog-pulse-row">
-            <button type="button" class="worklog-side-nav" data-worklog-panel="weekly">Weekly</button>
+            <button type="button" class="worklog-side-nav" data-worklog-panel="weekly">공통일정</button>
             <button type="button" class="worklog-pulse" id="worklogPulse">오늘 실행 0/0 · 다음 일정 없음 · 이월 0</button>
-            <button type="button" class="worklog-side-nav" data-worklog-panel="memo">Memo</button>
+            <button type="button" class="worklog-side-nav" data-worklog-panel="memo">동료업무</button>
+          </div>
+          <div class="shared-worklog-panels" id="sharedWorklogPanels">
+            <article class="shared-worklog-panel">
+              <h3>공통일정</h3>
+              <div id="commonScheduleBoard"></div>
+            </article>
+            <article class="shared-worklog-panel">
+              <h3>동료업무</h3>
+              <div id="coworkerWorklogBoard"></div>
+            </article>
           </div>
           <div class="worklog-main day-main-panel day-swipe" id="worklogMain">
             <article class="worklog-panel worklog-task-panel day-task-panel" data-mobile-focus-panel="tasks">

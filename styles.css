@@ -8586,6 +8586,131 @@ body[data-layout-mode="phone"] #view-fitness-log .ops-summary-metric strong {
   font-size: 21px;
 }
 
+/* General worklog refinements */
+.shared-worklog-panels {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.shared-worklog-panel {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+  border: 1px solid rgba(33, 55, 45, 0.12);
+  border-radius: 14px;
+  background: rgba(255, 253, 248, 0.82);
+  padding: 10px;
+}
+
+.shared-worklog-panel h3 {
+  margin: 0;
+  color: var(--ink);
+  font-size: 15px;
+  font-weight: 950;
+}
+
+.shared-worklog-panel section,
+.coworker-worklog-item {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+}
+
+.shared-worklog-panel b {
+  color: var(--fitness-green);
+  font-size: 12px;
+  font-weight: 950;
+}
+
+.shared-worklog-panel ul {
+  display: grid;
+  gap: 3px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.shared-worklog-panel li,
+.shared-empty {
+  overflow: hidden;
+  margin: 0;
+  color: rgba(38, 50, 56, 0.68);
+  font-size: 12px;
+  font-weight: 780;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.shared-worklog-panel li span {
+  margin-right: 5px;
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 900;
+}
+
+.weekly-common-grid {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 4px;
+}
+
+.weekly-common-grid article {
+  min-width: 0;
+  border: 1px solid rgba(33, 55, 45, 0.08);
+  border-radius: 10px;
+  background: rgba(246, 245, 239, 0.58);
+  padding: 5px;
+}
+
+.weekly-common-grid article > span,
+.coworker-worklog-item header span {
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 900;
+}
+
+.coworker-worklog-item header {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.plain-appointment-row .appointment-item {
+  grid-template-columns: minmax(0, 1fr) 20px;
+}
+
+.plain-appointment-row .schedule-text-input {
+  font-size: 15px;
+}
+
+@media (max-width: 640px) {
+  #view-today .worklog-main {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    gap: 5px;
+  }
+
+  #view-today .worklog-task-panel,
+  #view-today .worklog-schedule-panel {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .shared-worklog-panels {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 5px;
+  }
+
+  .shared-worklog-panel {
+    padding: 7px;
+    border-radius: 11px;
+  }
+
+  .weekly-common-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
 /* Beyond Control Tower */
 .control-tower-view {
   display: none;
