@@ -676,6 +676,57 @@ function isCurrentFitnessLogEditable() {
   return page?.type === "employee" && page.id === state.fitnessWritableEmployeeId;
 }
 
+function getProfileMappedEmployeeId(profile = state.profile || {}) {
+  const email = String(authState.user?.email || profile.email || "").trim().toLowerCase();
+  const source = `${profile.org || ""} ${profile.workplace || ""} ${profile.role || ""} ${profile.name || ""} ${profile.nickname || ""} ${profile.primaryWork || ""}`.toLowerCase();
+  if (controlTowerEmails.has(email) || /대표|owner|ceo/.test(source)) return "";
+  if (/이소미/.test(source) || /재무\s*대리|finance\s*assistant/.test(source)) return "bangju-finance-assistant";
+  if (/재무\s*과장|finance\s*manager/.test(source)) return "bangju-finance-manager";
+  if (/박주홍/.test(source) || /센터장|피트니스.*총괄|fitness.*manager/.test(source)) return "beyond-fitness-manager";
+  if (/홍현규|트레이너|trainer|pt|피티/.test(source)) return "fitness-trainer-1";
+  if (/토요|토요일/.test(source)) return "fitness-saturday-info";
+  if (/일요|일요일/.test(source)) return "fitness-sunday-info";
+  if (/인포|데스크|front|프론트|주중/.test(source)) return "fitness-weekday-info";
+  if (/비욘드/.test(source) && /공유|워크베이스|워크박스|창고|오피스|shared|workbase|workbox/.test(source)) return "beyond-shared-manager";
+  if (/비욘드/.test(source) && /실장|tba|티비에이|인월|욕실|바스|bath/.test(source)) return "beyond-company-leader";
+  return "";
+}
+
+function isWorklogEditView(view = activeView) {
+  return ["fitness-log", "bangju-log", "beyond-log", "today"].includes(view);
+}
+
+function getCurrentWorklogEmployeeId(view = activeView) {
+  if (view === "fitness-log") {
+    const page = getCurrentFitnessLogPage();
+    return page?.type === "employee" ? page.id : "";
+  }
+  if (["bangju-log", "beyond-log", "today"].includes(view)) return state.selectedEmployeeId || "profile-user";
+  return "";
+}
+
+function getOwnEditableEmployeeIdForView(view = activeView) {
+  if (view === "fitness-log") return state.fitnessWritableEmployeeId;
+  if (["bangju-log", "beyond-log", "today"].includes(view)) return getProfileMappedEmployeeId() || "profile-user";
+  return "";
+}
+
+function canEditCurrentWorklog(view = activeView) {
+  if (!isWorklogEditView(view)) return false;
+  if (isRepresentativeProfile()) return false;
+  if (view === "fitness-log") return isCurrentFitnessLogEditable();
+  const currentEmployeeId = getCurrentWorklogEmployeeId(view);
+  const ownEmployeeId = getOwnEditableEmployeeIdForView(view);
+  return Boolean(currentEmployeeId && ownEmployeeId && currentEmployeeId === ownEmployeeId);
+}
+
+function guardWorklogEdit() {
+  if (canEditCurrentWorklog()) return true;
+  showAppToast("열람 전용 업무일지입니다");
+  applyCurrentWorklogPermissionState();
+  return false;
+}
+
 function setFitnessLogPage(index) {
   const pageIndex = clampFitnessLogPage(index);
   const page = getFitnessLogPages()[pageIndex];
@@ -1721,6 +1772,11 @@ function getWorklogEmployeeIdsForView(view) {
 function ensureSelectedEmployeeForWorklogView(view) {
   const ids = getWorklogEmployeeIdsForView(view);
   if (!ids.length || ids.includes(state.selectedEmployeeId)) return;
+  const ownEmployeeId = getOwnEditableEmployeeIdForView(view);
+  if (!isRepresentativeProfile() && ids.includes(ownEmployeeId)) {
+    state.selectedEmployeeId = ownEmployeeId;
+    return;
+  }
   state.selectedEmployeeId = ids[0];
 }
 
@@ -1743,15 +1799,29 @@ function getGlobalHeaderTitle(view = activeView, personLabel = "") {
   return "Beyond OS";
 }
 
-function updateGlobalAttendanceVisibility(view = activeView) {
-  const show = attendanceEnabledViews.has(view);
-  const summary = document.getElementById("globalAttendanceSummary");
-  const button = document.getElementById("globalAttendanceButton");
-  if (summary) summary.hidden = !show;
-  if (button) button.hidden = !show;
+function getAttendanceEmployeeForView(view = activeView) {
+  const employeeId = view === "fitness-log"
+    ? state.fitnessWritableEmployeeId
+    : getCurrentWorklogEmployeeId(view);
+  return getEmployeeOptions().find((item) => item.id === employeeId)
+    || employees.find((item) => item.id === employeeId)
+    || getProfileEmployee();
 }
 
-function renderGlobalAttendanceSummary(employee = employees.find((item) => item.id === state.fitnessWritableEmployeeId) || getSelectedEmployee()) {
+function updateGlobalAttendanceVisibility(view = activeView) {
+  const showEditor = attendanceEnabledViews.has(view) && canEditCurrentWorklog(view);
+  const summary = document.getElementById("globalAttendanceSummary");
+  const button = document.getElementById("globalAttendanceButton");
+  if (summary) summary.hidden = !showEditor;
+  if (button) {
+    button.hidden = !showEditor;
+    button.disabled = !showEditor;
+    button.setAttribute("aria-disabled", String(!showEditor));
+  }
+  if (!showEditor) closeAttendancePopover();
+}
+
+function renderGlobalAttendanceSummary(employee = getAttendanceEmployeeForView()) {
   const node = document.getElementById("globalAttendanceSummary");
   const button = document.getElementById("globalAttendanceButton");
   if (!node && !button) return;
@@ -2584,6 +2654,7 @@ function renderEntries() {
   renderTodayContext();
   renderReport();
   applyMobileDayFocusMode();
+  applyCurrentWorklogPermissionState();
 }
 
 function renderWorklogToday(log = getSelectedLog()) {
@@ -2693,6 +2764,36 @@ function applyFitnessLogPermissionState() {
   `).forEach((control) => {
     control.disabled = readOnly;
   });
+}
+
+function applyCurrentWorklogPermissionState(viewName = activeView) {
+  updateGlobalAttendanceVisibility(viewName);
+  const generalView = document.getElementById("view-today");
+  const isGeneralWorklog = ["bangju-log", "beyond-log", "today"].includes(viewName);
+  if (generalView) {
+    const readOnly = isGeneralWorklog && !canEditCurrentWorklog(viewName);
+    generalView.classList.toggle("is-readonly", readOnly);
+    generalView.dataset.worklogPermission = readOnly ? "readonly" : "editable";
+    generalView.querySelectorAll(`
+      #worklogTaskBoard .task-cycle,
+      #worklogTaskBoard .delegate-input,
+      #worklogTaskBoard .postpone-date-button,
+      #worklogTaskBoard .priority-select,
+      #worklogTaskBoard .task-text-input,
+      #worklogTaskBoard .task-delete,
+      #worklogTaskBoard .worklog-add-row,
+      #worklogAppointmentList .schedule-text-input,
+      #worklogAppointmentList .schedule-item-delete,
+      #worklogAppointmentList .appointment-merge-button,
+      #scheduleUnitButton,
+      #employeeReport,
+      #employeeMemo
+    `).forEach((control) => {
+      control.disabled = readOnly;
+      control.setAttribute("aria-disabled", String(readOnly));
+    });
+  }
+  if (viewName === "fitness-log") applyFitnessLogPermissionState();
 }
 
 function renderFitnessCenterDaily() {
@@ -3173,6 +3274,7 @@ function renderWorklogTaskBoard(log) {
   add.className = "worklog-add-row";
   add.textContent = "업무 추가";
   add.onclick = () => {
+    if (!guardWorklogEdit()) return;
     log.tasks.push(createWorklogTask("A"));
     saveState();
     renderEntries();
@@ -3268,6 +3370,7 @@ function renderWorklogTaskRow(ref, currentLog) {
     <button class="task-delete" type="button" aria-label="업무 삭제">×</button>
   `;
   row.querySelector(".task-cycle").onclick = () => {
+    if (!guardWorklogEdit()) return;
     cycleWorklogTaskStatus(task);
     syncWorklogTaskTimeHintToSchedule(task, log);
     saveState();
@@ -3276,6 +3379,7 @@ function renderWorklogTaskRow(ref, currentLog) {
   };
   bindTaskMetaControl(row, task, log);
   row.querySelector(".task-text-input").oninput = (event) => {
+    if (!guardWorklogEdit()) return;
     task.text = event.target.value;
     promptAttendanceBeforeWorklogInput(log, task.text);
     syncWorklogTaskTimeHintToSchedule(task, log);
@@ -3289,6 +3393,7 @@ function renderWorklogTaskRow(ref, currentLog) {
     renderReport();
   };
   row.querySelector(".task-delete").onclick = () => {
+    if (!guardWorklogEdit()) return;
     removeLinkedSchedule(task, log);
     log.tasks.splice(index, 1);
     saveState();
@@ -3316,6 +3421,7 @@ function bindTaskMetaControl(row, task, log) {
   const delegateInput = row.querySelector(".delegate-input");
   if (delegateInput) {
     delegateInput.oninput = () => {
+      if (!guardWorklogEdit()) return;
       task.delegate = delegateInput.value;
       saveState({ fastSave: true });
     };
@@ -3325,6 +3431,7 @@ function bindTaskMetaControl(row, task, log) {
   if (postponeButton) {
     postponeButton.onclick = (event) => {
       event.stopPropagation();
+      if (!guardWorklogEdit()) return;
       openPostponeCalendar(task);
     };
     return;
@@ -3332,6 +3439,7 @@ function bindTaskMetaControl(row, task, log) {
   const prioritySelect = row.querySelector(".priority-select");
   if (prioritySelect) {
     prioritySelect.onchange = (event) => {
+      if (!guardWorklogEdit()) return;
       updateWorklogTaskPriority(task, event.target.value);
       syncWorklogTaskTimeHintToSchedule(task, log);
       saveState();
@@ -3568,6 +3676,7 @@ function renderAppointmentRow(entry, log, scope = "worklog") {
     const text = itemRow.querySelector(".schedule-text-input");
     const remove = itemRow.querySelector(".schedule-item-delete");
     text.oninput = () => {
+      if (!guardWorklogEdit()) return;
       item.text = text.value;
       promptAttendanceBeforeWorklogInput(log, item.text);
       if (item.type === "업무") item.type = inferScheduleType(text.value);
@@ -3579,6 +3688,7 @@ function renderAppointmentRow(entry, log, scope = "worklog") {
       else renderWorklogAppointments(log);
     };
     remove.onclick = () => {
+      if (!guardWorklogEdit()) return;
       items.splice(itemIndex, 1);
       if (!items.length) items.push(createScheduleItem());
       syncScheduleEntryText(entry);
@@ -3589,6 +3699,7 @@ function renderAppointmentRow(entry, log, scope = "worklog") {
     };
   });
   row.querySelector(".appointment-merge-button").onclick = () => {
+    if (!guardWorklogEdit()) return;
     items.push(createScheduleItem());
     syncScheduleEntryText(entry);
     saveState();
@@ -4103,6 +4214,11 @@ function renderClockPanel() {
 }
 
 function openAttendancePopover(action = attendancePopoverAction) {
+  if (!canEditCurrentWorklog()) {
+    closeAttendancePopover();
+    showAppToast("열람 전용 업무일지입니다");
+    return;
+  }
   setupAttendancePopover();
   closeMainMenuPopover();
   attendancePopoverAction = attendanceActions.includes(action) ? action : "출근";
@@ -4123,7 +4239,9 @@ function closeAttendancePopover() {
 }
 
 function renderAttendancePopover() {
-  const log = getEmployeeLogForDate(state.fitnessWritableEmployeeId);
+  if (!canEditCurrentWorklog()) return;
+  const employee = getAttendanceEmployeeForView();
+  const log = getEmployeeLogForDate(employee.id);
   const title = document.getElementById("attendancePopoverTitle");
   const primaryLabel = document.getElementById("attendancePrimaryTimeLabel");
   const primary = document.getElementById("attendancePrimaryTimeSelect");
@@ -4144,7 +4262,12 @@ function renderAttendancePopover() {
 }
 
 function applyAttendancePopoverSelection() {
-  const employee = employees.find((item) => item.id === state.fitnessWritableEmployeeId) || getSelectedEmployee();
+  if (!canEditCurrentWorklog()) {
+    closeAttendancePopover();
+    showAppToast("열람 전용 업무일지입니다");
+    return;
+  }
+  const employee = getAttendanceEmployeeForView();
   const log = getEmployeeLogForDate(employee.id);
   const primary = document.getElementById("attendancePrimaryTimeSelect")?.value || roundTimeToFiveMinutes();
   const secondary = document.getElementById("attendanceSecondaryTimeSelect")?.value || "";
@@ -4180,6 +4303,10 @@ function getNextAttendanceAction(log = getSelectedLog()) {
 }
 
 function applyAttendanceCycle() {
+  if (!canEditCurrentWorklog()) {
+    showAppToast("열람 전용 업무일지입니다");
+    return;
+  }
   const log = getSelectedLog();
   const action = getNextAttendanceAction(log);
   const now = currentTimeValue();
@@ -5648,6 +5775,7 @@ function switchView(view) {
   renderManagement();
   renderOrganization();
   updateGlobalAttendanceVisibility(view);
+  applyCurrentWorklogPermissionState(view);
   if (view === "fitness-log") window.setTimeout(() => showFitnessPageToast(), 80);
 }
 
@@ -5687,6 +5815,7 @@ function renderAll() {
   renderAttendance();
   renderManagement();
   renderOrganization();
+  applyCurrentWorklogPermissionState();
 }
 
 function escapeAttr(value = "") {
@@ -5705,6 +5834,10 @@ document.getElementById("mainMenuWheelSelect")?.addEventListener("change", (even
 });
 document.getElementById("globalAttendanceButton")?.addEventListener("click", (event) => {
   event.stopPropagation();
+  if (!canEditCurrentWorklog()) {
+    closeAttendancePopover();
+    return;
+  }
   const popover = document.getElementById("attendancePopover");
   if (popover && !popover.hidden) closeAttendancePopover();
   else openAttendancePopover();
@@ -5712,6 +5845,7 @@ document.getElementById("globalAttendanceButton")?.addEventListener("click", (ev
 document.getElementById("attendancePopover")?.addEventListener("click", (event) => event.stopPropagation());
 document.querySelectorAll("[data-attendance-action]").forEach((button) => {
   button.addEventListener("click", () => {
+    if (!canEditCurrentWorklog()) return;
     attendancePopoverAction = button.dataset.attendanceAction || "출근";
     renderAttendancePopover();
   });
@@ -5901,6 +6035,7 @@ document.addEventListener("keydown", (event) => {
   });
 }
 document.getElementById("scheduleUnitButton").onclick = () => {
+  if (!guardWorklogEdit()) return;
   const log = getSelectedLog();
   log.scheduleUnit = log.scheduleUnit === "60" ? "30" : "60";
   normalizeEmployeeLogRows(log);
@@ -5908,6 +6043,7 @@ document.getElementById("scheduleUnitButton").onclick = () => {
   renderEntries();
 };
 document.getElementById("fitnessScheduleUnitButton")?.addEventListener("click", () => {
+  if (!guardWorklogEdit()) return;
   const log = getSelectedLog();
   log.scheduleUnit = log.scheduleUnit === "60" ? "30" : "60";
   normalizeEmployeeLogRows(log);
@@ -6004,6 +6140,7 @@ setupMobileDayFocus();
 document.getElementById("addAttendanceButton")?.addEventListener("click", addAttendance);
 document.getElementById("attendanceCycleButton")?.addEventListener("click", applyAttendanceCycle);
 document.getElementById("clockInTime")?.addEventListener("input", (event) => {
+  if (!guardWorklogEdit()) return;
   const log = getSelectedLog();
   log.clockIn = event.target.value;
   log.attendanceStep = event.target.value ? "in" : "ready";
@@ -6015,6 +6152,7 @@ document.getElementById("clockInTime")?.addEventListener("input", (event) => {
   renderReport();
 });
 document.getElementById("clockOutTime")?.addEventListener("input", (event) => {
+  if (!guardWorklogEdit()) return;
   const log = getSelectedLog();
   log.clockOut = event.target.value;
   log.attendanceStep = event.target.value ? "out" : "in";
@@ -6026,6 +6164,7 @@ document.getElementById("clockOutTime")?.addEventListener("input", (event) => {
   renderReport();
 });
 document.getElementById("employeeReport").oninput = (event) => {
+  if (!guardWorklogEdit()) return;
   const log = getSelectedLog();
   log.report = event.target.value;
   promptAttendanceBeforeWorklogInput(log, event.target.value);
@@ -6033,6 +6172,7 @@ document.getElementById("employeeReport").oninput = (event) => {
   renderReport();
 };
 document.getElementById("employeeMemo").oninput = (event) => {
+  if (!guardWorklogEdit()) return;
   const log = getSelectedLog();
   log.memo = event.target.value;
   promptAttendanceBeforeWorklogInput(log, event.target.value);

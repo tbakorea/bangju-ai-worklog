@@ -5617,6 +5617,50 @@ textarea:focus-visible {
   opacity: 0.72;
 }
 
+#view-today.is-readonly .worklog-task-panel,
+#view-today.is-readonly .worklog-schedule-panel,
+#view-today.is-readonly .planner-section {
+  background:
+    linear-gradient(90deg, rgba(77, 86, 98, 0.045), transparent 46%),
+    rgba(252, 252, 247, 0.74);
+}
+
+#view-today.is-readonly .worklog-task-panel h3::after,
+#view-today.is-readonly .worklog-schedule-panel h3::after {
+  content: "열람 전용";
+  margin-left: auto;
+  padding: 3px 7px;
+  border: 1px solid rgba(17, 20, 17, 0.18);
+  border-radius: 999px;
+  background: rgba(17, 20, 17, 0.045);
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 950;
+  white-space: nowrap;
+}
+
+#view-today.is-readonly .worklog-task-panel h3 .ai-section-button,
+#view-today.is-readonly .worklog-schedule-panel h3 .ai-section-button,
+#view-today.is-readonly .worklog-schedule-panel h3 .schedule-unit-button {
+  margin-left: 0;
+}
+
+#view-today.is-readonly .task-cycle:disabled,
+#view-today.is-readonly .task-text-input:disabled,
+#view-today.is-readonly .priority-select:disabled,
+#view-today.is-readonly .delegate-input:disabled,
+#view-today.is-readonly .postpone-date-button:disabled,
+#view-today.is-readonly .task-delete:disabled,
+#view-today.is-readonly .worklog-add-row:disabled,
+#view-today.is-readonly .schedule-text-input:disabled,
+#view-today.is-readonly .schedule-item-delete:disabled,
+#view-today.is-readonly .appointment-merge-button:disabled,
+#view-today.is-readonly #employeeReport:disabled,
+#view-today.is-readonly #employeeMemo:disabled {
+  cursor: default;
+  opacity: 0.62;
+}
+
 .fitness-center-daily-panel {
   display: grid;
   gap: 10px;

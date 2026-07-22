@@ -85,6 +85,30 @@ check(
   "marquee must not start with a blank strip"
 );
 
+check(
+  "worklog edit permission helper exists",
+  /function canEditCurrentWorklog\(view = activeView\)[\s\S]{0,220}isRepresentativeProfile\(\)[\s\S]{0,220}getOwnEditableEmployeeIdForView/.test(js),
+  "viewer access must be separate from employee edit access"
+);
+
+check(
+  "global attendance button requires editable worklog",
+  /function updateGlobalAttendanceVisibility\(view = activeView\)[\s\S]{0,160}attendanceEnabledViews\.has\(view\) && canEditCurrentWorklog\(view\)/.test(js),
+  "attendance controls must be hidden when viewing another employee"
+);
+
+check(
+  "attendance records current worklog employee",
+  /function applyAttendancePopoverSelection\(\)[\s\S]{0,220}const employee = getAttendanceEmployeeForView\(\);[\s\S]{0,80}getEmployeeLogForDate\(employee\.id\)/.test(js),
+  "global attendance must not write to the fitness default employee from other worklogs"
+);
+
+check(
+  "general worklog readonly controls are applied",
+  /function applyCurrentWorklogPermissionState\(viewName = activeView\)[\s\S]{0,900}#worklogTaskBoard \.task-cycle[\s\S]{0,700}#employeeMemo/.test(js),
+  "task, schedule, report, and memo controls should be locked in read-only worklogs"
+);
+
 const riskPatterns = [
   {
     name: "avoid viewport-scaled font for overview hero",
