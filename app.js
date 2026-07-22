@@ -1062,6 +1062,50 @@ function getWorklogSiteGroups() {
   ];
 }
 
+function getWorklogOverviewGroups() {
+  return [
+    { id: "bangju", label: "방주", title: "(주)방주", view: "bangju-log", employeeIds: bangjuWorklogEmployeeIds },
+    { id: "beyond", label: "비욘드 컴퍼니", title: "(주)비욘드컴퍼니", view: "beyond-log", employeeIds: beyondWorklogEmployeeIds },
+    { id: "fitness", label: "피트니스", title: "비욘드 피트니스", view: "fitness-log", employeeIds: fitnessEmployeeIds },
+  ];
+}
+
+function getOverviewActiveTasks(log) {
+  const active = (log.tasks || []).filter((task) => String(task.text || "").trim());
+  return active.slice(0, 5);
+}
+
+function getOverviewScheduleRows(log) {
+  const filled = (log.schedule || []).filter((item) => getScheduleEntryText(item));
+  const base = filled.length ? filled : (log.schedule || []).slice(0, 6);
+  return base.slice(0, 8);
+}
+
+function getOverviewReportText(log) {
+  return String(log.report || log.memo || log.record || "").trim();
+}
+
+function renderOverviewTaskMini(task) {
+  const marker = getWorklogTaskMarkerLabel(task) || "";
+  return `
+    <li class="overview-task-mini ${task.done || task.status === "완료" ? "is-done" : ""}">
+      <span class="overview-task-marker">${escapeHtml(marker)}</span>
+      <strong>${escapeHtml(task.priority || "?")}</strong>
+      <p>${escapeHtml(task.text || "업무 내용")}</p>
+    </li>
+  `;
+}
+
+function renderOverviewScheduleMini(item) {
+  const text = getScheduleEntryText(item);
+  return `
+    <li class="overview-schedule-mini ${text ? "is-filled" : ""}">
+      <time>${escapeHtml(item.time || "")}</time>
+      <p>${escapeHtml(text || "일정")}</p>
+    </li>
+  `;
+}
+
 function renderWorklogOverview() {
   const grid = document.getElementById("worklogOverviewGrid");
   if (!grid) return;
@@ -1075,8 +1119,9 @@ function renderWorklogOverview() {
     return;
   }
   const dateKey = getActiveDateKey();
-  grid.innerHTML = getWorklogSiteGroups().map((group) => {
-    const rows = group.employeeIds.map((employeeId) => {
+  const dateLabel = formatShortDate(dateKey);
+  grid.innerHTML = getWorklogOverviewGroups().map((group) => {
+    const employeeCards = group.employeeIds.map((employeeId, index) => {
       const employee = employees.find((item) => item.id === employeeId);
       if (!employee) return "";
       const dayLog = state.employeeLogs?.[dateKey]?.[employeeId] || createEmployeeLog(employee);
@@ -1084,22 +1129,47 @@ function renderWorklogOverview() {
       const done = tasks.filter((task) => task.done || task.status === "완료").length;
       const scheduleCount = (dayLog.schedule || []).filter((item) => getScheduleEntryText(item)).length;
       const attendance = formatAttendanceSummary(dayLog) || dayLog.attendanceStatus || "출결 미기록";
+      const reportText = getOverviewReportText(dayLog);
+      const activeTasks = getOverviewActiveTasks(dayLog);
+      const scheduleRows = getOverviewScheduleRows(dayLog);
       return `
-        <button type="button" class="worklog-overview-employee" data-overview-employee="${escapeAttr(employeeId)}" data-overview-view="${escapeAttr(group.view)}">
-          <span>${escapeHtml(employee.role || "직원")}</span>
-          <strong>${escapeHtml(employee.name || "")}</strong>
-          <small>${escapeHtml(attendance)}</small>
-          <em>업무 ${done}/${tasks.length || 0} · 일정 ${scheduleCount}</em>
-        </button>
+        <article class="worklog-overview-employee-sheet" data-overview-site="${escapeAttr(group.id)}">
+          <header class="overview-sheet-head">
+            <div>
+              <span>${escapeHtml(group.label)} ${index + 1}</span>
+              <h3>${escapeHtml(getEmployeeAdminLabel(employee))}</h3>
+              <p>${escapeHtml(attendance)}</p>
+            </div>
+            <button type="button" data-overview-employee="${escapeAttr(employeeId)}" data-overview-view="${escapeAttr(group.view)}">열기</button>
+          </header>
+          <section class="overview-report-panel">
+            <span>업무보고</span>
+            <p>${escapeHtml(reportText || "오늘 보고 내용이 아직 없습니다.")}</p>
+          </section>
+          <div class="overview-sheet-body">
+            <section>
+              <h4>주요업무 <em>${done}/${tasks.length || 0}</em></h4>
+              <ul>
+                ${(activeTasks.length ? activeTasks : [{ priority: "?", text: "업무 내용", status: "예정" }]).map(renderOverviewTaskMini).join("")}
+              </ul>
+            </section>
+            <section>
+              <h4>시간별 일정 <em>${scheduleCount}</em></h4>
+              <ul>
+                ${scheduleRows.map(renderOverviewScheduleMini).join("")}
+              </ul>
+            </section>
+          </div>
+        </article>
       `;
     }).join("");
     return `
-      <section class="worklog-overview-site">
+      <section class="worklog-overview-site" data-overview-site="${escapeAttr(group.id)}">
         <header>
-          <span>${escapeHtml(group.id.toUpperCase())}</span>
+          <span>${escapeHtml(dateLabel)}</span>
           <h3>${escapeHtml(group.title)}</h3>
         </header>
-        <div>${rows}</div>
+        <div>${employeeCards}</div>
       </section>
     `;
   }).join("");
