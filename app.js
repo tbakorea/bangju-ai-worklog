@@ -1879,13 +1879,12 @@ function renderAuthStatus(message) {
 }
 
 function isKnownLoggedInProfile() {
-  const email = String(authState.user?.email || state.profile?.email || "").trim().toLowerCase();
-  return Boolean(authState.user) || email === "j3010@ymail.com";
+  return Boolean(authState.user);
 }
 
 function renderMainMenuAuthButton() {
   const button = document.querySelector('[data-menu-view="auth"]');
-  const email = authState.user?.email || state.profile?.email || "";
+  const email = authState.user?.email || "";
   const isLoggedIn = isKnownLoggedInProfile();
   if (button) {
     button.textContent = isLoggedIn ? "로그아웃" : "로그인";
