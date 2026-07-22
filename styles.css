@@ -9412,6 +9412,147 @@ body[data-layout-mode="phone"] #view-today .ai-section-button {
   border-radius: 10px !important;
 }
 
+/* CEO overview should feel like a command board on iPad/desktop, not a stretched phone frame. */
+@media (min-width: 761px) {
+  body[data-view-mode="ceo"][data-active-view="worklog-overview"]:not(.physical-phone-device) {
+    background:
+      linear-gradient(90deg, rgba(17, 20, 17, 0.04) 1px, transparent 1px) 0 0 / 44px 44px,
+      linear-gradient(180deg, rgba(17, 20, 17, 0.032) 1px, transparent 1px) 0 0 / 44px 44px,
+      var(--paper);
+  }
+
+  body[data-view-mode="ceo"][data-active-view="worklog-overview"]:not(.physical-phone-device) .worklog-shell {
+    width: min(1280px, calc(100vw - 48px));
+    max-width: none;
+    margin: 18px auto 32px;
+    padding: 0;
+    border: 1px solid rgba(17, 20, 17, 0.16);
+    border-radius: 0;
+    background: rgba(255, 254, 250, 0.68);
+    box-shadow: 0 16px 46px rgba(15, 59, 46, 0.08);
+  }
+
+  body[data-view-mode="ceo"][data-active-view="worklog-overview"]:not(.physical-phone-device) .worklog-header {
+    min-height: 62px;
+    margin: 0;
+    padding: 10px 14px;
+    border: 0;
+    border-bottom: 1px solid rgba(17, 20, 17, 0.18);
+    border-radius: 0;
+    background: rgba(255, 254, 250, 0.94);
+    box-shadow: none;
+  }
+
+  body[data-view-mode="ceo"][data-active-view="worklog-overview"]:not(.physical-phone-device) .worklog-header h1 {
+    overflow: hidden;
+    font-size: 24px;
+    line-height: 1.05;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  body[data-view-mode="ceo"][data-active-view="worklog-overview"]:not(.physical-phone-device) .header-actions {
+    grid-column: auto;
+    grid-row: auto;
+    align-self: center;
+    flex-direction: row;
+    gap: 6px;
+  }
+
+  body[data-view-mode="ceo"][data-active-view="worklog-overview"]:not(.physical-phone-device) .header-actions button,
+  body[data-view-mode="ceo"][data-active-view="worklog-overview"]:not(.physical-phone-device) .header-actions .global-view-mode-button,
+  body[data-view-mode="ceo"][data-active-view="worklog-overview"]:not(.physical-phone-device) #settingsGearButton {
+    width: auto;
+    min-width: 48px;
+    min-height: 40px;
+    padding: 0 12px;
+    border-radius: 0;
+    font-size: 12px;
+  }
+
+  body[data-view-mode="ceo"][data-active-view="worklog-overview"]:not(.physical-phone-device) .worklog-view {
+    padding: 22px;
+  }
+
+  body[data-view-mode="ceo"][data-active-view="worklog-overview"]:not(.physical-phone-device) .worklog-overview-view.is-active {
+    gap: 16px;
+  }
+
+  body[data-view-mode="ceo"][data-active-view="worklog-overview"]:not(.physical-phone-device) .worklog-overview-hero {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(360px, 480px);
+    align-items: center;
+    min-height: 116px;
+    padding: 18px 20px;
+    border-radius: 24px;
+  }
+
+  body[data-view-mode="ceo"][data-active-view="worklog-overview"]:not(.physical-phone-device) .worklog-overview-hero h2 {
+    overflow: hidden;
+    max-width: 100%;
+    font-size: clamp(32px, 4.2vw, 52px);
+    line-height: 0.98;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  body[data-view-mode="ceo"][data-active-view="worklog-overview"]:not(.physical-phone-device) .worklog-overview-hero p {
+    font-size: 12px;
+    letter-spacing: 0.03em;
+  }
+
+  body[data-view-mode="ceo"][data-active-view="worklog-overview"]:not(.physical-phone-device) .worklog-overview-hero span {
+    display: block;
+    overflow: hidden;
+    max-width: 560px;
+    font-size: 12px;
+    line-height: 1.35;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  body[data-view-mode="ceo"][data-active-view="worklog-overview"]:not(.physical-phone-device) .overview-date-nav {
+    justify-self: end;
+    grid-template-columns: 44px minmax(190px, 1fr) 44px 58px;
+    width: min(100%, 480px);
+    min-width: 0;
+  }
+
+  body[data-view-mode="ceo"][data-active-view="worklog-overview"]:not(.physical-phone-device) .overview-date-nav button {
+    min-height: 44px;
+    border-radius: 14px;
+  }
+
+  body[data-view-mode="ceo"][data-active-view="worklog-overview"]:not(.physical-phone-device) .overview-date-nav #overviewDateTitle {
+    font-size: clamp(20px, 2vw, 24px);
+  }
+
+  body[data-view-mode="ceo"][data-active-view="worklog-overview"]:not(.physical-phone-device) .worklog-overview-grid {
+    display: flex;
+    gap: 16px;
+    align-items: stretch;
+    width: 100%;
+    overflow-x: auto;
+    padding: 0 2px 16px;
+    scroll-snap-type: x proximity;
+  }
+
+  body[data-view-mode="ceo"][data-active-view="worklog-overview"]:not(.physical-phone-device) .worklog-overview-site {
+    min-width: min-content;
+    padding: 12px;
+    border-radius: 22px;
+  }
+
+  body[data-view-mode="ceo"][data-active-view="worklog-overview"]:not(.physical-phone-device) .worklog-overview-site > div {
+    grid-auto-columns: minmax(270px, 292px);
+  }
+
+  body[data-view-mode="ceo"][data-active-view="worklog-overview"]:not(.physical-phone-device) .worklog-overview-employee-sheet {
+    min-height: 620px;
+    border-radius: 18px;
+  }
+}
+
 /* Fitness CEO frame tightening */
 body[data-layout-mode="phone"] .worklog-header {
   grid-template-columns: minmax(0, 1fr) auto;

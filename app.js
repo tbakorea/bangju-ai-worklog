@@ -5622,6 +5622,7 @@ function switchView(view) {
   view = view === "today" ? "bangju-log" : view;
   ensureSelectedEmployeeForWorklogView(view);
   activeView = view;
+  document.body.dataset.activeView = view;
   closeMainMenuPopover();
   document.querySelectorAll(".worklog-tabs button").forEach((button) => {
     const isWorklogActive = button.dataset.view === "worklog" && ["fitness-log", "bangju-log", "beyond-log", "worklog-overview"].includes(view);
