@@ -76,10 +76,47 @@ create table if not exists public.os_employees (
   email text not null default '',
   primary_work text not null default '',
   secondary_work text not null default '',
+  employee_code text not null default '',
+  nickname text not null default '',
+  employment_type text not null default '직원',
+  contract_type text not null default '',
+  hire_date date,
+  leave_date date,
+  work_hours text not null default '',
+  weekly_work_hours jsonb not null default '{}'::jsonb,
+  wage_type text not null default '',
+  hourly_wage numeric,
+  daily_wage numeric,
+  allowance_policy jsonb not null default '{}'::jsonb,
+  labor_id text not null default '',
+  address text not null default '',
   permission_scope text not null default 'self',
+  permission_role text not null default 'staff',
+  permission_matrix jsonb not null default '{}'::jsonb,
+  onboarding_status jsonb not null default '{}'::jsonb,
+  growth_profile jsonb not null default '{}'::jsonb,
   status text not null default 'active',
   created_at timestamptz not null default now()
 );
+
+alter table public.os_employees add column if not exists employee_code text not null default '';
+alter table public.os_employees add column if not exists nickname text not null default '';
+alter table public.os_employees add column if not exists employment_type text not null default '직원';
+alter table public.os_employees add column if not exists contract_type text not null default '';
+alter table public.os_employees add column if not exists hire_date date;
+alter table public.os_employees add column if not exists leave_date date;
+alter table public.os_employees add column if not exists work_hours text not null default '';
+alter table public.os_employees add column if not exists weekly_work_hours jsonb not null default '{}'::jsonb;
+alter table public.os_employees add column if not exists wage_type text not null default '';
+alter table public.os_employees add column if not exists hourly_wage numeric;
+alter table public.os_employees add column if not exists daily_wage numeric;
+alter table public.os_employees add column if not exists allowance_policy jsonb not null default '{}'::jsonb;
+alter table public.os_employees add column if not exists labor_id text not null default '';
+alter table public.os_employees add column if not exists address text not null default '';
+alter table public.os_employees add column if not exists permission_role text not null default 'staff';
+alter table public.os_employees add column if not exists permission_matrix jsonb not null default '{}'::jsonb;
+alter table public.os_employees add column if not exists onboarding_status jsonb not null default '{}'::jsonb;
+alter table public.os_employees add column if not exists growth_profile jsonb not null default '{}'::jsonb;
 
 create table if not exists public.os_operating_metrics (
   id uuid primary key default gen_random_uuid(),

@@ -1420,6 +1420,7 @@ function getGlobalHeaderTitle(view = activeView, personLabel = "") {
   if (view === "fitness") return "비욘드 피트니스 OS";
   if (view === "attendance") return "노무";
   if (view === "management") return "사업장 운영관리";
+  if (view === "staff") return "직원";
   if (view === "organization") return "조직";
   if (view === "ai") return "AI 코칭";
   if (view === "report") return "보고";
@@ -1468,7 +1469,16 @@ function renderProfileForm() {
   document.querySelectorAll("[data-profile-field]").forEach((field) => {
     field.value = state.profile?.[field.dataset.profileField] || "";
   });
+  renderSignupSheetStatus();
   renderSettingsForm();
+}
+
+function renderSignupSheetStatus() {
+  const node = document.getElementById("signupApprovalStatus");
+  if (!node) return;
+  const status = state.profile?.approvalStatus || "draft";
+  node.textContent = getApprovalStatusLabel(status);
+  node.dataset.status = status;
 }
 
 function renderSettingsForm() {
@@ -1598,6 +1608,10 @@ function renderApprovalRequestCard(row) {
         ${field("secondary_work", "부업무", row.secondary_work)}
         ${field("work_hours", "근무시간", row.work_hours)}
         ${field("employment_type", "고용형태", row.employment_type || "직원")}
+        ${field("labor_id", "주민번호/식별번호", row.labor_id)}
+        ${field("address", "주소", row.address)}
+        ${field("hourly_wage", "시급", row.hourly_wage || "", "number")}
+        ${field("daily_wage", "일당", row.daily_wage || "", "number")}
       </div>
       <label class="approval-note-label">승인 메모
         <textarea rows="2" data-approval-id="${escapeAttr(row.id)}" data-approval-field="approval_note">${escapeHtml(row.approval_note || "")}</textarea>
@@ -1706,12 +1720,23 @@ function isKnownLoggedInProfile() {
 
 function renderMainMenuAuthButton() {
   const button = document.querySelector('[data-menu-view="auth"]');
-  if (!button) return;
   const email = authState.user?.email || state.profile?.email || "";
   const isLoggedIn = isKnownLoggedInProfile();
-  button.textContent = isLoggedIn ? "로그아웃" : "로그인";
-  button.dataset.menuAction = isLoggedIn ? "logout" : "login";
-  button.setAttribute("aria-label", isLoggedIn ? `${email || "현재 계정"} 로그아웃` : "로그인 페이지 열기");
+  if (button) {
+    button.textContent = isLoggedIn ? "로그아웃" : "로그인";
+    button.dataset.menuAction = isLoggedIn ? "logout" : "login";
+    button.setAttribute("aria-label", isLoggedIn ? `${email || "현재 계정"} 로그아웃` : "로그인 페이지 열기");
+  }
+  renderMainMenuVisibility();
+}
+
+function renderMainMenuVisibility() {
+  const generalMenuViews = new Set(["management", "worklog", "attendance", "settings", "auth"]);
+  const showFullMenu = canAccessWorklogOverview();
+  document.querySelectorAll("#mainMenuPopover [data-menu-view]").forEach((item) => {
+    const view = item.dataset.menuView;
+    item.hidden = !showFullMenu && !generalMenuViews.has(view);
+  });
 }
 
 function getAuthCredentials() {
@@ -3777,8 +3802,10 @@ function renderAttendance() {
   const labor = buildMonthlyLaborSummary(employeeId, employee);
   const ledger = buildLaborCostLedger(labor, employee);
   const leaderLaborOverview = canAccessWorklogOverview() ? renderLeaderLaborOverviewMarkup() : "";
+  const companyLaborLedgers = canAccessWorklogOverview() ? renderCompanyLaborLedgersMarkup() : "";
   list.innerHTML = `
     ${leaderLaborOverview}
+    ${companyLaborLedgers}
     <section class="labor-cost-ledger-card">
       <header>
         <div>
@@ -3851,6 +3878,13 @@ function renderAttendance() {
       </div>
     </section>
   `;
+  document.getElementById("copyAllSiteLaborLedgersButton")?.addEventListener("click", copyAllSiteLaborLedgers);
+  list.querySelectorAll("[data-copy-site-labor-ledger]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const ledger = buildSiteLaborCostLedger(button.dataset.copySiteLaborLedger);
+      copySiteLaborCostLedger(ledger);
+    });
+  });
   document.getElementById("copyLaborCostLedgerButton")?.addEventListener("click", () => copyLaborCostLedger(ledger));
   list.querySelectorAll("[data-labor-employee]").forEach((button) => {
     button.addEventListener("click", () => {
@@ -3889,6 +3923,167 @@ function renderLeaderLaborOverviewMarkup() {
         `).join("")}
       </div>
     </section>
+  `;
+}
+
+function renderCompanyLaborLedgersMarkup() {
+  const ledgers = getWorklogSiteGroups().map((group) => buildSiteLaborCostLedger(group.id));
+  const monthLabel = getActiveDateKey().slice(0, 7).replace("-", ".");
+  return `
+    <section class="company-labor-ledgers">
+      <header>
+        <div>
+          <span>Labor Payment Registers</span>
+          <h3>${escapeHtml(monthLabel)} 사업장별 노무비 지급대장</h3>
+          <p>노무신고용으로 일반적으로 사용하는 월간 출역·임금 지급대장 형식입니다.</p>
+        </div>
+        <button type="button" id="copyAllSiteLaborLedgersButton">전체 대장 복사</button>
+      </header>
+      ${ledgers.map(renderSiteLaborCostLedger).join("")}
+    </section>
+  `;
+}
+
+function buildSiteLaborCostLedger(groupId) {
+  const group = getWorklogSiteGroups().find((item) => item.id === groupId) || getWorklogSiteGroups()[0];
+  const monthLabel = getActiveDateKey().slice(0, 7).replace("-", ".");
+  const dayNumbers = Array.from({ length: 31 }, (_, index) => index + 1);
+  const rows = group.employeeIds
+    .map((employeeId) => {
+      const employee = employees.find((item) => item.id === employeeId);
+      if (!employee) return null;
+      const labor = buildMonthlyLaborSummary(employeeId, employee);
+      return buildLaborLedgerEmployeeRow(labor, employee, dayNumbers);
+    })
+    .filter(Boolean);
+  const totals = rows.reduce((sum, row) => ({
+    workDays: sum.workDays + row.workDays,
+    actualMinutes: sum.actualMinutes + row.actualMinutes,
+    totalPay: sum.totalPay + row.totalPay,
+    paidPt: sum.paidPt + row.paidPt,
+  }), { workDays: 0, actualMinutes: 0, totalPay: 0, paidPt: 0 });
+  return {
+    id: group.id,
+    title: `${monthLabel} ${group.title} 노무비 지급대장`,
+    site: group.title,
+    monthLabel,
+    dayNumbers,
+    rows,
+    totals,
+  };
+}
+
+function buildLaborLedgerEmployeeRow(labor, employee, dayNumbers) {
+  const profile = getLaborProfileForEmployee(employee);
+  const rowByDay = new Map(labor.dayRows.map((row) => [Number(row.dateKey.slice(8)), row]));
+  const dayCells = dayNumbers.map((day) => {
+    const row = rowByDay.get(day);
+    const worked = Boolean(row?.worked);
+    return {
+      day,
+      worked,
+      label: worked ? formatLaborDayCell(row.worked) : "",
+      minutes: row?.worked || 0,
+    };
+  });
+  const workDays = dayCells.filter((cell) => cell.worked).length;
+  const actualMinutes = dayCells.reduce((sum, cell) => sum + cell.minutes, 0);
+  const dailyWage = numberValue(profile.dailyWage);
+  const hourlyWage = numberValue(profile.hourlyWage);
+  let totalPay = 0;
+  let wageLabel = "단가 미입력";
+  if (dailyWage) {
+    totalPay = dailyWage * workDays;
+    wageLabel = `${formatCurrency(dailyWage)} / 일`;
+  } else if (hourlyWage) {
+    totalPay = Math.round((actualMinutes / 60) * hourlyWage);
+    wageLabel = `${formatCurrency(hourlyWage)} / 시간`;
+  }
+  return {
+    employeeId: employee.id,
+    employmentType: profile.employmentType || employee.employmentType || "직원",
+    name: employee.name || profile.name || "이름 미입력",
+    laborId: maskLaborId(profile.laborId || ""),
+    address: profile.address || "주소 미입력",
+    dayCells,
+    workDays,
+    actualMinutes,
+    paidPt: labor.settlementPtCount || 0,
+    wageLabel,
+    totalPay,
+    totalPayLabel: totalPay ? formatCurrency(totalPay) : "계산 대기",
+    confirmLabel: "",
+  };
+}
+
+function getLaborProfileForEmployee(employee) {
+  if (!employee) return { ...defaultProfile };
+  if (employee.id === "profile-user" || employee.id === state.fitnessWritableEmployeeId || employee.name === state.profile?.name) {
+    return { ...defaultProfile, ...(state.profile || {}) };
+  }
+  return {
+    ...defaultProfile,
+    org: employee.org || "",
+    role: employee.role || "",
+    name: employee.name || "",
+    employmentType: employee.employmentType || "직원",
+    workHours: employee.workHours || defaultProfile.workHours,
+  };
+}
+
+function renderSiteLaborCostLedger(ledger) {
+  return `
+    <article class="site-labor-ledger">
+      <div class="site-labor-ledger-title">
+        <div>
+          <strong>${escapeHtml(ledger.site)}</strong>
+          <span>${escapeHtml(ledger.rows.length)}명 · 출역 ${escapeHtml(String(ledger.totals.workDays))}일 · ${escapeHtml(formatMinutesAsHours(ledger.totals.actualMinutes))}</span>
+        </div>
+        <button type="button" data-copy-site-labor-ledger="${escapeAttr(ledger.id)}">대장 복사</button>
+      </div>
+      <div class="labor-cost-ledger-wrap">
+        <table class="labor-cost-ledger-table site-labor-ledger-table" aria-label="${escapeAttr(ledger.site)} 노무비 지급대장">
+          <thead>
+            <tr>
+              <th>구분</th>
+              <th>성명</th>
+              <th>주민등록번호</th>
+              <th>주소</th>
+              ${ledger.dayNumbers.map((day) => `<th>${day}</th>`).join("")}
+              <th>출역일수</th>
+              <th>임금</th>
+              <th>총금액</th>
+              <th>확인</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${ledger.rows.map((row) => `
+              <tr>
+                <td>${escapeHtml(row.employmentType)}</td>
+                <td>${escapeHtml(row.name)}</td>
+                <td>${escapeHtml(row.laborId)}</td>
+                <td>${escapeHtml(row.address)}</td>
+                ${row.dayCells.map((cell) => `<td class="${cell.worked ? "is-worked" : ""}">${escapeHtml(cell.label)}</td>`).join("")}
+                <td>${escapeHtml(String(row.workDays))}</td>
+                <td>${escapeHtml(row.wageLabel)}</td>
+                <td>${escapeHtml(row.totalPayLabel)}</td>
+                <td>${escapeHtml(row.confirmLabel)}</td>
+              </tr>
+            `).join("")}
+          </tbody>
+          <tfoot>
+            <tr>
+              <td colspan="4">합계</td>
+              ${ledger.dayNumbers.map(() => "<td></td>").join("")}
+              <td>${escapeHtml(String(ledger.totals.workDays))}</td>
+              <td></td>
+              <td>${escapeHtml(ledger.totals.totalPay ? formatCurrency(ledger.totals.totalPay) : "계산 대기")}</td>
+              <td></td>
+            </tr>
+          </tfoot>
+        </table>
+      </div>
+    </article>
   `;
 }
 
@@ -4197,6 +4392,45 @@ async function copyLaborCostLedger(ledger) {
   showAppToast("노무비 지급 대장을 복사했습니다.");
 }
 
+function formatSiteLaborCostLedgerText(ledger) {
+  return [
+    `[${ledger.title}]`,
+    `사업장: ${ledger.site}`,
+    `대상월: ${ledger.monthLabel}`,
+    `인원: ${ledger.rows.length}명`,
+    `총출역: ${ledger.totals.workDays}일`,
+    `총근무: ${formatMinutesAsHours(ledger.totals.actualMinutes)}`,
+    `총금액: ${ledger.totals.totalPay ? formatCurrency(ledger.totals.totalPay) : "계산 대기"}`,
+    "",
+    ["구분", "성명", "주민등록번호", "주소", ...ledger.dayNumbers, "출역일수", "임금", "총금액", "확인"].join("\t"),
+    ...ledger.rows.map((row) => [
+      row.employmentType,
+      row.name,
+      row.laborId,
+      row.address,
+      ...row.dayCells.map((cell) => cell.label),
+      `${row.workDays}일`,
+      row.wageLabel,
+      row.totalPayLabel,
+      row.confirmLabel,
+    ].join("\t")),
+    ["합계", "", "", "", ...ledger.dayNumbers.map(() => ""), `${ledger.totals.workDays}일`, "", ledger.totals.totalPay ? formatCurrency(ledger.totals.totalPay) : "계산 대기", ""].join("\t"),
+  ].join("\n");
+}
+
+async function copySiteLaborCostLedger(ledger) {
+  await navigator.clipboard?.writeText(formatSiteLaborCostLedgerText(ledger));
+  showAppToast(`${ledger.site} 노무비 지급대장을 복사했습니다.`);
+}
+
+async function copyAllSiteLaborLedgers() {
+  const text = getWorklogSiteGroups()
+    .map((group) => formatSiteLaborCostLedgerText(buildSiteLaborCostLedger(group.id)))
+    .join("\n\n");
+  await navigator.clipboard?.writeText(text);
+  showAppToast("전체 사업장 노무비 지급대장을 복사했습니다.");
+}
+
 function buildLaborMonthArchives(employeeId, employee) {
   const months = new Set([getActiveDateKey().slice(0, 7)]);
   Object.entries(state.employeeLogs || {}).forEach(([dateKey, logsByEmployee]) => {
@@ -4305,6 +4539,190 @@ function renderManagement() {
     ["운영점수", `${calculateOperatingScore()}점`],
     ["AI 점검", openIssues ? "지원 필요 항목 우선" : "공간·매출 데이터 보강"],
   ].map(([label, value]) => `<article><span>${label}</span><strong>${value}</strong></article>`).join("");
+}
+
+function getEmployeeMasterRows() {
+  const siteLookup = new Map(getWorklogSiteGroups().flatMap((group) => group.employeeIds.map((id) => [id, group])));
+  const todayLogs = state.employeeLogs?.[getActiveDateKey()] || {};
+  return employees.map((employee) => {
+    const group = siteLookup.get(employee.id);
+    const labor = buildMonthlyLaborSummary(employee.id, employee);
+    const log = todayLogs[employee.id] || createEmployeeLog(employee);
+    const tasks = (log.tasks || []).filter((task) => task.text?.trim());
+    const completed = tasks.filter((task) => task.done || task.status === "완료").length;
+    const access = getEmployeePermissionProfile(employee, group);
+    const onboarding = getEmployeeOnboardingState(employee, labor, log);
+    return {
+      ...employee,
+      site: group?.title || employee.org || "미지정",
+      employeeCode: employee.id,
+      access,
+      onboarding,
+      labor,
+      tasks,
+      completed,
+    };
+  });
+}
+
+function getEmployeePermissionProfile(employee, group) {
+  const roleText = `${employee.role || ""} ${employee.primaryWork || ""}`;
+  if (/대표|총괄|실장/.test(roleText)) {
+    return { role: "관리자", worklog: "전사 열람", labor: "사업장 열람", approval: "가능" };
+  }
+  if (/센터장|manager|관리자/i.test(roleText)) {
+    return { role: "센터장", worklog: "소속 열람", labor: "소속 열람", approval: "가능" };
+  }
+  if (/트레이너|프리랜서/.test(roleText) || employee.employmentType === "프리랜서") {
+    return { role: "프리랜서", worklog: "본인 수정", labor: "본인 열람", approval: "불가" };
+  }
+  if (/예비/.test(roleText)) {
+    return { role: "열람전용", worklog: "지정 시 사용", labor: "지정 시 사용", approval: "불가" };
+  }
+  return { role: "일반직원", worklog: group ? "소속 열람" : "본인 수정", labor: "본인 열람", approval: "불가" };
+}
+
+function getEmployeeOnboardingState(employee, labor, log) {
+  const checks = [
+    ["기본설정", Boolean(employee.name && employee.org && employee.role)],
+    ["근무시간", Boolean(employee.workHours || defaultProfile.workHours)],
+    ["업무매뉴얼", Boolean(getManualTemplateForEmployee(employee))],
+    ["첫 업무일지", Boolean((log.tasks || []).some((task) => task.text?.trim()) || (log.schedule || []).some((item) => getScheduleEntryText(item)))],
+    ["노무기준", Boolean(employee.employmentType || labor.recordedDays)],
+  ];
+  const done = checks.filter(([, ok]) => ok).length;
+  return { checks, done, total: checks.length };
+}
+
+function getManualTemplateForEmployee(employee) {
+  const role = `${employee.role || ""} ${employee.primaryWork || ""}`;
+  if (/센터장|총괄|실장/.test(role)) return fitnessManualTemplates.manager;
+  if (/인포|고객응대/.test(role)) return fitnessManualTemplates.frontDesk;
+  if (/트레이너|PT|수업/.test(role)) return fitnessManualTemplates.trainer;
+  if (/상담|계약|영업/.test(role)) return fitnessManualTemplates.sales;
+  if (/홍보|마케팅/.test(role)) return fitnessManualTemplates.marketing;
+  if (/시설/.test(role)) return fitnessManualTemplates.facility;
+  if (/청결|청소/.test(role)) return fitnessManualTemplates.cleaning;
+  return fitnessManualTemplates.manager;
+}
+
+function renderStaffMaster() {
+  const grid = document.getElementById("staffMasterGrid");
+  const approvalButton = document.getElementById("staffOpenApprovalButton");
+  if (!grid) return;
+  const canManage = canAccessWorklogOverview();
+  if (approvalButton) approvalButton.hidden = !canManage;
+  if (!canManage) {
+    const employee = getProfileEmployee();
+    grid.innerHTML = `
+      <article class="staff-access-card">
+        <strong>${escapeHtml(getEmployeeAdminLabel(employee))}</strong>
+        <p>직원 마스터는 대표와 지정 관리자 전용입니다. 일반 직원은 본인 설정, 업무일지, 노무 자료를 사용할 수 있습니다.</p>
+      </article>
+    `;
+    return;
+  }
+  const rows = getEmployeeMasterRows();
+  const stats = [
+    ["전체 직원", `${rows.length}명`],
+    ["사업장", `${getWorklogSiteGroups().length}개`],
+    ["승인 가능", `${rows.filter((row) => row.access.approval === "가능").length}명`],
+    ["온보딩 완료", `${rows.filter((row) => row.onboarding.done === row.onboarding.total).length}명`],
+    ["오늘 작성", `${rows.filter((row) => row.tasks.length).length}명`],
+    ["노무 기록", `${rows.filter((row) => row.labor.recordedDays).length}명`],
+  ];
+  grid.innerHTML = `
+    <section class="staff-master-summary">
+      ${stats.map(([label, value]) => `<article><span>${escapeHtml(label)}</span><strong>${escapeHtml(value)}</strong></article>`).join("")}
+    </section>
+    <section class="staff-master-panel">
+      <header>
+        <div>
+          <span>Master Data</span>
+          <h3>전체 직원 명부</h3>
+        </div>
+      </header>
+      <div class="staff-master-table-wrap">
+        <table class="staff-master-table">
+          <thead>
+            <tr><th>직원 ID</th><th>소속/사업장</th><th>직함/성명</th><th>고용형태</th><th>권한</th><th>근무시간</th><th>오늘 업무</th><th>온보딩</th></tr>
+          </thead>
+          <tbody>
+            ${rows.map((row) => `
+              <tr>
+                <td>${escapeHtml(row.employeeCode)}</td>
+                <td><b>${escapeHtml(row.site)}</b><span>${escapeHtml(row.org || "")}</span></td>
+                <td><b>${escapeHtml(row.role || "직원")}</b><span>${escapeHtml(row.name || "")}</span></td>
+                <td>${escapeHtml(row.employmentType || "직원")}</td>
+                <td><b>${escapeHtml(row.access.role)}</b><span>${escapeHtml(row.access.worklog)} · ${escapeHtml(row.access.labor)}</span></td>
+                <td>${escapeHtml(row.workHours || defaultProfile.workHours)}</td>
+                <td>${escapeHtml(`${row.completed}/${row.tasks.length || 0}`)}</td>
+                <td>${escapeHtml(`${row.onboarding.done}/${row.onboarding.total}`)}</td>
+              </tr>
+            `).join("")}
+          </tbody>
+        </table>
+      </div>
+    </section>
+    <section class="staff-master-panel">
+      <header>
+        <div>
+          <span>Permission Matrix</span>
+          <h3>권한 체계</h3>
+        </div>
+      </header>
+      <div class="staff-permission-grid">
+        ${rows.map((row) => `
+          <article>
+            <strong>${escapeHtml(row.role || "직원")} ${escapeHtml(row.name || "")}</strong>
+            <span>${escapeHtml(row.site)}</span>
+            <p>업무일지 ${escapeHtml(row.access.worklog)} · 노무 ${escapeHtml(row.access.labor)} · 승인 ${escapeHtml(row.access.approval)}</p>
+          </article>
+        `).join("")}
+      </div>
+    </section>
+    <section class="staff-master-panel">
+      <header>
+        <div>
+          <span>Onboarding</span>
+          <h3>승인 이후 온보딩</h3>
+        </div>
+      </header>
+      <div class="staff-onboarding-list">
+        ${rows.map((row) => `
+          <article>
+            <header>
+              <strong>${escapeHtml(row.name || "")}</strong>
+              <span>${escapeHtml(`${row.onboarding.done}/${row.onboarding.total}`)}</span>
+            </header>
+            <div>
+              ${row.onboarding.checks.map(([label, ok]) => `<em class="${ok ? "is-done" : ""}">${escapeHtml(label)}</em>`).join("")}
+            </div>
+          </article>
+        `).join("")}
+      </div>
+    </section>
+    <section class="staff-master-panel">
+      <header>
+        <div>
+          <span>Growth Records</span>
+          <h3>직원별 매뉴얼/성장기록</h3>
+        </div>
+      </header>
+      <div class="staff-growth-grid">
+        ${rows.map((row) => {
+          const manual = getManualTemplateForEmployee(row);
+          return `
+            <article>
+              <b>${escapeHtml(row.name || "")}</b>
+              <strong>${escapeHtml(manual?.title || "역할 매뉴얼")}</strong>
+              <span>이번 달 노무 ${escapeHtml(String(row.labor.recordedDays))}일 · 유료PT ${escapeHtml(String(row.labor.settlementPtCount || 0))} · 업무 ${escapeHtml(`${row.completed}/${row.tasks.length || 0}`)}</span>
+            </article>
+          `;
+        }).join("")}
+      </div>
+    </section>
+  `;
 }
 
 function numberValue(value) {
@@ -4745,6 +5163,7 @@ function switchView(view) {
   renderWorklogOverview();
   renderAiCoach();
   renderFitnessDashboard();
+  renderStaffMaster();
   renderAttendance();
   renderManagement();
   renderOrganization();
@@ -4761,7 +5180,7 @@ function toggleMainMenuPopover() {
   popover.hidden = !willOpen;
   button?.setAttribute("aria-expanded", String(willOpen));
   if (willOpen) closeAttendancePopover();
-  if (willOpen) popover.querySelector("button")?.focus();
+  if (willOpen) popover.querySelector("button:not([hidden])")?.focus();
 }
 
 function closeMainMenuPopover() {
@@ -4780,6 +5199,7 @@ function renderAll() {
   renderWorklogOverview();
   renderAiCoach();
   renderFitnessDashboard();
+  renderStaffMaster();
   renderEmployeeSelect();
   renderProfileForm();
   renderEntries();
@@ -4901,6 +5321,11 @@ document.getElementById("closeSettingsButton")?.addEventListener("click", () => 
 document.getElementById("saveProfileButton").onclick = saveProfileFromForm;
 document.getElementById("saveSettingsProfileButton")?.addEventListener("click", saveSettingsProfileFromForm);
 document.getElementById("refreshApprovalRequestsButton")?.addEventListener("click", loadApprovalRequests);
+document.getElementById("staffOpenApprovalButton")?.addEventListener("click", () => {
+  switchView("settings");
+  switchSettingsTab("approval");
+  renderApprovalAccess();
+});
 document.getElementById("approvalRequestList")?.addEventListener("click", (event) => {
   const button = event.target.closest("[data-approval-action]");
   if (!button) return;

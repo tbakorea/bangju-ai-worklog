@@ -21,6 +21,7 @@
           <option value="worklog">업무일지</option>
           <option value="fitness">피트니스 OS</option>
           <option value="os">OS</option>
+          <option value="staff">직원</option>
           <option value="attendance">노무</option>
           <option value="management">사업장</option>
           <option value="organization">조직</option>
@@ -35,10 +36,11 @@
         </div>
         <div class="main-menu-popover" id="mainMenuPopover" role="menu" hidden>
           <button type="button" data-menu-view="control">통합관제</button>
+          <button type="button" data-menu-view="management">사업장</button>
           <button type="button" data-menu-view="worklog">업무일지</button>
           <button type="button" data-menu-view="fitness">센터 OS</button>
+          <button type="button" data-menu-view="staff">직원</button>
           <button type="button" data-menu-view="attendance">노무</button>
-          <button type="button" data-menu-view="management">사업장</button>
           <button type="button" data-menu-view="settings">설정</button>
           <button type="button" data-menu-view="auth">로그인</button>
         </div>
@@ -69,6 +71,7 @@
         <button class="is-active" type="button" data-view="worklog">업무일지</button>
         <button type="button" data-view="fitness">피트니스 OS</button>
         <button type="button" data-view="os">OS</button>
+        <button type="button" data-view="staff">직원</button>
         <button type="button" data-view="attendance">노무</button>
         <button type="button" data-view="management">사업장</button>
         <button type="button" data-view="organization">조직</button>
@@ -507,7 +510,7 @@
 
       <section class="worklog-view" id="view-attendance">
         <div class="worklog-title-row">
-          <h2>월별 근무대장</h2>
+          <h2>노무</h2>
           <button type="button" id="addAttendanceButton" hidden>이력 메모 추가</button>
         </div>
         <div class="work-history-summary" id="workHistorySummary"></div>
@@ -517,6 +520,18 @@
       <section class="worklog-view" id="view-management">
         <h2>사업장 운영관리</h2>
         <div class="management-grid" id="managementGrid"></div>
+      </section>
+
+      <section class="worklog-view staff-master-view" id="view-staff">
+        <div class="staff-master-hero">
+          <div>
+            <p>Employee Master</p>
+            <h2>직원</h2>
+            <span>직원명부 · 가입승인 · 권한관리 · 온보딩 · 성장기록</span>
+          </div>
+          <button type="button" id="staffOpenApprovalButton">가입승인</button>
+        </div>
+        <div class="staff-master-grid" id="staffMasterGrid"></div>
       </section>
 
       <section class="worklog-view" id="view-organization">
@@ -692,31 +707,79 @@
           <button type="button" data-auth-tab="app">앱설정</button>
         </div>
         <div class="auth-panel is-active" id="auth-panel-personal">
-          <div class="profile-grid">
-            <label>소속 <input data-profile-field="org" type="text" placeholder="예: (주)방주 / 비욘드 피트니스 지사" /></label>
-            <label>직급 <input data-profile-field="role" type="text" placeholder="예: 센터장" /></label>
-            <label>이름 <input data-profile-field="name" type="text" placeholder="예: 홍길동" /></label>
-            <label>닉네임 <input data-profile-field="nickname" type="text" placeholder="본인 업무일지 표시명" /></label>
-            <label>전화 <input data-profile-field="phone" type="tel" placeholder="010-0000-0000" /></label>
-            <label>이메일 <input data-profile-field="email" type="email" placeholder="name@example.com" /></label>
-            <label>주업무 <input data-profile-field="primaryWork" type="text" placeholder="주요 담당 업무" /></label>
-            <label>부업무 <input data-profile-field="secondaryWork" type="text" placeholder="보조 담당 업무" /></label>
-            <label>근무지 <input data-profile-field="workplace" type="text" placeholder="근무지 / 현장 / 지점" /></label>
-            <label>근무시간 <input data-profile-field="workHours" type="text" placeholder="예: 09:00-18:00" /></label>
-          </div>
-          <p class="profile-note">각 항목은 직원이 직접 입력하고, 추후 관리자 화면에서 변경 가능하도록 설계합니다.</p>
+          <section class="signup-sheet">
+            <header class="signup-sheet-head">
+              <div>
+                <p>Employee Application Sheet</p>
+                <h3>직원 가입신청 시트</h3>
+                <span>입력 내용은 대표 또는 승인 권한자가 확인·수정한 뒤 승인합니다.</span>
+              </div>
+              <strong id="signupApprovalStatus">작성 중</strong>
+            </header>
+            <article class="signup-sheet-section">
+              <h4>1. 기본 신원</h4>
+              <div class="profile-grid">
+                <label>이름 <input data-profile-field="name" type="text" placeholder="예: 홍길동" /></label>
+                <label>닉네임 <input data-profile-field="nickname" type="text" placeholder="업무일지 표시명" /></label>
+                <label>전화 <input data-profile-field="phone" type="tel" placeholder="010-0000-0000" /></label>
+                <label>이메일 <input data-profile-field="email" type="email" placeholder="name@example.com" /></label>
+              </div>
+            </article>
+            <article class="signup-sheet-section">
+              <h4>2. 소속/직무 배치</h4>
+              <div class="profile-grid">
+                <label>소속 <input data-profile-field="org" type="text" placeholder="예: (주)방주 / 비욘드 피트니스" /></label>
+                <label>근무지 <input data-profile-field="workplace" type="text" placeholder="사업장 / 지점 / 현장" /></label>
+                <label>직함 <input data-profile-field="role" type="text" placeholder="예: 대표 / 센터장 / 트레이너 / 인포" /></label>
+                <label>고용형태
+                  <select data-profile-field="employmentType">
+                    <option value="직원">직원</option>
+                    <option value="프리랜서">프리랜서</option>
+                    <option value="파트타임">파트타임</option>
+                    <option value="관리자">관리자</option>
+                  </select>
+                </label>
+                <label>주업무 <input data-profile-field="primaryWork" type="text" placeholder="주요 담당 업무" /></label>
+                <label>부업무 <input data-profile-field="secondaryWork" type="text" placeholder="보조 담당 업무" /></label>
+              </div>
+            </article>
+            <article class="signup-sheet-section">
+              <h4>3. 근무/노무 기준</h4>
+              <div class="profile-grid">
+                <label>기본 근무시간 <input data-profile-field="workHours" type="text" placeholder="예: 09:00-18:00" /></label>
+                <label>주민번호/식별번호 <input data-profile-field="laborId" type="text" placeholder="노무대장용 식별번호" /></label>
+                <label>주소 <input data-profile-field="address" type="text" placeholder="노무대장용 주소" /></label>
+                <label>시급 <input data-profile-field="hourlyWage" type="number" min="0" inputmode="numeric" placeholder="예: 12000" /></label>
+                <label>일당 <input data-profile-field="dailyWage" type="number" min="0" inputmode="numeric" placeholder="예: 120000" /></label>
+              </div>
+              <p class="profile-note">임금·식별 정보는 대표 승인 과정에서 수정될 수 있으며 노무비 지급대장에 사용됩니다.</p>
+            </article>
+          </section>
         </div>
         <div class="auth-panel" id="auth-panel-app">
-          <div class="profile-grid profile-grid-wide">
-            <label>기타 <textarea data-profile-field="extra" rows="4" placeholder="업무 환경, 자격, 관심 분야, 필요한 지원"></textarea></label>
-            <label>장점 <textarea data-profile-field="strengths" rows="4" placeholder="강점, 잘하는 업무, 성과 패턴"></textarea></label>
-            <label>단점 <textarea data-profile-field="weaknesses" rows="4" placeholder="보완점, 어려운 업무, 개선 필요 역량"></textarea></label>
-            <label>자기개발 목표 <textarea data-profile-field="developmentGoals" rows="4" placeholder="학습 목표, 역량강화 계획, 필요한 교육"></textarea></label>
-          </div>
-          <p class="profile-note">이 데이터는 AI가 업무 배치, 자기개발, 역량강화 제안을 만들기 위한 기초 자료로 사용됩니다.</p>
+          <section class="signup-sheet">
+            <article class="signup-sheet-section">
+              <h4>4. 역량/성장 데이터</h4>
+              <div class="profile-grid profile-grid-wide">
+                <label>장점 <textarea data-profile-field="strengths" rows="4" placeholder="강점, 잘하는 업무, 성과 패턴"></textarea></label>
+                <label>보완점 <textarea data-profile-field="weaknesses" rows="4" placeholder="어려운 업무, 개선 필요 역량"></textarea></label>
+                <label>자기개발 목표 <textarea data-profile-field="developmentGoals" rows="4" placeholder="학습 목표, 역량강화 계획, 필요한 교육"></textarea></label>
+                <label>기타 <textarea data-profile-field="extra" rows="4" placeholder="업무 환경, 자격, 관심 분야, 필요한 지원"></textarea></label>
+              </div>
+              <p class="profile-note">이 데이터는 AI가 업무 배치, 매뉴얼 추천, 역량강화 코칭을 만들기 위한 기초 자료로 사용됩니다.</p>
+            </article>
+            <article class="signup-sheet-section signup-approval-flow">
+              <h4>5. 승인 흐름</h4>
+              <ol>
+                <li>직원이 가입신청 시트를 작성합니다.</li>
+                <li>대표 또는 승인 권한자가 소속·직함·근무·노무 정보를 검토합니다.</li>
+                <li>필요한 항목을 수정한 뒤 승인하면 해당 권한의 업무일지가 열립니다.</li>
+              </ol>
+            </article>
+          </section>
         </div>
         <div class="auth-actions">
-          <button id="saveProfileButton" type="button">저장하고 업무일지 적용</button>
+          <button id="saveProfileButton" type="button">가입신청 시트 저장</button>
         </div>
       </section>
     </main>
