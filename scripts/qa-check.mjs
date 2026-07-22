@@ -87,8 +87,14 @@ check(
 
 check(
   "worklog edit permission helper exists",
-  /function canEditCurrentWorklog\(view = activeView\)[\s\S]{0,220}isRepresentativeProfile\(\)[\s\S]{0,220}getOwnEditableEmployeeIdForView/.test(js),
+  /function canEditCurrentWorklog\(view = activeView\)[\s\S]{0,220}isRepresentativeProfile\(\)[\s\S]{0,260}canEditEmployeeSlot/.test(js),
   "viewer access must be separate from employee edit access"
+);
+
+check(
+  "fixed employee worklogs require authenticated owner",
+  /function canEditEmployeeSlot\(employeeId = ""\)[\s\S]{0,180}if \(!authState\.user\) return false;[\s\S]{0,160}getProfileMappedEmployeeId\(\) === employeeId/.test(js),
+  "logged-out or mismatched viewers must not operate another employee's attendance/worklog"
 );
 
 check(
@@ -107,6 +113,12 @@ check(
   "general worklog readonly controls are applied",
   /function applyCurrentWorklogPermissionState\(viewName = activeView\)[\s\S]{0,900}#worklogTaskBoard \.task-cycle[\s\S]{0,700}#employeeMemo/.test(js),
   "task, schedule, report, and memo controls should be locked in read-only worklogs"
+);
+
+check(
+  "readonly worklogs hide destructive controls",
+  css.includes("#view-today.is-readonly .task-delete") && css.includes(".fitness-log-view.is-readonly .appointment-merge-button"),
+  "delete/add controls should disappear when a worklog is only being viewed"
 );
 
 const riskPatterns = [

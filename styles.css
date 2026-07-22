@@ -5661,6 +5661,19 @@ textarea:focus-visible {
   opacity: 0.62;
 }
 
+#view-today.is-readonly .task-delete,
+#view-today.is-readonly .worklog-add-row,
+#view-today.is-readonly .schedule-item-delete,
+#view-today.is-readonly .appointment-merge-button {
+  display: none;
+}
+
+.fitness-log-view.is-readonly .task-delete,
+.fitness-log-view.is-readonly .worklog-add-row,
+.fitness-log-view.is-readonly .appointment-merge-button {
+  display: none;
+}
+
 .fitness-center-daily-panel {
   display: grid;
   gap: 10px;

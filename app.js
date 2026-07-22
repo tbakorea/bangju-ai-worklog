@@ -711,13 +711,24 @@ function getOwnEditableEmployeeIdForView(view = activeView) {
   return "";
 }
 
+function canEditEmployeeSlot(employeeId = "") {
+  if (!employeeId) return false;
+  if (employeeId === "profile-user") return true;
+  if (!authState.user) return false;
+  if (isRepresentativeProfile()) return false;
+  return getProfileMappedEmployeeId() === employeeId;
+}
+
 function canEditCurrentWorklog(view = activeView) {
   if (!isWorklogEditView(view)) return false;
   if (isRepresentativeProfile()) return false;
-  if (view === "fitness-log") return isCurrentFitnessLogEditable();
+  if (view === "fitness-log") {
+    const currentEmployeeId = getCurrentWorklogEmployeeId(view);
+    return isCurrentFitnessLogEditable() && canEditEmployeeSlot(currentEmployeeId);
+  }
   const currentEmployeeId = getCurrentWorklogEmployeeId(view);
   const ownEmployeeId = getOwnEditableEmployeeIdForView(view);
-  return Boolean(currentEmployeeId && ownEmployeeId && currentEmployeeId === ownEmployeeId);
+  return Boolean(currentEmployeeId && ownEmployeeId && currentEmployeeId === ownEmployeeId && canEditEmployeeSlot(currentEmployeeId));
 }
 
 function guardWorklogEdit() {
