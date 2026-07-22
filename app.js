@@ -7,11 +7,12 @@ const supabaseConfig = {
 const supabaseClient = window.supabase?.createClient(supabaseConfig.url, supabaseConfig.anonKey) || null;
 const todayKey = formatDateKey(new Date());
 const worklogViewAliases = {
+  worklog: "worklog",
   today: "bangju-log",
   "bangju-log": "today",
   "beyond-log": "today",
 };
-const attendanceEnabledViews = new Set(["fitness-log", "bangju-log", "beyond-log", "today"]);
+const attendanceEnabledViews = new Set(["worklog", "fitness-log", "bangju-log", "beyond-log", "today"]);
 const controlTowerEmails = new Set(["j3010@ymail.com", "tbakorea@gmail.com"]);
 let activeView = "fitness-log";
 let attendancePromptLastAt = 0;
@@ -86,6 +87,10 @@ const defaultProfile = {
   secondaryWork: "",
   workplace: "",
   employmentType: "직원",
+  laborId: "",
+  address: "",
+  dailyWage: "",
+  hourlyWage: "",
   workHours: "08:00-18:00",
   weeklyWorkHours: {},
   manualSettings: {
@@ -98,6 +103,10 @@ const defaultProfile = {
   strengths: "",
   weaknesses: "",
   developmentGoals: "",
+  approvalStatus: "draft",
+  approvalNote: "",
+  approvedBy: "",
+  approvedAt: "",
 };
 const fitnessManualTemplates = {
   manager: {
@@ -179,19 +188,22 @@ const fitnessManualTemplates = {
   },
 };
 const employees = [
-  { id: "bangju-finance-1", name: "방주 재무담당", org: "(주)방주", role: "재무" },
+  { id: "bangju-finance-manager", name: "재무과장", org: "(주)방주", role: "재무과장", primaryWork: "자금, 회계, 보고" },
+  { id: "bangju-finance-assistant", name: "재무 대리", org: "(주)방주", role: "재무 대리", primaryWork: "지출, 정산, 문서" },
+  { id: "bangju-spare-1", name: "방주 예비", org: "(주)방주", role: "예비", primaryWork: "공통 지원" },
   { id: "beyond-fitness-manager", name: "박주홍", nickname: "센터장", org: "(주)방주 / 비욘드 피트니스 지사", role: "센터장", workHours: "06:00-24:00", primaryWork: "운영총괄, PT 수업" },
   { id: "fitness-trainer-1", name: "홍현규", nickname: "홍트", org: "(주)방주 / 비욘드 피트니스 지사", role: "트레이너", workHours: "06:00-24:00", primaryWork: "PT 수업", employmentType: "프리랜서" },
   { id: "fitness-weekday-info", name: "주중 인포", nickname: "주중인포", org: "(주)방주 / 비욘드 피트니스 지사", role: "인포데스크", workHours: "16:00-20:00", primaryWork: "고객응대, 센터관리" },
   { id: "fitness-saturday-info", name: "토요 인포", nickname: "토요인포", org: "(주)방주 / 비욘드 피트니스 지사", role: "토요 인포", workHours: "10:00-18:00", primaryWork: "토요일 고객응대, 센터관리" },
   { id: "fitness-sunday-info", name: "일요 인포", nickname: "일요인포", org: "(주)방주 / 비욘드 피트니스 지사", role: "일요 인포", workHours: "10:00-18:00", primaryWork: "일요일 고객응대, 센터관리" },
-  { id: "workbase-manager", name: "워크베이스 매니저", org: "(주)방주 / 워크베이스", role: "매니저" },
-  { id: "sales-office-staff", name: "홍보관 담당", org: "(주)방주 / 홍보관", role: "분양/임대" },
-  { id: "construction-hq", name: "비제이종합건설 본사", org: "(주)비제이종합건설", role: "본사관리" },
-  { id: "dongcheon-site-manager", name: "동천체육관현장 소장", org: "(주)비제이종합건설 / 동천체육관현장", role: "현장소장" },
-  { id: "beyond-company-director", name: "비욘드컴퍼니 총괄", org: "(주)비욘드컴퍼니", role: "총괄관리" },
+  { id: "fitness-spare-1", name: "피트니스 예비", nickname: "예비", org: "(주)방주 / 비욘드 피트니스 지사", role: "예비", workHours: "10:00-18:00", primaryWork: "운영 지원" },
+  { id: "beyond-company-leader", name: "비욘드 실장", org: "(주)비욘드컴퍼니", role: "실장", primaryWork: "비욘드컴퍼니 운영총괄" },
+  { id: "beyond-shared-manager", name: "공유사업부 매니저", org: "(주)비욘드컴퍼니 / 공유사업부", role: "공유사업부 매니저", primaryWork: "공유오피스, 공유창고, 고객관리" },
+  { id: "beyond-spare-1", name: "비욘드 예비", org: "(주)비욘드컴퍼니", role: "예비", primaryWork: "공통 지원" },
 ];
-const fitnessEmployeeIds = ["beyond-fitness-manager", "fitness-trainer-1", "fitness-weekday-info", "fitness-saturday-info", "fitness-sunday-info"];
+const fitnessEmployeeIds = ["beyond-fitness-manager", "fitness-trainer-1", "fitness-weekday-info", "fitness-saturday-info", "fitness-sunday-info", "fitness-spare-1"];
+const bangjuWorklogEmployeeIds = ["bangju-finance-manager", "bangju-finance-assistant", "bangju-spare-1"];
+const beyondWorklogEmployeeIds = ["beyond-company-leader", "beyond-shared-manager", "beyond-spare-1"];
 
 function createFitnessOps() {
   return {
@@ -277,7 +289,7 @@ const beyondAssets = [
 ];
 const beyondModules = [
   ["직원관리", "직원 기본정보, 미션, 목표, 교육, 역량학습", "운영"],
-  ["근무이력", "출퇴근, 외출, 조퇴, 근무 흐름 요약", "운영"],
+  ["노무", "월별 노무명세, 출퇴근, 유료수업 정산", "운영"],
   ["업무일지", "우선업무, 시간별 일정, 보고, AI 요약", "운영"],
   ["사업장 운영관리", "청결, 시설, 공실, 회원, 방문객, 운영점수", "설계"],
   ["마케팅관리", "SNS, 광고, 블로그, 리뷰, 이벤트 감지", "설계"],
@@ -347,7 +359,8 @@ function createState() {
     attendance: {
       [todayKey]: [
         { employeeId: "beyond-fitness-manager", org: "비욘드 피트니스 지사", role: "센터장", name: "박주홍", status: "정상", note: "" },
-        { employeeId: "sales-office-staff", org: "홍보관", role: "분양/임대", name: "홍보관 담당", status: "정상", note: "" },
+        { employeeId: "bangju-finance-manager", org: "(주)방주", role: "재무과장", name: "재무과장", status: "정상", note: "" },
+        { employeeId: "beyond-company-leader", org: "(주)비욘드컴퍼니", role: "실장", name: "비욘드 실장", status: "정상", note: "" },
       ],
     },
     fitnessGoals: createFitnessGoals(),
@@ -951,10 +964,69 @@ function renderOsDashboard() {
 }
 
 function canAccessControlTower() {
-  const profile = state.profile || {};
-  const email = String(authState.user?.email || profile.email || "").trim().toLowerCase();
-  const roleText = `${profile.role || ""} ${profile.primaryWork || ""} ${profile.nickname || ""}`;
-  return controlTowerEmails.has(email) || /대표|관리자|센터장|총괄|임원|admin|owner|manager/i.test(roleText);
+  return hasApprovalAuthority();
+}
+
+function canAccessWorklogOverview() {
+  return isRepresentativeProfile() || canAccessControlTower();
+}
+
+function getWorklogSiteGroups() {
+  return [
+    { id: "fitness", title: "비욘드 피트니스", view: "fitness-log", employeeIds: fitnessEmployeeIds },
+    { id: "bangju", title: "(주)방주", view: "bangju-log", employeeIds: bangjuWorklogEmployeeIds },
+    { id: "beyond", title: "(주)비욘드컴퍼니", view: "beyond-log", employeeIds: beyondWorklogEmployeeIds },
+  ];
+}
+
+function renderWorklogOverview() {
+  const grid = document.getElementById("worklogOverviewGrid");
+  if (!grid) return;
+  if (!canAccessWorklogOverview()) {
+    grid.innerHTML = `
+      <article class="worklog-overview-denied">
+        <strong>접근 권한이 필요합니다.</strong>
+        <p>대표 또는 대표가 지정한 직원만 전 사업장 업무일지를 열람할 수 있습니다.</p>
+      </article>
+    `;
+    return;
+  }
+  const dateKey = getActiveDateKey();
+  grid.innerHTML = getWorklogSiteGroups().map((group) => {
+    const rows = group.employeeIds.map((employeeId) => {
+      const employee = employees.find((item) => item.id === employeeId);
+      if (!employee) return "";
+      const dayLog = state.employeeLogs?.[dateKey]?.[employeeId] || createEmployeeLog(employee);
+      const tasks = (dayLog.tasks || []).filter(isActiveTask);
+      const done = tasks.filter((task) => task.done || task.status === "완료").length;
+      const scheduleCount = (dayLog.schedule || []).filter((item) => getScheduleEntryText(item)).length;
+      const attendance = formatAttendanceSummary(dayLog) || dayLog.attendanceStatus || "출결 미기록";
+      return `
+        <button type="button" class="worklog-overview-employee" data-overview-employee="${escapeAttr(employeeId)}" data-overview-view="${escapeAttr(group.view)}">
+          <span>${escapeHtml(employee.role || "직원")}</span>
+          <strong>${escapeHtml(employee.name || "")}</strong>
+          <small>${escapeHtml(attendance)}</small>
+          <em>업무 ${done}/${tasks.length || 0} · 일정 ${scheduleCount}</em>
+        </button>
+      `;
+    }).join("");
+    return `
+      <section class="worklog-overview-site">
+        <header>
+          <span>${escapeHtml(group.id.toUpperCase())}</span>
+          <h3>${escapeHtml(group.title)}</h3>
+        </header>
+        <div>${rows}</div>
+      </section>
+    `;
+  }).join("");
+  grid.querySelectorAll("[data-overview-employee]").forEach((button) => {
+    button.addEventListener("click", () => {
+      state.selectedEmployeeId = button.dataset.overviewEmployee;
+      saveState({ fastSave: true });
+      switchView(button.dataset.overviewView || "bangju-log");
+    });
+  });
 }
 
 function renderControlTower() {
@@ -1018,7 +1090,7 @@ function renderControlTower() {
   `).join("");
 
   document.getElementById("controlOpsGrid").innerHTML = [
-    ["근태/노무", "월별 근무대장과 노무비 지급대장을 직원별로 확인합니다.", "근무이력"],
+    ["근태/노무", "월별 근무대장과 노무비 지급대장을 직원별로 확인합니다.", "노무"],
     ["보고서", "피트니스 업무일지, 센터운영일지, 개인 보고서를 출력/공유합니다.", "보고"],
     ["시설/이슈", "청결, 고장, 민원, 안전, 소모품 이슈를 사업장 단위로 묶어 봅니다.", "사업장"],
     ["AI 브리핑", "오늘 대표가 봐야 할 위험 신호와 다음 행동을 요약합니다.", "AI"],
@@ -1257,9 +1329,13 @@ function renderEmployeeTitle() {
 }
 
 function renderGlobalEmployeeIdentity() {
-  const employee = employees.find((item) => item.id === state.fitnessWritableEmployeeId) || getSelectedEmployee();
-  const { label, role } = getFitnessOwnIdentity(employee);
-  const personLabel = label === role ? role : `${role} ${label}`;
+  const employee = activeView === "fitness-log"
+    ? employees.find((item) => item.id === state.fitnessWritableEmployeeId) || getSelectedEmployee()
+    : getSelectedEmployee();
+  const fitnessIdentity = getFitnessOwnIdentity(employee);
+  const personLabel = activeView === "fitness-log"
+    ? (fitnessIdentity.label === fitnessIdentity.role ? fitnessIdentity.role : `${fitnessIdentity.role} ${fitnessIdentity.label}`)
+    : getEmployeeAdminLabel(employee);
   const identity = document.getElementById("globalEmployeeIdentity");
   if (identity) identity.textContent = "";
   const title = document.getElementById("globalHeaderTitle");
@@ -1273,13 +1349,76 @@ function getGeneralWorklogTitle(view = activeView) {
   return "방주 업무일지";
 }
 
+function isRepresentativeProfile() {
+  const profile = state.profile || {};
+  const email = String(authState.user?.email || profile.email || "").trim().toLowerCase();
+  const roleText = `${profile.role || ""} ${profile.primaryWork || ""} ${profile.nickname || ""}`;
+  if (controlTowerEmails.has(email)) return true;
+  if (authState.user && (profile.approvalStatus || "pending") !== "approved") return false;
+  return /대표|owner|ceo|회장|임원|총괄/i.test(roleText);
+}
+
+function hasApprovalAuthority(profile = state.profile || {}) {
+  const email = String(authState.user?.email || profile.email || "").trim().toLowerCase();
+  const roleText = `${profile.role || ""} ${profile.primaryWork || ""} ${profile.nickname || ""}`;
+  if (controlTowerEmails.has(email)) return true;
+  if (authState.user && (profile.approvalStatus || "pending") !== "approved") return false;
+  return /대표|관리자|센터장|총괄|임원|admin|owner|manager/i.test(roleText);
+}
+
+function isProfileApproved() {
+  if (!authState.user) return true;
+  if (hasApprovalAuthority()) return true;
+  const status = state.profile?.approvalStatus || "approved";
+  return status === "approved";
+}
+
+function getApprovalStatusLabel(status = state.profile?.approvalStatus) {
+  if (status === "approved") return "승인 완료";
+  if (status === "rejected") return "반려";
+  if (status === "pending") return "승인 대기";
+  return "작성 중";
+}
+
+function setOwnApprovalPending() {
+  state.profile.approvalStatus = hasApprovalAuthority() ? "approved" : "pending";
+  state.profile.approvalNote ||= "";
+  if (state.profile.approvalStatus === "approved") {
+    state.profile.approvedBy = authState.user?.id || "self";
+    state.profile.approvedAt = new Date().toISOString();
+  }
+}
+
+function getUserWorklogView() {
+  if (isRepresentativeProfile()) return "worklog-overview";
+  const profile = state.profile || {};
+  const source = `${profile.org || ""} ${profile.workplace || ""} ${profile.primaryWork || ""} ${profile.role || ""}`.toLowerCase();
+  if (/피트니스|fitness|센터장|트레이너|인포/.test(source)) return "fitness-log";
+  if (/비욘드|beyond|공유|워크베이스|workbase|workbox/.test(source)) return "beyond-log";
+  return "bangju-log";
+}
+
+function getWorklogEmployeeIdsForView(view) {
+  if (view === "fitness-log") return fitnessEmployeeIds;
+  if (view === "beyond-log") return beyondWorklogEmployeeIds;
+  if (view === "bangju-log" || view === "today") return bangjuWorklogEmployeeIds;
+  return [];
+}
+
+function ensureSelectedEmployeeForWorklogView(view) {
+  const ids = getWorklogEmployeeIdsForView(view);
+  if (!ids.length || ids.includes(state.selectedEmployeeId)) return;
+  state.selectedEmployeeId = ids[0];
+}
+
 function getGlobalHeaderTitle(view = activeView, personLabel = "") {
+  if (view === "worklog" || view === "worklog-overview") return "업무일지";
   if (view === "fitness-log") return `beyond fitness · ${personLabel}`;
   if (view === "control") return "Beyond Control Tower";
   if (view === "beyond-log") return `비욘드 업무일지 · ${personLabel}`;
   if (view === "bangju-log" || view === "today") return `방주 업무일지 · ${personLabel}`;
   if (view === "fitness") return "비욘드 피트니스 OS";
-  if (view === "attendance") return "월별 근무대장";
+  if (view === "attendance") return "노무";
   if (view === "management") return "사업장 운영관리";
   if (view === "organization") return "조직";
   if (view === "ai") return "AI 코칭";
@@ -1340,6 +1479,7 @@ function renderSettingsForm() {
     field.value = state.profile?.weeklyWorkHours?.[field.dataset.settingsWorkHoursDay] || "";
   });
   renderManualSettings();
+  renderApprovalAccess();
 }
 
 function getManualSettings() {
@@ -1392,6 +1532,117 @@ function loadDefaultManualForSelectedRole() {
   saveManualSettingsFromForm();
 }
 
+function renderApprovalAccess() {
+  const tab = document.getElementById("approvalSettingsTab");
+  const panel = document.getElementById("settings-panel-approval");
+  const allowed = Boolean(authState.user && hasApprovalAuthority());
+  if (tab) tab.hidden = !allowed;
+  if (panel) panel.classList.toggle("is-disabled", !allowed);
+  if (!allowed) {
+    const list = document.getElementById("approvalRequestList");
+    if (list) list.innerHTML = `<p class="empty-note">대표 또는 승인 권한자만 가입신청을 확인할 수 있습니다.</p>`;
+    return;
+  }
+  loadApprovalRequests();
+}
+
+async function loadApprovalRequests() {
+  const list = document.getElementById("approvalRequestList");
+  if (!list) return;
+  if (!supabaseClient || !authState.user) {
+    list.innerHTML = `<p class="empty-note">Supabase 로그인 후 가입신청을 확인할 수 있습니다.</p>`;
+    return;
+  }
+  list.innerHTML = `<p class="empty-note">가입신청을 불러오는 중입니다...</p>`;
+  const { data, error } = await supabaseClient
+    .from("profiles")
+    .select("*")
+    .in("approval_status", ["pending", "approved", "rejected"])
+    .order("updated_at", { ascending: false });
+  if (error) {
+    list.innerHTML = `<p class="empty-note">가입신청을 불러오지 못했습니다. Supabase 승인 정책을 적용했는지 확인해주세요.<br>${escapeHtml(error.message)}</p>`;
+    return;
+  }
+  const rows = (data || []).filter((row) => row.id !== authState.user.id);
+  if (!rows.length) {
+    list.innerHTML = `<p class="empty-note">대기 중인 가입신청이 없습니다.</p>`;
+    return;
+  }
+  list.innerHTML = rows.map(renderApprovalRequestCard).join("");
+}
+
+function renderApprovalRequestCard(row) {
+  const status = row.approval_status || "pending";
+  const field = (name, label, value = "", type = "text") => `
+    <label>${escapeHtml(label)}
+      <input type="${type}" data-approval-id="${escapeAttr(row.id)}" data-approval-field="${escapeAttr(name)}" value="${escapeAttr(value || "")}" />
+    </label>
+  `;
+  return `
+    <article class="approval-request-card" data-approval-card="${escapeAttr(row.id)}">
+      <div class="approval-request-title">
+        <div>
+          <strong>${escapeHtml(row.name || "이름 미입력")}</strong>
+          <span>${escapeHtml(row.email || "이메일 없음")} · ${escapeHtml(getApprovalStatusLabel(status))}</span>
+        </div>
+        <em data-status="${escapeAttr(status)}">${escapeHtml(getApprovalStatusLabel(status))}</em>
+      </div>
+      <div class="approval-edit-grid">
+        ${field("org", "소속", row.org)}
+        ${field("role", "직급", row.role)}
+        ${field("name", "이름", row.name)}
+        ${field("phone", "전화", row.phone)}
+        ${field("email", "이메일", row.email, "email")}
+        ${field("workplace", "근무지", row.workplace)}
+        ${field("primary_work", "주업무", row.primary_work)}
+        ${field("secondary_work", "부업무", row.secondary_work)}
+        ${field("work_hours", "근무시간", row.work_hours)}
+        ${field("employment_type", "고용형태", row.employment_type || "직원")}
+      </div>
+      <label class="approval-note-label">승인 메모
+        <textarea rows="2" data-approval-id="${escapeAttr(row.id)}" data-approval-field="approval_note">${escapeHtml(row.approval_note || "")}</textarea>
+      </label>
+      <div class="approval-request-actions">
+        <button type="button" data-approval-action="save" data-approval-id="${escapeAttr(row.id)}">수정 저장</button>
+        <button type="button" data-approval-action="approve" data-approval-id="${escapeAttr(row.id)}">승인</button>
+        <button type="button" data-approval-action="reject" data-approval-id="${escapeAttr(row.id)}">반려</button>
+      </div>
+    </article>
+  `;
+}
+
+function collectApprovalCardPayload(id) {
+  const card = Array.from(document.querySelectorAll("[data-approval-card]")).find((node) => node.dataset.approvalCard === id);
+  if (!card) return null;
+  const payload = { updated_at: new Date().toISOString() };
+  card.querySelectorAll("[data-approval-field]").forEach((field) => {
+    payload[field.dataset.approvalField] = field.value.trim();
+  });
+  return payload;
+}
+
+async function updateApprovalRequest(id, action) {
+  if (!supabaseClient || !authState.user) return;
+  const payload = collectApprovalCardPayload(id);
+  if (!payload) return;
+  if (action === "approve") {
+    payload.approval_status = "approved";
+    payload.approved_by = authState.user.id;
+    payload.approved_at = new Date().toISOString();
+  }
+  if (action === "reject") {
+    payload.approval_status = "rejected";
+    payload.approved_by = authState.user.id;
+    payload.approved_at = new Date().toISOString();
+  }
+  const { error } = await supabaseClient.from("profiles").update(payload).eq("id", id);
+  if (error) {
+    alert(`가입승인 처리 실패: ${error.message}`);
+    return;
+  }
+  await loadApprovalRequests();
+}
+
 function applyProfileFields(selector, datasetKey) {
   state.profile = { ...defaultProfile, ...(state.profile || {}) };
   document.querySelectorAll(selector).forEach((field) => {
@@ -1418,6 +1669,7 @@ function saveSettingsProfileFromForm() {
 }
 
 function saveProfileChanges({ stayInSettings = false } = {}) {
+  if (authState.user && (!state.profile.approvalStatus || state.profile.approvalStatus === "draft")) state.profile.approvalStatus = "pending";
   const profileSource = `${state.profile.org || ""} ${state.profile.workplace || ""} ${state.profile.primaryWork || ""}`;
   if (/피트니스|fitness|beyond/i.test(profileSource)) {
     syncFitnessWritableEmployeeFromProfile();
@@ -1430,6 +1682,11 @@ function saveProfileChanges({ stayInSettings = false } = {}) {
   saveState();
   saveRemoteProfile();
   renderAll();
+  if (authState.user && !isProfileApproved()) {
+    switchView("auth");
+    renderAuthStatus("가입신청 정보가 저장되었습니다. 대표 승인 후 업무일지를 사용할 수 있습니다.");
+    return;
+  }
   switchView(stayInSettings ? "settings" : state.selectedEmployeeId === "profile-user" ? "today" : "fitness-log");
 }
 
@@ -1477,11 +1734,15 @@ async function signUpWithSupabase() {
     return;
   }
   if (data.user) {
+    authState.session = data.session || authState.session;
+    authState.user = data.user;
     state.profile.email = credentials.email;
+    setOwnApprovalPending();
     saveState();
+    await saveRemoteProfile();
     renderProfileForm();
   }
-  renderAuthStatus("가입 완료. 이메일 확인이 필요한 설정이면 메일 확인 후 로그인해주세요.");
+  renderAuthStatus("가입신청이 접수되었습니다. 대표 또는 권한자의 승인 후 사용할 수 있습니다.");
 }
 
 async function signInWithSupabase() {
@@ -1514,6 +1775,15 @@ async function applySession(session) {
   document.getElementById("authEmail").value = authState.user.email || "";
   state.profile.email ||= authState.user.email || "";
   await loadRemoteProfile();
+  if (!state.profile.approvalStatus || state.profile.approvalStatus === "draft") state.profile.approvalStatus = "pending";
+  if (!isProfileApproved()) {
+    await saveRemoteProfile();
+    saveState();
+    renderAll();
+    switchView("auth");
+    renderAuthStatus(`현재 상태: ${getApprovalStatusLabel()}. 대표 승인 후 업무일지를 사용할 수 있습니다.`);
+    return;
+  }
   await loadRemoteWorklogForActiveDate();
   await saveRemoteProfile();
   scheduleRemoteSave(0);
@@ -1598,11 +1868,21 @@ function profileToRemoteRow() {
     primary_work: state.profile.primaryWork,
     secondary_work: state.profile.secondaryWork,
     workplace: state.profile.workplace,
+    employment_type: state.profile.employmentType,
+    labor_id: state.profile.laborId,
+    address: state.profile.address,
+    daily_wage: state.profile.dailyWage || null,
+    hourly_wage: state.profile.hourlyWage || null,
     work_hours: state.profile.workHours,
+    weekly_work_hours: state.profile.weeklyWorkHours || {},
     extra: state.profile.extra,
     strengths: state.profile.strengths,
     weaknesses: state.profile.weaknesses,
     development_goals: state.profile.developmentGoals,
+    approval_status: state.profile.approvalStatus || "pending",
+    approval_note: state.profile.approvalNote || "",
+    approved_by: state.profile.approvedBy || null,
+    approved_at: state.profile.approvedAt || null,
     updated_at: new Date().toISOString(),
   };
 }
@@ -1617,11 +1897,21 @@ function remoteRowToProfile(row) {
     primaryWork: row.primary_work,
     secondaryWork: row.secondary_work,
     workplace: row.workplace,
+    employmentType: row.employment_type || defaultProfile.employmentType,
+    laborId: row.labor_id || "",
+    address: row.address || "",
+    dailyWage: row.daily_wage || "",
+    hourlyWage: row.hourly_wage || "",
     workHours: row.work_hours,
+    weeklyWorkHours: row.weekly_work_hours || {},
     extra: row.extra,
     strengths: row.strengths,
     weaknesses: row.weaknesses,
     developmentGoals: row.development_goals,
+    approvalStatus: row.approval_status || "approved",
+    approvalNote: row.approval_note || "",
+    approvedBy: row.approved_by || "",
+    approvedAt: row.approved_at || "",
   };
 }
 
@@ -3486,7 +3776,9 @@ function renderAttendance() {
   const employee = getOwnLaborEmployee();
   const labor = buildMonthlyLaborSummary(employeeId, employee);
   const ledger = buildLaborCostLedger(labor, employee);
+  const leaderLaborOverview = canAccessWorklogOverview() ? renderLeaderLaborOverviewMarkup() : "";
   list.innerHTML = `
+    ${leaderLaborOverview}
     <section class="labor-cost-ledger-card">
       <header>
         <div>
@@ -3560,6 +3852,44 @@ function renderAttendance() {
     </section>
   `;
   document.getElementById("copyLaborCostLedgerButton")?.addEventListener("click", () => copyLaborCostLedger(ledger));
+  list.querySelectorAll("[data-labor-employee]").forEach((button) => {
+    button.addEventListener("click", () => {
+      state.selectedEmployeeId = button.dataset.laborEmployee;
+      saveState({ fastSave: true });
+      renderAttendance();
+    });
+  });
+}
+
+function renderLeaderLaborOverviewMarkup() {
+  const month = getActiveDateKey().slice(0, 7);
+  const groups = getWorklogSiteGroups();
+  return `
+    <section class="labor-leader-overview">
+      <header>
+        <span>Company Labor Control</span>
+        <h3>${escapeHtml(month.replace("-", "."))} 전 사업장 노무현황</h3>
+      </header>
+      <div class="labor-leader-grid">
+        ${groups.map((group) => `
+          <article>
+            <strong>${escapeHtml(group.title)}</strong>
+            ${group.employeeIds.map((employeeId) => {
+              const employee = employees.find((item) => item.id === employeeId);
+              if (!employee) return "";
+              const labor = buildMonthlyLaborSummary(employeeId, employee);
+              return `
+                <button type="button" data-labor-employee="${escapeAttr(employeeId)}">
+                  <b>${escapeHtml(getEmployeeAdminLabel(employee))}</b>
+                  <span>${escapeHtml(labor.recordedDays)}일 · ${escapeHtml(formatMinutesAsHours(labor.actualMinutes))} · 유료PT ${escapeHtml(String(labor.settlementPtCount))}</span>
+                </button>
+              `;
+            }).join("")}
+          </article>
+        `).join("")}
+      </div>
+    </section>
+  `;
 }
 
 function renderWorkHistorySummary() {
@@ -3600,7 +3930,7 @@ function renderWorkHistorySummary() {
     <article class="work-history-hero">
       <div>
         <span>${escapeHtml(getEmployeeAdminLabel(employee))}</span>
-        <strong>${escapeHtml(formatKoreanDate(getActiveDateKey()))} 근무이력</strong>
+        <strong>${escapeHtml(formatKoreanDate(getActiveDateKey()))} 노무</strong>
         <p>${escapeHtml(formatAttendanceSummary(log) || "아직 출결 시간이 기록되지 않았습니다.")}</p>
       </div>
     </article>
@@ -3739,6 +4069,8 @@ function buildMonthlyLaborSummary(employeeId, employee) {
 }
 
 function getOwnLaborEmployeeId() {
+  if (canAccessWorklogOverview() && state.selectedEmployeeId) return state.selectedEmployeeId;
+  if (state.selectedEmployeeId && state.selectedEmployeeId !== "beyond-fitness-manager") return state.selectedEmployeeId;
   return state.fitnessWritableEmployeeId || state.selectedEmployeeId || "profile-user";
 }
 
@@ -4385,18 +4717,32 @@ async function shareFitnessReport() {
 }
 
 function switchView(view) {
+  const requestedView = view;
+  if (!["auth", "settings"].includes(view) && authState.user && !isProfileApproved()) {
+    view = "auth";
+    renderAuthStatus(`현재 상태: ${getApprovalStatusLabel()}. 승인 후 업무일지를 사용할 수 있습니다.`);
+  }
+  if (view === "worklog") view = getUserWorklogView();
   view = view === "today" ? "bangju-log" : view;
+  ensureSelectedEmployeeForWorklogView(view);
   activeView = view;
   closeMainMenuPopover();
-  document.querySelectorAll(".worklog-tabs button").forEach((button) => button.classList.toggle("is-active", button.dataset.view === view));
+  document.querySelectorAll(".worklog-tabs button").forEach((button) => {
+    const isWorklogActive = button.dataset.view === "worklog" && ["fitness-log", "bangju-log", "beyond-log", "worklog-overview"].includes(view);
+    button.classList.toggle("is-active", button.dataset.view === view || isWorklogActive);
+  });
   const panelView = worklogViewAliases[view] || view;
   document.querySelectorAll(".worklog-view").forEach((panel) => panel.classList.toggle("is-active", panel.id === `view-${panelView}`));
   const menuSelect = document.getElementById("mainMenuWheelSelect");
-  if (menuSelect && menuSelect.value !== view) menuSelect.value = view;
+  if (menuSelect) {
+    const menuValue = ["fitness-log", "bangju-log", "beyond-log", "worklog-overview"].includes(view) || requestedView === "worklog" ? "worklog" : view;
+    if (menuSelect.value !== menuValue) menuSelect.value = menuValue;
+  }
   renderEmployeeTitle();
   renderGlobalEmployeeIdentity();
   renderOsDashboard();
   renderControlTower();
+  renderWorklogOverview();
   renderAiCoach();
   renderFitnessDashboard();
   renderAttendance();
@@ -4431,6 +4777,7 @@ function renderAll() {
   renderMainMenuAuthButton();
   renderOsDashboard();
   renderControlTower();
+  renderWorklogOverview();
   renderAiCoach();
   renderFitnessDashboard();
   renderEmployeeSelect();
@@ -4477,6 +4824,7 @@ document.querySelectorAll("[data-layout-mode-choice]").forEach((button) => {
 });
 document.getElementById("fitnessLogPrevPageButton")?.addEventListener("click", moveFitnessLogPrevPage);
 document.getElementById("fitnessLogNextPageButton")?.addEventListener("click", moveFitnessLogNextPage);
+document.getElementById("worklogOverviewTodayButton")?.addEventListener("click", () => setSelectedDateKey(todayKey));
 document.querySelector('[data-worklog-panel="weekly"]')?.addEventListener("click", () => setTodayPageMode("common"));
 document.querySelector('[data-worklog-panel="memo"]')?.addEventListener("click", () => setTodayPageMode("coworker"));
 document.getElementById("worklogPulse")?.addEventListener("click", () => switchView("ai"));
@@ -4539,16 +4887,25 @@ document.addEventListener("click", () => {
   closeMainMenuPopover();
   closeAttendancePopover();
 });
-document.getElementById("closeAuthButton").onclick = () => switchView("fitness-log");
+document.getElementById("closeAuthButton").onclick = () => switchView("worklog");
 document.querySelectorAll("[data-auth-tab]").forEach((button) => {
   button.onclick = () => switchAuthTab(button.dataset.authTab);
 });
 document.querySelectorAll("[data-settings-tab]").forEach((button) => {
-  button.onclick = () => switchSettingsTab(button.dataset.settingsTab);
+  button.onclick = () => {
+    switchSettingsTab(button.dataset.settingsTab);
+    if (button.dataset.settingsTab === "approval") renderApprovalAccess();
+  };
 });
-document.getElementById("closeSettingsButton")?.addEventListener("click", () => switchView("fitness-log"));
+document.getElementById("closeSettingsButton")?.addEventListener("click", () => switchView("worklog"));
 document.getElementById("saveProfileButton").onclick = saveProfileFromForm;
 document.getElementById("saveSettingsProfileButton")?.addEventListener("click", saveSettingsProfileFromForm);
+document.getElementById("refreshApprovalRequestsButton")?.addEventListener("click", loadApprovalRequests);
+document.getElementById("approvalRequestList")?.addEventListener("click", (event) => {
+  const button = event.target.closest("[data-approval-action]");
+  if (!button) return;
+  updateApprovalRequest(button.dataset.approvalId, button.dataset.approvalAction);
+});
 document.getElementById("manualRoleSelect")?.addEventListener("change", () => {
   getManualSettings().roleKey = document.getElementById("manualRoleSelect")?.value || "manager";
   renderManualSettings();
@@ -4809,5 +5166,5 @@ document.getElementById("reportTone").value = state.reportTone;
 document.getElementById("authEmail").value = state.profile.email || "";
 renderAuthStatus();
 renderAll();
-switchView("fitness-log");
+switchView("worklog");
 initializeAuth();

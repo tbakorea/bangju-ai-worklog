@@ -2249,6 +2249,158 @@ body[data-device-mode="narrow"] .os-mode-switch span[data-device-mode="narrow"] 
   font-weight: 760;
 }
 
+.approval-admin-card {
+  border: 1px solid rgba(33, 55, 45, 0.12);
+  border-radius: 18px;
+  background: rgba(255, 253, 248, 0.78);
+  padding: 14px;
+}
+
+.approval-admin-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: flex-start;
+  margin-bottom: 12px;
+}
+
+.approval-admin-head p {
+  margin: 0 0 4px;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.approval-admin-head h3 {
+  margin: 0;
+  color: var(--ink);
+  font-size: 20px;
+  font-weight: 950;
+}
+
+.approval-admin-head span {
+  display: block;
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 760;
+}
+
+.approval-admin-head button,
+.approval-request-actions button {
+  border: 1px solid rgba(33, 55, 45, 0.14);
+  border-radius: 999px;
+  background: var(--ink);
+  color: #fffefa;
+  min-height: 36px;
+  padding: 8px 13px;
+  font-weight: 900;
+}
+
+.approval-request-list {
+  display: grid;
+  gap: 10px;
+}
+
+.approval-request-card {
+  display: grid;
+  gap: 10px;
+  border: 1px solid rgba(33, 55, 45, 0.11);
+  border-radius: 14px;
+  background: rgba(255, 255, 252, 0.9);
+  padding: 12px;
+}
+
+.approval-request-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.approval-request-title strong,
+.approval-request-title span {
+  display: block;
+}
+
+.approval-request-title strong {
+  color: var(--ink);
+  font-size: 16px;
+  font-weight: 950;
+}
+
+.approval-request-title span {
+  margin-top: 2px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 780;
+}
+
+.approval-request-title em {
+  flex: 0 0 auto;
+  border-radius: 999px;
+  background: rgba(14, 76, 56, 0.1);
+  color: var(--green);
+  padding: 6px 9px;
+  font-size: 11px;
+  font-style: normal;
+  font-weight: 950;
+}
+
+.approval-request-title em[data-status="pending"] {
+  background: rgba(214, 156, 46, 0.14);
+  color: #8a5f12;
+}
+
+.approval-request-title em[data-status="rejected"] {
+  background: rgba(180, 48, 48, 0.11);
+  color: #9a2a2a;
+}
+
+.approval-edit-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.approval-edit-grid label,
+.approval-note-label {
+  display: grid;
+  gap: 5px;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 850;
+}
+
+.approval-edit-grid input,
+.approval-note-label textarea {
+  width: 100%;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: rgba(255, 253, 248, 0.94);
+  color: var(--ink);
+  padding: 9px 10px;
+  font-weight: 780;
+}
+
+.approval-request-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.approval-request-actions button[data-approval-action="save"] {
+  background: rgba(255, 253, 248, 0.9);
+  color: var(--ink);
+}
+
+.approval-request-actions button[data-approval-action="reject"] {
+  background: #fff7f4;
+  color: #9a2a2a;
+}
+
 .weekly-work-hours {
   margin-top: 14px;
   border: 1px solid rgba(33, 55, 45, 0.1);
@@ -8843,6 +8995,185 @@ body[data-layout-mode="phone"] #view-fitness-log .ops-summary-metric strong {
 .control-ops-grid {
   display: grid;
   gap: 8px;
+}
+
+.worklog-overview-view {
+  display: none;
+  gap: 14px;
+}
+
+.worklog-overview-view.is-active {
+  display: grid;
+}
+
+.worklog-overview-hero {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  border: 1px solid rgba(15, 59, 46, 0.12);
+  border-radius: 24px;
+  background: linear-gradient(135deg, rgba(15, 59, 46, 0.96), rgba(31, 76, 59, 0.86));
+  color: var(--nordic-sheet);
+  padding: 18px;
+  box-shadow: 0 18px 42px rgba(15, 59, 46, 0.16);
+}
+
+.worklog-overview-hero p,
+.worklog-overview-hero span {
+  margin: 0;
+  color: rgba(255, 254, 250, 0.72);
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.worklog-overview-hero h2 {
+  margin: 3px 0;
+  font-size: clamp(24px, 4vw, 40px);
+  font-weight: 950;
+}
+
+.worklog-overview-hero button {
+  min-height: 42px;
+  border: 1px solid rgba(255, 254, 250, 0.3);
+  border-radius: 999px;
+  background: rgba(255, 254, 250, 0.12);
+  color: var(--nordic-sheet);
+  padding: 0 16px;
+  font-weight: 950;
+}
+
+.worklog-overview-grid {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(280px, 1fr);
+  gap: 12px;
+  overflow-x: auto;
+  padding-bottom: 10px;
+}
+
+.worklog-overview-site {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+  border: 1px solid rgba(15, 59, 46, 0.12);
+  border-radius: 20px;
+  background: rgba(255, 254, 250, 0.86);
+  padding: 14px;
+}
+
+.worklog-overview-site header span {
+  color: rgba(15, 59, 46, 0.58);
+  font-size: 11px;
+  font-weight: 950;
+  letter-spacing: 0.08em;
+}
+
+.worklog-overview-site header h3 {
+  margin: 2px 0 0;
+  color: var(--fitness-green);
+  font-size: 20px;
+  font-weight: 950;
+}
+
+.worklog-overview-site > div,
+.labor-leader-grid article {
+  display: grid;
+  gap: 8px;
+}
+
+.worklog-overview-employee {
+  display: grid;
+  gap: 3px;
+  border: 1px solid rgba(15, 59, 46, 0.1);
+  border-radius: 14px;
+  background: rgba(255, 254, 250, 0.72);
+  color: var(--ink);
+  padding: 12px;
+  text-align: left;
+}
+
+.worklog-overview-employee span,
+.worklog-overview-employee small,
+.worklog-overview-employee em {
+  color: rgba(38, 50, 56, 0.64);
+  font-size: 12px;
+  font-style: normal;
+  font-weight: 820;
+}
+
+.worklog-overview-employee strong {
+  color: var(--ink);
+  font-size: 17px;
+  font-weight: 950;
+}
+
+.worklog-overview-denied,
+.labor-leader-overview {
+  border: 1px solid rgba(15, 59, 46, 0.12);
+  border-radius: 18px;
+  background: rgba(255, 254, 250, 0.82);
+  padding: 14px;
+}
+
+.labor-leader-overview {
+  display: grid;
+  gap: 12px;
+}
+
+.labor-leader-overview header span {
+  color: rgba(15, 59, 46, 0.58);
+  font-size: 11px;
+  font-weight: 950;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.labor-leader-overview h3 {
+  margin: 2px 0 0;
+  color: var(--fitness-green);
+  font-size: 20px;
+  font-weight: 950;
+}
+
+.labor-leader-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.labor-leader-grid button {
+  display: grid;
+  gap: 3px;
+  border: 1px solid rgba(15, 59, 46, 0.1);
+  border-radius: 12px;
+  background: rgba(255, 254, 250, 0.74);
+  color: var(--ink);
+  padding: 10px;
+  text-align: left;
+}
+
+.labor-leader-grid button span {
+  color: rgba(38, 50, 56, 0.64);
+  font-size: 12px;
+  font-weight: 820;
+}
+
+@media (max-width: 760px) {
+  .worklog-overview-hero,
+  .labor-leader-overview header {
+    display: grid;
+  }
+
+  .worklog-overview-grid {
+    grid-auto-flow: row;
+    grid-auto-columns: auto;
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .labor-leader-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
 }
 
 .control-briefing-list {
