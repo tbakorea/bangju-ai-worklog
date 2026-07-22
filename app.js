@@ -1390,7 +1390,7 @@ function setOwnApprovalPending() {
 }
 
 function getUserWorklogView() {
-  if (isRepresentativeProfile()) return "worklog-overview";
+  if (canAccessWorklogOverview()) return "worklog-overview";
   const profile = state.profile || {};
   const source = `${profile.org || ""} ${profile.workplace || ""} ${profile.primaryWork || ""} ${profile.role || ""}`.toLowerCase();
   if (/피트니스|fitness|센터장|트레이너|인포/.test(source)) return "fitness-log";
