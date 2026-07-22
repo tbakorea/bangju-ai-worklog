@@ -17,17 +17,14 @@
           <h1 id="globalEmployeeIdentity"></h1>
         </div>
         <select id="mainMenuWheelSelect" class="main-menu-wheel-select" aria-label="메인메뉴 선택" hidden>
+          <option value="executive">대표경영</option>
           <option value="control">통합관제</option>
           <option value="worklog">업무일지</option>
-          <option value="fitness">피트니스 OS</option>
-          <option value="os">OS</option>
+          <option value="management">사업장</option>
           <option value="staff">직원</option>
           <option value="attendance">노무</option>
-          <option value="management">사업장</option>
-          <option value="organization">조직</option>
-          <option value="ai">AI 코칭</option>
-          <option value="report">보고</option>
-          <option value="projects">프로젝트</option>
+          <option value="ai">매뉴얼·코칭</option>
+          <option value="report">보고서</option>
           <option value="settings">설정</option>
         </select>
         <div class="header-actions">
@@ -42,12 +39,14 @@
           <button id="settingsGearButton" type="button" aria-haspopup="menu" aria-expanded="false" aria-label="메뉴 열기">메뉴</button>
         </div>
         <div class="main-menu-popover" id="mainMenuPopover" role="menu" hidden>
+          <button type="button" data-menu-view="executive">대표경영</button>
           <button type="button" data-menu-view="control">통합관제</button>
           <button type="button" data-menu-view="management">사업장</button>
           <button type="button" data-menu-view="worklog">업무일지</button>
-          <button type="button" data-menu-view="fitness">센터 OS</button>
           <button type="button" data-menu-view="staff">직원</button>
           <button type="button" data-menu-view="attendance">노무</button>
+          <button type="button" data-menu-view="ai">매뉴얼·코칭</button>
+          <button type="button" data-menu-view="report">보고서</button>
           <button type="button" data-menu-view="settings">설정</button>
           <button type="button" data-menu-action="approval">가입승인 <span id="menuApprovalBadge" class="menu-approval-badge" hidden>0</span></button>
           <button type="button" data-menu-view="auth">로그인</button>
@@ -75,17 +74,14 @@
       </header>
 
       <nav class="worklog-tabs" aria-label="Beyond OS 메뉴">
+        <button type="button" data-view="executive">대표경영</button>
         <button type="button" data-view="control">통합관제</button>
         <button class="is-active" type="button" data-view="worklog">업무일지</button>
-        <button type="button" data-view="fitness">피트니스 OS</button>
-        <button type="button" data-view="os">OS</button>
+        <button type="button" data-view="management">사업장</button>
         <button type="button" data-view="staff">직원</button>
         <button type="button" data-view="attendance">노무</button>
-        <button type="button" data-view="management">사업장</button>
-        <button type="button" data-view="organization">조직</button>
-        <button type="button" data-view="ai">AI 코칭</button>
-        <button type="button" data-view="report">보고</button>
-        <button type="button" data-view="projects">프로젝트</button>
+        <button type="button" data-view="ai">매뉴얼·코칭</button>
+        <button type="button" data-view="report">보고서</button>
         <button type="button" data-view="settings">설정</button>
       </nav>
 
@@ -179,6 +175,70 @@
         </div>
       </section>
 
+      <section class="worklog-view executive-view" id="view-executive">
+        <div class="executive-hero">
+          <div>
+            <p>Executive Management Room</p>
+            <h2>대표 경영페이지</h2>
+            <span id="executiveAccessLabel">대표 전용 · 의사결정과 개입사항</span>
+          </div>
+          <button type="button" id="executiveTodayButton">오늘 기준</button>
+        </div>
+        <div class="control-access-card" id="executiveAccessCard" hidden>
+          <strong>대표 권한이 필요합니다.</strong>
+          <p>대표 경영페이지는 대표와 대표가 직접 지정한 경영권한자만 볼 수 있습니다.</p>
+        </div>
+        <div class="executive-body" id="executiveBody">
+          <div class="executive-kpi-grid" id="executiveKpiGrid"></div>
+          <section class="executive-decision-card">
+            <header>
+              <span>CEO Agenda</span>
+              <h3>오늘 대표 개입사항</h3>
+            </header>
+            <div id="executiveAgendaList" class="executive-agenda-list"></div>
+          </section>
+          <section class="executive-board-grid">
+            <article class="executive-panel">
+              <header>
+                <span>Business Portfolio</span>
+                <h3>사업장 전략 우선순위</h3>
+              </header>
+              <div id="executiveSitePriorities" class="executive-site-priorities"></div>
+            </article>
+            <article class="executive-panel">
+              <header>
+                <span>Capital & Labor</span>
+                <h3>자금·노무·수익 신호</h3>
+              </header>
+              <div id="executiveFinanceSignals" class="executive-signal-list"></div>
+            </article>
+          </section>
+          <section class="executive-board-grid">
+            <article class="executive-panel">
+              <header>
+                <span>People</span>
+                <h3>핵심 인력 리포트</h3>
+              </header>
+              <div id="executivePeopleSignals" class="executive-people-list"></div>
+            </article>
+            <article class="executive-panel">
+              <header>
+                <span>Orders</span>
+                <h3>대표 지시·결재 대기</h3>
+              </header>
+              <div id="executiveOrdersList" class="executive-orders-list"></div>
+            </article>
+          </section>
+          <section class="executive-panel">
+            <header>
+              <span>7 Days Execution</span>
+              <h3>이번 주 경영 액션 보드</h3>
+            </header>
+            <div id="executiveActionBoard" class="executive-action-board"></div>
+          </section>
+        </div>
+      </section>
+
       <section class="worklog-view worklog-overview-view" id="view-worklog-overview">
         <div class="worklog-overview-hero">
           <div>
@@ -186,7 +246,14 @@
             <h2>전 사업장 업무일지</h2>
             <span>방주 → 비욘드 컴퍼니 → 피트니스 · 직원별 업무보고와 실행 현황</span>
           </div>
-          <button type="button" id="worklogOverviewTodayButton">오늘 기준</button>
+          <div class="overview-date-nav" id="overviewDateSwipeArea">
+            <button type="button" id="overviewPrevDateButton" aria-label="이전 날짜">‹</button>
+            <button type="button" id="overviewDateButton" aria-haspopup="dialog" aria-expanded="false">
+              <span id="overviewDateTitle"></span>
+            </button>
+            <button type="button" id="overviewNextDateButton" aria-label="다음 날짜">›</button>
+            <button type="button" id="worklogOverviewTodayButton">오늘</button>
+          </div>
         </div>
         <div class="worklog-overview-grid" id="worklogOverviewGrid"></div>
       </section>

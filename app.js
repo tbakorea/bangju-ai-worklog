@@ -235,7 +235,7 @@ const fitnessManualTemplates = {
 };
 const employees = [
   { id: "bangju-finance-manager", name: "재무과장", org: "(주)방주", role: "재무과장", primaryWork: "자금, 회계, 보고" },
-  { id: "bangju-finance-assistant", name: "재무 대리", org: "(주)방주", role: "재무 대리", primaryWork: "지출, 정산, 문서" },
+  { id: "bangju-finance-assistant", name: "이소미", org: "(주)방주", role: "재무 대리", primaryWork: "지출, 정산, 문서" },
   { id: "bangju-spare-1", name: "방주 예비", org: "(주)방주", role: "예비", primaryWork: "공통 지원" },
   { id: "beyond-fitness-manager", name: "박주홍", nickname: "센터장", org: "(주)방주 / 비욘드 피트니스 지사", role: "센터장", workHours: "06:00-24:00", primaryWork: "운영총괄, PT 수업" },
   { id: "fitness-trainer-1", name: "홍현규", nickname: "홍트", org: "(주)방주 / 비욘드 피트니스 지사", role: "트레이너", workHours: "06:00-24:00", primaryWork: "PT 수업", employmentType: "프리랜서" },
@@ -592,6 +592,9 @@ function getFitnessEmployees() {
 }
 
 function getEmployeeAdminLabel(employee = getSelectedEmployee()) {
+  if (String(employee.role || "").trim() && String(employee.role || "").trim() === String(employee.name || "").trim()) {
+    return String(employee.role || "직원").trim();
+  }
   return `${employee.role || "직원"} ${employee.name || ""}`.trim();
 }
 
@@ -840,7 +843,7 @@ function moveSelectedDate(offsetDays, animate = true) {
 }
 
 function animateDateTitle(delta, nextDateKey) {
-  const titleButtons = ["selectedDateButton", "fitnessDateButton"]
+  const titleButtons = ["selectedDateButton", "fitnessDateButton", "overviewDateButton"]
     .map((id) => document.getElementById(id))
     .filter(Boolean);
   if (!titleButtons.length) {
@@ -857,7 +860,7 @@ function animateDateTitle(delta, nextDateKey) {
 
   dateSlideTimer = window.setTimeout(() => {
     setSelectedDateKey(nextDateKey);
-    const nextTitleButtons = ["selectedDateButton", "fitnessDateButton"]
+    const nextTitleButtons = ["selectedDateButton", "fitnessDateButton", "overviewDateButton"]
       .map((id) => document.getElementById(id))
       .filter(Boolean);
     nextTitleButtons.forEach((button) => {
@@ -1072,13 +1075,13 @@ function getWorklogOverviewGroups() {
 
 function getOverviewActiveTasks(log) {
   const active = (log.tasks || []).filter((task) => String(task.text || "").trim());
-  return active.slice(0, 5);
+  return (active.length ? active : log.tasks || []).slice(0, 8);
 }
 
 function getOverviewScheduleRows(log) {
   const filled = (log.schedule || []).filter((item) => getScheduleEntryText(item));
-  const base = filled.length ? filled : (log.schedule || []).slice(0, 6);
-  return base.slice(0, 8);
+  const base = filled.length ? filled : log.schedule || [];
+  return base.slice(0, 12);
 }
 
 function getOverviewReportText(log) {
@@ -1090,7 +1093,7 @@ function renderOverviewTaskMini(task) {
   return `
     <li class="overview-task-mini ${task.done || task.status === "완료" ? "is-done" : ""}">
       <span class="overview-task-marker">${escapeHtml(marker)}</span>
-      <strong>${escapeHtml(task.priority || "?")}</strong>
+      <strong class="overview-priority-box">${escapeHtml(task.priority || "?")}</strong>
       <p>${escapeHtml(task.text || "업무 내용")}</p>
     </li>
   `;
@@ -1133,7 +1136,7 @@ function renderWorklogOverview() {
       const activeTasks = getOverviewActiveTasks(dayLog);
       const scheduleRows = getOverviewScheduleRows(dayLog);
       return `
-        <article class="worklog-overview-employee-sheet" data-overview-site="${escapeAttr(group.id)}">
+        <article class="worklog-overview-employee-sheet projected-worklog-sheet" data-overview-site="${escapeAttr(group.id)}">
           <header class="overview-sheet-head">
             <div>
               <span>${escapeHtml(group.label)} ${index + 1}</span>
@@ -1147,13 +1150,13 @@ function renderWorklogOverview() {
             <p>${escapeHtml(reportText || "오늘 보고 내용이 아직 없습니다.")}</p>
           </section>
           <div class="overview-sheet-body">
-            <section>
+            <section class="projected-task-panel">
               <h4>주요업무 <em>${done}/${tasks.length || 0}</em></h4>
               <ul>
                 ${(activeTasks.length ? activeTasks : [{ priority: "?", text: "업무 내용", status: "예정" }]).map(renderOverviewTaskMini).join("")}
               </ul>
             </section>
-            <section>
+            <section class="projected-schedule-panel">
               <h4>시간별 일정 <em>${scheduleCount}</em></h4>
               <ul>
                 ${scheduleRows.map(renderOverviewScheduleMini).join("")}
@@ -1250,6 +1253,134 @@ function renderControlTower() {
   ].map(([title, text, tag]) => `<article><b>${escapeHtml(title)}</b><span>${escapeHtml(text)}</span><em>${escapeHtml(tag)}</em></article>`).join("");
 }
 
+function renderExecutiveManagement() {
+  const accessCard = document.getElementById("executiveAccessCard");
+  const body = document.getElementById("executiveBody");
+  const accessLabel = document.getElementById("executiveAccessLabel");
+  if (!body) return;
+  const allowed = isRepresentativeProfile();
+  if (accessCard) accessCard.hidden = allowed;
+  body.hidden = !allowed;
+  if (accessLabel) accessLabel.textContent = allowed ? "대표 접근 중 · 오늘의 경영 판단" : "대표 전용 · 의사결정과 개입사항";
+  if (!allowed) return;
+
+  const assetRows = getAssetRows();
+  const staffRows = getControlStaffRows();
+  const siteRows = getControlSiteRows(assetRows, staffRows);
+  const fitnessOps = getFitnessOpsSummary();
+  const taskTotal = staffRows.reduce((sum, row) => sum + row.taskCount, 0);
+  const completedTotal = staffRows.reduce((sum, row) => sum + row.completedCount, 0);
+  const issueRows = staffRows.filter((row) => row.aiSignal !== "정상");
+  const absentRows = staffRows.filter((row) => row.aiSignal === "결석확인");
+  const salesActions = fitnessOps.consultation + fitnessOps.outbound + fitnessOps.outsideSales;
+  const operatingScore = calculateOperatingScore();
+  const pendingDecisionCount = [
+    taskTotal && completedTotal < taskTotal,
+    issueRows.length > 0,
+    salesActions === 0,
+    siteRows.some((site) => site.status === "보류" || site.status === "준비"),
+  ].filter(Boolean).length;
+
+  const kpis = [
+    ["경영점수", `${operatingScore}점`, operatingScore >= 82 ? "안정" : operatingScore >= 68 ? "주의" : "개입"],
+    ["대표 개입", `${pendingDecisionCount}건`, pendingDecisionCount ? "오늘 처리" : "관찰"],
+    ["업무 실행률", taskTotal ? `${Math.round((completedTotal / taskTotal) * 100)}%` : "대기", `${completedTotal}/${taskTotal || 0}`],
+    ["직원 신호", `${issueRows.length}건`, absentRows.length ? `결석 ${absentRows.length}` : "업무"],
+    ["고객행동", `${salesActions}건`, "상담·영업"],
+    ["유료 P/T", `${fitnessOps.ptRegular + fitnessOps.ptOther}건`, `무료 ${fitnessOps.ptFree}`],
+  ];
+  document.getElementById("executiveKpiGrid").innerHTML = kpis.map(([label, value, meta]) => `
+    <article><span>${escapeHtml(label)}</span><strong>${escapeHtml(value)}</strong><em>${escapeHtml(meta)}</em></article>
+  `).join("");
+
+  const agenda = buildExecutiveAgenda({ staffRows, siteRows, fitnessOps, taskTotal, completedTotal, salesActions, operatingScore });
+  document.getElementById("executiveAgendaList").innerHTML = agenda.map((item, index) => `
+    <article data-level="${escapeAttr(item.level)}">
+      <b>${String(index + 1).padStart(2, "0")}</b>
+      <div><strong>${escapeHtml(item.title)}</strong><span>${escapeHtml(item.text)}</span></div>
+    </article>
+  `).join("");
+
+  document.getElementById("executiveSitePriorities").innerHTML = siteRows.slice(0, 8).map((site) => {
+    const priority = site.issueCount ? "개입" : site.status === "보류" || site.status === "준비" ? "전략검토" : "유지";
+    return `
+      <article data-priority="${escapeAttr(priority)}">
+        <div><span>${escapeHtml(site.brand)}</span><strong>${escapeHtml(site.site)}</strong></div>
+        <p>${escapeHtml(site.location)}</p>
+        <em>${escapeHtml(priority)} · 직원 ${site.staffCount} · 이슈 ${site.issueCount}</em>
+      </article>
+    `;
+  }).join("");
+
+  document.getElementById("executiveFinanceSignals").innerHTML = [
+    ["자금", "재무 업무일지에서 자금·입금·지출 태그를 매일 확인하고, 지급위험은 대표 결재로 올립니다.", "확인"],
+    ["매출", salesActions ? `피트니스 고객행동 ${salesActions}건이 기록됐습니다. 계약 후속업무를 추적하세요.` : "상담·아웃바운드·재등록 기록이 비어 있습니다. 오늘 영업 행동을 지정하세요.", salesActions ? "추적" : "개입"],
+    ["노무", "근무이력은 월별 노무비 지급대장과 연결됩니다. 결석·조퇴·프리랜서 P/T 정산을 확인하세요.", "월마감"],
+    ["수익", "사업장별 매출·원가·고정비 입력이 쌓이면 영업이익과 운영점수를 자동 산정합니다.", "구축"],
+  ].map(([title, text, tag]) => `<article><b>${escapeHtml(title)}</b><span>${escapeHtml(text)}</span><em>${escapeHtml(tag)}</em></article>`).join("");
+
+  document.getElementById("executivePeopleSignals").innerHTML = staffRows.slice(0, 8).map((row) => `
+    <article data-signal="${escapeAttr(row.aiSignal)}">
+      <strong>${escapeHtml(row.role)} ${escapeHtml(row.name)}</strong>
+      <span>${escapeHtml(row.org)}</span>
+      <p>출결 ${escapeHtml(row.attendanceStatus)} · 업무 ${escapeHtml(`${row.completedCount}/${row.taskCount}`)} · ${escapeHtml(row.aiSignal)}</p>
+    </article>
+  `).join("");
+
+  document.getElementById("executiveOrdersList").innerHTML = [
+    ["승인", `${authState.pendingApprovalCount || 0}건`, "가입승인과 권한 부여를 처리합니다."],
+    ["업무", `${Math.max(0, taskTotal - completedTotal)}건`, "미완료 업무의 담당자와 마감시간을 정합니다."],
+    ["시설", `${siteRows.reduce((sum, site) => sum + site.issueCount, 0)}건`, "반복 시설·민원 이슈는 사업장 티켓으로 전환합니다."],
+    ["보고", "1건", "오늘 마감 전 대표 일일보고서를 생성합니다."],
+  ].map(([title, count, text]) => `<article><b>${escapeHtml(title)}</b><strong>${escapeHtml(count)}</strong><span>${escapeHtml(text)}</span></article>`).join("");
+
+  document.getElementById("executiveActionBoard").innerHTML = [
+    ["월", "현금흐름·미수금·지급예정 확인"],
+    ["화", "직원별 업무완료율·노무기록 점검"],
+    ["수", "피트니스 매출·상담·재등록 후보 확인"],
+    ["목", "공유오피스/창고 공실·계약 갱신 확인"],
+    ["금", "주간 성과 리뷰·다음 주 우선순위 확정"],
+    ["토", "현장/센터 운영 품질·고객경험 점검"],
+    ["일", "대표 회고·AI 코칭 반영·주간 지시 작성"],
+  ].map(([day, text]) => `<article><strong>${escapeHtml(day)}</strong><span>${escapeHtml(text)}</span></article>`).join("");
+}
+
+function buildExecutiveAgenda({ staffRows, siteRows, fitnessOps, taskTotal, completedTotal, salesActions, operatingScore }) {
+  const agenda = [];
+  if (operatingScore < 75) {
+    agenda.push({ title: "운영점수 보강", text: `운영점수 ${operatingScore}점입니다. 업무입력, 출결, 사업장 상태 데이터를 먼저 채우세요.`, level: "warn" });
+  } else {
+    agenda.push({ title: "운영 리듬 유지", text: `운영점수 ${operatingScore}점입니다. 오늘은 매출 행동과 직원 미완료만 확인하면 됩니다.`, level: "ok" });
+  }
+  const incomplete = Math.max(0, taskTotal - completedTotal);
+  agenda.push({
+    title: "미완료 업무 추적",
+    text: incomplete ? `전 직원 미완료 업무 ${incomplete}건입니다. 오늘 종료 전 담당자별 마감 여부를 확인하세요.` : "오늘 등록된 업무는 모두 안정적으로 처리되고 있습니다.",
+    level: incomplete ? "warn" : "ok",
+  });
+  const problemStaff = staffRows.filter((row) => row.aiSignal !== "정상");
+  agenda.push({
+    title: "직원 신호 확인",
+    text: problemStaff.length ? `${problemStaff.slice(0, 3).map((row) => `${row.role} ${row.name}`).join(", ")} 업무/출결 신호를 확인하세요.` : "직원별 출결과 업무 신호는 정상 범위입니다.",
+    level: problemStaff.length ? "warn" : "ok",
+  });
+  agenda.push({
+    title: "매출 행동 지정",
+    text: salesActions ? `상담·영업 행동 ${salesActions}건입니다. 계약/재등록 후속업무가 업무일지에 이어지는지 확인하세요.` : "오늘 고객 접점 행동이 비어 있습니다. 상담, 아웃바운드, 재등록 후보 연락을 지정하세요.",
+    level: salesActions ? "ok" : "warn",
+  });
+  const holdSites = siteRows.filter((site) => site.status === "보류" || site.status === "준비");
+  agenda.push({
+    title: "사업장 전략 선택",
+    text: holdSites.length ? `${holdSites.length}개 준비/보류 사업장의 다음 액션과 책임자를 지정하세요.` : "운영 사업장 중심으로 품질과 수익률을 추적하세요.",
+    level: holdSites.length ? "warn" : "ok",
+  });
+  if (fitnessOps.specialReports.length) {
+    agenda.push({ title: "특이사항 보고", text: `피트니스 특이사항 ${fitnessOps.specialReports.length}건이 있습니다. 민원/시설/안전 여부를 확인하세요.`, level: "warn" });
+  }
+  return agenda.slice(0, 6);
+}
+
 function getControlStaffRows() {
   return getEmployeeOptions().map((employee) => {
     const log = getEmployeeLogForDate(employee.id);
@@ -1322,10 +1453,15 @@ function renderDateNav() {
   const selectedDateButton = document.getElementById("selectedDateButton");
   const dayTitle = document.getElementById("worklogDayTitle");
   const todayJumpButton = document.getElementById("todayJumpButton");
+  const overviewDateButton = document.getElementById("overviewDateButton");
+  const overviewDateTitle = document.getElementById("overviewDateTitle");
+  const overviewTodayButton = document.getElementById("worklogOverviewTodayButton");
   const activeDateKey = getActiveDateKey();
   calendarViewDate = parseDateKey(activeDateKey);
   if (dayTitle) dayTitle.textContent = formatKoreanDate(activeDateKey);
-  selectedDateButton.setAttribute("aria-label", `${formatKoreanDate(activeDateKey)} 업무일지 날짜 선택`);
+  if (overviewDateTitle) overviewDateTitle.textContent = formatKoreanDate(activeDateKey);
+  selectedDateButton?.setAttribute("aria-label", `${formatKoreanDate(activeDateKey)} 업무일지 날짜 선택`);
+  overviewDateButton?.setAttribute("aria-label", `${formatKoreanDate(activeDateKey)} 전체 업무일지 날짜 선택`);
   if (todayJumpButton) {
     const isToday = activeDateKey === todayKey;
     todayJumpButton.hidden = false;
@@ -1333,12 +1469,25 @@ function renderDateNav() {
     todayJumpButton.classList.toggle("is-current-date", isToday);
     todayJumpButton.setAttribute("aria-disabled", String(isToday));
   }
+  if (overviewTodayButton) {
+    const isToday = activeDateKey === todayKey;
+    overviewTodayButton.disabled = isToday;
+    overviewTodayButton.classList.toggle("is-current-date", isToday);
+    overviewTodayButton.setAttribute("aria-disabled", String(isToday));
+  }
   renderWorklogCalendar();
 }
 
 function openWorklogCalendar() {
   calendarPickerMode = "worklog";
   calendarTriggerButtonId = "selectedDateButton";
+  calendarPostponeTask = null;
+  openCalendarSheet(parseDateKey(getActiveDateKey()));
+}
+
+function openOverviewCalendar() {
+  calendarPickerMode = "worklog";
+  calendarTriggerButtonId = "overviewDateButton";
   calendarPostponeTask = null;
   openCalendarSheet(parseDateKey(getActiveDateKey()));
 }
@@ -1393,6 +1542,12 @@ function closeWorklogCalendar() {
 function toggleWorklogCalendar() {
   const popover = document.getElementById("worklogCalendarPopover");
   if (popover.hidden) openWorklogCalendar();
+  else closeWorklogCalendar();
+}
+
+function toggleOverviewCalendar() {
+  const popover = document.getElementById("worklogCalendarPopover");
+  if (popover.hidden) openOverviewCalendar();
   else closeWorklogCalendar();
 }
 
@@ -1572,6 +1727,7 @@ function ensureSelectedEmployeeForWorklogView(view) {
 function getGlobalHeaderTitle(view = activeView, personLabel = "") {
   if (view === "worklog" || view === "worklog-overview") return "업무일지";
   if (view === "fitness-log") return `beyond fitness · ${personLabel}`;
+  if (view === "executive") return "대표 경영페이지";
   if (view === "control") return "Beyond Control Tower";
   if (view === "beyond-log") return `비욘드 업무일지 · ${personLabel}`;
   if (view === "bangju-log" || view === "today") return `방주 업무일지 · ${personLabel}`;
@@ -1580,8 +1736,8 @@ function getGlobalHeaderTitle(view = activeView, personLabel = "") {
   if (view === "management") return "사업장 운영관리";
   if (view === "staff") return "직원";
   if (view === "organization") return "조직";
-  if (view === "ai") return "AI 코칭";
-  if (view === "report") return "보고";
+  if (view === "ai") return "매뉴얼·코칭";
+  if (view === "report") return "보고서";
   if (view === "projects") return "프로젝트";
   if (view === "settings") return "설정";
   return "Beyond OS";
@@ -1973,7 +2129,7 @@ function renderMainMenuAuthButton() {
 }
 
 function renderMainMenuVisibility() {
-  const generalMenuViews = new Set(["management", "worklog", "attendance", "settings", "auth"]);
+  const generalMenuViews = new Set(["management", "worklog", "attendance", "ai", "report", "settings", "auth"]);
   const showFullMenu = canAccessWorklogOverview();
   document.querySelectorAll("#mainMenuPopover [data-menu-view]").forEach((item) => {
     const view = item.dataset.menuView;
@@ -5481,6 +5637,7 @@ function switchView(view) {
   renderEmployeeTitle();
   renderGlobalEmployeeIdentity();
   renderOsDashboard();
+  renderExecutiveManagement();
   renderControlTower();
   renderWorklogOverview();
   renderAiCoach();
@@ -5517,6 +5674,7 @@ function renderAll() {
   renderGlobalEmployeeIdentity();
   renderMainMenuAuthButton();
   renderOsDashboard();
+  renderExecutiveManagement();
   renderControlTower();
   renderWorklogOverview();
   renderAiCoach();
@@ -5569,6 +5727,12 @@ document.querySelectorAll("[data-layout-mode-choice]").forEach((button) => {
 document.getElementById("globalViewModeButton")?.addEventListener("click", toggleGlobalViewMode);
 document.getElementById("fitnessLogPrevPageButton")?.addEventListener("click", moveFitnessLogPrevPage);
 document.getElementById("fitnessLogNextPageButton")?.addEventListener("click", moveFitnessLogNextPage);
+document.getElementById("overviewPrevDateButton")?.addEventListener("click", () => moveSelectedDate(-1));
+document.getElementById("overviewNextDateButton")?.addEventListener("click", () => moveSelectedDate(1));
+document.getElementById("overviewDateButton")?.addEventListener("click", (event) => {
+  event.stopPropagation();
+  toggleOverviewCalendar();
+});
 document.getElementById("worklogOverviewTodayButton")?.addEventListener("click", () => setSelectedDateKey(todayKey));
 document.querySelector('[data-worklog-panel="weekly"]')?.addEventListener("click", () => setTodayPageMode("common"));
 document.querySelector('[data-worklog-panel="memo"]')?.addEventListener("click", () => setTodayPageMode("coworker"));
@@ -5787,6 +5951,24 @@ document.getElementById("fitnessCenterMonthInput")?.addEventListener("change", (
     moveSelectedDate(dx < 0 ? 1 : -1);
   });
 }
+{
+  const overviewDateNav = document.getElementById("overviewDateSwipeArea");
+  let startX = 0;
+  let startY = 0;
+  let blocked = false;
+  overviewDateNav?.addEventListener("pointerdown", (event) => {
+    startX = event.clientX;
+    startY = event.clientY;
+    blocked = Boolean(event.target.closest("#overviewPrevDateButton, #overviewNextDateButton, #worklogOverviewTodayButton"));
+  });
+  overviewDateNav?.addEventListener("pointerup", (event) => {
+    if (blocked) return;
+    const dx = event.clientX - startX;
+    const dy = event.clientY - startY;
+    if (Math.abs(dx) < 38 || Math.abs(dx) < Math.abs(dy) * 1.25) return;
+    moveSelectedDate(dx < 0 ? 1 : -1);
+  });
+}
 document.getElementById("fitnessOpsSummaryButton")?.addEventListener("click", () => {
   document.querySelector(".fitness-ops-section")?.classList.add("is-open");
 });
@@ -5900,6 +6082,10 @@ document.getElementById("fitnessCoachButton")?.addEventListener("click", () => {
 document.getElementById("controlTowerRefreshButton")?.addEventListener("click", () => {
   setSelectedDateKey(todayKey);
   switchView("control");
+});
+document.getElementById("executiveTodayButton")?.addEventListener("click", () => {
+  setSelectedDateKey(todayKey);
+  switchView("executive");
 });
 document.getElementById("reportTone").onchange = (event) => {
   state.reportTone = event.target.value;
