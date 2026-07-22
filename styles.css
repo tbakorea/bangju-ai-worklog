@@ -9207,6 +9207,113 @@ body[data-layout-mode="phone"] #view-fitness-log .fitness-log-pager {
   padding: 12px;
 }
 
+#view-today .common-compass-summary {
+  display: grid;
+  grid-template-columns: minmax(150px, 0.38fr) minmax(0, 1fr);
+  align-items: center;
+  gap: 10px;
+}
+
+#view-today .common-compass-summary div {
+  display: grid;
+  gap: 3px;
+}
+
+#view-today .common-compass-summary span {
+  color: rgba(15, 59, 46, 0.64);
+  font-size: 11px;
+  font-weight: 950;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+#view-today .common-compass-summary strong {
+  color: var(--fitness-green);
+  font-size: 20px;
+  font-weight: 950;
+}
+
+#view-today .common-compass-summary input,
+#view-today .weekly-priority-text,
+#view-today .compass-row input {
+  min-width: 0;
+  min-height: 38px;
+  border: 1px solid rgba(15, 59, 46, 0.12);
+  border-radius: 10px;
+  background: rgba(255, 254, 250, 0.9);
+  color: var(--ink);
+  padding: 8px 10px;
+  font-size: 15px;
+  font-weight: 780;
+}
+
+#view-today .weekly-priority-block {
+  display: grid;
+  gap: 9px;
+}
+
+#view-today .weekly-priority-block h4,
+#view-today .common-week-review > b {
+  color: var(--ink);
+  font-size: 16px;
+  font-weight: 950;
+}
+
+#view-today .common-week-priorities {
+  display: grid;
+  gap: 6px;
+}
+
+#view-today .weekly-priority-row {
+  display: grid;
+  grid-template-columns: 24px minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+#view-today .weekly-priority-row input[type="checkbox"] {
+  width: 22px;
+  height: 22px;
+  accent-color: var(--fitness-green);
+}
+
+#view-today .weekly-priority-row.done .weekly-priority-text {
+  color: rgba(15, 59, 46, 0.48);
+  text-decoration: line-through;
+}
+
+#view-today .common-compass-grid {
+  display: grid;
+  gap: 8px;
+}
+
+#view-today .compass-row {
+  display: grid;
+  grid-template-columns: minmax(88px, 0.22fr) minmax(0, 0.78fr);
+  gap: 8px;
+  align-items: center;
+}
+
+#view-today .compass-row .row-label {
+  color: var(--fitness-green);
+  font-size: 14px;
+  font-weight: 950;
+  word-break: keep-all;
+}
+
+#view-today .compass-actions {
+  grid-column: 2;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+}
+
+#view-today .common-week-review {
+  display: grid;
+  gap: 9px;
+}
+
 #view-today .weekly-common-grid {
   display: grid;
   grid-template-columns: repeat(7, minmax(0, 1fr));
@@ -9254,6 +9361,16 @@ body[data-layout-mode="phone"] #view-fitness-log .fitness-log-pager {
 
   #view-today .weekly-common-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  #view-today .common-compass-summary,
+  #view-today .compass-row,
+  #view-today .compass-actions {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  #view-today .compass-actions {
+    grid-column: auto;
   }
 }
 
