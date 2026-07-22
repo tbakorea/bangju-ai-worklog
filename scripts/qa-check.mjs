@@ -125,6 +125,18 @@ check(
 );
 
 check(
+  "personal growth engine exists",
+  /function buildPersonalGrowthModel\(employee = getSelectedEmployee\(\), log = getSelectedLog\(\)\)/.test(js) && /function getGrowthRoleTrack/.test(js) && /오늘의 성장 미션/.test(js),
+  "AI coaching should turn worklog behavior into visible self-development missions"
+);
+
+check(
+  "growth engine has visual competency styles",
+  css.includes(".growth-command-card") && css.includes(".growth-competency-card") && css.includes("--growth-score"),
+  "self-development progress should be visible, not only textual"
+);
+
+check(
   "report backup center markup exists",
   ["backupRecipientEmail", "backupCadence", "copyBackupSummaryButton", "downloadBackupButton", "emailBackupButton", "backupPreview", "backupIntegrityHash", "backupCoverage", "backupPayloadSize", "backupAutomationLane", "validateBackupButton", "restoreBackupButton", "backupRestoreFile", "innovationList"].every((id) => ids.includes(id)),
   "report view should contain the integrated backup center instead of a separate backup menu"

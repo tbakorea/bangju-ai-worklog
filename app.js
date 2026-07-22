@@ -1504,22 +1504,165 @@ function getControlBriefingItems({ staffRows, siteRows, fitnessOps, issueCount, 
   ];
 }
 
+function clampScore(value) {
+  return Math.max(0, Math.min(100, Math.round(value)));
+}
+
+function getGrowthRoleTrack(employee = getSelectedEmployee()) {
+  const text = `${employee.org || ""} ${employee.role || ""} ${employee.primaryWork || ""} ${state.profile?.role || ""}`;
+  if (/대표|총괄|CEO|owner/i.test(text)) return "executive";
+  if (/재무|자금|회계|세무/.test(text)) return "finance";
+  if (/센터장|피트니스|트레이너|인포|PT|상담|계약/.test(text)) return "fitness";
+  if (/TBA|욕실|바스|인테리어|시공|현장|공사/i.test(text)) return "project";
+  if (/공유|오피스|창고|WorkBase|WorkBox/i.test(text)) return "shared";
+  return "operator";
+}
+
+function getGrowthTrackProfile(track) {
+  const profiles = {
+    executive: {
+      title: "대표 성장 트랙",
+      focus: "판단력 · 위임 · 숫자 기반 경영",
+      competencies: ["전략 판단", "위임/피드백", "숫자 감각", "문제발견", "조직 코칭"],
+    },
+    finance: {
+      title: "재무 성장 트랙",
+      focus: "정확성 · 일정준수 · 리스크 선제관리",
+      competencies: ["정확성", "마감관리", "자금흐름", "증빙관리", "리스크 보고"],
+    },
+    fitness: {
+      title: "피트니스 성장 트랙",
+      focus: "고객경험 · 영업전환 · 센터 운영",
+      competencies: ["고객응대", "PT/상담 전환", "운영루틴", "시설/청결", "보고/인수인계"],
+    },
+    project: {
+      title: "프로젝트 성장 트랙",
+      focus: "현장관리 · 품질 · 일정/원가",
+      competencies: ["공정관리", "품질관리", "원가감각", "현장소통", "기록/증빙"],
+    },
+    shared: {
+      title: "공유사업 성장 트랙",
+      focus: "입주고객 · 공간상태 · 계약갱신",
+      competencies: ["고객관리", "공간운영", "계약관리", "매출기록", "클레임 대응"],
+    },
+    operator: {
+      title: "운영자 성장 트랙",
+      focus: "업무완결 · 시간관리 · 보고 습관",
+      competencies: ["우선순위", "시간관리", "완료율", "소통", "개선습관"],
+    },
+  };
+  return profiles[track] || profiles.operator;
+}
+
+function buildPersonalGrowthModel(employee = getSelectedEmployee(), log = getSelectedLog()) {
+  const tasks = (log.tasks || []).filter((task) => String(task.text || "").trim());
+  const completedTasks = tasks.filter((task) => task.done || task.status === "완료");
+  const scheduleEntries = (log.schedule || []).filter((entry) => getScheduleEntryText(entry));
+  const attendanceRecorded = Boolean(log.clockIn || log.clockOut || (log.attendanceBreaks || []).length);
+  const reportText = String(log.report || log.memo || "").trim();
+  const ops = { ...createFitnessOps(), ...(log.fitnessOps || {}) };
+  const salesSignals = numberValue(ops.consultation) + numberValue(ops.customerNew) + numberValue(ops.customerRenewal) + numberValue(ops.outbound) + numberValue(ops.outsideSales);
+  const track = getGrowthRoleTrack(employee);
+  const trackProfile = getGrowthTrackProfile(track);
+  const completionRate = tasks.length ? completedTasks.length / tasks.length : 0;
+  const scheduleDensity = Math.min(1, scheduleEntries.length / 5);
+  const reportQuality = Math.min(1, reportText.length / 80);
+  const attendanceQuality = attendanceRecorded ? 1 : 0;
+  const learningEvidence = Math.min(1, (reportQuality + (tasks.some((task) => /개선|학습|연습|훈련|피드백|매뉴얼/.test(task.text)) ? 1 : 0)) / 2);
+  const score = clampScore(18 + completionRate * 26 + scheduleDensity * 18 + reportQuality * 16 + attendanceQuality * 12 + learningEvidence * 10);
+  const competencyScores = trackProfile.competencies.map((name, index) => {
+    const base = [
+      completionRate * 72 + tasks.length * 4,
+      scheduleDensity * 78 + scheduleEntries.length * 2,
+      reportQuality * 80 + (salesSignals ? 12 : 0),
+      attendanceQuality * 70 + (scheduleEntries.length ? 10 : 0),
+      learningEvidence * 76 + completedTasks.length * 3,
+    ][index] || 45;
+    return { name, score: clampScore(base + 12) };
+  });
+  const missions = [];
+  if (tasks.length < 3) missions.push("오늘 우선업무를 3개 이상 적고 A/B/?로 구분하세요.");
+  if (scheduleEntries.length < 3) missions.push("시간별 일정에 실제 실행 시간을 3칸 이상 배치하세요.");
+  if (completionRate < 0.6) missions.push("미완료 업무 1개를 골라 완료 조건과 다음 행동을 적으세요.");
+  if (!attendanceRecorded) missions.push("출결 또는 근무 시작/종료 시간을 먼저 기록하세요.");
+  if (reportText.length < 40) missions.push("업무보고에 배운 점 1개와 내일 개선점 1개를 남기세요.");
+  if (track === "executive") missions.push("오늘 대표가 직접 개입할 일 1개와 위임할 일 1개를 분리하세요.");
+  if (track === "fitness" && !salesSignals) missions.push("상담, 재등록, 무료/유료 PT 중 하나를 숫자로 기록하세요.");
+  if (track === "finance") missions.push("오늘 자금/증빙/마감 리스크를 한 줄로 점검하세요.");
+  if (track === "project") missions.push("현장 품질, 일정, 원가 중 하나를 사진/메모 기준으로 남기세요.");
+  if (track === "shared") missions.push("입주고객, 공실, 청결, 계약갱신 중 하나를 운영 기록으로 남기세요.");
+  return {
+    employee,
+    track,
+    trackProfile,
+    score,
+    tasks,
+    completedTasks,
+    scheduleEntries,
+    reportQuality,
+    attendanceRecorded,
+    competencyScores,
+    missions: [...new Set(missions)].slice(0, 5),
+    streakLabel: `${tasks.length ? "업무 입력" : "업무 미입력"} · ${scheduleEntries.length ? "시간기록" : "시간 미기록"} · ${reportText ? "회고 있음" : "회고 없음"}`,
+  };
+}
+
 function renderAiCoach() {
+  const node = document.getElementById("aiCoachGrid");
+  if (!node) return;
   const score = calculateOperatingScore();
   const log = getSelectedLog();
   const tasks = (log.tasks || []).filter((task) => task.text.trim());
+  const growth = buildPersonalGrowthModel(getSelectedEmployee(), log);
   const coaching = [
     ["대표 AI 코치", `오늘 점검 우선순위는 운영점수 ${score}점 기준으로 매출, 공간 활용, 문서 연결입니다.`],
     ["사업장 AI 코치", "Beyond Fitness는 회원 240명, 월매출 2천만원을 기준 KPI로 두고 PT 전환율과 이탈률을 먼저 추적해야 합니다."],
     ["직원 AI 코치", tasks.length ? `오늘 우선업무 ${tasks.length}건을 기준으로 완료율과 지연 사유를 기록합니다.` : "개인 업무일지의 우선업무와 시간별 일정을 먼저 기록해야 코칭 품질이 올라갑니다."],
     ["데이터 설계 코치", "모든 사진, 도면, 계약서, 업무일지, 매출 데이터는 반드시 사업장 ID와 호실 ID에 연결해야 합니다."],
   ];
-  document.getElementById("aiCoachGrid").innerHTML = coaching.map(([title, body]) => `
-    <article>
-      <strong>${escapeHtml(title)}</strong>
-      <p>${escapeHtml(body)}</p>
+  node.innerHTML = `
+    <article class="growth-command-card">
+      <div>
+        <p>Personal Growth Engine</p>
+        <strong>${escapeHtml(growth.trackProfile.title)}</strong>
+        <span>${escapeHtml(growth.trackProfile.focus)}</span>
+      </div>
+      <b>${growth.score}</b>
     </article>
-  `).join("");
+    <article class="growth-mission-card">
+      <header>
+        <strong>오늘의 성장 미션</strong>
+        <span>${escapeHtml(growth.streakLabel)}</span>
+      </header>
+      <ol>
+        ${growth.missions.map((mission) => `<li>${escapeHtml(mission)}</li>`).join("") || "<li>오늘 기록이 안정적입니다. 완료 업무의 성공 이유를 한 줄로 남기세요.</li>"}
+      </ol>
+    </article>
+    <article class="growth-competency-card">
+      <header>
+        <strong>역량 스냅샷</strong>
+        <span>업무일지 기반</span>
+      </header>
+      <div>
+        ${growth.competencyScores.map((item) => `
+          <section>
+            <label><span>${escapeHtml(item.name)}</span><b>${item.score}</b></label>
+            <em style="--growth-score:${item.score}%"></em>
+          </section>
+        `).join("")}
+      </div>
+    </article>
+    <article class="growth-coaching-card">
+      <strong>가시적 성장 기준</strong>
+      <p>점수는 업무 입력량이 아니라 완료율, 시간배치, 회고 품질, 출결 기록, 역할별 핵심 행동을 함께 반영합니다. 매일 3분만 기록해도 주간 성장 변화가 보이도록 설계했습니다.</p>
+    </article>
+    ${coaching.map(([title, body]) => `
+      <article>
+        <strong>${escapeHtml(title)}</strong>
+        <p>${escapeHtml(body)}</p>
+      </article>
+    `).join("")}
+  `;
 }
 
 function renderDateNav() {

@@ -394,6 +394,173 @@ body[data-device-mode="narrow"] .os-mode-switch span[data-device-mode="narrow"] 
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
+.growth-command-card {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 94px;
+  gap: 16px;
+  align-items: center;
+  min-height: 132px;
+  border-color: rgba(16, 75, 54, 0.16) !important;
+  background: linear-gradient(135deg, rgba(16, 75, 54, 0.96), rgba(41, 88, 72, 0.88)) !important;
+  color: #fffefa;
+}
+
+.growth-command-card p {
+  margin: 0 0 8px;
+  color: rgba(255, 254, 250, 0.66);
+  font-size: 11px;
+  font-weight: 950;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.growth-command-card strong {
+  display: block;
+  margin: 0;
+  color: #fffefa;
+  font-size: 34px;
+  line-height: 1.05;
+}
+
+.growth-command-card span {
+  display: block;
+  margin-top: 8px;
+  color: rgba(255, 254, 250, 0.78);
+  font-size: 14px;
+  font-weight: 800;
+}
+
+.growth-command-card b {
+  display: grid;
+  place-items: center;
+  width: 88px;
+  height: 88px;
+  border: 1px solid rgba(255, 254, 250, 0.34);
+  border-radius: 28px;
+  background: rgba(255, 254, 250, 0.11);
+  color: #fffefa;
+  font-size: 34px;
+  font-weight: 950;
+}
+
+.growth-mission-card,
+.growth-competency-card,
+.growth-coaching-card {
+  border-color: rgba(16, 75, 54, 0.12) !important;
+  background: rgba(255, 254, 250, 0.86) !important;
+}
+
+.growth-mission-card header,
+.growth-competency-card header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.growth-mission-card header span,
+.growth-competency-card header span {
+  color: rgba(17, 20, 17, 0.58);
+  font-size: 12px;
+  font-weight: 850;
+}
+
+.growth-mission-card ol {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding-left: 22px;
+}
+
+.growth-mission-card li {
+  color: #111411;
+  font-size: 14px;
+  font-weight: 820;
+  line-height: 1.42;
+}
+
+.growth-competency-card > div {
+  display: grid;
+  gap: 10px;
+}
+
+.growth-competency-card section {
+  display: grid;
+  gap: 6px;
+}
+
+.growth-competency-card label {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  color: #111411;
+  font-size: 13px;
+  font-weight: 900;
+}
+
+.growth-competency-card label b {
+  color: #104b36;
+}
+
+.growth-competency-card em {
+  display: block;
+  position: relative;
+  overflow: hidden;
+  height: 9px;
+  border-radius: 999px;
+  background: rgba(16, 75, 54, 0.08);
+}
+
+.growth-competency-card em::before {
+  content: "";
+  display: block;
+  width: var(--growth-score, 0%);
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, #104b36, #5d846d);
+}
+
+.growth-coaching-card {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+
+.growth-coaching-card p {
+  font-size: 13px;
+}
+
+@media (max-width: 640px) {
+  .ai-coach-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .growth-command-card {
+    grid-template-columns: minmax(0, 1fr) 76px;
+    min-height: 112px;
+  }
+
+  .growth-command-card strong {
+    font-size: 26px;
+  }
+
+  .growth-command-card b {
+    width: 70px;
+    height: 70px;
+    border-radius: 22px;
+    font-size: 28px;
+  }
+
+  .growth-mission-card header,
+  .growth-competency-card header {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+}
+
 .worklog-title-row {
   display: flex;
   align-items: flex-start;
