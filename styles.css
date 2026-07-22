@@ -2237,6 +2237,35 @@ body[data-device-mode="narrow"] .os-mode-switch span[data-device-mode="narrow"] 
   font-weight: 900;
 }
 
+#view-today .worklog-summary-date {
+  display: grid;
+  grid-template-columns: 44px minmax(0, 1fr) 44px;
+  gap: 0;
+}
+
+#view-today .worklog-summary-date #selectedDateButton {
+  justify-content: center;
+  width: 100%;
+  min-width: 0;
+  padding-inline: 8px;
+  text-align: center;
+}
+
+#view-today .worklog-summary-date span {
+  max-width: 100%;
+  font-variant-numeric: tabular-nums;
+}
+
+#view-today .worklog-panel h3 > span {
+  min-width: 0;
+  overflow-wrap: normal;
+  word-break: keep-all;
+}
+
+#view-today .day-schedule-panel h3 > span {
+  white-space: nowrap;
+}
+
 .labor-archive-card header,
 .labor-register-card header {
   display: flex;
@@ -2549,6 +2578,47 @@ body[data-device-mode="narrow"] .os-mode-switch span[data-device-mode="narrow"] 
 
 .login-actions button:disabled {
   opacity: 0.45;
+}
+
+.approval-alert-button {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 38px;
+  border: 1px solid rgba(180, 48, 48, 0.24);
+  border-radius: 999px;
+  background: #fff7f4;
+  color: #8b2929;
+  padding: 7px 10px;
+  font-size: 12px;
+  font-weight: 950;
+  white-space: nowrap;
+}
+
+.approval-alert-button strong,
+.menu-approval-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 20px;
+  min-height: 20px;
+  border-radius: 999px;
+  background: #d93025;
+  color: #fffefa;
+  padding: 0 6px;
+  font-size: 11px;
+  font-weight: 950;
+  line-height: 1;
+}
+
+.main-menu-popover button.has-pending {
+  color: #8b2929;
+  font-weight: 950;
+}
+
+.menu-approval-badge {
+  margin-left: auto;
 }
 
 .auth-panel,
@@ -3423,6 +3493,81 @@ body[data-device-mode="narrow"] .os-mode-switch span[data-device-mode="narrow"] 
   .staff-permission-grid,
   .staff-growth-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  #view-today .worklog-today-title {
+    grid-template-columns: minmax(0, 1fr) auto;
+    min-height: 64px;
+  }
+
+  #view-today .worklog-today-title::before {
+    width: 0;
+    content: none;
+  }
+
+  #view-today .worklog-summary-date {
+    grid-template-columns: 34px minmax(0, 1fr) 34px;
+    padding: 0;
+  }
+
+  #view-today .date-arrow-button {
+    width: 34px;
+    min-height: 48px !important;
+    font-size: 24px;
+  }
+
+  #view-today .worklog-summary-date #selectedDateButton {
+    min-height: 48px;
+    padding-inline: 4px;
+  }
+
+  #view-today .worklog-summary-date span {
+    font-size: clamp(24px, 7.5vw, 35px);
+    line-height: 1;
+  }
+
+  #view-today .worklog-title-actions {
+    grid-column: 2;
+    grid-row: 1;
+    min-height: 48px;
+    border-top: 0;
+    border-left: 1px solid var(--hardline);
+  }
+
+  #view-today .today-jump {
+    min-width: 52px;
+    padding-inline: 8px !important;
+    font-size: 13px;
+  }
+
+  #view-today .worklog-completion {
+    min-width: 66px;
+    padding-inline: 8px;
+  }
+
+  #view-today .worklog-completion strong {
+    font-size: 25px;
+  }
+
+  #view-today .worklog-panel h3 {
+    min-height: 48px;
+    padding-inline: 10px;
+    font-size: 18px;
+  }
+
+  #view-today .day-schedule-panel h3 {
+    gap: 6px;
+  }
+
+  #view-today .day-schedule-panel h3 > span {
+    font-size: 17px;
+  }
+
+  #view-today .day-schedule-panel .schedule-unit-button,
+  #view-today .day-schedule-panel .ai-section-button {
+    min-width: 34px;
+    padding-inline: 6px;
+    font-size: 11px;
   }
 
   .weekly-work-hours-grid {
@@ -10153,4 +10298,213 @@ body[data-layout-mode="phone"] #view-fitness-log .fitness-log-pager {
     padding-left: 0;
     animation: none;
   }
+}
+
+@media (max-width: 640px) {
+  #view-today .worklog-today-title {
+    grid-template-columns: minmax(0, 1fr) auto !important;
+    min-height: 64px !important;
+  }
+
+  #view-today .worklog-today-title::before {
+    content: none !important;
+  }
+
+  #view-today .worklog-summary-date {
+    display: grid !important;
+    grid-template-columns: 34px minmax(0, 1fr) 34px !important;
+    gap: 0 !important;
+    min-width: 0 !important;
+    padding: 0 !important;
+  }
+
+  #view-today .worklog-summary-date #selectedDateButton {
+    justify-content: center !important;
+    width: 100% !important;
+    min-width: 0 !important;
+    padding-inline: 4px !important;
+    text-align: center !important;
+  }
+
+  #view-today .worklog-summary-date span {
+    overflow: hidden !important;
+    font-size: clamp(23px, 7.2vw, 34px) !important;
+    line-height: 1 !important;
+    letter-spacing: 0 !important;
+    text-overflow: ellipsis !important;
+    white-space: nowrap !important;
+  }
+
+  #view-today .date-arrow-button {
+    width: 34px !important;
+    min-height: 48px !important;
+  }
+
+  #view-today .worklog-title-actions {
+    grid-column: 2 !important;
+    grid-row: 1 !important;
+    min-height: 48px !important;
+    border-top: 0 !important;
+    border-left: 1px solid var(--hardline) !important;
+  }
+
+  #view-today .today-jump {
+    min-width: 50px !important;
+    padding-inline: 7px !important;
+  }
+
+  #view-today .worklog-completion {
+    min-width: 64px !important;
+    padding-inline: 7px !important;
+  }
+
+  #view-today .worklog-completion strong {
+    font-size: 25px !important;
+  }
+
+  #view-today .day-schedule-panel h3 > span {
+    white-space: nowrap !important;
+    font-size: 17px !important;
+  }
+
+  .approval-alert-button {
+    min-height: 34px !important;
+    padding: 6px 8px !important;
+    font-size: 11px !important;
+  }
+
+  .approval-alert-button span {
+    display: none;
+  }
+}
+
+/* Global CEO / Classic mode and tablet phone-frame polish */
+.global-view-mode-button {
+  min-width: 54px;
+  border-color: rgba(12, 73, 54, 0.22);
+  background: linear-gradient(180deg, #0f4d39, #0b3f30);
+  color: #fffefa;
+  box-shadow: 0 8px 18px rgba(12, 73, 54, 0.16);
+}
+
+.global-view-mode-button.is-classic {
+  border-color: rgba(17, 20, 17, 0.16);
+  background: rgba(255, 253, 248, 0.92);
+  color: #17221d;
+  box-shadow: inset 0 0 0 1px rgba(17, 20, 17, 0.04);
+}
+
+.worklog-header .header-actions .global-view-mode-button,
+body[data-layout-mode="phone"] .worklog-header .header-actions .global-view-mode-button {
+  width: 56px;
+  max-width: 56px;
+  min-height: 38px;
+  padding-inline: 6px;
+  font-size: 12px;
+}
+
+body.physical-phone-device .global-view-mode-button {
+  display: none !important;
+}
+
+body[data-view-mode="ceo"] #view-today .worklog-today-title,
+body[data-layout-mode="phone"] #view-today .worklog-today-title {
+  grid-template-columns: minmax(0, 1fr) auto !important;
+  gap: 0 !important;
+  min-height: 58px !important;
+  padding: 7px 8px !important;
+}
+
+body[data-view-mode="ceo"] #view-today .worklog-today-title::before,
+body[data-layout-mode="phone"] #view-today .worklog-today-title::before {
+  content: none !important;
+}
+
+body[data-view-mode="ceo"] #view-today .worklog-summary-date,
+body[data-layout-mode="phone"] #view-today .worklog-summary-date {
+  display: grid !important;
+  grid-template-columns: 34px minmax(0, 1fr) 34px !important;
+  gap: 2px !important;
+  min-width: 0 !important;
+  padding: 0 !important;
+}
+
+body[data-view-mode="ceo"] #view-today .worklog-summary-date #selectedDateButton,
+body[data-layout-mode="phone"] #view-today .worklog-summary-date #selectedDateButton {
+  justify-content: center !important;
+  width: 100% !important;
+  min-width: 0 !important;
+  min-height: 46px !important;
+  padding: 0 4px !important;
+  text-align: center !important;
+}
+
+body[data-view-mode="ceo"] #view-today .worklog-summary-date span,
+body[data-layout-mode="phone"] #view-today .worklog-summary-date span {
+  overflow: hidden !important;
+  max-width: 100% !important;
+  font-size: clamp(21px, 2vw, 25px) !important;
+  font-variant-numeric: tabular-nums !important;
+  letter-spacing: 0 !important;
+  line-height: 1 !important;
+  text-overflow: ellipsis !important;
+  white-space: nowrap !important;
+}
+
+body[data-layout-mode="phone"] #view-today .worklog-summary-date span {
+  font-size: clamp(22px, 5.8vw, 25px) !important;
+}
+
+body[data-view-mode="ceo"] #view-today .date-arrow-button,
+body[data-layout-mode="phone"] #view-today .date-arrow-button {
+  width: 34px !important;
+  min-width: 34px !important;
+  min-height: 46px !important;
+}
+
+body[data-view-mode="ceo"] #view-today .worklog-title-actions,
+body[data-layout-mode="phone"] #view-today .worklog-title-actions {
+  grid-column: 2 !important;
+  grid-row: 1 !important;
+  min-height: 46px !important;
+  border-left: 1px solid rgba(17, 20, 17, 0.2) !important;
+}
+
+body[data-view-mode="ceo"] #view-today .today-jump,
+body[data-layout-mode="phone"] #view-today .today-jump {
+  min-width: 48px !important;
+  padding-inline: 6px !important;
+}
+
+body[data-view-mode="ceo"] #view-today .worklog-completion,
+body[data-layout-mode="phone"] #view-today .worklog-completion {
+  min-width: 58px !important;
+  padding-inline: 6px !important;
+}
+
+body[data-view-mode="ceo"] #view-today .worklog-completion strong,
+body[data-layout-mode="phone"] #view-today .worklog-completion strong {
+  font-size: 24px !important;
+}
+
+body[data-view-mode="ceo"] #view-today .worklog-main.is-focus-tasks .worklog-daily-page,
+body[data-view-mode="ceo"] #view-today .worklog-main.is-focus-schedule .worklog-daily-page {
+  grid-template-columns: minmax(0, 1fr) !important;
+}
+
+body[data-view-mode="ceo"] #view-today .worklog-main.is-focus-tasks .day-schedule-panel,
+body[data-view-mode="ceo"] #view-today .worklog-main.is-focus-schedule .day-task-panel {
+  display: none !important;
+}
+
+body[data-view-mode="ceo"] #view-today .worklog-main.is-focus-tasks .mobile-focus-done,
+body[data-view-mode="ceo"] #view-today .worklog-main.is-focus-schedule .mobile-focus-done {
+  display: inline-flex !important;
+  align-items: center;
+  justify-content: center;
+}
+
+body[data-view-mode="classic"] #view-today .worklog-main.is-focus-tasks .worklog-daily-page,
+body[data-view-mode="classic"] #view-today .worklog-main.is-focus-schedule .worklog-daily-page {
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) !important;
 }

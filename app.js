@@ -1,5 +1,6 @@
 const storageKey = "beyond-worklog-state-v1";
 const layoutModeStorageKey = "beyond-worklog-layout-mode";
+const globalViewModeStorageKey = "beyond-worklog-global-view-mode";
 const supabaseConfig = {
   url: "https://zllpfaijahyfppivkxzu.supabase.co",
   anonKey: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InpsbHBmYWlqYWh5ZnBwaXZreHp1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODMzMzQxNTUsImV4cCI6MjA5ODkxMDE1NX0.C4omaj-e_9PM-iF3-5GUUVX47Wo06UsNTOYMlMMVcZU",
@@ -186,6 +187,50 @@ const fitnessManualTemplates = {
       "6. 신규 직원은 숙련자와 동행해 청소 순서와 기준을 현장에서 배운다.",
     ].join("\n"),
   },
+  bangjuFinance: {
+    title: "방주 재무·자금관리 매뉴얼",
+    text: [
+      "1. 매일 오전 계좌 잔액, 카드매출, 입금 예정, 지출 예정, 대출 이자 일정을 확인한다.",
+      "2. 자금 업무는 입금확인, 지급요청, 증빙수취, 계정분류, 대표 보고 순서로 처리한다.",
+      "3. 세금계산서, 카드영수증, 계약서, 견적서는 사업장·거래처·프로젝트 단위로 연결해 보관한다.",
+      "4. 미수금과 미지급금은 금액, 사유, 담당자, 예정일, 후속 조치를 업무일지에 남긴다.",
+      "5. 고정비, 대출이자, 임대료, 인건비는 월간 현금흐름표와 비교해 위험 신호를 표시한다.",
+      "6. 대표 보고는 오늘의 자금 변동, 이번 주 지급위험, 세무/계약 확인사항, 요청 의사결정으로 요약한다.",
+    ].join("\n"),
+  },
+  beyondTba: {
+    title: "TBA 스튜디오·인월바스 시스템 매뉴얼",
+    text: [
+      "1. TBA 업무는 제품기획, 욕실 시스템 설계, 시공 검토, 쇼룸, 특허/IP, 견적 흐름으로 구분한다.",
+      "2. 인월바스 시스템 시공은 현장 실측, 배관/방수/마감 조건, 제품 스펙, 납기, 하자위험을 먼저 확인한다.",
+      "3. 인테리어 시행 건은 발주처 요구, 예산, 일정, 협력업체, 자재선정, 변경사항을 프로젝트 단위로 기록한다.",
+      "4. 쇼룸/전시장 업무는 방문객 목적, 관심 제품, 견적 가능성, 후속 연락일을 고객관리로 남긴다.",
+      "5. 제품 개선 아이디어와 하자 사례는 사진, 원인, 개선안, 담당자, 반영 여부로 관리한다.",
+      "6. 매주 TBA 핵심 이슈는 제품개발, 시공품질, 견적/매출, IP, 쇼룸 운영, 협력업체 리스크로 보고한다.",
+    ].join("\n"),
+  },
+  beyondShared: {
+    title: "비욘드 공유사업부 운영관리 매뉴얼",
+    text: [
+      "1. 공유오피스와 공유창고는 공실, 계약, 결제, 우편, 시설, 민원, 청결 상태를 매일 확인한다.",
+      "2. 신규 문의는 이용 목적, 기간, 필요 공간, 사업자등록 여부, 예산, 입주 가능일을 확인한다.",
+      "3. 입주기업 관리는 계약만료일, 보증금/월이용료, 우편/회의실 사용, 민원, 추가 니즈를 기준으로 추적한다.",
+      "4. 공실은 호실별 상태, 사진, 가격, 홍보채널, 문의수, 전환율을 기록하고 원인을 분석한다.",
+      "5. 공유창고는 입출고 동선, 보안, 습도/냄새, 장기 미사용, 연체 여부를 점검한다.",
+      "6. 주간 보고는 공실 감소, 계약 갱신, 신규 문의, 시설 이슈, 미수금, 홍보 필요사항 중심으로 정리한다.",
+    ].join("\n"),
+  },
+  beyondInterior: {
+    title: "인테리어 시행·시공관리 매뉴얼",
+    text: [
+      "1. 현장 업무는 실측, 견적, 계약, 발주, 공정, 품질, 안전, 정산, 하자관리로 나누어 관리한다.",
+      "2. 착수 전 도면, 공사범위, 자재 스펙, 납기, 협력업체, 민원 가능성을 체크한다.",
+      "3. 공정표는 철거, 설비, 방수, 목공, 전기, 타일, 도장, 가구, 마감 순서와 책임자를 명확히 한다.",
+      "4. 변경사항은 구두로 넘기지 말고 변경 사유, 비용, 일정 영향, 승인자를 기록한다.",
+      "5. 품질 점검은 누수, 수평/수직, 마감, 안전, 청소, 사용설명, 고객 확인 순서로 진행한다.",
+      "6. 마감 후 정산, 잔금, 하자보증, 사진 아카이브, 다음 현장 개선점을 보고한다.",
+    ].join("\n"),
+  },
 };
 const employees = [
   { id: "bangju-finance-manager", name: "재무과장", org: "(주)방주", role: "재무과장", primaryWork: "자금, 회계, 보고" },
@@ -321,6 +366,8 @@ const authState = {
   remoteReady: Boolean(supabaseClient),
   applyingRemote: false,
   saveTimer: null,
+  pendingApprovalCount: 0,
+  approvalTimer: null,
 };
 let dateSlideTimer = 0;
 let calendarViewDate = parseDateKey(todayKey);
@@ -889,12 +936,44 @@ function renderResponsiveMode() {
   document.body.dataset.layoutMode = layoutMode;
   document.body.classList.toggle("smartphone-device", layoutMode === "phone" || isPhoneWidth);
   document.body.classList.toggle("physical-phone-device", isPhoneWidth);
+  applyGlobalViewMode();
   const layoutToggle = document.querySelector(".layout-mode-toggle");
   if (layoutToggle) layoutToggle.hidden = isPhoneWidth;
   document.querySelectorAll("[data-layout-mode-choice]").forEach((button) => {
     button.classList.toggle("is-active", button.dataset.layoutModeChoice === layoutMode);
   });
   applyMobileDayFocusMode();
+}
+
+function isPhysicalPhoneLayout() {
+  return window.matchMedia("(max-width: 640px)").matches;
+}
+
+function getGlobalViewMode() {
+  if (isPhysicalPhoneLayout()) return "ceo";
+  return localStorage.getItem(globalViewModeStorageKey) === "classic" ? "classic" : "ceo";
+}
+
+function applyGlobalViewMode() {
+  const mode = getGlobalViewMode();
+  const isPhone = isPhysicalPhoneLayout();
+  document.body.dataset.viewMode = mode;
+  const button = document.getElementById("globalViewModeButton");
+  const label = document.getElementById("globalViewModeLabel");
+  if (button) {
+    button.hidden = isPhone;
+    button.classList.toggle("is-classic", mode === "classic");
+    button.setAttribute("aria-pressed", String(mode === "ceo"));
+  }
+  if (label) label.textContent = mode === "ceo" ? "CEO" : "클래식";
+}
+
+function toggleGlobalViewMode() {
+  if (isPhysicalPhoneLayout()) return;
+  const nextMode = getGlobalViewMode() === "ceo" ? "classic" : "ceo";
+  localStorage.setItem(globalViewModeStorageKey, nextMode);
+  resetMobileDayFocusToSplit({ blur: true });
+  applyGlobalViewMode();
 }
 
 function getAssetRows() {
@@ -1510,14 +1589,38 @@ function renderManualSettings() {
   const manualEditor = document.getElementById("manualEditor");
   const missionEditor = document.getElementById("manualMissionEditor");
   if (!roleSelect || !employeeSelect || !manualEditor || !missionEditor) return;
+  const roleKeys = Object.keys(fitnessManualTemplates);
+  if (!roleKeys.includes(settings.roleKey)) settings.roleKey = getManualRoleKeyForProfile();
   roleSelect.value = settings.roleKey || "manager";
-  employeeSelect.innerHTML = getFitnessEmployees()
+  employeeSelect.innerHTML = employees
     .map((employee) => `<option value="${escapeAttr(employee.id)}">${escapeHtml(getEmployeeAdminLabel(employee))}</option>`)
     .join("");
-  employeeSelect.value = settings.employeeId || state.fitnessWritableEmployeeId || "beyond-fitness-manager";
+  const employeeIds = employees.map((employee) => employee.id);
+  if (!employeeIds.includes(settings.employeeId)) settings.employeeId = getDefaultManualEmployeeId();
+  employeeSelect.value = settings.employeeId || getDefaultManualEmployeeId();
   const template = fitnessManualTemplates[roleSelect.value] || fitnessManualTemplates.manager;
   manualEditor.value = settings.customByRole?.[roleSelect.value] || template.text;
   missionEditor.value = settings.missionsByEmployee?.[employeeSelect.value] || "";
+}
+
+function getManualRoleKeyForProfile() {
+  const source = `${state.profile?.org || ""} ${state.profile?.workplace || ""} ${state.profile?.role || ""} ${state.profile?.primaryWork || ""}`;
+  if (/방주|재무|자금|회계|세무/.test(source)) return "bangjuFinance";
+  if (/TBA|티비에이|인월|욕실|바스|bath|showroom|쇼룸/i.test(source)) return "beyondTba";
+  if (/공유|워크베이스|워크박스|창고|오피스|workbase|workbox/i.test(source)) return "beyondShared";
+  if (/인테리어|시공|공사|현장/.test(source)) return "beyondInterior";
+  if (/인포|고객응대/.test(source)) return "frontDesk";
+  if (/트레이너|PT|수업/.test(source)) return "trainer";
+  if (/홍보|마케팅/.test(source)) return "marketing";
+  if (/시설/.test(source)) return "facility";
+  if (/청결|청소/.test(source)) return "cleaning";
+  return "manager";
+}
+
+function getDefaultManualEmployeeId() {
+  const view = getUserWorklogView();
+  const ids = getWorklogEmployeeIdsForView(view);
+  return ids[0] || state.fitnessWritableEmployeeId || employees[0]?.id || "beyond-fitness-manager";
 }
 
 function saveManualSettingsFromForm() {
@@ -1556,6 +1659,56 @@ function renderApprovalAccess() {
   loadApprovalRequests();
 }
 
+function renderApprovalNotification() {
+  const allowed = Boolean(authState.user && hasApprovalAuthority());
+  const count = allowed ? authState.pendingApprovalCount || 0 : 0;
+  const alertButton = document.getElementById("approvalAlertButton");
+  const alertCount = document.getElementById("approvalAlertCount");
+  const menuBadge = document.getElementById("menuApprovalBadge");
+  const menuApproval = document.querySelector("[data-menu-action='approval']");
+  if (alertButton) alertButton.hidden = !allowed || count <= 0;
+  if (alertCount) alertCount.textContent = String(count);
+  if (menuBadge) {
+    menuBadge.hidden = !allowed || count <= 0;
+    menuBadge.textContent = String(count);
+  }
+  if (menuApproval) {
+    menuApproval.hidden = !allowed;
+    menuApproval.classList.toggle("has-pending", count > 0);
+  }
+}
+
+async function refreshApprovalNotification() {
+  if (!supabaseClient || !authState.user || !hasApprovalAuthority()) {
+    authState.pendingApprovalCount = 0;
+    renderApprovalNotification();
+    return;
+  }
+  const { count, error } = await supabaseClient
+    .from("profiles")
+    .select("id", { count: "exact", head: true })
+    .eq("approval_status", "pending");
+  if (!error) authState.pendingApprovalCount = Math.max(0, Number(count || 0));
+  renderApprovalNotification();
+}
+
+function startApprovalNotificationPolling() {
+  clearInterval(authState.approvalTimer);
+  if (!authState.user || !hasApprovalAuthority()) {
+    authState.approvalTimer = null;
+    refreshApprovalNotification();
+    return;
+  }
+  refreshApprovalNotification();
+  authState.approvalTimer = setInterval(refreshApprovalNotification, 60000);
+}
+
+function openApprovalManagement() {
+  switchView("settings");
+  switchSettingsTab("approval");
+  renderApprovalAccess();
+}
+
 async function loadApprovalRequests() {
   const list = document.getElementById("approvalRequestList");
   if (!list) return;
@@ -1574,6 +1727,8 @@ async function loadApprovalRequests() {
     return;
   }
   const rows = (data || []).filter((row) => row.id !== authState.user.id);
+  authState.pendingApprovalCount = rows.filter((row) => (row.approval_status || "pending") === "pending").length;
+  renderApprovalNotification();
   if (!rows.length) {
     list.innerHTML = `<p class="empty-note">대기 중인 가입신청이 없습니다.</p>`;
     return;
@@ -1655,6 +1810,7 @@ async function updateApprovalRequest(id, action) {
     return;
   }
   await loadApprovalRequests();
+  await refreshApprovalNotification();
 }
 
 function applyProfileFields(selector, datasetKey) {
@@ -1737,6 +1893,7 @@ function renderMainMenuVisibility() {
     const view = item.dataset.menuView;
     item.hidden = !showFullMenu && !generalMenuViews.has(view);
   });
+  renderApprovalNotification();
 }
 
 function getAuthCredentials() {
@@ -1786,6 +1943,10 @@ async function signOutWithSupabase() {
   if (supabaseClient) await supabaseClient.auth.signOut();
   authState.session = null;
   authState.user = null;
+  authState.pendingApprovalCount = 0;
+  clearInterval(authState.approvalTimer);
+  authState.approvalTimer = null;
+  renderApprovalNotification();
   renderAuthStatus("로그아웃되었습니다. 입력 내용은 이 기기에 계속 보관됩니다.");
   renderAll();
 }
@@ -1812,6 +1973,7 @@ async function applySession(session) {
   await loadRemoteWorklogForActiveDate();
   await saveRemoteProfile();
   scheduleRemoteSave(0);
+  startApprovalNotificationPolling();
   renderAll();
   renderAuthStatus();
 }
@@ -1991,7 +2153,7 @@ function switchSettingsTab(tab = "employee") {
 }
 
 function isMobilePhoneFocusLayout() {
-  return window.matchMedia("(max-width: 640px)").matches || document.body.classList.contains("smartphone-device");
+  return getGlobalViewMode() === "ceo" || document.body.classList.contains("smartphone-device");
 }
 
 function isEditingDailyField() {
@@ -2051,6 +2213,7 @@ function setupMobileFocusCloseButtons() {
     }
   });
   window.addEventListener("resize", () => {
+    applyGlobalViewMode();
     if (!isMobilePhoneFocusLayout()) resetMobileDayFocusToSplit({ blur: false });
     else applyMobileDayFocusMode();
   });
@@ -4595,7 +4758,11 @@ function getEmployeeOnboardingState(employee, labor, log) {
 }
 
 function getManualTemplateForEmployee(employee) {
-  const role = `${employee.role || ""} ${employee.primaryWork || ""}`;
+  const role = `${employee.org || ""} ${employee.role || ""} ${employee.primaryWork || ""}`;
+  if (/방주|재무|자금|회계|세무/.test(role)) return fitnessManualTemplates.bangjuFinance;
+  if (/TBA|티비에이|인월|욕실|바스|bath|쇼룸/i.test(role)) return fitnessManualTemplates.beyondTba;
+  if (/공유|워크베이스|워크박스|창고|오피스|workbase|workbox/i.test(role)) return fitnessManualTemplates.beyondShared;
+  if (/인테리어|시공|공사|현장/.test(role)) return fitnessManualTemplates.beyondInterior;
   if (/센터장|총괄|실장/.test(role)) return fitnessManualTemplates.manager;
   if (/인포|고객응대/.test(role)) return fitnessManualTemplates.frontDesk;
   if (/트레이너|PT|수업/.test(role)) return fitnessManualTemplates.trainer;
@@ -5242,6 +5409,7 @@ document.querySelectorAll("[data-layout-mode-choice]").forEach((button) => {
     renderResponsiveMode();
   };
 });
+document.getElementById("globalViewModeButton")?.addEventListener("click", toggleGlobalViewMode);
 document.getElementById("fitnessLogPrevPageButton")?.addEventListener("click", moveFitnessLogPrevPage);
 document.getElementById("fitnessLogNextPageButton")?.addEventListener("click", moveFitnessLogNextPage);
 document.getElementById("worklogOverviewTodayButton")?.addEventListener("click", () => setSelectedDateKey(todayKey));
@@ -5289,6 +5457,7 @@ document.getElementById("settingsGearButton").onclick = (event) => {
   event.stopPropagation();
   toggleMainMenuPopover();
 };
+document.getElementById("approvalAlertButton")?.addEventListener("click", openApprovalManagement);
 document.querySelectorAll("[data-menu-view]").forEach((button) => {
   button.onclick = async () => {
     const view = button.dataset.menuView;
@@ -5301,6 +5470,10 @@ document.querySelectorAll("[data-menu-view]").forEach((button) => {
     if (view === "settings") switchSettingsTab("employee");
     switchView(view);
   };
+});
+document.querySelector("[data-menu-action='approval']")?.addEventListener("click", () => {
+  closeMainMenuPopover();
+  openApprovalManagement();
 });
 document.getElementById("mainMenuPopover")?.addEventListener("click", (event) => event.stopPropagation());
 document.addEventListener("click", () => {
@@ -5322,9 +5495,7 @@ document.getElementById("saveProfileButton").onclick = saveProfileFromForm;
 document.getElementById("saveSettingsProfileButton")?.addEventListener("click", saveSettingsProfileFromForm);
 document.getElementById("refreshApprovalRequestsButton")?.addEventListener("click", loadApprovalRequests);
 document.getElementById("staffOpenApprovalButton")?.addEventListener("click", () => {
-  switchView("settings");
-  switchSettingsTab("approval");
-  renderApprovalAccess();
+  openApprovalManagement();
 });
 document.getElementById("approvalRequestList")?.addEventListener("click", (event) => {
   const button = event.target.closest("[data-approval-action]");
