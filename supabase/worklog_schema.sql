@@ -37,6 +37,127 @@ alter table public.profiles add column if not exists approval_note text not null
 alter table public.profiles add column if not exists approved_by uuid references auth.users(id);
 alter table public.profiles add column if not exists approved_at timestamptz;
 
+create or replace function public.to_numeric_or_null(value text)
+returns numeric
+language sql
+immutable
+as $$
+  select case
+    when nullif(trim(coalesce(value, '')), '') ~ '^[0-9]+(\.[0-9]+)?$' then nullif(trim(value), '')::numeric
+    else null
+  end;
+$$;
+
+create or replace function public.handle_new_auth_user_profile()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  meta jsonb := coalesce(new.raw_user_meta_data, '{}'::jsonb);
+  user_email text := lower(coalesce(new.email, meta->>'email', ''));
+  role_text text := coalesce(meta->>'role', '직원');
+  primary_text text := coalesce(meta->>'primaryWork', '');
+  is_approver boolean := user_email in ('j3010@ymail.com', 'tbakorea@gmail.com')
+    or role_text ~* '대표|관리자|센터장|총괄|임원|admin|owner|manager'
+    or primary_text ~* '대표|관리자|센터장|총괄|임원|admin|owner|manager';
+begin
+  insert into public.profiles (
+    id,
+    org,
+    role,
+    name,
+    phone,
+    email,
+    primary_work,
+    secondary_work,
+    workplace,
+    employment_type,
+    labor_id,
+    address,
+    daily_wage,
+    hourly_wage,
+    work_hours,
+    extra,
+    strengths,
+    weaknesses,
+    development_goals,
+    approval_status,
+    approved_at,
+    updated_at
+  )
+  values (
+    new.id,
+    coalesce(nullif(meta->>'org', ''), '(주)방주'),
+    coalesce(nullif(role_text, ''), '직원'),
+    coalesce(nullif(meta->>'name', ''), split_part(coalesce(new.email, ''), '@', 1), '내 프로필'),
+    coalesce(meta->>'phone', ''),
+    coalesce(new.email, meta->>'email', ''),
+    coalesce(primary_text, ''),
+    coalesce(meta->>'secondaryWork', ''),
+    coalesce(meta->>'workplace', ''),
+    coalesce(nullif(meta->>'employmentType', ''), '직원'),
+    coalesce(meta->>'laborId', ''),
+    coalesce(meta->>'address', ''),
+    public.to_numeric_or_null(meta->>'dailyWage'),
+    public.to_numeric_or_null(meta->>'hourlyWage'),
+    coalesce(nullif(meta->>'workHours', ''), '08:00-18:00'),
+    coalesce(meta->>'extra', ''),
+    coalesce(meta->>'strengths', ''),
+    coalesce(meta->>'weaknesses', ''),
+    coalesce(meta->>'developmentGoals', ''),
+    case when is_approver then 'approved' else 'pending' end,
+    case when is_approver then now() else null end,
+    now()
+  )
+  on conflict (id) do update
+  set email = excluded.email,
+      updated_at = now();
+
+  return new;
+end;
+$$;
+
+drop trigger if exists on_auth_user_created_create_profile on auth.users;
+create trigger on_auth_user_created_create_profile
+after insert on auth.users
+for each row execute function public.handle_new_auth_user_profile();
+
+insert into public.profiles (
+  id,
+  org,
+  role,
+  name,
+  email,
+  approval_status,
+  approved_at,
+  updated_at
+)
+select
+  u.id,
+  coalesce(nullif(u.raw_user_meta_data->>'org', ''), '(주)방주'),
+  coalesce(nullif(u.raw_user_meta_data->>'role', ''), '직원'),
+  coalesce(nullif(u.raw_user_meta_data->>'name', ''), split_part(coalesce(u.email, ''), '@', 1), '내 프로필'),
+  coalesce(u.email, ''),
+  case
+    when lower(coalesce(u.email, '')) in ('j3010@ymail.com', 'tbakorea@gmail.com')
+      or coalesce(u.raw_user_meta_data->>'role', '') ~* '대표|관리자|센터장|총괄|임원|admin|owner|manager'
+    then 'approved'
+    else 'pending'
+  end,
+  case
+    when lower(coalesce(u.email, '')) in ('j3010@ymail.com', 'tbakorea@gmail.com')
+      or coalesce(u.raw_user_meta_data->>'role', '') ~* '대표|관리자|센터장|총괄|임원|admin|owner|manager'
+    then now()
+    else null
+  end,
+  now()
+from auth.users u
+where not exists (
+  select 1 from public.profiles p where p.id = u.id
+);
+
 update public.profiles
 set approval_status = 'approved',
     approved_at = coalesce(approved_at, now())

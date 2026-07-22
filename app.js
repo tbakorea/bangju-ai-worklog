@@ -1795,7 +1795,14 @@ function collectApprovalCardPayload(id) {
   if (!card) return null;
   const payload = { updated_at: new Date().toISOString() };
   card.querySelectorAll("[data-approval-field]").forEach((field) => {
-    payload[field.dataset.approvalField] = field.value.trim();
+    const name = field.dataset.approvalField;
+    const value = field.value.trim();
+    if (["hourly_wage", "daily_wage"].includes(name)) {
+      const numeric = value.replaceAll(",", "");
+      payload[name] = numeric ? Number(numeric) : null;
+      return;
+    }
+    payload[name] = value;
   });
   return payload;
 }
@@ -1919,14 +1926,47 @@ function getAuthRedirectUrl() {
   return productionAppUrl;
 }
 
+function collectSignupMetadata(credentials = {}) {
+  applyProfileFields("[data-profile-field]", "profileField");
+  const profile = { ...defaultProfile, ...(state.profile || {}) };
+  profile.email = credentials.email || profile.email || "";
+  state.profile = profile;
+  saveState();
+  return {
+    org: profile.org || defaultProfile.org,
+    role: profile.role || defaultProfile.role,
+    name: profile.name || "",
+    nickname: profile.nickname || "",
+    phone: profile.phone || "",
+    email: profile.email || "",
+    primaryWork: profile.primaryWork || "",
+    secondaryWork: profile.secondaryWork || "",
+    workplace: profile.workplace || "",
+    employmentType: profile.employmentType || defaultProfile.employmentType,
+    laborId: profile.laborId || "",
+    address: profile.address || "",
+    dailyWage: profile.dailyWage || "",
+    hourlyWage: profile.hourlyWage || "",
+    workHours: profile.workHours || defaultProfile.workHours,
+    extra: profile.extra || "",
+    strengths: profile.strengths || "",
+    weaknesses: profile.weaknesses || "",
+    developmentGoals: profile.developmentGoals || "",
+  };
+}
+
 async function signUpWithSupabase() {
   const credentials = getAuthCredentials();
   if (!credentials || !supabaseClient) return;
   renderAuthStatus("가입 처리 중입니다...");
+  const signupMetadata = collectSignupMetadata(credentials);
   const { data, error } = await supabaseClient.auth.signUp({
     email: credentials.email,
     password: credentials.password,
-    options: { emailRedirectTo: getAuthRedirectUrl() },
+    options: {
+      emailRedirectTo: getAuthRedirectUrl(),
+      data: signupMetadata,
+    },
   });
   if (error) {
     renderAuthStatus(`가입 실패: ${error.message}`);
