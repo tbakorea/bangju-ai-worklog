@@ -1,6 +1,7 @@
 const storageKey = "beyond-worklog-state-v1";
 const layoutModeStorageKey = "beyond-worklog-layout-mode";
 const globalViewModeStorageKey = "beyond-worklog-global-view-mode";
+const productionAppUrl = "https://bangju-ai-worklog.vercel.app/";
 const supabaseConfig = {
   url: "https://zllpfaijahyfppivkxzu.supabase.co",
   anonKey: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InpsbHBmYWlqYWh5ZnBwaXZreHp1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODMzMzQxNTUsImV4cCI6MjA5ODkxMDE1NX0.C4omaj-e_9PM-iF3-5GUUVX47Wo06UsNTOYMlMMVcZU",
@@ -1914,23 +1915,36 @@ function getAuthCredentials() {
   return { email, password };
 }
 
+function getAuthRedirectUrl() {
+  return productionAppUrl;
+}
+
 async function signUpWithSupabase() {
   const credentials = getAuthCredentials();
   if (!credentials || !supabaseClient) return;
   renderAuthStatus("가입 처리 중입니다...");
-  const { data, error } = await supabaseClient.auth.signUp(credentials);
+  const { data, error } = await supabaseClient.auth.signUp({
+    email: credentials.email,
+    password: credentials.password,
+    options: { emailRedirectTo: getAuthRedirectUrl() },
+  });
   if (error) {
     renderAuthStatus(`가입 실패: ${error.message}`);
     return;
   }
   if (data.user) {
-    authState.session = data.session || authState.session;
-    authState.user = data.user;
     state.profile.email = credentials.email;
-    setOwnApprovalPending();
     saveState();
-    await saveRemoteProfile();
     renderProfileForm();
+    if (data.session) {
+      await applySession(data.session);
+      setOwnApprovalPending();
+      await saveRemoteProfile();
+      renderAuthStatus("가입신청이 접수되었습니다. 대표 또는 권한자의 승인 후 사용할 수 있습니다.");
+      return;
+    }
+    renderAuthStatus("가입 계정이 생성되었습니다. 이메일 확인 후 로그인하면 가입신청 정보가 대표 승인 목록에 저장됩니다.");
+    return;
   }
   renderAuthStatus("가입신청이 접수되었습니다. 대표 또는 권한자의 승인 후 사용할 수 있습니다.");
 }
@@ -1941,10 +1955,28 @@ async function signInWithSupabase() {
   renderAuthStatus("로그인 중입니다...");
   const { data, error } = await supabaseClient.auth.signInWithPassword(credentials);
   if (error) {
+    if (/email not confirmed/i.test(error.message || "")) {
+      await resendSignupConfirmation(credentials.email);
+      renderAuthStatus("로그인 실패: 이메일 확인이 필요합니다. 확인 메일을 다시 보냈습니다. 메일 확인 후 다시 로그인해주세요.");
+      return;
+    }
     renderAuthStatus(`로그인 실패: ${error.message}`);
     return;
   }
   await applySession(data.session);
+}
+
+async function resendSignupConfirmation(email) {
+  if (!supabaseClient || !email) return;
+  try {
+    await supabaseClient.auth.resend({
+      type: "signup",
+      email,
+      options: { emailRedirectTo: getAuthRedirectUrl() },
+    });
+  } catch (_error) {
+    // 로그인 흐름을 막지 않기 위해 재전송 실패는 상태 문구로만 안내합니다.
+  }
 }
 
 async function signOutWithSupabase() {
@@ -1967,8 +1999,13 @@ async function applySession(session) {
     return;
   }
   document.getElementById("authEmail").value = authState.user.email || "";
-  state.profile.email ||= authState.user.email || "";
+  state.profile.email = authState.user.email || state.profile.email || "";
   await loadRemoteProfile();
+  if (hasApprovalAuthority()) {
+    state.profile.approvalStatus = "approved";
+    state.profile.approvedBy ||= authState.user.id;
+    state.profile.approvedAt ||= new Date().toISOString();
+  }
   if (!state.profile.approvalStatus || state.profile.approvalStatus === "draft") state.profile.approvalStatus = "pending";
   if (!isProfileApproved()) {
     await saveRemoteProfile();
