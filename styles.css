@@ -9412,6 +9412,90 @@ body[data-layout-mode="phone"] #view-today .ai-section-button {
   border-radius: 10px !important;
 }
 
+/* Last-mile phone QA: keep the general worklog date fully visible. */
+body.physical-phone-device #view-today .worklog-summary-date span,
+body.physical-phone-device #view-today #worklogDayTitle {
+  font-size: clamp(14px, 3.85vw, 15.5px) !important;
+  letter-spacing: 0 !important;
+}
+
+body.physical-phone-device #view-today .worklog-summary-date #selectedDateButton {
+  padding-inline: 0 !important;
+}
+
+/* Real-device QA fixes for the general worklog split view. */
+body[data-layout-mode="phone"] #view-today .worklog-pulse-row {
+  grid-template-columns: minmax(70px, 0.34fr) minmax(0, 1fr) minmax(70px, 0.34fr) !important;
+}
+
+body[data-layout-mode="phone"] #view-today .worklog-pulse {
+  display: flex !important;
+  align-items: center !important;
+  min-height: 34px !important;
+  padding: 0 !important;
+}
+
+body[data-layout-mode="phone"] #view-today .worklog-pulse span {
+  padding-left: 12px !important;
+  padding-right: 100% !important;
+  line-height: 1 !important;
+}
+
+body[data-layout-mode="phone"] #view-today .worklog-today-title {
+  grid-template-columns: minmax(0, 1fr) auto !important;
+  padding: 7px 6px !important;
+}
+
+body[data-layout-mode="phone"] #view-today .worklog-summary-date {
+  grid-template-columns: 34px minmax(0, 1fr) 34px !important;
+  gap: 3px !important;
+}
+
+body[data-layout-mode="phone"] #view-today .worklog-summary-date span {
+  font-size: clamp(14px, 3.95vw, 16px) !important;
+}
+
+body[data-layout-mode="phone"] #view-today .date-arrow-button {
+  width: 34px !important;
+  min-width: 34px !important;
+  min-height: 46px !important;
+}
+
+body[data-layout-mode="phone"] #view-today .today-jump {
+  min-width: 44px !important;
+  padding-inline: 5px !important;
+  font-size: 12px !important;
+}
+
+body[data-layout-mode="phone"] #view-today .worklog-completion {
+  min-width: 58px !important;
+  padding-inline: 5px !important;
+}
+
+body[data-layout-mode="phone"] #view-today .worklog-completion span {
+  display: block !important;
+  font-size: 9px !important;
+  line-height: 1 !important;
+  white-space: nowrap !important;
+}
+
+body[data-layout-mode="phone"] #view-today .worklog-completion strong {
+  font-size: 23px !important;
+  line-height: 1 !important;
+}
+
+body[data-layout-mode="phone"] #view-today .appointment-row {
+  grid-template-columns: 48px minmax(42px, 1fr) 12px 24px !important;
+  gap: 4px !important;
+}
+
+body[data-layout-mode="phone"] #view-today .appointment-row input,
+body[data-layout-mode="phone"] #view-today .appointment-row .appointment-text {
+  min-width: 0 !important;
+  font-size: 13px !important;
+  text-overflow: clip !important;
+}
+
 /* CEO overview should feel like a command board on iPad/desktop, not a stretched phone frame. */
 @media (min-width: 761px) {
   body[data-view-mode="ceo"][data-active-view="worklog-overview"]:not(.physical-phone-device) {

@@ -73,6 +73,18 @@ check(
   "phone should not expose the CEO/classic switch"
 );
 
+check(
+  "phone general worklog date has final no-ellipsis guard",
+  /body\.physical-phone-device #view-today #worklogDayTitle[\s\S]{0,120}font-size:\s*clamp\(14px,\s*3\.85vw,\s*15\.5px\)/.test(css),
+  "real-device QA found the full date clips without this final override"
+);
+
+check(
+  "phone pulse starts with visible text",
+  /body\[data-layout-mode="phone"\] #view-today \.worklog-pulse span[\s\S]{0,140}padding-left:\s*12px !important/.test(css),
+  "marquee must not start with a blank strip"
+);
+
 const riskPatterns = [
   {
     name: "avoid viewport-scaled font for overview hero",
