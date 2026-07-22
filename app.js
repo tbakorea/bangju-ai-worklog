@@ -341,7 +341,6 @@ function createState() {
     selectedEmployeeId: "beyond-fitness-manager",
     selectedDateKey: todayKey,
     profile: { ...defaultProfile },
-    commonWeeks: {},
     employeeLogs: {
       [todayKey]: { "beyond-fitness-manager": createEmployeeLog(employees.find((employee) => employee.id === "beyond-fitness-manager") || profileEmployee, defaultProfile) },
     },
@@ -407,8 +406,6 @@ function normalizeState() {
     state.selectedEmployeeId = "beyond-fitness-manager";
   }
   state.selectedDateKey ||= todayKey;
-  state.commonWeeks ||= {};
-  ensureCommonWeek(getActiveWeekKey());
   state.fitnessLogPage = Number.isFinite(Number(state.fitnessLogPage)) ? Number(state.fitnessLogPage) : 1;
   if (!/^\d{4}-\d{2}$/.test(String(state.fitnessCenterMonth || ""))) {
     state.fitnessCenterMonth = getActiveDateKey().slice(0, 7);
@@ -839,74 +836,11 @@ function getActiveWeekKey(dateKey = getActiveDateKey()) {
   return formatDateKey(getWeekStartDate(dateKey));
 }
 
-function getPreviousWeekKey(weekKey) {
-  const date = parseDateKey(weekKey);
-  date.setDate(date.getDate() - 7);
-  return formatDateKey(date);
-}
-
 function formatCommonWeekRange(weekKey = getActiveWeekKey()) {
   const start = parseDateKey(weekKey);
   const end = parseDateKey(weekKey);
   end.setDate(start.getDate() + 6);
   return `${formatShortDate(formatDateKey(start))} ~ ${formatShortDate(formatDateKey(end))}`;
-}
-
-function getCommonCompassRoles() {
-  const selected = getSelectedEmployee();
-  const profile = state.profile || {};
-  const base = [
-    profile.org || selected.org || "(주)방주",
-    profile.primaryWork || selected.role || "주요업무",
-    profile.secondaryWork || "협업",
-    "성장/개선",
-  ];
-  if (String(activeView || "").includes("beyond")) {
-    base[0] = "비욘드";
-    base[1] = profile.primaryWork || "운영";
-  }
-  return [...new Set(base.map((item) => String(item || "").trim()).filter(Boolean))].slice(0, 4);
-}
-
-function createCommonWeek(weekKey = getActiveWeekKey()) {
-  const previous = state.commonWeeks?.[getPreviousWeekKey(weekKey)] || {};
-  const carried = (previous.priorities || [])
-    .filter((item) => item?.text && !item.done)
-    .map((item) => ({ text: item.text, done: false, carryoverFromWeek: getPreviousWeekKey(weekKey) }));
-  while (carried.length < 5) carried.push({ text: "", done: false });
-  const roles = getCommonCompassRoles();
-  const compass = roles.map((role, index) => {
-    const previousItem = (previous.compass || []).find((item) => item.role === role) || previous.compass?.[index] || {};
-    return {
-      role,
-      goal: previousItem.goal || "",
-      actions: [previousItem.actions?.[0] || "", previousItem.actions?.[1] || ""],
-    };
-  });
-  return {
-    monthFocus: "",
-    priorities: carried,
-    compass,
-  };
-}
-
-function ensureCommonWeek(weekKey = getActiveWeekKey()) {
-  state.commonWeeks ||= {};
-  state.commonWeeks[weekKey] ||= createCommonWeek(weekKey);
-  const week = state.commonWeeks[weekKey];
-  week.monthFocus ||= "";
-  week.priorities = Array.isArray(week.priorities) ? week.priorities : [];
-  while (week.priorities.length < 5) week.priorities.push({ text: "", done: false });
-  const roles = getCommonCompassRoles();
-  week.compass = roles.map((role, index) => {
-    const existing = (week.compass || []).find((item) => item.role === role) || week.compass?.[index] || {};
-    return {
-      role,
-      goal: existing.goal || "",
-      actions: Array.isArray(existing.actions) ? [existing.actions[0] || "", existing.actions[1] || ""] : [existing.action || "", ""],
-    };
-  });
-  return week;
 }
 
 function currentTimeValue() {
@@ -1601,7 +1535,6 @@ function buildRemoteSnapshot() {
     selectedEmployeeId: state.selectedEmployeeId,
     selectedDateKey: key,
     profile: state.profile,
-    commonWeeks: state.commonWeeks || {},
     employeeLogs: { [key]: state.employeeLogs?.[key] || {} },
     attendance: { [key]: state.attendance?.[key] || [] },
     reportTone: state.reportTone,
@@ -1644,7 +1577,6 @@ async function loadRemoteWorklogForActiveDate() {
   authState.applyingRemote = true;
   state.selectedEmployeeId = data.state.selectedEmployeeId || state.selectedEmployeeId;
   state.profile = { ...state.profile, ...(data.state.profile || {}) };
-  state.commonWeeks = { ...(state.commonWeeks || {}), ...(data.state.commonWeeks || {}) };
   state.employeeLogs = { ...(state.employeeLogs || {}), ...(data.state.employeeLogs || {}) };
   state.attendance = { ...(state.attendance || {}), ...(data.state.attendance || {}) };
   state.reportTone = data.state.reportTone || state.reportTone;
@@ -2353,82 +2285,47 @@ function renderSharedWorklogPanels(log = getSelectedLog()) {
   const dateKey = getActiveDateKey();
   const selectedEmployee = getSelectedEmployee();
   const commonWeekKey = getActiveWeekKey(dateKey);
-  const commonWeek = ensureCommonWeek(commonWeekKey);
   const weekRange = getWeekDateKeys(dateKey);
+  const weekStart = parseDateKey(commonWeekKey);
+  const weekEnd = parseDateKey(commonWeekKey);
+  weekEnd.setDate(weekStart.getDate() + 6);
   const weeklyReview = weekRange.map((key) => {
     const dayLog = state.employeeLogs?.[key]?.[selectedEmployee.id];
-    const tasks = (dayLog?.tasks || []).filter(isActiveTask).map((task) => task.text).filter(Boolean).slice(0, 2);
-    return { key, tasks };
+    const tasks = (dayLog?.tasks || []).filter(isActiveTask).slice(0, 4);
+    const scheduleCount = (dayLog?.schedule || []).filter((item) => getScheduleEntryText(item)).length;
+    const done = tasks.filter((task) => task.done || task.status === "완료").length;
+    return { key, tasks, scheduleCount, done };
   });
   common.innerHTML = `
-    <section class="common-compass-summary">
+    <section class="common-week-header">
       <div>
-        <span>Weekly Compass</span>
-        <strong>${escapeHtml(formatCommonWeekRange(commonWeekKey))}</strong>
+        <span>Beyond Work Weekly</span>
+        <strong>주간 계획 (${escapeHtml(formatCommonWeekRange(commonWeekKey))})</strong>
       </div>
-      <input id="commonMonthFocusInput" type="text" value="${escapeAttr(commonWeek.monthFocus)}" placeholder="월간 주요업무 / 이번 달 방향" />
+      <button type="button" id="commonWeekTodayButton">오늘 업무일지</button>
     </section>
-    <section class="weekly-priority-block">
-      <h4>금주의 주요일정</h4>
-      <div class="common-week-priorities">
-        ${commonWeek.priorities.map((item, index) => `
-          <label class="weekly-priority-row ${item.done ? "done" : ""}">
-            <input type="checkbox" data-common-week-done="${index}" ${item.done ? "checked" : ""} />
-            <input class="weekly-priority-text" data-common-week-priority="${index}" type="text" value="${escapeAttr(item.text || "")}" placeholder="주요 일정 ${index + 1}" />
-          </label>
-        `).join("")}
-      </div>
-    </section>
-    <section class="common-compass-grid">
-      ${commonWeek.compass.map((item, index) => `
-        <article class="compass-row">
-          <span class="row-label">${escapeHtml(item.role)}</span>
-          <input data-common-compass-goal="${index}" type="text" value="${escapeAttr(item.goal || "")}" placeholder="이번 주 목표" />
-          <div class="compass-actions">
-            ${(item.actions || ["", ""]).slice(0, 2).map((value, actionIndex) => `<input data-common-compass-action="${index}:${actionIndex}" type="text" value="${escapeAttr(value || "")}" placeholder="Action ${actionIndex + 1}" />`).join("")}
-          </div>
-        </article>
+    <section class="common-week-days" aria-label="주간 업무 요약">
+      ${weeklyReview.map((day) => `
+        <button type="button" class="common-week-day ${day.key === dateKey ? "is-selected" : ""}" data-common-week-date="${escapeAttr(day.key)}">
+          <strong>${escapeHtml(formatKoreanDate(day.key).replace(/^\d{4}\./, ""))}</strong>
+          <span>${day.done}/${day.tasks.length || 0} 완료 · 일정 ${day.scheduleCount}</span>
+          <small>${day.tasks.length ? day.tasks.map((task) => `${escapeHtml(task.priority || "?")}. ${escapeHtml(task.text || "")}`).join("<br>") : "일간 페이지에 업무를 입력하세요."}</small>
+        </button>
       `).join("")}
     </section>
-    <section class="common-week-review">
-      <b>이번 주 본인 업무 흐름</b>
-      <div class="weekly-common-grid">
-        ${weeklyReview.map((day) => `<article><span>${escapeHtml(formatWeekdayShort(day.key))}</span>${renderSharedTaskList(day.tasks.map((text) => ({ text })), "없음")}</article>`).join("")}
+    <section class="common-week-brief">
+      <b>주간 운영 메모</b>
+      <div>
+        <p>이 페이지는 Beyond Work의 주간섹션처럼 일~토 업무 흐름을 한 화면에서 확인하는 용도입니다.</p>
+        <p>각 요일을 누르면 해당 날짜의 방주/비욘드 업무일지로 이동합니다.</p>
       </div>
     </section>
   `;
-  common.querySelector("#commonMonthFocusInput")?.addEventListener("input", (event) => {
-    commonWeek.monthFocus = event.target.value;
-    saveState({ fastSave: true });
-  });
-  common.querySelectorAll("[data-common-week-done]").forEach((input) => {
-    input.addEventListener("change", () => {
-      const index = Number(input.dataset.commonWeekDone);
-      commonWeek.priorities[index].done = input.checked;
-      saveState();
-      renderSharedWorklogPanels(log);
-    });
-  });
-  common.querySelectorAll("[data-common-week-priority]").forEach((input) => {
-    input.addEventListener("input", () => {
-      const index = Number(input.dataset.commonWeekPriority);
-      commonWeek.priorities[index].text = input.value;
-      delete commonWeek.priorities[index].carryoverFromWeek;
-      saveState({ fastSave: true });
-    });
-  });
-  common.querySelectorAll("[data-common-compass-goal]").forEach((input) => {
-    input.addEventListener("input", () => {
-      const index = Number(input.dataset.commonCompassGoal);
-      commonWeek.compass[index].goal = input.value;
-      saveState({ fastSave: true });
-    });
-  });
-  common.querySelectorAll("[data-common-compass-action]").forEach((input) => {
-    input.addEventListener("input", () => {
-      const [rowIndex, actionIndex] = input.dataset.commonCompassAction.split(":").map(Number);
-      commonWeek.compass[rowIndex].actions[actionIndex] = input.value;
-      saveState({ fastSave: true });
+  common.querySelector("#commonWeekTodayButton")?.addEventListener("click", () => setTodayPageMode("daily"));
+  common.querySelectorAll("[data-common-week-date]").forEach((button) => {
+    button.addEventListener("click", () => {
+      setSelectedDateKey(button.dataset.commonWeekDate);
+      setTodayPageMode("daily");
     });
   });
 
