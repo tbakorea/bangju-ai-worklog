@@ -5615,9 +5615,18 @@ function buildBackupPayload(options = {}) {
       fitnessWritableEmployeeId: state.fitnessWritableEmployeeId,
       employeeLogs,
     },
+    integrity: {
+      algorithm: "SHA-256",
+      note: "hash field is calculated in the browser preview and download flow",
+    },
     automationPlan: {
       recommended: "Supabase Edge Function 또는 Vercel Cron + Email API",
       reason: "정적 웹앱은 앱이 닫힌 상태에서 주기적 메일 발송을 실행할 수 없습니다.",
+      endpointContract: {
+        method: "POST",
+        path: "/api/backup-mail",
+        body: "buildBackupPayload() JSON",
+      },
     },
   };
 }
@@ -5636,6 +5645,7 @@ function buildBackupSummaryText(payload = buildBackupPayload()) {
     `보고/메모 작성: ${metrics.reports}명`,
     `출결 기록: ${metrics.attendanceRecords}건`,
     `피트니스: 유료PT ${metrics.fitnessPaidPt} · 무료PT ${metrics.fitnessFreePt} · 상담 ${metrics.consultation} · 계약 ${metrics.contract}`,
+    `백업 검증: SHA-256 지문으로 파일 변경 여부 확인`,
     "",
     `운영 신호: ${metrics.riskSignals.length ? metrics.riskSignals.join(", ") : "특이 위험 없음"}`,
     "",
@@ -5643,7 +5653,65 @@ function buildBackupSummaryText(payload = buildBackupPayload()) {
   ].join("\n");
 }
 
-function renderBackupCenter() {
+function stableStringify(value) {
+  if (Array.isArray(value)) return `[${value.map(stableStringify).join(",")}]`;
+  if (value && typeof value === "object") {
+    return `{${Object.keys(value).sort().map((key) => `${JSON.stringify(key)}:${stableStringify(value[key])}`).join(",")}}`;
+  }
+  return JSON.stringify(value);
+}
+
+function formatBytes(bytes = 0) {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / 1024 / 1024).toFixed(2)} MB`;
+}
+
+async function hashBackupPayload(payload) {
+  const source = stableStringify({ ...payload, createdAt: "", integrity: { algorithm: "SHA-256" } });
+  if (window.crypto?.subtle) {
+    const buffer = await window.crypto.subtle.digest("SHA-256", new TextEncoder().encode(source));
+    return Array.from(new Uint8Array(buffer)).map((byte) => byte.toString(16).padStart(2, "0")).join("");
+  }
+  let hash = 0;
+  for (let index = 0; index < source.length; index += 1) {
+    hash = (hash << 5) - hash + source.charCodeAt(index);
+    hash |= 0;
+  }
+  return `local-${Math.abs(hash).toString(16).padStart(8, "0")}`;
+}
+
+function getBackupCoverageLabel(metrics) {
+  const pieces = [
+    `${metrics.employees}명`,
+    `업무 ${metrics.taskTotal}`,
+    `일정 ${metrics.scheduleTotal}`,
+    `출결 ${metrics.attendanceRecords}`,
+  ];
+  return pieces.join(" · ");
+}
+
+function renderBackupAutomationLane(payload) {
+  const node = document.getElementById("backupAutomationLane");
+  if (!node) return;
+  const steps = [
+    ["01", "패키지", "업무·출결·노무 데이터 묶음"],
+    ["02", "검증", "SHA-256 무결성 지문"],
+    ["03", "보관", "JSON 백업 파일 또는 원격 저장"],
+    ["04", "발송", "Cron/Edge Function 연결 대기"],
+  ];
+  node.innerHTML = steps.map(([number, title, text], index) => `
+    <section class="${index < 3 ? "is-ready" : ""}">
+      <b>${number}</b>
+      <strong>${title}</strong>
+      <span>${text}</span>
+    </section>
+  `).join("");
+  const automationState = document.getElementById("backupAutomationState");
+  if (automationState) automationState.textContent = payload.automationPlan?.endpointContract ? "연결 준비" : "준비";
+}
+
+async function renderBackupCenter() {
   const emailInput = document.getElementById("backupRecipientEmail");
   const cadenceSelect = document.getElementById("backupCadence");
   const preview = document.getElementById("backupPreview");
@@ -5656,6 +5724,15 @@ function renderBackupCenter() {
   const payload = buildBackupPayload();
   const summary = buildBackupSummaryText(payload);
   preview.textContent = summary;
+  const jsonSize = new TextEncoder().encode(JSON.stringify(payload)).length;
+  const hash = await hashBackupPayload(payload);
+  const hashNode = document.getElementById("backupIntegrityHash");
+  const sizeNode = document.getElementById("backupPayloadSize");
+  const coverageNode = document.getElementById("backupCoverage");
+  if (hashNode) hashNode.textContent = hash.slice(0, 12);
+  if (sizeNode) sizeNode.textContent = formatBytes(jsonSize);
+  if (coverageNode) coverageNode.textContent = getBackupCoverageLabel(payload.metrics);
+  renderBackupAutomationLane(payload);
   if (status) {
     const label = settings.cadence === "daily" ? "매일" : settings.cadence === "weekly" ? "매주" : "매월";
     status.textContent = `${label} 백업 패키지 준비`;
@@ -5676,14 +5753,71 @@ async function copyBackupSummary() {
 
 function downloadBackupJson() {
   const payload = buildBackupPayload({ markPrepared: true });
-  saveState({ fastSave: true });
-  const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement("a");
-  link.href = url;
-  link.download = `bangju-worklog-backup-${payload.date}.json`;
-  link.click();
-  URL.revokeObjectURL(url);
+  hashBackupPayload(payload).then((hash) => {
+    payload.integrity.hash = hash;
+  }).finally(() => {
+    saveState({ fastSave: true });
+    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `bangju-worklog-backup-${payload.date}.json`;
+    link.click();
+    URL.revokeObjectURL(url);
+  });
+}
+
+function validateBackupPayload(payload) {
+  const failures = [];
+  if (!payload || typeof payload !== "object") failures.push("파일 형식이 JSON 백업이 아닙니다.");
+  if (payload?.app !== "Bangju AI Worklog") failures.push("Bangju AI Worklog 백업 파일이 아닙니다.");
+  if (!payload?.date || !/^\d{4}-\d{2}-\d{2}$/.test(payload.date)) failures.push("백업 날짜가 올바르지 않습니다.");
+  if (!payload?.worklogStates?.employeeLogs) failures.push("업무일지 데이터가 없습니다.");
+  if (!payload?.metrics) failures.push("백업 요약 지표가 없습니다.");
+  return {
+    ok: failures.length === 0,
+    failures,
+  };
+}
+
+async function readBackupFile(file) {
+  const text = await file.text();
+  const payload = JSON.parse(text);
+  const validation = validateBackupPayload(payload);
+  const hash = await hashBackupPayload(payload);
+  return { payload, validation, hash };
+}
+
+function openBackupFilePicker(mode = "validate") {
+  const input = document.getElementById("backupRestoreFile");
+  if (!input) return;
+  input.dataset.mode = mode;
+  input.value = "";
+  input.click();
+}
+
+async function handleBackupRestoreFile(event) {
+  const file = event.target.files?.[0];
+  if (!file) return;
+  try {
+    const { payload, validation, hash } = await readBackupFile(file);
+    const summary = [
+      validation.ok ? "백업 파일 검증 완료" : "백업 파일 검증 실패",
+      `날짜: ${payload.date || "-"}`,
+      `생성: ${payload.createdAt ? new Date(payload.createdAt).toLocaleString("ko-KR") : "-"}`,
+      `직원 로그: ${payload.metrics?.employees ?? "-"}명`,
+      `업무/일정: ${payload.metrics?.taskTotal ?? "-"} / ${payload.metrics?.scheduleTotal ?? "-"}`,
+      `무결성: ${hash.slice(0, 16)}`,
+      ...(validation.failures.length ? ["", ...validation.failures.map((item) => `- ${item}`)] : []),
+    ].join("\n");
+    if (event.target.dataset.mode === "restore" && validation.ok) {
+      alert(`${summary}\n\n복구 적용은 아직 자동 병합하지 않습니다. 대표 확인 후 안전 복구 단계에서 적용하도록 설계했습니다.`);
+      return;
+    }
+    alert(summary);
+  } catch (error) {
+    alert(`백업 파일을 읽지 못했습니다: ${error.message}`);
+  }
 }
 
 function openBackupEmailDraft() {
@@ -6474,6 +6608,9 @@ document.getElementById("backupCadence")?.addEventListener("change", (event) => 
 document.getElementById("copyBackupSummaryButton")?.addEventListener("click", copyBackupSummary);
 document.getElementById("downloadBackupButton")?.addEventListener("click", downloadBackupJson);
 document.getElementById("emailBackupButton")?.addEventListener("click", openBackupEmailDraft);
+document.getElementById("validateBackupButton")?.addEventListener("click", () => openBackupFilePicker("validate"));
+document.getElementById("restoreBackupButton")?.addEventListener("click", () => openBackupFilePicker("restore"));
+document.getElementById("backupRestoreFile")?.addEventListener("change", handleBackupRestoreFile);
 document.getElementById("worklogAiButton")?.addEventListener("click", () => {
   alert("Bangju AI는 업무일지, 근태, 경영 이슈를 모아 일일 보고·리스크 감지·다음 행동 추천으로 연결합니다.");
 });

@@ -8,6 +8,7 @@ const read = (file) => readFileSync(join(root, file), "utf8");
 const html = read("index.html");
 const js = read("app.js");
 const css = read("styles.css");
+const backupApi = existsSync(join(root, "api/backup-mail.js")) ? read("api/backup-mail.js") : "";
 const failures = [];
 
 function check(name, condition, detail = "") {
@@ -24,6 +25,8 @@ function findAll(pattern, source) {
 
 const syntax = spawnSync(process.execPath, ["--check", join(root, "app.js")], { encoding: "utf8" });
 check("app.js syntax", syntax.status === 0, syntax.stderr.trim());
+const backupApiSyntax = backupApi ? spawnSync(process.execPath, ["--check", join(root, "api/backup-mail.js")], { encoding: "utf8" }) : null;
+check("backup mail api exists and parses", Boolean(backupApi) && backupApiSyntax.status === 0, backupApiSyntax?.stderr?.trim() || "api/backup-mail.js is missing");
 
 const ids = findAll(/id="([^"]+)"/g, html);
 const duplicateIds = unique(ids.filter((id, index) => ids.indexOf(id) !== index));
@@ -123,14 +126,26 @@ check(
 
 check(
   "report backup center markup exists",
-  ["backupRecipientEmail", "backupCadence", "copyBackupSummaryButton", "downloadBackupButton", "emailBackupButton", "backupPreview", "innovationList"].every((id) => ids.includes(id)),
+  ["backupRecipientEmail", "backupCadence", "copyBackupSummaryButton", "downloadBackupButton", "emailBackupButton", "backupPreview", "backupIntegrityHash", "backupCoverage", "backupPayloadSize", "backupAutomationLane", "validateBackupButton", "restoreBackupButton", "backupRestoreFile", "innovationList"].every((id) => ids.includes(id)),
   "report view should contain the integrated backup center instead of a separate backup menu"
 );
 
 check(
   "backup package builder exists",
-  /function buildBackupPayload\(options = \{\}\)[\s\S]{0,2300}automationPlan/.test(js) && /function buildBackupSummaryText\(payload = buildBackupPayload\(\)\)/.test(js),
+  /function buildBackupPayload\(options = \{\}\)[\s\S]{0,2600}automationPlan/.test(js) && /function buildBackupSummaryText\(payload = buildBackupPayload\(\)\)/.test(js),
   "backup center needs one reusable JSON package for download, email draft, and future cron"
+);
+
+check(
+  "backup integrity and restore validation exist",
+  /async function hashBackupPayload\(payload\)[\s\S]{0,700}SHA-256/.test(js) && /function validateBackupPayload\(payload\)/.test(js) && /function handleBackupRestoreFile\(event\)/.test(js),
+  "advanced backup flow should verify integrity and inspect restore files before applying anything"
+);
+
+check(
+  "backup mail endpoint is environment-gated",
+  /module\.exports = async function handler/.test(backupApi) && /RESEND_API_KEY/.test(backupApi) && /attachments/.test(backupApi),
+  "server mail function should be ready for Vercel env secrets without hard-coded credentials"
 );
 
 check(
@@ -141,7 +156,7 @@ check(
 
 check(
   "backup center styles exist",
-  css.includes(".backup-center-card") && css.includes(".innovation-grid") && css.includes(".report-backup-grid"),
+  css.includes(".backup-center-card") && css.includes(".backup-health-grid") && css.includes(".backup-automation-lane") && css.includes(".innovation-grid") && css.includes(".report-backup-grid"),
   "backup/report screen needs responsive visual rules"
 );
 

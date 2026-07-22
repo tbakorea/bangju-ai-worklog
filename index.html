@@ -665,7 +665,31 @@
               <button type="button" id="downloadBackupButton">백업 파일 저장</button>
               <button type="button" id="emailBackupButton">메일 초안</button>
             </div>
+            <div class="backup-health-grid" aria-label="백업 상태">
+              <section>
+                <span>무결성</span>
+                <strong id="backupIntegrityHash">계산 중</strong>
+              </section>
+              <section>
+                <span>범위</span>
+                <strong id="backupCoverage">-</strong>
+              </section>
+              <section>
+                <span>용량</span>
+                <strong id="backupPayloadSize">-</strong>
+              </section>
+              <section>
+                <span>자동화</span>
+                <strong id="backupAutomationState">준비</strong>
+              </section>
+            </div>
             <pre id="backupPreview" class="backup-preview"></pre>
+            <div class="backup-restore-row">
+              <input id="backupRestoreFile" type="file" accept="application/json,.json" hidden />
+              <button type="button" id="validateBackupButton">백업 검증</button>
+              <button type="button" id="restoreBackupButton">복구 미리보기</button>
+            </div>
+            <div class="backup-automation-lane" id="backupAutomationLane"></div>
             <small class="backup-note">앱이 닫혀 있어도 자동 발송하려면 Supabase Edge Function 또는 Vercel Cron과 메일 서비스를 연결합니다. 현재 화면에서는 같은 백업 패키지를 수동 발송용으로 준비합니다.</small>
           </article>
         </div>

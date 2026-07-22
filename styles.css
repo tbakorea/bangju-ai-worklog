@@ -9631,6 +9631,40 @@ body[data-layout-mode="phone"] #view-today .ai-section-button {
   color: #104b36;
 }
 
+.backup-health-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+  margin: 0 0 12px;
+}
+
+.backup-health-grid section {
+  min-width: 0;
+  padding: 10px 11px;
+  border: 1px solid rgba(16, 75, 54, 0.1);
+  border-radius: 13px;
+  background: rgba(255, 254, 250, 0.74);
+}
+
+.backup-health-grid span {
+  display: block;
+  margin-bottom: 5px;
+  color: rgba(17, 20, 17, 0.52);
+  font-size: 11px;
+  font-weight: 900;
+}
+
+.backup-health-grid strong {
+  display: block;
+  overflow: hidden;
+  color: #104b36;
+  font-size: 13px;
+  font-weight: 950;
+  line-height: 1.15;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .backup-preview {
   overflow: auto;
   max-height: 280px;
@@ -9652,6 +9686,67 @@ body[data-layout-mode="phone"] #view-today .ai-section-button {
   color: rgba(17, 20, 17, 0.62);
   font-size: 12px;
   line-height: 1.45;
+}
+
+.backup-restore-row {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.backup-restore-row button {
+  min-height: 40px;
+  border: 1px solid rgba(17, 20, 17, 0.12);
+  border-radius: 999px;
+  background: rgba(255, 254, 250, 0.86);
+  color: #111411;
+  font-size: 13px;
+  font-weight: 900;
+}
+
+.backup-automation-lane {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 7px;
+  margin-top: 10px;
+}
+
+.backup-automation-lane section {
+  position: relative;
+  min-height: 86px;
+  padding: 11px;
+  border: 1px solid rgba(17, 20, 17, 0.08);
+  border-radius: 14px;
+  background: rgba(241, 244, 238, 0.58);
+}
+
+.backup-automation-lane section.is-ready {
+  border-color: rgba(16, 75, 54, 0.18);
+  background: rgba(16, 75, 54, 0.06);
+}
+
+.backup-automation-lane b {
+  color: rgba(16, 75, 54, 0.42);
+  font-size: 11px;
+  font-weight: 950;
+}
+
+.backup-automation-lane strong {
+  display: block;
+  margin-top: 6px;
+  color: #111411;
+  font-size: 13px;
+  font-weight: 950;
+}
+
+.backup-automation-lane span {
+  display: block;
+  margin-top: 5px;
+  color: rgba(17, 20, 17, 0.58);
+  font-size: 11px;
+  font-weight: 720;
+  line-height: 1.35;
 }
 
 .innovation-grid {
@@ -9718,6 +9813,9 @@ body[data-layout-mode="phone"] #view-today .ai-section-button {
 
   .backup-fields,
   .backup-actions,
+  .backup-health-grid,
+  .backup-restore-row,
+  .backup-automation-lane,
   .innovation-grid {
     grid-template-columns: minmax(0, 1fr);
   }
