@@ -1445,6 +1445,11 @@ function hasApprovalAuthority(profile = state.profile || {}) {
   return /대표|관리자|센터장|총괄|임원|admin|owner|manager/i.test(roleText);
 }
 
+function canShowApprovalMenu() {
+  const email = String(authState.user?.email || state.profile?.email || "").trim().toLowerCase();
+  return controlTowerEmails.has(email) || hasApprovalAuthority();
+}
+
 function isProfileApproved() {
   if (!authState.user) return true;
   if (hasApprovalAuthority()) return true;
@@ -1648,7 +1653,7 @@ function loadDefaultManualForSelectedRole() {
 function renderApprovalAccess() {
   const tab = document.getElementById("approvalSettingsTab");
   const panel = document.getElementById("settings-panel-approval");
-  const allowed = Boolean(authState.user && hasApprovalAuthority());
+  const allowed = canShowApprovalMenu();
   if (tab) tab.hidden = !allowed;
   if (panel) panel.classList.toggle("is-disabled", !allowed);
   if (!allowed) {
@@ -1660,20 +1665,21 @@ function renderApprovalAccess() {
 }
 
 function renderApprovalNotification() {
-  const allowed = Boolean(authState.user && hasApprovalAuthority());
-  const count = allowed ? authState.pendingApprovalCount || 0 : 0;
+  const menuAllowed = canShowApprovalMenu();
+  const alertAllowed = Boolean(authState.user && hasApprovalAuthority());
+  const count = alertAllowed ? authState.pendingApprovalCount || 0 : 0;
   const alertButton = document.getElementById("approvalAlertButton");
   const alertCount = document.getElementById("approvalAlertCount");
   const menuBadge = document.getElementById("menuApprovalBadge");
   const menuApproval = document.querySelector("[data-menu-action='approval']");
-  if (alertButton) alertButton.hidden = !allowed || count <= 0;
+  if (alertButton) alertButton.hidden = !alertAllowed || count <= 0;
   if (alertCount) alertCount.textContent = String(count);
   if (menuBadge) {
-    menuBadge.hidden = !allowed || count <= 0;
+    menuBadge.hidden = !menuAllowed || count <= 0;
     menuBadge.textContent = String(count);
   }
   if (menuApproval) {
-    menuApproval.hidden = !allowed;
+    menuApproval.hidden = !menuAllowed;
     menuApproval.classList.toggle("has-pending", count > 0);
   }
 }
