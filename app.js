@@ -417,6 +417,11 @@ function createState() {
     fitnessCenterMonth: todayKey.slice(0, 7),
     fitnessWritableEmployeeId: "beyond-fitness-manager",
     reportTone: "executive",
+    backupSettings: {
+      recipientEmail: "j3010@ymail.com",
+      cadence: "daily",
+      lastPreparedAt: "",
+    },
   };
 }
 
@@ -474,6 +479,12 @@ function normalizeState() {
   state.fitnessWritableEmployeeId ||= "beyond-fitness-manager";
   state.fitnessGoals = { ...createFitnessGoals(), ...(state.fitnessGoals || {}) };
   state.dagymOps = { ...createDagymOps(), ...(state.dagymOps || {}) };
+  state.backupSettings = {
+    recipientEmail: "j3010@ymail.com",
+    cadence: "daily",
+    lastPreparedAt: "",
+    ...(state.backupSettings || {}),
+  };
   const shouldApplyFitnessHourDefault = !state.fitnessScheduleUnitDefaultApplied;
   state.employeeLogs ||= {};
   state.employeeLogs[getActiveDateKey()] ||= {};
@@ -2387,6 +2398,7 @@ function buildRemoteSnapshot() {
     employeeLogs: { [key]: state.employeeLogs?.[key] || {} },
     attendance: { [key]: state.attendance?.[key] || [] },
     reportTone: state.reportTone,
+    backupSettings: state.backupSettings,
   };
 }
 
@@ -2429,6 +2441,7 @@ async function loadRemoteWorklogForActiveDate() {
   state.employeeLogs = { ...(state.employeeLogs || {}), ...(data.state.employeeLogs || {}) };
   state.attendance = { ...(state.attendance || {}), ...(data.state.attendance || {}) };
   state.reportTone = data.state.reportTone || state.reportTone;
+  state.backupSettings = { ...(state.backupSettings || {}), ...(data.state.backupSettings || {}) };
   normalizeState();
   localStorage.setItem(storageKey, JSON.stringify(state));
   authState.applyingRemote = false;
@@ -5502,6 +5515,210 @@ function renderReport() {
     "7. 메모",
     log.memo || "-",
   ].join("\n");
+  renderBackupCenter();
+  renderInnovationLab();
+}
+
+function getBackupSettings() {
+  state.backupSettings ||= {};
+  return {
+    recipientEmail: state.backupSettings.recipientEmail || "j3010@ymail.com",
+    cadence: state.backupSettings.cadence || "daily",
+    lastPreparedAt: state.backupSettings.lastPreparedAt || "",
+  };
+}
+
+function collectBackupMetrics() {
+  const logs = state.employeeLogs?.[getActiveDateKey()] || {};
+  const attendance = state.attendance?.[getActiveDateKey()] || [];
+  const metrics = {
+    employees: Object.keys(logs).length,
+    taskTotal: 0,
+    taskDone: 0,
+    scheduleTotal: 0,
+    reports: 0,
+    attendanceRecords: attendance.length,
+    fitnessPaidPt: 0,
+    fitnessFreePt: 0,
+    consultation: 0,
+    contract: 0,
+    riskSignals: [],
+  };
+
+  Object.values(logs).forEach((log) => {
+    const tasks = (log.tasks || []).filter((task) => String(task.text || "").trim());
+    const schedules = (log.schedule || []).filter((entry) => getScheduleEntryText(entry));
+    metrics.taskTotal += tasks.length;
+    metrics.taskDone += tasks.filter((task) => task.done || task.status === "완료").length;
+    metrics.scheduleTotal += schedules.length;
+    if (String(log.report || log.memo || "").trim()) metrics.reports += 1;
+    metrics.fitnessPaidPt += Number(log.fitnessOps?.paidPt || 0);
+    metrics.fitnessFreePt += Number(log.fitnessOps?.freePt || 0);
+    metrics.consultation += Number(log.fitnessOps?.consultation || 0);
+    metrics.contract += Number(log.fitnessOps?.newMember || 0) + Number(log.fitnessOps?.renewal || 0);
+  });
+
+  if (!metrics.reports) metrics.riskSignals.push("업무보고 미작성");
+  if (metrics.taskTotal && metrics.taskDone / metrics.taskTotal < 0.5) metrics.riskSignals.push("완료율 50% 미만");
+  if (!metrics.attendanceRecords) metrics.riskSignals.push("출결 기록 부족");
+  if (metrics.fitnessFreePt > metrics.fitnessPaidPt && metrics.fitnessFreePt > 0) metrics.riskSignals.push("무료 PT 비중 확인");
+
+  return metrics;
+}
+
+function buildBackupPayload(options = {}) {
+  const createdAt = new Date().toISOString();
+  const dateKey = getActiveDateKey();
+  const metrics = collectBackupMetrics();
+  const employeeLogs = state.employeeLogs?.[dateKey] || {};
+  const employeesSnapshot = getEmployeeOptions().map((employee) => {
+    const log = employeeLogs[employee.id];
+    return {
+      id: employee.id,
+      org: employee.org,
+      role: employee.role,
+      name: employee.name,
+      editableByCurrentUser: canEditEmployeeSlot(employee.id),
+      clockIn: log?.clockIn || "",
+      clockOut: log?.clockOut || "",
+      taskTotal: (log?.tasks || []).filter((task) => String(task.text || "").trim()).length,
+      scheduleTotal: (log?.schedule || []).filter((entry) => getScheduleEntryText(entry)).length,
+      report: log?.report || "",
+      memo: log?.memo || "",
+      fitnessOps: log?.fitnessOps || null,
+    };
+  });
+
+  if (options.markPrepared) {
+    state.backupSettings = { ...getBackupSettings(), lastPreparedAt: createdAt };
+  }
+  return {
+    app: "Bangju AI Worklog",
+    version: 1,
+    createdAt,
+    date: dateKey,
+    recipientEmail: getBackupSettings().recipientEmail,
+    cadence: getBackupSettings().cadence,
+    activeView,
+    profile: {
+      email: state.profile?.email || authState.user?.email || "",
+      org: state.profile?.org || "",
+      role: state.profile?.role || "",
+      name: state.profile?.name || "",
+      nickname: state.profile?.nickname || "",
+    },
+    metrics,
+    employees: employeesSnapshot,
+    attendance: state.attendance?.[dateKey] || [],
+    worklogStates: {
+      selectedEmployeeId: state.selectedEmployeeId,
+      fitnessWritableEmployeeId: state.fitnessWritableEmployeeId,
+      employeeLogs,
+    },
+    automationPlan: {
+      recommended: "Supabase Edge Function 또는 Vercel Cron + Email API",
+      reason: "정적 웹앱은 앱이 닫힌 상태에서 주기적 메일 발송을 실행할 수 없습니다.",
+    },
+  };
+}
+
+function buildBackupSummaryText(payload = buildBackupPayload()) {
+  const metrics = payload.metrics;
+  return [
+    `[Bangju AI Worklog 백업] ${formatKoreanDate(payload.date)}`,
+    `생성: ${new Date(payload.createdAt).toLocaleString("ko-KR")}`,
+    `수신: ${payload.recipientEmail}`,
+    `주기: ${payload.cadence === "daily" ? "매일" : payload.cadence === "weekly" ? "매주" : "매월"}`,
+    "",
+    `직원 로그: ${metrics.employees}명`,
+    `업무: ${metrics.taskDone}/${metrics.taskTotal} 완료`,
+    `시간별 일정: ${metrics.scheduleTotal}건`,
+    `보고/메모 작성: ${metrics.reports}명`,
+    `출결 기록: ${metrics.attendanceRecords}건`,
+    `피트니스: 유료PT ${metrics.fitnessPaidPt} · 무료PT ${metrics.fitnessFreePt} · 상담 ${metrics.consultation} · 계약 ${metrics.contract}`,
+    "",
+    `운영 신호: ${metrics.riskSignals.length ? metrics.riskSignals.join(", ") : "특이 위험 없음"}`,
+    "",
+    "자동 메일 발송은 서버 스케줄러 연결 후 이 백업 패키지 기준으로 실행합니다.",
+  ].join("\n");
+}
+
+function renderBackupCenter() {
+  const emailInput = document.getElementById("backupRecipientEmail");
+  const cadenceSelect = document.getElementById("backupCadence");
+  const preview = document.getElementById("backupPreview");
+  const status = document.getElementById("backupStatus");
+  if (!emailInput || !cadenceSelect || !preview) return;
+
+  const settings = getBackupSettings();
+  if (document.activeElement !== emailInput) emailInput.value = settings.recipientEmail;
+  if (cadenceSelect.value !== settings.cadence) cadenceSelect.value = settings.cadence;
+  const payload = buildBackupPayload();
+  const summary = buildBackupSummaryText(payload);
+  preview.textContent = summary;
+  if (status) {
+    const label = settings.cadence === "daily" ? "매일" : settings.cadence === "weekly" ? "매주" : "매월";
+    status.textContent = `${label} 백업 패키지 준비`;
+  }
+}
+
+async function copyBackupSummary() {
+  const payload = buildBackupPayload({ markPrepared: true });
+  const text = buildBackupSummaryText(payload);
+  saveState({ fastSave: true });
+  try {
+    await navigator.clipboard?.writeText(text);
+    alert("백업 요약을 복사했습니다.");
+  } catch {
+    alert(text);
+  }
+}
+
+function downloadBackupJson() {
+  const payload = buildBackupPayload({ markPrepared: true });
+  saveState({ fastSave: true });
+  const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = `bangju-worklog-backup-${payload.date}.json`;
+  link.click();
+  URL.revokeObjectURL(url);
+}
+
+function openBackupEmailDraft() {
+  const payload = buildBackupPayload({ markPrepared: true });
+  const recipient = String(payload.recipientEmail || "j3010@ymail.com").replace(/[^\w.@+-]/g, "");
+  const subject = encodeURIComponent(`[Bangju AI Worklog 백업] ${formatKoreanDate(payload.date)}`);
+  const rawBody = `${buildBackupSummaryText(payload)}\n\n※ 전체 JSON 백업은 '백업 파일 저장'으로 내려받아 이 메일에 첨부하면 됩니다.`;
+  const body = encodeURIComponent(rawBody.slice(0, 3600));
+  saveState({ fastSave: true });
+  window.location.href = `mailto:${recipient}?subject=${subject}&body=${body}`;
+}
+
+function getInnovationItems() {
+  return [
+    ["운영 신호 레이더", "미작성, 지각, 무료수업 과다, 민원 반복을 자동 감지해 대표 개입 우선순위를 만듭니다."],
+    ["목표-업무 자동 연결", "PT, 상담, 재등록, 시설 개선 목표가 오늘 업무와 자동으로 연결되어 성과로 누적됩니다."],
+    ["역할별 매뉴얼 코치", "센터장, 재무, 공유사업, TBA, 인포, 트레이너별 매뉴얼을 상황에 맞게 꺼내 줍니다."],
+    ["직원 성장 로그", "업무 패턴, 완료율, 커뮤니케이션, 책임감 변화를 월별 성장 리포트로 정리합니다."],
+    ["다짐 데이터 브릿지", "CSV 또는 수기 입력으로 회원수, 만료예정, PT, 상담 데이터를 운영현황과 합칩니다."],
+    ["노무 확정 워크플로", "월별 근무시간, 유료수업, 수정 이력, 승인자를 남겨 노무 제출자료로 고정합니다."],
+    ["시설 이슈 티켓", "반복되는 청결·고장·냉난방 이슈를 자동 티켓화하고 처리자를 배정합니다."],
+    ["대표의 오늘 10분", "전 사업장 중 오늘 대표가 직접 봐야 할 3가지만 압축해 실행 버튼으로 보여줍니다."],
+  ];
+}
+
+function renderInnovationLab() {
+  const node = document.getElementById("innovationList");
+  if (!node) return;
+  node.innerHTML = getInnovationItems().map(([title, text], index) => `
+    <section>
+      <b>${String(index + 1).padStart(2, "0")}</b>
+      <strong>${escapeHtml(title)}</strong>
+      <span>${escapeHtml(text)}</span>
+    </section>
+  `).join("");
 }
 
 function buildFitnessReportLines() {
@@ -5826,6 +6043,7 @@ function renderAll() {
   renderAttendance();
   renderManagement();
   renderOrganization();
+  renderReport();
   applyCurrentWorklogPermissionState();
 }
 
@@ -6243,6 +6461,19 @@ document.getElementById("reportTone").onchange = (event) => {
   state.reportTone = event.target.value;
   saveState();
 };
+document.getElementById("backupRecipientEmail")?.addEventListener("input", (event) => {
+  state.backupSettings = { ...getBackupSettings(), recipientEmail: event.target.value.trim() || "j3010@ymail.com" };
+  saveState({ fastSave: true });
+  renderBackupCenter();
+});
+document.getElementById("backupCadence")?.addEventListener("change", (event) => {
+  state.backupSettings = { ...getBackupSettings(), cadence: event.target.value };
+  saveState();
+  renderBackupCenter();
+});
+document.getElementById("copyBackupSummaryButton")?.addEventListener("click", copyBackupSummary);
+document.getElementById("downloadBackupButton")?.addEventListener("click", downloadBackupJson);
+document.getElementById("emailBackupButton")?.addEventListener("click", openBackupEmailDraft);
 document.getElementById("worklogAiButton")?.addEventListener("click", () => {
   alert("Bangju AI는 업무일지, 근태, 경영 이슈를 모아 일일 보고·리스크 감지·다음 행동 추천으로 연결합니다.");
 });
@@ -6254,6 +6485,8 @@ window.addEventListener("resize", () => {
 renderResponsiveMode();
 normalizeState();
 document.getElementById("reportTone").value = state.reportTone;
+renderBackupCenter();
+renderInnovationLab();
 document.getElementById("authEmail").value = state.profile.email || "";
 renderAuthStatus();
 renderAll();

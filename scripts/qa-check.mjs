@@ -121,6 +121,36 @@ check(
   "delete/add controls should disappear when a worklog is only being viewed"
 );
 
+check(
+  "report backup center markup exists",
+  ["backupRecipientEmail", "backupCadence", "copyBackupSummaryButton", "downloadBackupButton", "emailBackupButton", "backupPreview", "innovationList"].every((id) => ids.includes(id)),
+  "report view should contain the integrated backup center instead of a separate backup menu"
+);
+
+check(
+  "backup package builder exists",
+  /function buildBackupPayload\(options = \{\}\)[\s\S]{0,2300}automationPlan/.test(js) && /function buildBackupSummaryText\(payload = buildBackupPayload\(\)\)/.test(js),
+  "backup center needs one reusable JSON package for download, email draft, and future cron"
+);
+
+check(
+  "backup settings sync with remote snapshot",
+  /function buildRemoteSnapshot\(\)[\s\S]{0,500}backupSettings: state\.backupSettings/.test(js) && /loadRemoteWorklogForActiveDate\(\)[\s\S]{0,1400}data\.state\.backupSettings/.test(js),
+  "backup cadence and recipient should follow the logged-in account across devices"
+);
+
+check(
+  "backup center styles exist",
+  css.includes(".backup-center-card") && css.includes(".innovation-grid") && css.includes(".report-backup-grid"),
+  "backup/report screen needs responsive visual rules"
+);
+
+check(
+  "backup is not duplicated as a new main menu",
+  !html.includes('data-menu-view="backup"') && !html.includes('data-view="backup"'),
+  "backup should live inside the existing report flow to avoid menu duplication"
+);
+
 const riskPatterns = [
   {
     name: "avoid viewport-scaled font for overview hero",

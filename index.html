@@ -619,9 +619,67 @@
         <div class="ai-coach-grid" id="aiCoachGrid"></div>
       </section>
 
-      <section class="worklog-view" id="view-report">
-        <h2>보고서 초안</h2>
-        <textarea id="reportDraft" rows="12" placeholder="오늘의 업무를 바탕으로 보고서가 정리됩니다."></textarea>
+      <section class="worklog-view report-backup-view" id="view-report">
+        <div class="report-command-card">
+          <div>
+            <p>Report & Backup</p>
+            <h2>보고서·백업</h2>
+            <span>업무일지, 노무, 직원 현황을 하나의 운영 기록으로 정리합니다.</span>
+          </div>
+          <strong id="backupStatus">백업 준비</strong>
+        </div>
+
+        <div class="report-backup-grid">
+          <article class="report-draft-card">
+            <header>
+              <div>
+                <p>Daily Report</p>
+                <h3>보고서 초안</h3>
+              </div>
+            </header>
+            <textarea id="reportDraft" rows="12" placeholder="오늘의 업무를 바탕으로 보고서가 정리됩니다."></textarea>
+          </article>
+
+          <article class="backup-center-card">
+            <header>
+              <div>
+                <p>Backup Center</p>
+                <h3>대표 백업 센터</h3>
+              </div>
+              <span>자동발송 준비</span>
+            </header>
+            <div class="backup-fields">
+              <label>수신 메일
+                <input id="backupRecipientEmail" type="email" autocomplete="email" placeholder="대표 메일" />
+              </label>
+              <label>권장 주기
+                <select id="backupCadence">
+                  <option value="daily">매일</option>
+                  <option value="weekly">매주</option>
+                  <option value="monthly">매월</option>
+                </select>
+              </label>
+            </div>
+            <div class="backup-actions">
+              <button type="button" id="copyBackupSummaryButton">요약 복사</button>
+              <button type="button" id="downloadBackupButton">백업 파일 저장</button>
+              <button type="button" id="emailBackupButton">메일 초안</button>
+            </div>
+            <pre id="backupPreview" class="backup-preview"></pre>
+            <small class="backup-note">앱이 닫혀 있어도 자동 발송하려면 Supabase Edge Function 또는 Vercel Cron과 메일 서비스를 연결합니다. 현재 화면에서는 같은 백업 패키지를 수동 발송용으로 준비합니다.</small>
+          </article>
+        </div>
+
+        <article class="innovation-lab-card">
+          <header>
+            <div>
+              <p>Next Operating OS</p>
+              <h3>다음 혁신 기능 후보</h3>
+            </div>
+            <span>중복 없이 운영 데이터와 연결</span>
+          </header>
+          <div class="innovation-grid" id="innovationList"></div>
+        </article>
       </section>
 
       <section class="worklog-view" id="view-projects">

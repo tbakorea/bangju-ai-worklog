@@ -9469,6 +9469,269 @@ body[data-layout-mode="phone"] #view-today .ai-section-button {
   border-radius: 10px !important;
 }
 
+/* Report backup center: one place for reports, backups, and next OS ideas. */
+.report-backup-view {
+  display: grid;
+  gap: 14px;
+  padding-bottom: 48px;
+}
+
+.report-command-card,
+.report-draft-card,
+.backup-center-card,
+.innovation-lab-card {
+  border: 1px solid rgba(17, 20, 17, 0.1);
+  border-radius: 18px;
+  background: rgba(255, 254, 250, 0.92);
+  box-shadow: 0 18px 42px rgba(17, 20, 17, 0.06);
+}
+
+.report-command-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 18px 20px;
+  background: linear-gradient(135deg, rgba(16, 75, 54, 0.96), rgba(38, 92, 70, 0.9));
+  color: #fffefa;
+}
+
+.report-command-card p,
+.report-draft-card p,
+.backup-center-card p,
+.innovation-lab-card p {
+  margin: 0 0 4px;
+  color: inherit;
+  font-size: 11px;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  opacity: 0.72;
+}
+
+.report-command-card h2,
+.report-draft-card h3,
+.backup-center-card h3,
+.innovation-lab-card h3 {
+  margin: 0;
+  color: inherit;
+  font-weight: 950;
+  letter-spacing: 0;
+}
+
+.report-command-card span {
+  display: block;
+  margin-top: 6px;
+  color: rgba(255, 254, 250, 0.78);
+  font-size: 13px;
+  font-weight: 750;
+}
+
+.report-command-card strong {
+  flex: 0 0 auto;
+  padding: 10px 13px;
+  border: 1px solid rgba(255, 254, 250, 0.28);
+  border-radius: 999px;
+  background: rgba(255, 254, 250, 0.1);
+  font-size: 13px;
+  white-space: nowrap;
+}
+
+.report-backup-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.08fr) minmax(320px, 0.92fr);
+  gap: 14px;
+}
+
+.report-draft-card,
+.backup-center-card,
+.innovation-lab-card {
+  padding: 16px;
+}
+
+.report-draft-card header,
+.backup-center-card header,
+.innovation-lab-card header {
+  display: flex;
+  align-items: start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.backup-center-card header span,
+.innovation-lab-card header span {
+  flex: 0 0 auto;
+  padding: 7px 10px;
+  border: 1px solid rgba(16, 75, 54, 0.14);
+  border-radius: 999px;
+  color: #104b36;
+  font-size: 12px;
+  font-weight: 900;
+}
+
+#reportDraft {
+  width: 100%;
+  min-height: 420px;
+  resize: vertical;
+  border: 1px solid rgba(17, 20, 17, 0.12);
+  border-radius: 14px;
+  background: rgba(255, 254, 250, 0.78);
+  color: #111411;
+  font-size: 15px;
+  line-height: 1.55;
+}
+
+.backup-fields {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 112px;
+  gap: 10px;
+}
+
+.backup-fields label {
+  display: grid;
+  gap: 6px;
+  color: rgba(17, 20, 17, 0.62);
+  font-size: 12px;
+  font-weight: 850;
+}
+
+.backup-fields input,
+.backup-fields select {
+  min-height: 42px;
+  min-width: 0;
+  border: 1px solid rgba(17, 20, 17, 0.12);
+  border-radius: 12px;
+  background: #fffefa;
+  color: #111411;
+  font-size: 15px;
+  font-weight: 800;
+}
+
+.backup-actions {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  margin: 12px 0;
+}
+
+.backup-actions button {
+  min-height: 42px;
+  border: 1px solid rgba(16, 75, 54, 0.18);
+  border-radius: 999px;
+  background: #104b36;
+  color: #fffefa;
+  font-size: 13px;
+  font-weight: 900;
+  white-space: nowrap;
+}
+
+.backup-actions button:first-child {
+  background: #fffefa;
+  color: #104b36;
+}
+
+.backup-preview {
+  overflow: auto;
+  max-height: 280px;
+  margin: 0;
+  padding: 14px;
+  border: 1px solid rgba(17, 20, 17, 0.1);
+  border-radius: 14px;
+  background: rgba(241, 244, 238, 0.66);
+  color: #111411;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 12px;
+  line-height: 1.55;
+  white-space: pre-wrap;
+}
+
+.backup-note {
+  display: block;
+  margin-top: 10px;
+  color: rgba(17, 20, 17, 0.62);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.innovation-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.innovation-grid section {
+  display: grid;
+  gap: 8px;
+  min-height: 142px;
+  padding: 14px;
+  border: 1px solid rgba(17, 20, 17, 0.08);
+  border-radius: 14px;
+  background: rgba(255, 254, 250, 0.78);
+}
+
+.innovation-grid b {
+  color: rgba(16, 75, 54, 0.52);
+  font-size: 12px;
+  font-weight: 950;
+}
+
+.innovation-grid strong {
+  color: #111411;
+  font-size: 16px;
+  font-weight: 950;
+}
+
+.innovation-grid span {
+  color: rgba(17, 20, 17, 0.66);
+  font-size: 13px;
+  font-weight: 720;
+  line-height: 1.45;
+}
+
+@media (max-width: 1020px) {
+  .report-backup-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .innovation-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 640px) {
+  .report-backup-view {
+    gap: 10px;
+  }
+
+  .report-command-card {
+    align-items: stretch;
+    flex-direction: column;
+    padding: 16px;
+    border-radius: 16px;
+  }
+
+  .report-command-card strong {
+    justify-self: start;
+    width: fit-content;
+  }
+
+  .backup-fields,
+  .backup-actions,
+  .innovation-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  #reportDraft {
+    min-height: 320px;
+    font-size: 14px;
+  }
+
+  .backup-preview {
+    max-height: 230px;
+  }
+}
+
 /* Last-mile phone QA: keep the general worklog date fully visible. */
 body.physical-phone-device #view-today .worklog-summary-date span,
 body.physical-phone-device #view-today #worklogDayTitle {
