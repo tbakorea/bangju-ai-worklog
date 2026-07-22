@@ -931,7 +931,9 @@ function renderResponsiveMode() {
   const isNarrow = window.matchMedia("(max-width: 760px)").matches;
   const isPhoneWidth = window.matchMedia("(max-width: 640px)").matches;
   const mode = isNarrow ? "narrow" : "expanded";
-  const layoutMode = localStorage.getItem(layoutModeStorageKey) === "phone" ? "phone" : "wide";
+  const viewMode = getGlobalViewMode();
+  const layoutMode = isPhoneWidth || viewMode === "ceo" ? "phone" : "wide";
+  localStorage.setItem(layoutModeStorageKey, layoutMode);
   document.body.dataset.deviceMode = mode;
   document.body.dataset.layoutMode = layoutMode;
   document.body.classList.toggle("smartphone-device", layoutMode === "phone" || isPhoneWidth);
@@ -972,8 +974,9 @@ function toggleGlobalViewMode() {
   if (isPhysicalPhoneLayout()) return;
   const nextMode = getGlobalViewMode() === "ceo" ? "classic" : "ceo";
   localStorage.setItem(globalViewModeStorageKey, nextMode);
+  localStorage.setItem(layoutModeStorageKey, nextMode === "ceo" ? "phone" : "wide");
   resetMobileDayFocusToSplit({ blur: true });
-  applyGlobalViewMode();
+  renderResponsiveMode();
 }
 
 function getAssetRows() {
@@ -5411,7 +5414,9 @@ document.querySelectorAll("[data-attendance-action]").forEach((button) => {
 document.getElementById("attendanceApplyButton")?.addEventListener("click", applyAttendancePopoverSelection);
 document.querySelectorAll("[data-layout-mode-choice]").forEach((button) => {
   button.onclick = () => {
-    localStorage.setItem(layoutModeStorageKey, button.dataset.layoutModeChoice || "wide");
+    const nextLayoutMode = button.dataset.layoutModeChoice || "wide";
+    localStorage.setItem(layoutModeStorageKey, nextLayoutMode);
+    localStorage.setItem(globalViewModeStorageKey, nextLayoutMode === "phone" ? "ceo" : "classic");
     renderResponsiveMode();
   };
 });
