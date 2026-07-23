@@ -214,6 +214,59 @@ async function checkControlTower(browser) {
   await page.close();
 }
 
+async function checkRepresentativeProfileSeparation(browser) {
+  const page = await browser.newPage({ viewport: { width: 390, height: 844 } });
+  const errors = [];
+  page.on("pageerror", (error) => errors.push(error.message));
+  await page.addInitScript(() => {
+    localStorage.setItem("beyond-worklog-state-v1", JSON.stringify({
+      selectedDateKey: "2026-07-23",
+      selectedEmployeeId: "beyond-fitness-manager",
+      fitnessWritableEmployeeId: "beyond-fitness-manager",
+      profile: {
+        email: "j3010@ymail.com",
+        role: "대표",
+        name: "정찬훈",
+        nickname: "베니",
+        org: "(주)방주",
+        approvalStatus: "approved",
+      },
+      employeeLogs: {},
+    }));
+  });
+  await page.goto(target, { waitUntil: "domcontentloaded" });
+  await page.evaluate(() => {
+    document.body.classList.add("physical-phone-device");
+    document.body.dataset.layoutMode = "phone";
+    document.body.dataset.viewMode = "ceo";
+    window.switchView?.("fitness-log");
+  });
+  await page.waitForTimeout(350);
+  const metrics = await page.evaluate(() => {
+    const header = document.querySelector("#globalHeaderTitle")?.textContent?.trim() || "";
+    const pager = document.querySelector("#fitnessLogPagerTitle")?.textContent?.trim() || "";
+    const view = document.querySelector("#view-fitness-log");
+    return {
+      header,
+      pager,
+      permission: view?.dataset.fitnessPermission || "",
+      pageType: view?.dataset.fitnessPageType || "",
+      selectedEmployeeId: window.state?.selectedEmployeeId || "",
+    };
+  });
+  if (/정찬훈|베니|benny/i.test(metrics.header + metrics.pager)) {
+    fail("representative profile leaked into fitness manager sheet", `${metrics.header} / ${metrics.pager}`);
+  }
+  if (!/센터장|박주홍/.test(metrics.header + metrics.pager)) {
+    fail("fitness manager identity missing after representative separation", `${metrics.header} / ${metrics.pager}`);
+  }
+  if (metrics.permission !== "readonly" || metrics.pageType !== "coworker") {
+    fail("representative should only read the fitness manager sheet", `${metrics.permission}/${metrics.pageType}`);
+  }
+  if (errors.length) fail("representative separation page errors", errors.join(" | "));
+  await page.close();
+}
+
 (async () => {
   const browser = await chromium.launch({
     headless: true,
@@ -224,6 +277,7 @@ async function checkControlTower(browser) {
     await checkPhoneWorklog(browser);
     await checkOverviewCommandBoard(browser);
     await checkControlTower(browser);
+    await checkRepresentativeProfileSeparation(browser);
   } finally {
     await browser.close();
   }

@@ -470,6 +470,9 @@ function normalizeState() {
     missionsByEmployee: { ...(state.profile.manualSettings?.missionsByEmployee || {}) },
   };
   syncFitnessWritableEmployeeFromProfile();
+  if (isRepresentativeProfile() && (!getMappedProfileEmployeeId() || state.selectedEmployeeId === "beyond-fitness-manager")) {
+    state.selectedEmployeeId = "profile-user";
+  }
   if (state.profile.workHours === "12:00-19:00") state.profile.workHours = defaultProfile.workHours;
   const retiredFitnessIds = {
     "fitness-trainer-2": "fitness-weekday-info",
@@ -592,15 +595,27 @@ function getProfileEmployee() {
   return {
     id: "profile-user",
     name: profile.name || "내 프로필",
+    nickname: profile.nickname || "",
     org: profile.org || "(주)방주",
     role: profile.role || "직원",
+    primaryWork: profile.primaryWork || "",
+    employmentType: profile.employmentType || "직원",
     workHours: profile.workHours || defaultProfile.workHours,
   };
 }
 
+function getMappedProfileEmployeeId() {
+  return getProfileMappedEmployeeId(state?.profile || {});
+}
+
+function isEmployeeLinkedToProfile(employeeId) {
+  if (!employeeId) return false;
+  return employeeId === "profile-user" || getMappedProfileEmployeeId() === employeeId;
+}
+
 function getEmployeeWorkHours(employeeId = state?.selectedEmployeeId, profile = state?.profile, dateKey = getActiveDateKey()) {
   const profileHours = getProfileWorkHoursForDate(profile, dateKey);
-  if (employeeId === "profile-user" || employeeId === state?.fitnessWritableEmployeeId) {
+  if (employeeId === "profile-user" || isEmployeeLinkedToProfile(employeeId)) {
     return profileHours || profile?.workHours || state?.profile?.workHours || defaultProfile.workHours;
   }
   const employee = employees.find((item) => item.id === employeeId);
@@ -632,7 +647,7 @@ function getEmployeeAdminLabel(employee = getSelectedEmployee()) {
 }
 
 function getEmployeeOwnLabel(employee = getSelectedEmployee()) {
-  if (employee.id === state.fitnessWritableEmployeeId) {
+  if (employee.id === state.fitnessWritableEmployeeId && isEmployeeLinkedToProfile(employee.id)) {
     return state.profile?.nickname || employee.nickname || employee.name || "내 업무일지";
   }
   if (employee.id === "profile-user") return state.profile?.nickname || employee.nickname || employee.name || "내 업무일지";
@@ -646,7 +661,7 @@ function isBennyExecutiveProfile() {
 }
 
 function getFitnessOwnIdentity(employee = employees.find((item) => item.id === state.fitnessWritableEmployeeId) || getSelectedEmployee()) {
-  if (isBennyExecutiveProfile()) {
+  if (employee?.id === "profile-user" && isBennyExecutiveProfile()) {
     return { role: "대표", label: "베니", pageTitle: "benny 업무일지" };
   }
   const label = getEmployeeOwnLabel(employee);
@@ -656,6 +671,7 @@ function getFitnessOwnIdentity(employee = employees.find((item) => item.id === s
 
 function syncFitnessWritableEmployeeFromProfile() {
   const profile = state.profile || {};
+  if (isRepresentativeProfile()) return;
   const source = `${profile.org || ""} ${profile.workplace || ""} ${profile.primaryWork || ""}`.toLowerCase();
   if (!/피트니스|fitness|beyond/.test(source)) return;
   const role = `${profile.role || ""} ${profile.primaryWork || ""} ${profile.nickname || ""}`;
@@ -664,7 +680,7 @@ function syncFitnessWritableEmployeeFromProfile() {
   else if (/토요|토요일/.test(role)) id = "fitness-saturday-info";
   else if (/일요|일요일/.test(role)) id = "fitness-sunday-info";
   else if (/인포|데스크|front|프론트|주중/.test(role)) id = "fitness-weekday-info";
-  else if (/센터장|대표|총괄|manager/.test(role)) id = "beyond-fitness-manager";
+  else if (/박주홍|센터장|총괄|manager/.test(role)) id = "beyond-fitness-manager";
   state.fitnessWritableEmployeeId = id;
   state.selectedEmployeeId = id;
   state.fitnessLogPage = 1;
@@ -672,14 +688,14 @@ function syncFitnessWritableEmployeeFromProfile() {
 
 function getFitnessPageDisplayLabel(page = getCurrentFitnessLogPage()) {
   if (page?.type === "center") return "센터 운영현황";
-  if (page?.type === "employee" && page.id === state.fitnessWritableEmployeeId) return getEmployeeOwnLabel(page.employee);
+  if (page?.type === "employee" && isOwnFitnessEmployeeId(page.id)) return getEmployeeOwnLabel(page.employee);
   return getEmployeeAdminLabel(page?.employee || {});
 }
 
 function getFitnessPagerTitle() {
   const current = getCurrentFitnessLogPage();
   if (current?.type === "center") return "센터운영현황";
-  if (current?.id === state.fitnessWritableEmployeeId) return getFitnessOwnIdentity(current.employee).pageTitle;
+  if (isOwnFitnessEmployeeId(current?.id)) return getFitnessOwnIdentity(current.employee).pageTitle;
   return getEmployeeAdminLabel(current?.employee || {});
 }
 
@@ -706,7 +722,11 @@ function getCurrentFitnessLogPage() {
 
 function isCurrentFitnessLogEditable() {
   const page = getCurrentFitnessLogPage();
-  return page?.type === "employee" && page.id === state.fitnessWritableEmployeeId;
+  return page?.type === "employee" && isOwnFitnessEmployeeId(page.id);
+}
+
+function isOwnFitnessEmployeeId(employeeId) {
+  return Boolean(employeeId && employeeId === state.fitnessWritableEmployeeId && isEmployeeLinkedToProfile(employeeId));
 }
 
 function getProfileMappedEmployeeId(profile = state.profile || {}) {
@@ -823,7 +843,7 @@ function showFitnessPageToast(page = getCurrentFitnessLogPage()) {
   }
   toast.textContent = page?.type === "center"
     ? "센터 운영현황"
-    : page?.id === state.fitnessWritableEmployeeId
+    : isOwnFitnessEmployeeId(page?.id)
       ? "내 업무일지 · 입력 가능"
       : `${getFitnessPageDisplayLabel(page)} · 열람 전용`;
   toast.classList.remove("is-visible");
@@ -3121,11 +3141,11 @@ function getFitnessPagerSideLabel(direction, pageIndex, pages = getFitnessLogPag
   const page = pages[pageIndex];
   if (direction === "prev") {
     if (page?.type === "center") return "센터운영";
-    if (page?.id === state.fitnessWritableEmployeeId) return "센터운영";
+    if (isOwnFitnessEmployeeId(page?.id)) return "센터운영";
     return getFitnessOwnIdentity().pageTitle;
   }
   if (page?.type === "center") return "업무일지";
-  if (page?.id === state.fitnessWritableEmployeeId) return "동료업무";
+  if (isOwnFitnessEmployeeId(page?.id)) return "동료업무";
   const nextPage = pages[pageIndex + 1];
   return nextPage?.employee ? getEmployeeAdminLabel(nextPage.employee) : "동료업무";
 }
@@ -3136,7 +3156,7 @@ function applyFitnessLogPermissionState() {
   const page = getCurrentFitnessLogPage();
   const readOnly = !isCurrentFitnessLogEditable();
   const isCenter = page?.type === "center";
-  const isCoworker = page?.type === "employee" && page.id !== state.fitnessWritableEmployeeId;
+  const isCoworker = page?.type === "employee" && !isOwnFitnessEmployeeId(page.id);
   view.classList.toggle("is-readonly", readOnly);
   view.classList.toggle("is-center-page", isCenter);
   view.classList.toggle("is-own-page", isCurrentFitnessLogEditable());
@@ -5016,7 +5036,7 @@ function buildLaborLedgerEmployeeRow(labor, employee, dayNumbers) {
 
 function getLaborProfileForEmployee(employee) {
   if (!employee) return { ...defaultProfile };
-  if (employee.id === "profile-user" || employee.id === state.fitnessWritableEmployeeId || employee.name === state.profile?.name) {
+  if (employee.id === "profile-user" || isEmployeeLinkedToProfile(employee.id)) {
     return { ...defaultProfile, ...(state.profile || {}) };
   }
   return {
