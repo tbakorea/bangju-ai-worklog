@@ -206,6 +206,15 @@ check(
 );
 
 check(
+  "phone numbers are normalized across signup and approval",
+  js.includes("function formatPhoneNumber")
+    && js.includes("isPhoneField(field)")
+    && js.includes('field("phone", "전화", row.phone)')
+    && js.includes("formatPhoneNumber(state.profile.phone)"),
+  "phone inputs should accept digits and display hyphenated Korean phone numbers"
+);
+
+check(
   "inactive worklog views are force-hidden at the end of CSS",
   /\.worklog-shell > \.worklog-view:not\(\.is-active\)[\s\S]{0,80}display:\s*none !important;[\s\S]*\.worklog-shell > \.report-backup-view\.is-active[\s\S]{0,80}display:\s*grid !important;/.test(css.slice(-1600)),
   "page-specific display rules must not make report/backup or other views appear under the active worklog"

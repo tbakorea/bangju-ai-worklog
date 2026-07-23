@@ -1182,6 +1182,25 @@ function getOverviewReportText(log) {
   return String(log.report || log.memo || log.record || "").trim();
 }
 
+function formatPhoneNumber(value = "") {
+  const digits = String(value || "").replace(/\D/g, "");
+  if (!digits) return "";
+  if (digits.startsWith("02")) {
+    if (digits.length <= 2) return digits;
+    if (digits.length <= 5) return `${digits.slice(0, 2)}-${digits.slice(2)}`;
+    if (digits.length <= 9) return `${digits.slice(0, 2)}-${digits.slice(2, digits.length - 4)}-${digits.slice(-4)}`;
+    return `${digits.slice(0, 2)}-${digits.slice(2, 6)}-${digits.slice(6, 10)}`;
+  }
+  if (digits.length <= 3) return digits;
+  if (digits.length <= 7) return `${digits.slice(0, 3)}-${digits.slice(3)}`;
+  return `${digits.slice(0, 3)}-${digits.slice(3, 7)}-${digits.slice(7, 11)}`;
+}
+
+function isPhoneField(field) {
+  const fieldName = field?.dataset?.profileField || field?.dataset?.settingsProfileField || field?.dataset?.approvalField || "";
+  return fieldName === "phone" || field?.type === "tel";
+}
+
 function buildEmployeeInsightAlerts(employee, log, context = {}) {
   if (!canAccessWorklogOverview()) return [];
   const tasks = context.tasks || (log.tasks || []).filter(isActiveTask);
@@ -2103,7 +2122,8 @@ function formatAttendanceSummary(log = getSelectedLog()) {
 
 function renderProfileForm() {
   document.querySelectorAll("[data-profile-field]").forEach((field) => {
-    field.value = state.profile?.[field.dataset.profileField] || "";
+    const value = state.profile?.[field.dataset.profileField] || "";
+    field.value = isPhoneField(field) ? formatPhoneNumber(value) : value;
   });
   renderSignupSheetStatus();
   renderSettingsForm();
@@ -2119,7 +2139,8 @@ function renderSignupSheetStatus() {
 
 function renderSettingsForm() {
   document.querySelectorAll("[data-settings-profile-field]").forEach((field) => {
-    field.value = state.profile?.[field.dataset.settingsProfileField] || "";
+    const value = state.profile?.[field.dataset.settingsProfileField] || "";
+    field.value = isPhoneField(field) ? formatPhoneNumber(value) : value;
   });
   document.querySelectorAll("[data-settings-work-hours-day]").forEach((field) => {
     field.value = state.profile?.weeklyWorkHours?.[field.dataset.settingsWorkHoursDay] || "";
@@ -2375,7 +2396,7 @@ function renderApprovalRequestCard(row) {
   const status = row.approval_status || "pending";
   const field = (name, label, value = "", type = "text") => `
     <label>${escapeHtml(label)}
-      <input type="${type}" data-approval-id="${escapeAttr(row.id)}" data-approval-field="${escapeAttr(name)}" value="${escapeAttr(value || "")}" />
+      <input type="${type}" data-approval-id="${escapeAttr(row.id)}" data-approval-field="${escapeAttr(name)}" value="${escapeAttr(name === "phone" ? formatPhoneNumber(value) : value || "")}" />
     </label>
   `;
   const statusTone = getApprovalStatusTone(status);
@@ -2437,7 +2458,8 @@ function collectApprovalCardPayload(id) {
       payload[name] = numeric ? Number(numeric) : null;
       return;
     }
-    payload[name] = value;
+    payload[name] = isPhoneField(field) ? formatPhoneNumber(value) : value;
+    if (isPhoneField(field)) field.value = payload[name];
   });
   return payload;
 }
@@ -2469,7 +2491,9 @@ async function updateApprovalRequest(id, action) {
 function applyProfileFields(selector, datasetKey) {
   state.profile = { ...defaultProfile, ...(state.profile || {}) };
   document.querySelectorAll(selector).forEach((field) => {
-    state.profile[field.dataset[datasetKey]] = field.value.trim();
+    const value = field.value.trim();
+    state.profile[field.dataset[datasetKey]] = isPhoneField(field) ? formatPhoneNumber(value) : value;
+    if (isPhoneField(field)) field.value = state.profile[field.dataset[datasetKey]];
   });
 }
 
@@ -2789,7 +2813,7 @@ function profileToRemoteRow() {
     org: state.profile.org,
     role: state.profile.role,
     name: state.profile.name,
-    phone: state.profile.phone,
+    phone: formatPhoneNumber(state.profile.phone),
     email: state.profile.email || authState.user.email || "",
     primary_work: state.profile.primaryWork,
     secondary_work: state.profile.secondaryWork,
@@ -2818,7 +2842,7 @@ function remoteRowToProfile(row) {
     org: row.org,
     role: row.role,
     name: row.name,
-    phone: row.phone,
+    phone: formatPhoneNumber(row.phone),
     email: row.email,
     primaryWork: row.primary_work,
     secondaryWork: row.secondary_work,
@@ -6528,6 +6552,13 @@ document.querySelectorAll(".worklog-tabs button").forEach((button) => {
 });
 document.getElementById("mainMenuWheelSelect")?.addEventListener("change", (event) => {
   switchView(event.target.value);
+});
+document.addEventListener("input", (event) => {
+  const field = event.target;
+  if (!(field instanceof HTMLInputElement) || !isPhoneField(field)) return;
+  const nextValue = formatPhoneNumber(field.value);
+  if (field.value === nextValue) return;
+  field.value = nextValue;
 });
 document.getElementById("globalAttendanceButton")?.addEventListener("click", (event) => {
   event.stopPropagation();
