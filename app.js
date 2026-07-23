@@ -378,6 +378,8 @@ const authState = {
   applyingRemote: false,
   saveTimer: null,
   pendingApprovalCount: 0,
+  approvalRows: [],
+  selectedApprovalId: "",
   approvalTimer: null,
 };
 let dateSlideTimer = 0;
@@ -2283,13 +2285,90 @@ async function loadApprovalRequests() {
     return;
   }
   const rows = (data || []).filter((row) => row.id !== authState.user.id);
+  authState.approvalRows = rows;
   authState.pendingApprovalCount = rows.filter((row) => (row.approval_status || "pending") === "pending").length;
   renderApprovalNotification();
   if (!rows.length) {
-    list.innerHTML = `<p class="empty-note">대기 중인 가입신청이 없습니다.</p>`;
+    list.innerHTML = `
+      <div class="approval-empty-state">
+        <strong>가입신청 없음</strong>
+        <p>대기, 승인완료, 반려 목록이 비어 있습니다. 새 신청이 들어오면 이곳에 상태별로 정리됩니다.</p>
+      </div>
+    `;
     return;
   }
-  list.innerHTML = rows.map(renderApprovalRequestCard).join("");
+  if (!rows.some((row) => row.id === authState.selectedApprovalId)) {
+    authState.selectedApprovalId = rows.find((row) => (row.approval_status || "pending") === "pending")?.id || rows[0].id;
+  }
+  renderApprovalQueue();
+}
+
+function getApprovalStatusTone(status = "pending") {
+  if (status === "approved") return "approved";
+  if (status === "rejected") return "rejected";
+  return "pending";
+}
+
+function renderApprovalQueue() {
+  const list = document.getElementById("approvalRequestList");
+  if (!list) return;
+  const rows = authState.approvalRows || [];
+  const selected = rows.find((row) => row.id === authState.selectedApprovalId) || rows[0];
+  const groups = [
+    ["pending", "승인대기", "대표 확인 필요"],
+    ["approved", "승인완료", "사용 가능"],
+    ["rejected", "반려", "보완 요청"],
+  ];
+  list.innerHTML = `
+    <div class="approval-queue-layout">
+      <aside class="approval-queue-sidebar" aria-label="가입승인 상태별 목록">
+        <div class="approval-queue-summary">
+          ${groups.map(([status, label, caption]) => {
+            const count = rows.filter((row) => (row.approval_status || "pending") === status).length;
+            return `
+              <article data-status="${escapeAttr(status)}">
+                <span>${escapeHtml(label)}</span>
+                <strong>${escapeHtml(String(count))}</strong>
+                <em>${escapeHtml(caption)}</em>
+              </article>
+            `;
+          }).join("")}
+        </div>
+        ${groups.map(([status, label]) => renderApprovalQueueGroup(status, label, rows, selected?.id)).join("")}
+      </aside>
+      <div class="approval-detail-panel">
+        ${selected ? renderApprovalRequestCard(selected) : `<p class="empty-note">선택된 가입신청이 없습니다.</p>`}
+      </div>
+    </div>
+  `;
+}
+
+function renderApprovalQueueGroup(status, label, rows, selectedId) {
+  const items = rows.filter((row) => (row.approval_status || "pending") === status);
+  return `
+    <section class="approval-queue-group" data-status="${escapeAttr(status)}">
+      <header>
+        <strong>${escapeHtml(label)}</strong>
+        <span>${escapeHtml(String(items.length))}명</span>
+      </header>
+      <div>
+        ${items.length ? items.map((row) => renderApprovalQueueButton(row, selectedId)).join("") : `<p>해당 직원 없음</p>`}
+      </div>
+    </section>
+  `;
+}
+
+function renderApprovalQueueButton(row, selectedId) {
+  const status = row.approval_status || "pending";
+  const meta = [row.role, row.org, row.workplace].filter(Boolean).join(" · ") || "소속/직함 확인 필요";
+  return `
+    <button type="button" data-approval-select="${escapeAttr(row.id)}" class="${row.id === selectedId ? "is-selected" : ""}">
+      <span>${escapeHtml(row.name || row.nickname || "이름 미입력")}</span>
+      <small>${escapeHtml(row.email || "이메일 없음")}</small>
+      <em>${escapeHtml(meta)}</em>
+      <b data-status="${escapeAttr(status)}">${escapeHtml(getApprovalStatusLabel(status))}</b>
+    </button>
+  `;
 }
 
 function renderApprovalRequestCard(row) {
@@ -2299,14 +2378,24 @@ function renderApprovalRequestCard(row) {
       <input type="${type}" data-approval-id="${escapeAttr(row.id)}" data-approval-field="${escapeAttr(name)}" value="${escapeAttr(value || "")}" />
     </label>
   `;
+  const statusTone = getApprovalStatusTone(status);
+  const approvedLabel = row.approved_at ? new Date(row.approved_at).toLocaleString("ko-KR", { dateStyle: "medium", timeStyle: "short" }) : "";
   return `
-    <article class="approval-request-card" data-approval-card="${escapeAttr(row.id)}">
+    <article class="approval-request-card" data-approval-card="${escapeAttr(row.id)}" data-status="${escapeAttr(statusTone)}">
       <div class="approval-request-title">
         <div>
           <strong>${escapeHtml(row.name || "이름 미입력")}</strong>
-          <span>${escapeHtml(row.email || "이메일 없음")} · ${escapeHtml(getApprovalStatusLabel(status))}</span>
+          <span>${escapeHtml(row.email || "이메일 없음")} · ${escapeHtml(row.org || "소속 미입력")} · ${escapeHtml(row.role || "직급 미입력")}</span>
         </div>
         <em data-status="${escapeAttr(status)}">${escapeHtml(getApprovalStatusLabel(status))}</em>
+      </div>
+      <div class="approval-decision-banner" data-status="${escapeAttr(status)}">
+        <strong>${escapeHtml(status === "pending" ? "승인 전 확인" : status === "approved" ? "승인 완료" : "반려 처리됨")}</strong>
+        <p>${escapeHtml(status === "pending"
+          ? "소속, 직함, 근무지, 고용형태, 노무 기준을 확인한 뒤 승인하세요."
+          : status === "approved"
+            ? `이 직원은 앱 사용이 가능합니다.${approvedLabel ? ` 승인일: ${approvedLabel}` : ""}`
+            : "보완 후 다시 승인할 수 있습니다. 반려 사유를 승인 메모에 남겨주세요.")}</p>
       </div>
       <div class="approval-edit-grid">
         ${field("org", "소속", row.org)}
@@ -2329,8 +2418,8 @@ function renderApprovalRequestCard(row) {
       </label>
       <div class="approval-request-actions">
         <button type="button" data-approval-action="save" data-approval-id="${escapeAttr(row.id)}">수정 저장</button>
-        <button type="button" data-approval-action="approve" data-approval-id="${escapeAttr(row.id)}">승인</button>
-        <button type="button" data-approval-action="reject" data-approval-id="${escapeAttr(row.id)}">반려</button>
+        ${status !== "approved" ? `<button type="button" data-approval-action="approve" data-approval-id="${escapeAttr(row.id)}">승인</button>` : ""}
+        ${status !== "rejected" ? `<button type="button" data-approval-action="reject" data-approval-id="${escapeAttr(row.id)}">반려</button>` : ""}
       </div>
     </article>
   `;
@@ -2372,6 +2461,7 @@ async function updateApprovalRequest(id, action) {
     alert(`가입승인 처리 실패: ${error.message}`);
     return;
   }
+  authState.selectedApprovalId = id;
   await loadApprovalRequests();
   await refreshApprovalNotification();
 }
@@ -2462,6 +2552,8 @@ function clearAuthRuntimeState() {
   authState.session = null;
   authState.user = null;
   authState.pendingApprovalCount = 0;
+  authState.approvalRows = [];
+  authState.selectedApprovalId = "";
   authState.applyingRemote = false;
   clearTimeout(authState.saveTimer);
   authState.saveTimer = null;
@@ -6584,6 +6676,12 @@ document.getElementById("staffOpenApprovalButton")?.addEventListener("click", ()
   openApprovalManagement();
 });
 document.getElementById("approvalRequestList")?.addEventListener("click", (event) => {
+  const selectButton = event.target.closest("[data-approval-select]");
+  if (selectButton) {
+    authState.selectedApprovalId = selectButton.dataset.approvalSelect;
+    renderApprovalQueue();
+    return;
+  }
   const button = event.target.closest("[data-approval-action]");
   if (!button) return;
   updateApprovalRequest(button.dataset.approvalId, button.dataset.approvalAction);

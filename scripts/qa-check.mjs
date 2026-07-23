@@ -197,6 +197,15 @@ check(
 );
 
 check(
+  "approval queue uses status list and one-person detail",
+  js.includes("function renderApprovalQueue()")
+    && js.includes("approval-queue-layout")
+    && js.includes("data-approval-select")
+    && css.includes(".approval-detail-panel"),
+  "approval management should not render every applicant form as one long page"
+);
+
+check(
   "inactive worklog views are force-hidden at the end of CSS",
   /\.worklog-shell > \.worklog-view:not\(\.is-active\)[\s\S]{0,80}display:\s*none !important;[\s\S]*\.worklog-shell > \.report-backup-view\.is-active[\s\S]{0,80}display:\s*grid !important;/.test(css.slice(-1600)),
   "page-specific display rules must not make report/backup or other views appear under the active worklog"
