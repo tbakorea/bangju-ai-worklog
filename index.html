@@ -24,7 +24,7 @@
           <option value="staff">직원</option>
           <option value="attendance">노무</option>
           <option value="ai">매뉴얼·코칭</option>
-          <option value="report">보고서</option>
+          <option value="report">보고서·백업</option>
           <option value="settings">설정</option>
         </select>
         <div class="header-actions">
@@ -46,7 +46,7 @@
           <button type="button" data-menu-view="staff">직원</button>
           <button type="button" data-menu-view="attendance">노무</button>
           <button type="button" data-menu-view="ai">매뉴얼·코칭</button>
-          <button type="button" data-menu-view="report">보고서</button>
+          <button type="button" data-menu-view="report">보고서·백업</button>
           <button type="button" data-menu-view="settings">설정</button>
           <button type="button" data-menu-action="approval">가입승인 <span id="menuApprovalBadge" class="menu-approval-badge" hidden>0</span></button>
           <button type="button" data-menu-view="auth">로그인</button>
@@ -81,7 +81,7 @@
         <button type="button" data-view="staff">직원</button>
         <button type="button" data-view="attendance">노무</button>
         <button type="button" data-view="ai">매뉴얼·코칭</button>
-        <button type="button" data-view="report">보고서</button>
+        <button type="button" data-view="report">보고서·백업</button>
         <button type="button" data-view="settings">설정</button>
       </nav>
 
@@ -606,6 +606,28 @@
           </div>
           <button type="button" id="staffOpenApprovalButton">가입승인</button>
         </div>
+        <div class="section-command-strip" aria-label="직원 섹션 주요 기능">
+          <button type="button" data-section-shortcut="staff-list">
+            <span>01</span>
+            <strong>직원명부</strong>
+            <em>소속·직함·권한 원장</em>
+          </button>
+          <button type="button" data-section-shortcut="approval">
+            <span>02</span>
+            <strong>가입승인</strong>
+            <em>신청 검토와 권한 부여</em>
+          </button>
+          <button type="button" data-section-shortcut="manual">
+            <span>03</span>
+            <strong>역할 매뉴얼</strong>
+            <em>직함별 업무 기준</em>
+          </button>
+          <button type="button" data-section-shortcut="growth">
+            <span>04</span>
+            <strong>성장기록</strong>
+            <em>역량·온보딩 추적</em>
+          </button>
+        </div>
         <div class="staff-master-grid" id="staffMasterGrid"></div>
       </section>
 
@@ -615,7 +637,36 @@
       </section>
 
       <section class="worklog-view" id="view-ai">
-        <h2>AI 코칭</h2>
+        <div class="section-heading-panel">
+          <div>
+            <p>Manual & Coaching</p>
+            <h2>매뉴얼·코칭</h2>
+            <span>직원 역할별 매뉴얼, 업무 코칭, 자기개발 미션을 한 곳에서 봅니다.</span>
+          </div>
+          <button type="button" data-section-shortcut="manual">매뉴얼 편집</button>
+        </div>
+        <div class="section-command-strip" aria-label="매뉴얼·코칭 주요 기능">
+          <button type="button" data-section-shortcut="manual">
+            <span>01</span>
+            <strong>역할별 매뉴얼</strong>
+            <em>방주·비욘드·피트니스 직무 기준</em>
+          </button>
+          <button type="button" data-section-shortcut="coaching">
+            <span>02</span>
+            <strong>AI 업무코칭</strong>
+            <em>오늘 업무와 시간표 개선</em>
+          </button>
+          <button type="button" data-section-shortcut="growth">
+            <span>03</span>
+            <strong>자기개발</strong>
+            <em>역량 점수와 성장 미션</em>
+          </button>
+          <button type="button" data-section-shortcut="report">
+            <span>04</span>
+            <strong>보고서 연결</strong>
+            <em>코칭 결과를 보고서로 정리</em>
+          </button>
+        </div>
         <div class="ai-coach-grid" id="aiCoachGrid"></div>
       </section>
 
@@ -627,6 +678,28 @@
             <span>업무일지, 노무, 직원 현황을 하나의 운영 기록으로 정리합니다.</span>
           </div>
           <strong id="backupStatus">백업 준비</strong>
+        </div>
+        <div class="section-command-strip report-command-strip" aria-label="보고서·백업 주요 기능">
+          <button type="button" data-section-shortcut="daily-report">
+            <span>01</span>
+            <strong>일일보고</strong>
+            <em>업무일지 기반 보고서 초안</em>
+          </button>
+          <button type="button" data-section-shortcut="labor">
+            <span>02</span>
+            <strong>노무자료</strong>
+            <em>월별 노무비·근무이력</em>
+          </button>
+          <button type="button" data-section-shortcut="backup">
+            <span>03</span>
+            <strong>백업센터</strong>
+            <em>대표 메일·JSON 패키지</em>
+          </button>
+          <button type="button" data-section-shortcut="innovation">
+            <span>04</span>
+            <strong>개선후보</strong>
+            <em>다음 운영 OS 로드맵</em>
+          </button>
         </div>
 
         <div class="report-backup-grid">
@@ -721,7 +794,7 @@
         </div>
         <div class="settings-tabs" aria-label="설정 메뉴">
           <button class="is-active" type="button" data-settings-tab="employee">직원설정</button>
-          <button type="button" data-settings-tab="manual">업무매뉴얼</button>
+          <button type="button" data-settings-tab="manual">매뉴얼 편집</button>
           <button type="button" data-settings-tab="approval" id="approvalSettingsTab" hidden>가입승인</button>
           <button type="button" data-settings-tab="app">앱설정</button>
         </div>

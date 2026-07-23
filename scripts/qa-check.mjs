@@ -179,6 +179,24 @@ check(
 );
 
 check(
+  "menu sections use consolidated labels",
+  html.includes('data-menu-view="ai">매뉴얼·코칭</button>')
+    && html.includes('data-menu-view="report">보고서·백업</button>')
+    && html.includes('data-settings-tab="manual">매뉴얼 편집</button>'),
+  "manual/coaching and report/backup should be named as consolidated destinations"
+);
+
+check(
+  "section command strips provide in-section navigation",
+  html.includes('class="section-command-strip"')
+    && html.includes('data-section-shortcut="manual"')
+    && html.includes('data-section-shortcut="approval"')
+    && html.includes('data-section-shortcut="backup"')
+    && /querySelectorAll\("\[data-section-shortcut\]"\)[\s\S]{0,900}switchSettingsTab\("manual"\)/.test(js),
+  "major sections need visible local hubs so content is not scattered"
+);
+
+check(
   "inactive worklog views are force-hidden at the end of CSS",
   /\.worklog-shell > \.worklog-view:not\(\.is-active\)[\s\S]{0,80}display:\s*none !important;[\s\S]*\.worklog-shell > \.report-backup-view\.is-active[\s\S]{0,80}display:\s*grid !important;/.test(css.slice(-1600)),
   "page-specific display rules must not make report/backup or other views appear under the active worklog"

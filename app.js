@@ -6451,6 +6451,31 @@ document.querySelector("[data-menu-action='approval']")?.addEventListener("click
   closeMainMenuPopover();
   openApprovalManagement();
 });
+document.querySelectorAll("[data-section-shortcut]").forEach((button) => {
+  button.addEventListener("click", () => {
+    const action = button.dataset.sectionShortcut;
+    if (action === "approval") {
+      openApprovalManagement();
+      return;
+    }
+    if (action === "manual") {
+      switchView("settings");
+      switchSettingsTab("manual");
+      return;
+    }
+    if (action === "report" || action === "daily-report" || action === "backup" || action === "innovation") {
+      switchView("report");
+      return;
+    }
+    if (action === "labor") {
+      switchView("attendance");
+      return;
+    }
+    if (action === "coaching" || action === "growth") {
+      switchView("ai");
+    }
+  });
+});
 document.getElementById("mainMenuPopover")?.addEventListener("click", (event) => event.stopPropagation());
 document.addEventListener("click", () => {
   closeMainMenuPopover();
