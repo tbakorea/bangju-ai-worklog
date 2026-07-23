@@ -77,6 +77,8 @@ const taskStatusGuideLabels = {
 };
 const defaultScheduleTimes = ["08:00", "08:30", "09:00", "09:30", "10:00", "10:30", "11:00", "11:30", "12:00", "12:30", "13:00", "13:30", "14:00", "14:30", "15:00", "15:30", "16:00", "16:30", "17:00", "17:30", "18:00"];
 const hanjaWeekdays = ["日", "月", "火", "水", "木", "金", "土"];
+const lunarDateFormatter = new Intl.DateTimeFormat("ko-u-ca-chinese", { month: "numeric", day: "numeric" });
+const koreanHolidayCache = new Map();
 const attendanceActions = ["출근", "퇴근", "조퇴", "외출"];
 let attendancePopoverAction = "출근";
 const defaultProfile = {
@@ -935,6 +937,98 @@ function formatDateKey(date) {
 function parseDateKey(key) {
   const [year, month, day] = key.split("-").map(Number);
   return new Date(year, month - 1, day);
+}
+
+function getLunarDateInfo(date) {
+  const parts = lunarDateFormatter.formatToParts(date);
+  const month = Number(parts.find((part) => part.type === "month")?.value || 0);
+  const day = Number(parts.find((part) => part.type === "day")?.value || 0);
+  return { month, day };
+}
+
+function getLunarDateInfoForKey(dateKey) {
+  return getLunarDateInfo(parseDateKey(dateKey));
+}
+
+function getLunarAnchorLabel(dateKey) {
+  const lunar = getLunarDateInfoForKey(dateKey);
+  if (![1, 10, 20, 30].includes(lunar.day)) return "";
+  return `음 ${lunar.month}.${lunar.day}`;
+}
+
+function getBaseKoreanHolidayLabels(dateKey) {
+  const date = parseDateKey(dateKey);
+  const month = date.getMonth() + 1;
+  const day = date.getDate();
+  const labels = [];
+  const add = (label) => {
+    if (!labels.includes(label)) labels.push(label);
+  };
+  if (month === 1 && day === 1) add("신정");
+  if (month === 3 && day === 1) add("삼일절");
+  if (month === 5 && day === 5) add("어린이날");
+  if (month === 6 && day === 6) add("현충일");
+  if (month === 7 && day === 17) add("제헌절");
+  if (month === 8 && day === 15) add("광복절");
+  if (month === 10 && day === 3) add("개천절");
+  if (month === 10 && day === 9) add("한글날");
+  if (month === 12 && day === 25) add("성탄절");
+
+  const lunar = getLunarDateInfo(date);
+  const next = new Date(date);
+  next.setDate(next.getDate() + 1);
+  const nextLunar = getLunarDateInfo(next);
+  if (nextLunar.month === 1 && nextLunar.day === 1) add("설연휴");
+  if (lunar.month === 1 && lunar.day === 1) add("설날");
+  if (lunar.month === 1 && lunar.day === 2) add("설연휴");
+  if (lunar.month === 4 && lunar.day === 8) add("부처님오신날");
+  if (lunar.month === 8 && lunar.day === 14) add("추석연휴");
+  if (lunar.month === 8 && lunar.day === 15) add("추석");
+  if (lunar.month === 8 && lunar.day === 16) add("추석연휴");
+  return labels;
+}
+
+function getKoreanHolidayMap(year) {
+  if (koreanHolidayCache.has(year)) return koreanHolidayCache.get(year);
+  const map = new Map();
+  const add = (dateKey, label) => {
+    const labels = map.get(dateKey) || [];
+    if (!labels.includes(label)) labels.push(label);
+    map.set(dateKey, labels);
+  };
+  const baseHolidayKeys = [];
+  const date = new Date(year, 0, 1);
+  while (date.getFullYear() === year) {
+    const dateKey = formatDateKey(date);
+    const labels = getBaseKoreanHolidayLabels(dateKey);
+    labels.forEach((label) => add(dateKey, label));
+    if (labels.some((label) => label !== "제헌절")) baseHolidayKeys.push(dateKey);
+    date.setDate(date.getDate() + 1);
+  }
+  baseHolidayKeys.forEach((dateKey) => {
+    const holiday = parseDateKey(dateKey);
+    const day = holiday.getDay();
+    if (![0, 6].includes(day)) return;
+    const substitute = new Date(holiday);
+    do {
+      substitute.setDate(substitute.getDate() + 1);
+    } while ([0, 6].includes(substitute.getDay()) || (map.get(formatDateKey(substitute)) || []).length);
+    if (substitute.getFullYear() === year) add(formatDateKey(substitute), "대체공휴일");
+  });
+  koreanHolidayCache.set(year, map);
+  return map;
+}
+
+function getCalendarDayMeta(dateKey) {
+  const date = parseDateKey(dateKey);
+  const holidayLabels = getKoreanHolidayMap(date.getFullYear()).get(dateKey) || [];
+  const lunarLabel = getLunarAnchorLabel(dateKey);
+  return {
+    holidayLabels,
+    lunarLabel,
+    isHoliday: holidayLabels.length > 0,
+    isWeekend: [0, 6].includes(date.getDay()),
+  };
 }
 
 function setSelectedDateKey(dateKey) {
@@ -1935,13 +2029,26 @@ function renderWorklogCalendar() {
   }
   for (let date = 1; date <= lastDate; date += 1) {
     const key = formatDateKey(new Date(year, month, date));
+    const meta = getCalendarDayMeta(key);
+    const subLabels = [...meta.holidayLabels.slice(0, 1), meta.lunarLabel].filter(Boolean);
     const button = document.createElement("button");
     button.type = "button";
-    button.textContent = String(date);
+    button.innerHTML = `
+      <strong>${String(date)}</strong>
+      ${subLabels.length ? `<small>${subLabels.map(escapeHtml).join(" · ")}</small>` : ""}
+    `;
     button.className = [
       key === selectedDateKey ? "is-selected" : "",
       key === todayKey ? "is-today" : "",
+      meta.isHoliday ? "is-holiday" : "",
+      meta.isWeekend ? "is-weekend" : "",
+      meta.lunarLabel ? "has-lunar-anchor" : "",
     ].filter(Boolean).join(" ");
+    button.setAttribute("aria-label", [
+      formatKoreanDate(key),
+      ...meta.holidayLabels,
+      meta.lunarLabel,
+    ].filter(Boolean).join(" "));
     button.onclick = () => selectCalendarDate(key);
     dayGrid.appendChild(button);
   }
@@ -5299,7 +5406,7 @@ function getMonthDateKeys(monthPrefix) {
 }
 
 function renderLaborDayRow(row) {
-  const isWeekend = row.weekday === "토" || row.weekday === "일";
+  const isWeekend = row.weekday === "土" || row.weekday === "日";
   return `
     <div class="labor-register-row ${isWeekend ? "is-weekend" : ""}" role="row">
       <span>${escapeHtml(row.dateKey.slice(8))}</span>

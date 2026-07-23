@@ -223,6 +223,16 @@ check(
 );
 
 check(
+  "calendar marks Korean holidays and lunar anchors",
+  /function getKoreanHolidayMap\(year\)[\s\S]{0,1800}대체공휴일/.test(js)
+    && /function getLunarAnchorLabel\(dateKey\)[\s\S]{0,220}\[1,\s*10,\s*20,\s*30\]/.test(js)
+    && /button\.innerHTML = `[\s\S]{0,260}<small>/.test(js)
+    && /is-holiday/.test(css)
+    && /has-lunar-anchor/.test(css),
+  "all shared calendar sheets should display national/public holidays and lunar 1/10/20/30 labels"
+);
+
+check(
   "inactive worklog views are force-hidden at the end of CSS",
   /\.worklog-shell > \.worklog-view:not\(\.is-active\)[\s\S]{0,80}display:\s*none !important;[\s\S]*\.worklog-shell > \.report-backup-view\.is-active[\s\S]{0,80}display:\s*grid !important;/.test(css.slice(-1600)),
   "page-specific display rules must not make report/backup or other views appear under the active worklog"

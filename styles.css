@@ -1299,6 +1299,50 @@ body[data-device-mode="narrow"] .os-mode-switch span[data-device-mode="narrow"] 
   min-height: 38px;
 }
 
+.calendar-day-grid button {
+  display: grid;
+  align-content: center;
+  justify-items: center;
+  gap: 1px;
+  min-width: 0;
+  padding: 4px 2px;
+  line-height: 1.05;
+}
+
+.calendar-day-grid button strong {
+  display: block;
+  color: inherit;
+  font-size: 15px;
+  font-weight: 950;
+  line-height: 1;
+}
+
+.calendar-day-grid button small {
+  display: block;
+  overflow: hidden;
+  max-width: 100%;
+  color: rgba(47, 65, 56, 0.58);
+  font-size: 8px;
+  font-weight: 850;
+  line-height: 1.05;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.calendar-day-grid button.is-weekend {
+  background: rgba(255, 253, 248, 0.92);
+}
+
+.calendar-day-grid button.is-holiday {
+  border-color: rgba(178, 49, 42, 0.2);
+  background: rgba(255, 247, 244, 0.9);
+  color: #a5352e;
+}
+
+.calendar-day-grid button.has-lunar-anchor:not(.is-holiday) small {
+  color: rgba(15, 59, 46, 0.62);
+}
+
 .calendar-day-grid button.is-today {
   border-color: rgba(15, 59, 46, 0.58);
   box-shadow: 0 0 0 3px rgba(15, 59, 46, 0.07);
@@ -1310,6 +1354,10 @@ body[data-device-mode="narrow"] .os-mode-switch span[data-device-mode="narrow"] 
   border-color: var(--fitness-green);
   color: #fffefa;
   box-shadow: 0 8px 18px rgba(15, 59, 46, 0.18);
+}
+
+.calendar-day-grid button.is-selected small {
+  color: rgba(255, 254, 250, 0.82);
 }
 
 .calendar-footer {

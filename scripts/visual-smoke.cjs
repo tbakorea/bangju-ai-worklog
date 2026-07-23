@@ -267,6 +267,38 @@ async function checkRepresentativeProfileSeparation(browser) {
   await page.close();
 }
 
+async function checkCalendarAnnotations(browser) {
+  const { page, errors } = await openPage(browser, { width: 390, height: 844 });
+  await page.evaluate(() => {
+    window.switchView?.("bangju-log");
+    window.setSelectedDateKey?.("2026-07-23");
+  });
+  await page.waitForTimeout(250);
+  await page.click("#selectedDateButton");
+  await page.waitForTimeout(250);
+  const metrics = await page.evaluate(() => {
+    const gridText = document.querySelector("#calendarDayGrid")?.textContent || "";
+    const holidayCount = document.querySelectorAll("#calendarDayGrid button.is-holiday").length;
+    const lunarCount = document.querySelectorAll("#calendarDayGrid button.has-lunar-anchor").length;
+    const selectedAria = document.querySelector("#calendarDayGrid button.is-selected")?.getAttribute("aria-label") || "";
+    return {
+      visible: !document.querySelector("#worklogCalendarPopover")?.hidden,
+      gridText,
+      holidayCount,
+      lunarCount,
+      selectedAria,
+    };
+  });
+  if (!metrics.visible) fail("calendar popover did not open");
+  if (!metrics.gridText.includes("제헌절")) fail("calendar should show Korean national days", metrics.gridText);
+  if (!metrics.gridText.includes("음 6.10")) fail("calendar should show lunar anchor labels", metrics.gridText);
+  if (metrics.holidayCount < 1) fail("calendar holiday classes missing", String(metrics.holidayCount));
+  if (metrics.lunarCount < 3) fail("calendar lunar anchor classes missing", String(metrics.lunarCount));
+  if (!metrics.selectedAria.includes("음 6.10")) fail("calendar aria label should include lunar info", metrics.selectedAria);
+  if (errors.length) fail("calendar page errors", errors.join(" | "));
+  await page.close();
+}
+
 (async () => {
   const browser = await chromium.launch({
     headless: true,
@@ -278,6 +310,7 @@ async function checkRepresentativeProfileSeparation(browser) {
     await checkOverviewCommandBoard(browser);
     await checkControlTower(browser);
     await checkRepresentativeProfileSeparation(browser);
+    await checkCalendarAnnotations(browser);
   } finally {
     await browser.close();
   }
