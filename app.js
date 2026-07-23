@@ -3139,14 +3139,12 @@ function setMobileDayFocusMode(mode) {
 
 function applyMobileDayFocusMode() {
   const main = document.getElementById("worklogMain");
-  const fitnessView = document.getElementById("view-fitness-log");
   const mode = isMobilePhoneFocusLayout() ? mobileDayFocusMode : "split";
-  [main, fitnessView].filter(Boolean).forEach((node) => {
-    node.classList.toggle("is-focus-tasks", mode === "tasks");
-    node.classList.toggle("is-focus-schedule", mode === "schedule");
-    node.classList.toggle("is-mobile-focus-active", mode !== "split");
-    node.classList.toggle("day-swipe", true);
-  });
+  if (!main) return;
+  main.classList.toggle("is-focus-tasks", mode === "tasks");
+  main.classList.toggle("is-focus-schedule", mode === "schedule");
+  main.classList.toggle("is-mobile-focus-active", mode !== "split");
+  main.classList.toggle("day-swipe", true);
 }
 
 function resetMobileDayFocusToSplit({ blur = true } = {}) {
@@ -3158,11 +3156,6 @@ function resetMobileDayFocusToSplit({ blur = true } = {}) {
   if (main) {
     main.classList.add("is-focus-restoring");
     window.setTimeout(() => main.classList.remove("is-focus-restoring"), 230);
-  }
-  const fitnessView = document.getElementById("view-fitness-log");
-  if (fitnessView) {
-    fitnessView.classList.add("is-focus-restoring");
-    window.setTimeout(() => fitnessView.classList.remove("is-focus-restoring"), 230);
   }
   applyMobileDayFocusMode();
 }
