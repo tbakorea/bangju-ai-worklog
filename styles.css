@@ -10470,15 +10470,16 @@ body[data-layout-mode="phone"] #view-today .appointment-row .appointment-text {
     display: grid;
     grid-template-columns: minmax(0, 1fr) minmax(360px, 480px);
     align-items: center;
-    min-height: 116px;
-    padding: 18px 20px;
+    min-height: 96px;
+    padding: 16px 20px;
     border-radius: 24px;
   }
 
   body[data-view-mode="ceo"][data-active-view="worklog-overview"]:not(.physical-phone-device) .worklog-overview-hero h2 {
     overflow: hidden;
     max-width: 100%;
-    font-size: clamp(32px, 4.2vw, 52px);
+    color: #fffefa;
+    font-size: clamp(31px, 3.6vw, 46px);
     line-height: 0.98;
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -10489,20 +10490,10 @@ body[data-layout-mode="phone"] #view-today .appointment-row .appointment-text {
     letter-spacing: 0.03em;
   }
 
-  body[data-view-mode="ceo"][data-active-view="worklog-overview"]:not(.physical-phone-device) .worklog-overview-hero span {
-    display: block;
-    overflow: hidden;
-    max-width: 560px;
-    font-size: 12px;
-    line-height: 1.35;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-
   body[data-view-mode="ceo"][data-active-view="worklog-overview"]:not(.physical-phone-device) .overview-date-nav {
     justify-self: end;
-    grid-template-columns: 44px minmax(190px, 1fr) 44px 58px;
-    width: min(100%, 480px);
+    grid-template-columns: 42px minmax(0, 1fr) 42px 56px;
+    width: min(100%, 440px);
     min-width: 0;
   }
 
@@ -11210,17 +11201,16 @@ body[data-layout-mode="phone"] #view-fitness-log .ops-summary-note {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 12px;
+  gap: 10px;
   border: 1px solid rgba(15, 59, 46, 0.12);
   border-radius: 24px;
   background: linear-gradient(135deg, rgba(15, 59, 46, 0.96), rgba(31, 76, 59, 0.86));
   color: var(--nordic-sheet);
-  padding: 18px;
+  padding: 15px 16px;
   box-shadow: 0 18px 42px rgba(15, 59, 46, 0.16);
 }
 
-.worklog-overview-hero p,
-.worklog-overview-hero span {
+.worklog-overview-hero p {
   margin: 0;
   color: rgba(255, 254, 250, 0.72);
   font-size: 12px;
@@ -11228,9 +11218,12 @@ body[data-layout-mode="phone"] #view-fitness-log .ops-summary-note {
 }
 
 .worklog-overview-hero h2 {
-  margin: 3px 0;
+  margin: 2px 0 0;
+  color: #fffefa;
   font-size: clamp(24px, 4vw, 40px);
   font-weight: 950;
+  letter-spacing: 0;
+  text-shadow: 0 1px 0 rgba(0, 0, 0, 0.18);
 }
 
 .worklog-overview-hero button {
@@ -11245,10 +11238,10 @@ body[data-layout-mode="phone"] #view-fitness-log .ops-summary-note {
 
 .overview-date-nav {
   display: grid;
-  grid-template-columns: 42px minmax(190px, 1fr) 42px auto;
+  grid-template-columns: 38px minmax(0, 1fr) 38px auto;
   gap: 6px;
   align-items: center;
-  min-width: min(460px, 48vw);
+  min-width: min(420px, 48vw);
 }
 
 .overview-date-nav button {
@@ -11269,7 +11262,7 @@ body[data-layout-mode="phone"] #view-fitness-log .ops-summary-note {
 
 .overview-date-nav #overviewDateButton {
   overflow: hidden;
-  padding: 0 13px;
+  padding: 0 9px;
   text-align: center;
 }
 
@@ -11288,22 +11281,22 @@ body[data-layout-mode="phone"] #view-fitness-log .ops-summary-note {
 
 .worklog-overview-grid {
   display: flex;
-  gap: 14px;
+  gap: 10px;
   align-items: stretch;
   overflow-x: auto;
-  padding: 2px 2px 14px;
+  padding: 0 2px 12px;
   scroll-padding-inline: 12px;
 }
 
 .worklog-overview-site {
   display: grid;
-  gap: 10px;
+  gap: 8px;
   align-content: start;
   min-width: max-content;
   border: 1px solid var(--brand-border);
   border-radius: var(--brand-radius);
   background: var(--brand-panel);
-  padding: 10px;
+  padding: 8px;
 }
 
 .worklog-overview-site header span {
@@ -11323,7 +11316,7 @@ body[data-layout-mode="phone"] #view-fitness-log .ops-summary-note {
 .worklog-overview-site > div {
   display: grid;
   grid-auto-flow: column;
-  grid-auto-columns: 286px;
+  grid-auto-columns: 282px;
   gap: 8px;
 }
 
@@ -11335,14 +11328,14 @@ body[data-layout-mode="phone"] #view-fitness-log .ops-summary-note {
 
 .worklog-overview-employee-sheet {
   display: grid;
-  grid-template-rows: auto auto minmax(0, 1fr);
-  gap: 8px;
-  min-height: 590px;
+  grid-template-rows: auto auto auto minmax(0, 1fr);
+  gap: 7px;
+  min-height: 548px;
   border: 1px solid rgba(15, 59, 46, 0.1);
   border-radius: 14px;
   background: rgba(255, 254, 250, 0.78);
   color: var(--ink);
-  padding: 10px;
+  padding: 9px;
   text-align: left;
   scroll-snap-align: start;
 }
@@ -11403,12 +11396,12 @@ body[data-layout-mode="phone"] #view-fitness-log .ops-summary-note {
 
 .overview-report-panel {
   display: grid;
-  gap: 5px;
-  min-height: 104px;
+  gap: 4px;
+  min-height: 82px;
   border: 1px solid rgba(15, 59, 46, 0.1);
   border-radius: 12px;
   background: rgba(244, 247, 240, 0.7);
-  padding: 9px;
+  padding: 8px;
 }
 
 .overview-report-panel p {
@@ -11416,11 +11409,89 @@ body[data-layout-mode="phone"] #view-fitness-log .ops-summary-note {
   overflow: hidden;
   margin: 0;
   color: var(--ink);
-  font-size: 14px;
+  font-size: 13px;
   font-weight: 820;
-  line-height: 1.42;
+  line-height: 1.36;
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 4;
+}
+
+.overview-insight-panel {
+  display: grid;
+  gap: 5px;
+  border: 1px solid rgba(15, 59, 46, 0.1);
+  border-radius: 12px;
+  background: rgba(255, 254, 250, 0.72);
+  padding: 7px;
+}
+
+.overview-insight-panel header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.overview-insight-panel header span {
+  color: rgba(15, 59, 46, 0.7);
+  font-size: 10px;
+  font-weight: 950;
+  letter-spacing: 0.04em;
+}
+
+.overview-insight-panel header strong {
+  border-radius: 999px;
+  background: rgba(15, 83, 64, 0.08);
+  color: var(--fitness-green);
+  padding: 2px 7px;
+  font-size: 10px;
+  font-weight: 950;
+}
+
+.overview-insight-panel > div {
+  display: grid;
+  gap: 4px;
+}
+
+.overview-insight-panel article {
+  display: grid;
+  gap: 1px;
+  border-radius: 9px;
+  background: rgba(244, 247, 240, 0.62);
+  padding: 6px 7px;
+}
+
+.overview-insight-panel article[data-tone="warn"] {
+  background: rgba(255, 242, 235, 0.78);
+}
+
+.overview-insight-panel article[data-tone="praise"] {
+  background: rgba(236, 248, 240, 0.82);
+}
+
+.overview-insight-panel article[data-tone="care"] {
+  background: rgba(241, 244, 255, 0.78);
+}
+
+.overview-insight-panel b {
+  overflow: hidden;
+  color: var(--ink);
+  font-size: 11px;
+  font-weight: 950;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.overview-insight-panel p {
+  display: -webkit-box;
+  overflow: hidden;
+  margin: 0;
+  color: rgba(38, 50, 56, 0.68);
+  font-size: 11px;
+  font-weight: 780;
+  line-height: 1.28;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
 }
 
 .overview-sheet-body {
@@ -11433,7 +11504,7 @@ body[data-layout-mode="phone"] #view-fitness-log .ops-summary-note {
   border: 1px solid rgba(15, 59, 46, 0.1);
   border-radius: 12px;
   background: rgba(255, 254, 250, 0.68);
-  padding: 8px;
+  padding: 7px;
 }
 
 .projected-task-panel {
@@ -11468,13 +11539,13 @@ body[data-layout-mode="phone"] #view-fitness-log .ops-summary-note {
   display: grid;
   align-items: center;
   min-width: 0;
-  min-height: 35px;
+  min-height: 30px;
   border-bottom: 1px solid rgba(15, 59, 46, 0.09);
 }
 
 .overview-task-mini {
-  grid-template-columns: 18px 24px minmax(0, 1fr);
-  gap: 5px;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 0;
 }
 
 .overview-schedule-mini {
@@ -11488,7 +11559,7 @@ body[data-layout-mode="phone"] #view-fitness-log .ops-summary-note {
 }
 
 .overview-task-marker {
-  display: grid;
+  display: none;
   place-items: center;
   width: 16px;
   height: 16px;
@@ -11508,7 +11579,7 @@ body[data-layout-mode="phone"] #view-fitness-log .ops-summary-note {
 }
 
 .overview-priority-box {
-  display: grid;
+  display: none;
   place-items: center;
   min-height: 24px;
   border: 1px solid rgba(15, 59, 46, 0.2);
@@ -11593,14 +11664,30 @@ body[data-layout-mode="phone"] #view-fitness-log .ops-summary-note {
     display: grid;
   }
 
+  .worklog-overview-hero {
+    gap: 10px;
+    padding: 14px;
+    border-radius: 20px;
+  }
+
+  .worklog-overview-hero p {
+    font-size: 10px;
+  }
+
+  .worklog-overview-hero h2 {
+    font-size: clamp(25px, 6.8vw, 31px);
+    line-height: 1.02;
+  }
+
   .overview-date-nav {
-    grid-template-columns: 40px minmax(0, 1fr) 40px 56px;
+    grid-template-columns: 38px minmax(0, 1fr) 38px 46px;
+    gap: 5px;
     min-width: 0;
     width: 100%;
   }
 
   .overview-date-nav #overviewDateTitle {
-    font-size: 20px;
+    font-size: clamp(18px, 5.4vw, 22px);
   }
 
   .worklog-overview-grid {
@@ -11623,11 +11710,25 @@ body[data-layout-mode="phone"] #view-fitness-log .ops-summary-note {
 
   .worklog-overview-employee-sheet {
     flex: 0 0 min(86vw, 380px);
-    min-height: 540px;
+    min-height: 500px;
+    gap: 6px;
+    padding: 8px;
   }
 
   .overview-sheet-body {
     grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  }
+
+  .overview-insight-panel {
+    padding: 6px;
+  }
+
+  .overview-insight-panel article {
+    padding: 5px 6px;
+  }
+
+  .overview-report-panel {
+    min-height: 72px;
   }
 
   .labor-leader-grid {

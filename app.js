@@ -434,11 +434,7 @@ function createEmployeeLog(employee = employees[0], profile = defaultProfile) {
     clockIn: "",
     clockOut: "",
     attendanceBreaks: [],
-    tasks: [
-      { priority: "A", text: "", status: "진행", done: false },
-      { priority: "B", text: "", status: "예정", done: false },
-      ...Array.from({ length: 12 }, () => ({ priority: "?", text: "", status: "예정", done: false })),
-    ],
+    tasks: Array.from({ length: 14 }, () => ({ priority: "?", text: "", status: "예정", done: false })),
     schedule: getScheduleTimes(workHours).map((time) => ({ time, text: "", status: "예정" })),
     scheduleUnit: "60",
     report: "",
@@ -1161,12 +1157,76 @@ function getOverviewReportText(log) {
   return String(log.report || log.memo || log.record || "").trim();
 }
 
+function buildEmployeeInsightAlerts(employee, log, context = {}) {
+  if (!canAccessWorklogOverview()) return [];
+  const tasks = context.tasks || (log.tasks || []).filter(isActiveTask);
+  const scheduleRows = log.schedule || [];
+  const scheduleCount = context.scheduleCount ?? scheduleRows.filter((item) => getScheduleEntryText(item)).length;
+  const reportText = context.reportText ?? getOverviewReportText(log);
+  const attendance = context.attendance ?? formatAttendanceSummary(log) ?? "";
+  const taskText = tasks.map((task) => task.text || "").join(" ");
+  const scheduleText = scheduleRows.map((item) => getScheduleEntryText(item)).join(" ");
+  const combined = `${reportText} ${taskText} ${scheduleText}`;
+  const doneCount = tasks.filter((task) => task.done || task.status === "완료").length;
+  const postponedCount = tasks.filter((task) => ["연기", "위임", "보류"].includes(task.status)).length;
+  const alerts = [];
+  const add = (tone, title, body) => {
+    if (!alerts.some((item) => item.title === title)) alerts.push({ tone, title, body });
+  };
+
+  if (/결석|지각|조퇴|퇴근 미기록|출결 미기록|미기록/.test(attendance)) {
+    add("warn", "근태 확인", "출결 기록 또는 근무 흐름을 대표 확인 대상으로 올립니다.");
+  }
+  if (!reportText && tasks.length === 0 && scheduleCount === 0) {
+    add("warn", "업무일지 공백", "오늘 업무보고, 주요업무, 시간표가 비어 있어 작성 독려가 필요합니다.");
+  }
+  if (/실수|누락|클레임|민원|불만|사고|고장|지연|미납|미수|위험/.test(combined)) {
+    add("warn", "주의 신호", "고객, 시설, 금전 또는 처리 지연 관련 단어가 감지되었습니다.");
+  }
+  if (doneCount > 0 || /완료|해결|개선|계약|상담|PT|피티|재등록|청소|점검|정리/.test(combined)) {
+    add("praise", "진전 포착", "완료, 상담, 계약, 현장 개선 등 칭찬 가능한 실행 흔적이 있습니다.");
+  }
+  if (postponedCount > 0) {
+    add("coach", "재배치 필요", "연기, 위임, 보류 업무는 후속 담당자와 마감일을 다시 확인하세요.");
+  }
+  if (/건강|병원|휴가|가족|면담|컨디션|개인|변화/.test(combined)) {
+    add("care", "개인 변화", "신변 또는 컨디션 관련 표현이 있어 배려와 면담 여부를 확인합니다.");
+  }
+  if (tasks.length >= 2 && scheduleCount >= 3 && reportText) {
+    add("steady", "매뉴얼 안정", "우선업무, 시간표, 보고가 함께 기록되어 운영 루틴이 안정적입니다.");
+  }
+  if (!alerts.length) {
+    add("coach", "성장 코칭", `${employee.position || employee.role || "직원"} 역할 기준으로 오늘 핵심 업무 1건을 먼저 명확히 잡으세요.`);
+  }
+  return alerts.slice(0, 3);
+}
+
+function renderOverviewInsightPanel(employee, log, context = {}) {
+  const alerts = buildEmployeeInsightAlerts(employee, log, context);
+  if (!alerts.length) return "";
+  const urgentCount = alerts.filter((item) => item.tone === "warn").length;
+  const label = urgentCount ? `확인 ${urgentCount}` : "정상 추적";
+  return `
+    <section class="overview-insight-panel" aria-label="대표 열람 직원 특이사항">
+      <header>
+        <span>AI 직원 신호</span>
+        <strong>${escapeHtml(label)}</strong>
+      </header>
+      <div>
+        ${alerts.map((item) => `
+          <article data-tone="${escapeAttr(item.tone)}">
+            <b>${escapeHtml(item.title)}</b>
+            <p>${escapeHtml(item.body)}</p>
+          </article>
+        `).join("")}
+      </div>
+    </section>
+  `;
+}
+
 function renderOverviewTaskMini(task) {
-  const marker = getWorklogTaskMarkerLabel(task) || "";
   return `
     <li class="overview-task-mini ${task.done || task.status === "완료" ? "is-done" : ""}">
-      <span class="overview-task-marker">${escapeHtml(marker)}</span>
-      <strong class="overview-priority-box">${escapeHtml(task.priority || "?")}</strong>
       <p>${escapeHtml(task.text || "업무 내용")}</p>
     </li>
   `;
@@ -1208,6 +1268,7 @@ function renderWorklogOverview() {
       const reportText = getOverviewReportText(dayLog);
       const activeTasks = getOverviewActiveTasks(dayLog);
       const scheduleRows = getOverviewScheduleRows(dayLog);
+      const insightPanel = renderOverviewInsightPanel(employee, dayLog, { tasks, scheduleCount, reportText, attendance });
       return `
         <article class="worklog-overview-employee-sheet projected-worklog-sheet" data-overview-site="${escapeAttr(group.id)}">
           <header class="overview-sheet-head">
@@ -1218,6 +1279,7 @@ function renderWorklogOverview() {
             </div>
             <button type="button" data-overview-employee="${escapeAttr(employeeId)}" data-overview-view="${escapeAttr(group.view)}">열기</button>
           </header>
+          ${insightPanel}
           <section class="overview-report-panel">
             <span>업무보고</span>
             <p>${escapeHtml(reportText || "오늘 보고 내용이 아직 없습니다.")}</p>

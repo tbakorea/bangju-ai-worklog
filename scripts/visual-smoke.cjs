@@ -93,6 +93,71 @@ async function checkPhoneWorklog(browser) {
   await page.close();
 }
 
+async function checkOverviewCommandBoard(browser) {
+  const page = await browser.newPage({ viewport: { width: 390, height: 844 } });
+  const errors = [];
+  page.on("pageerror", (error) => errors.push(error.message));
+  await page.addInitScript(() => {
+    localStorage.setItem("beyond-worklog-state-v1", JSON.stringify({
+      selectedDateKey: "2026-07-23",
+      selectedEmployeeId: "bangju-finance-manager",
+      profile: {
+        email: "j3010@ymail.com",
+        role: "대표",
+        name: "Benny",
+        nickname: "베니",
+        approvalStatus: "approved",
+      },
+      employeeLogs: {},
+    }));
+    localStorage.setItem("beyond-worklog-global-view-mode", "ceo");
+  });
+  await page.goto(target, { waitUntil: "domcontentloaded" });
+  await page.evaluate(() => {
+    document.body.classList.add("physical-phone-device");
+    document.body.dataset.layoutMode = "phone";
+    document.body.dataset.viewMode = "ceo";
+    window.switchView?.("worklog-overview");
+  });
+  await page.waitForTimeout(350);
+
+  const metrics = await page.evaluate(() => {
+    const title = document.querySelector(".worklog-overview-hero h2");
+    const dateTitle = document.querySelector("#overviewDateTitle");
+    const hero = document.querySelector(".worklog-overview-hero");
+    const hiddenTaskChrome = [...document.querySelectorAll(".overview-task-marker, .overview-priority-box")]
+      .every((node) => getComputedStyle(node).display === "none");
+    return {
+      activeView: document.body.dataset.activeView,
+      denied: Boolean(document.querySelector(".worklog-overview-denied")),
+      titleText: title?.textContent?.trim() || "",
+      titleColor: title ? getComputedStyle(title).color : "",
+      titleHeight: title?.getBoundingClientRect().height || 0,
+      subtitleCount: document.querySelectorAll(".worklog-overview-hero > div:first-child > span").length,
+      dateText: dateTitle?.textContent?.trim() || "",
+      dateFits: dateTitle ? dateTitle.scrollWidth <= dateTitle.clientWidth + 2 : false,
+      heroHeight: hero?.getBoundingClientRect().height || 0,
+      insightCount: document.querySelectorAll(".overview-insight-panel").length,
+      hiddenTaskChrome,
+      sheetCount: document.querySelectorAll(".worklog-overview-employee-sheet").length,
+    };
+  });
+
+  if (metrics.activeView !== "worklog-overview") fail("overview active view mismatch", metrics.activeView);
+  if (metrics.denied) fail("representative overview should not be denied");
+  if (metrics.titleText !== "전 사업장 업무일지") fail("overview title mismatch", metrics.titleText);
+  if (metrics.titleColor !== "rgb(255, 254, 250)") fail("overview title color is not high contrast", metrics.titleColor);
+  if (metrics.titleHeight > 45) fail("overview title wrapped or became too tall", `${metrics.titleHeight}px`);
+  if (metrics.subtitleCount) fail("overview subtitle should be removed", String(metrics.subtitleCount));
+  if (!metrics.dateFits) fail("overview date title is clipped", metrics.dateText);
+  if (metrics.heroHeight > 132) fail("overview hero is too tall on phone mode", `${metrics.heroHeight}px`);
+  if (!metrics.insightCount) fail("overview employee insight alerts are missing");
+  if (!metrics.hiddenTaskChrome) fail("overview task markers/priorities should be hidden");
+  if (metrics.sheetCount < 3) fail("overview should render employee sheets", String(metrics.sheetCount));
+  if (errors.length) fail("overview page errors", errors.join(" | "));
+  await page.close();
+}
+
 (async () => {
   const browser = await chromium.launch({
     headless: true,
@@ -101,6 +166,7 @@ async function checkPhoneWorklog(browser) {
   try {
     await checkDesktopEmployeeWorklog(browser);
     await checkPhoneWorklog(browser);
+    await checkOverviewCommandBoard(browser);
   } finally {
     await browser.close();
   }
