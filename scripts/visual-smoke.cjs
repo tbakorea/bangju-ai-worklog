@@ -160,6 +160,60 @@ async function checkOverviewCommandBoard(browser) {
   await page.close();
 }
 
+async function checkControlTower(browser) {
+  const page = await browser.newPage({ viewport: { width: 1180, height: 820 } });
+  const errors = [];
+  page.on("pageerror", (error) => errors.push(error.message));
+  await page.addInitScript(() => {
+    localStorage.setItem("beyond-worklog-state-v1", JSON.stringify({
+      selectedDateKey: "2026-07-23",
+      profile: {
+        email: "j3010@ymail.com",
+        role: "대표",
+        name: "Benny",
+        nickname: "베니",
+        approvalStatus: "approved",
+      },
+      employeeLogs: {},
+    }));
+  });
+  await page.goto(target, { waitUntil: "domcontentloaded" });
+  await page.evaluate(() => {
+    document.body.classList.remove("physical-phone-device");
+    document.body.dataset.layoutMode = "classic";
+    document.body.dataset.viewMode = "classic";
+    window.switchView?.("control");
+  });
+  await page.waitForTimeout(350);
+
+  const metrics = await page.evaluate(() => {
+    const hero = document.querySelector(".control-tower-hero");
+    const body = document.querySelector("#controlTowerBody");
+    return {
+      activeView: document.body.dataset.activeView,
+      denied: Boolean(document.querySelector("#controlAccessCard:not([hidden])")),
+      bodyHidden: body?.hidden,
+      heroHeight: hero?.getBoundingClientRect().height || 0,
+      kpiCount: document.querySelectorAll("#controlKpiGrid article").length,
+      briefingCount: document.querySelectorAll("#controlBriefingList article").length,
+      siteCount: document.querySelectorAll("#controlSiteGrid article").length,
+      jumpCount: document.querySelectorAll("[data-control-jump]").length,
+      titleText: document.querySelector(".control-tower-hero h2")?.textContent?.trim() || "",
+    };
+  });
+
+  if (metrics.activeView !== "control") fail("control tower active view mismatch", metrics.activeView);
+  if (metrics.denied || metrics.bodyHidden) fail("representative control tower should be visible");
+  if (metrics.titleText !== "방주그룹 통합관제") fail("control tower title mismatch", metrics.titleText);
+  if (metrics.heroHeight > 118) fail("control tower hero is too tall", `${metrics.heroHeight}px`);
+  if (metrics.kpiCount !== 4) fail("control tower should focus on four KPIs", String(metrics.kpiCount));
+  if (metrics.briefingCount !== 3) fail("control tower briefing should show three signals", String(metrics.briefingCount));
+  if (metrics.siteCount < 3) fail("control tower should show business site signals", String(metrics.siteCount));
+  if (metrics.jumpCount !== 4) fail("control tower action shortcuts missing", String(metrics.jumpCount));
+  if (errors.length) fail("control tower page errors", errors.join(" | "));
+  await page.close();
+}
+
 (async () => {
   const browser = await chromium.launch({
     headless: true,
@@ -169,6 +223,7 @@ async function checkOverviewCommandBoard(browser) {
     await checkDesktopEmployeeWorklog(browser);
     await checkPhoneWorklog(browser);
     await checkOverviewCommandBoard(browser);
+    await checkControlTower(browser);
   } finally {
     await browser.close();
   }

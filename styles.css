@@ -11336,7 +11336,7 @@ body[data-layout-mode="phone"] #view-fitness-log .ops-summary-note {
 
 .control-tower-view {
   display: none;
-  gap: 14px;
+  gap: 12px;
 }
 
 .control-tower-view.is-active {
@@ -11347,15 +11347,15 @@ body[data-layout-mode="phone"] #view-fitness-log .ops-summary-note {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 14px;
-  border: 1px solid rgba(15, 59, 46, 0.12);
-  border-radius: 24px;
+  gap: 12px;
+  border: 1px solid rgba(15, 59, 46, 0.14);
+  border-radius: 22px;
   background:
-    linear-gradient(135deg, rgba(15, 59, 46, 0.96), rgba(31, 76, 59, 0.88)),
+    linear-gradient(135deg, rgba(10, 48, 38, 0.98), rgba(27, 78, 60, 0.9)),
     var(--fitness-green);
   color: var(--nordic-sheet);
-  padding: 18px;
-  box-shadow: 0 18px 42px rgba(15, 59, 46, 0.16);
+  padding: 14px 16px;
+  box-shadow: 0 18px 38px rgba(15, 59, 46, 0.14);
 }
 
 .control-tower-hero p,
@@ -11369,13 +11369,15 @@ body[data-layout-mode="phone"] #view-fitness-log .ops-summary-note {
 }
 
 .control-tower-hero h2 {
-  margin: 4px 0;
-  font-size: clamp(26px, 5vw, 42px);
-  line-height: 1;
+  margin: 3px 0;
+  color: #fffefa;
+  font-size: clamp(27px, 4.4vw, 38px);
+  font-weight: 950;
+  line-height: 0.98;
 }
 
 .control-tower-hero button {
-  min-height: 42px;
+  min-height: 40px;
   border: 1px solid rgba(255, 254, 250, 0.26);
   border-radius: 999px;
   background: rgba(255, 254, 250, 0.12);
@@ -11388,12 +11390,12 @@ body[data-layout-mode="phone"] #view-fitness-log .ops-summary-note {
 .control-briefing-card,
 .control-panel {
   display: grid;
-  gap: 10px;
-  border: 1px solid var(--brand-border);
-  border-radius: var(--brand-radius);
-  background: var(--brand-panel);
-  padding: 14px;
-  box-shadow: var(--brand-shadow);
+  gap: 9px;
+  border: 1px solid rgba(15, 59, 46, 0.1);
+  border-radius: 20px;
+  background: rgba(255, 254, 250, 0.78);
+  padding: 12px;
+  box-shadow: 0 12px 28px rgba(15, 59, 46, 0.06);
 }
 
 .control-access-card strong {
@@ -11411,36 +11413,38 @@ body[data-layout-mode="phone"] #view-fitness-log .ops-summary-note {
 
 .control-tower-body {
   display: grid;
-  gap: 12px;
+  gap: 10px;
 }
 
 .control-kpi-grid {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 8px;
+  gap: 7px;
 }
 
 .control-kpi-grid article {
   display: grid;
-  gap: 4px;
-  border: 1px solid rgba(33, 55, 45, 0.1);
+  gap: 5px;
+  min-height: 86px;
+  border: 1px solid rgba(33, 55, 45, 0.09);
   border-radius: 18px;
-  background: rgba(255, 254, 250, 0.9);
-  padding: 12px;
+  background:
+    linear-gradient(180deg, rgba(255, 254, 250, 0.96), rgba(246, 248, 243, 0.88));
+  padding: 11px 12px;
 }
 
 .control-kpi-grid span,
 .control-panel header span,
 .control-briefing-card header span {
   color: var(--muted);
-  font-size: 11px;
+  font-size: 10px;
   font-weight: 900;
   text-transform: uppercase;
 }
 
 .control-kpi-grid strong {
-  color: var(--ink);
-  font-size: 24px;
+  color: var(--fitness-green);
+  font-size: 31px;
   font-weight: 950;
   line-height: 1;
 }
@@ -11456,7 +11460,7 @@ body[data-layout-mode="phone"] #view-fitness-log .ops-summary-note {
 .control-briefing-card h3 {
   margin: 2px 0 0;
   color: var(--ink);
-  font-size: 22px;
+  font-size: 19px;
   font-weight: 950;
 }
 
@@ -12016,24 +12020,49 @@ body[data-layout-mode="phone"] #view-fitness-log .ops-summary-note {
 }
 
 .control-briefing-list {
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
 .control-briefing-list article,
 .control-site-grid article,
-.control-ops-grid article {
+.control-ops-grid article,
+.control-ops-grid button {
   display: grid;
   gap: 5px;
   min-width: 0;
   border: 1px solid rgba(33, 55, 45, 0.09);
-  border-radius: 16px;
-  background: rgba(246, 245, 239, 0.58);
-  padding: 11px;
+  border-radius: 15px;
+  background: rgba(246, 245, 239, 0.54);
+  padding: 10px;
+  text-align: left;
 }
 
 .control-briefing-list article[data-level="warn"] {
   border-color: rgba(170, 83, 36, 0.2);
   background: rgba(255, 246, 237, 0.72);
+}
+
+.control-briefing-list article {
+  grid-template-columns: 34px minmax(0, 1fr);
+  align-items: start;
+}
+
+.control-briefing-list article > em {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  background: rgba(15, 59, 46, 0.08);
+  color: var(--fitness-green);
+  font-size: 11px;
+  font-style: normal;
+  font-weight: 950;
+}
+
+.control-briefing-list article[data-level="warn"] > em {
+  background: rgba(170, 83, 36, 0.12);
+  color: #8d3f18;
 }
 
 .control-briefing-list b,
@@ -12060,7 +12089,7 @@ body[data-layout-mode="phone"] #view-fitness-log .ops-summary-note {
 
 .control-site-grid strong {
   color: var(--ink);
-  font-size: 16px;
+  font-size: 15px;
   font-weight: 950;
 }
 
@@ -12068,6 +12097,32 @@ body[data-layout-mode="phone"] #view-fitness-log .ops-summary-note {
   color: var(--muted);
   font-size: 11px;
   font-weight: 900;
+}
+
+.control-site-grid article > div {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.control-site-grid em[data-tone] {
+  border-radius: 999px;
+  background: rgba(15, 59, 46, 0.08);
+  color: var(--fitness-green);
+  padding: 3px 8px;
+  font-size: 10px;
+  font-weight: 950;
+}
+
+.control-site-grid em[data-tone="warn"] {
+  background: rgba(170, 83, 36, 0.12);
+  color: #8d3f18;
+}
+
+.control-site-grid em[data-tone="hold"] {
+  background: rgba(209, 160, 43, 0.14);
+  color: #7b5a11;
 }
 
 .control-staff-table-wrap {
@@ -12131,6 +12186,18 @@ body[data-layout-mode="phone"] #view-fitness-log .ops-summary-note {
   font-size: 11px;
   font-style: normal;
   font-weight: 950;
+}
+
+.control-ops-grid button {
+  cursor: pointer;
+}
+
+.control-ops-grid button:hover,
+.control-ops-grid button:focus-visible {
+  border-color: rgba(15, 59, 46, 0.22);
+  background: rgba(255, 254, 250, 0.9);
+  outline: none;
+  transform: translateY(-1px);
 }
 
 @media (max-width: 760px) {

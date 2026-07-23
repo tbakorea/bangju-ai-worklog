@@ -1384,34 +1384,42 @@ function renderControlTower() {
   const taskTotal = staffRows.reduce((sum, row) => sum + row.taskCount, 0);
   const completedTotal = staffRows.reduce((sum, row) => sum + row.completedCount, 0);
   const fitnessOps = getFitnessOpsSummary();
+  const operatingScore = calculateOperatingScore();
+  const completionRate = taskTotal ? Math.round((completedTotal / taskTotal) * 100) : 0;
+  const salesActions = fitnessOps.consultation + fitnessOps.outbound + fitnessOps.outsideSales;
+  const topSignals = getControlBriefingItems({ staffRows, siteRows, fitnessOps, issueCount, taskTotal, completedTotal }).slice(0, 3);
+  const focusStaff = staffRows
+    .filter((row) => row.aiSignal !== "정상" || row.taskCount === 0 || row.completedCount < row.taskCount)
+    .slice(0, 6);
   const kpis = [
-    ["운영점수", `${calculateOperatingScore()}점`, "그룹"],
-    ["운영 사업장", `${activeSites}/${assetRows.length}`, "가동"],
-    ["직원", `${staffRows.length}명`, "명부"],
-    ["오늘 출결", `${presentCount}/${staffRows.length}`, "기록"],
-    ["업무완료", `${completedTotal}/${taskTotal || 0}`, taskTotal ? `${Math.round((completedTotal / taskTotal) * 100)}%` : "대기"],
-    ["확인신호", `${issueCount}건`, issueCount ? "점검" : "정상"],
-    ["유료 PT", `${fitnessOps.ptRegular + fitnessOps.ptOther}건`, "피트니스"],
-    ["상담/영업", `${fitnessOps.consultation + fitnessOps.outbound + fitnessOps.outsideSales}건`, "고객"],
+    ["운영점수", `${operatingScore}`, operatingScore >= 82 ? "안정권" : operatingScore >= 68 ? "주의권" : "대표 개입"],
+    ["오늘 실행", `${completedTotal}/${taskTotal || 0}`, taskTotal ? `${completionRate}% 완료` : "입력 대기"],
+    ["직원 신호", `${issueCount}`, issueCount ? "확인 필요" : "정상 추적"],
+    ["고객 행동", `${salesActions}`, `유료PT ${fitnessOps.ptRegular + fitnessOps.ptOther}`],
   ];
   document.getElementById("controlKpiGrid").innerHTML = kpis.map(([label, value, meta]) => `
     <article><span>${escapeHtml(label)}</span><strong>${escapeHtml(value)}</strong><em>${escapeHtml(meta)}</em></article>
   `).join("");
 
-  document.getElementById("controlBriefingList").innerHTML = getControlBriefingItems({ staffRows, siteRows, fitnessOps, issueCount, taskTotal, completedTotal }).map(([title, text, level]) => `
-    <article data-level="${escapeAttr(level)}"><b>${escapeHtml(title)}</b><span>${escapeHtml(text)}</span></article>
-  `).join("");
-
-  document.getElementById("controlSiteGrid").innerHTML = siteRows.map((site) => `
-    <article>
-      <span>${escapeHtml(site.brand)}</span>
-      <strong>${escapeHtml(site.site)}</strong>
-      <p>${escapeHtml(site.location)}</p>
-      <em data-status="${escapeAttr(site.status)}">${escapeHtml(site.status)} · 직원 ${site.staffCount}명 · 이슈 ${site.issueCount}건</em>
+  document.getElementById("controlBriefingList").innerHTML = topSignals.map(([title, text, level], index) => `
+    <article data-level="${escapeAttr(level)}">
+      <em>${String(index + 1).padStart(2, "0")}</em>
+      <div><b>${escapeHtml(title)}</b><span>${escapeHtml(text)}</span></div>
     </article>
   `).join("");
 
-  document.getElementById("controlStaffBody").innerHTML = staffRows.map((row) => `
+  document.getElementById("controlSiteGrid").innerHTML = siteRows.slice(0, 6).map((site) => {
+    const tone = site.issueCount ? "warn" : site.status === "준비" || site.status === "보류" ? "hold" : "ok";
+    return `
+    <article>
+      <div><span>${escapeHtml(site.brand)}</span><em data-tone="${escapeAttr(tone)}">${escapeHtml(site.status)}</em></div>
+      <strong>${escapeHtml(site.site)}</strong>
+      <p>${escapeHtml(site.location)} · 직원 ${site.staffCount} · 신호 ${site.issueCount}</p>
+    </article>
+  `;
+  }).join("");
+
+  document.getElementById("controlStaffBody").innerHTML = (focusStaff.length ? focusStaff : staffRows.slice(0, 6)).map((row) => `
     <tr>
       <td>${escapeHtml(row.org)}</td>
       <td>${escapeHtml(row.role)}</td>
@@ -1425,11 +1433,18 @@ function renderControlTower() {
   `).join("");
 
   document.getElementById("controlOpsGrid").innerHTML = [
-    ["근태/노무", "월별 근무대장과 노무비 지급대장을 직원별로 확인합니다.", "노무"],
-    ["보고서", "피트니스 업무일지, 센터운영일지, 개인 보고서를 출력/공유합니다.", "보고"],
-    ["시설/이슈", "청결, 고장, 민원, 안전, 소모품 이슈를 사업장 단위로 묶어 봅니다.", "사업장"],
-    ["AI 브리핑", "오늘 대표가 봐야 할 위험 신호와 다음 행동을 요약합니다.", "AI"],
-  ].map(([title, text, tag]) => `<article><b>${escapeHtml(title)}</b><span>${escapeHtml(text)}</span><em>${escapeHtml(tag)}</em></article>`).join("");
+    ["전사업장 업무일지", "직원별 오늘 업무보고와 실행 현황을 한 번에 엽니다.", "업무일지", "worklog-overview"],
+    ["가입승인", `${authState.pendingApprovalCount || 0}건의 승인 대기와 권한 배치를 확인합니다.`, "직원", "staff"],
+    ["노무", "월별 근무시간, 프리랜서 유료수업, 노무비 대장을 확인합니다.", "노무", "labor"],
+    ["AI 코칭", "대표 개입사항과 직원별 성장 코칭을 정리합니다.", "코칭", "manual-coaching"],
+  ].map(([title, text, tag, view]) => `
+    <button type="button" data-control-jump="${escapeAttr(view)}">
+      <b>${escapeHtml(title)}</b><span>${escapeHtml(text)}</span><em>${escapeHtml(tag)}</em>
+    </button>
+  `).join("");
+  document.querySelectorAll("[data-control-jump]").forEach((button) => {
+    button.addEventListener("click", () => switchView(button.dataset.controlJump || "worklog-overview"));
+  });
 }
 
 function renderExecutiveManagement() {
