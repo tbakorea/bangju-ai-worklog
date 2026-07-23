@@ -76,6 +76,7 @@ const taskStatusGuideLabels = {
   "미완료": "미완료",
 };
 const defaultScheduleTimes = ["08:00", "08:30", "09:00", "09:30", "10:00", "10:30", "11:00", "11:30", "12:00", "12:30", "13:00", "13:30", "14:00", "14:30", "15:00", "15:30", "16:00", "16:30", "17:00", "17:30", "18:00"];
+const hanjaWeekdays = ["日", "月", "火", "水", "木", "金", "土"];
 const attendanceActions = ["출근", "퇴근", "조퇴", "외출"];
 let attendancePopoverAction = "출근";
 const defaultProfile = {
@@ -970,8 +971,7 @@ function animateDateTitle(delta, nextDateKey) {
 
 function formatKoreanDate(key) {
   const date = parseDateKey(key);
-  const weekdays = ["일", "월", "화", "수", "목", "금", "토"];
-  return `${date.getFullYear()}.${String(date.getMonth() + 1).padStart(2, "0")}.${String(date.getDate()).padStart(2, "0")}(${weekdays[date.getDay()]})`;
+  return `${date.getFullYear()}.${String(date.getMonth() + 1).padStart(2, "0")}.${String(date.getDate()).padStart(2, "0")}(${hanjaWeekdays[date.getDay()]})`;
 }
 
 function formatCompactDate(key) {
@@ -1514,13 +1514,13 @@ function renderExecutiveManagement() {
   ].map(([title, count, text]) => `<article><b>${escapeHtml(title)}</b><strong>${escapeHtml(count)}</strong><span>${escapeHtml(text)}</span></article>`).join("");
 
   document.getElementById("executiveActionBoard").innerHTML = [
-    ["월", "현금흐름·미수금·지급예정 확인"],
+    ["月", "현금흐름·미수금·지급예정 확인"],
     ["화", "직원별 업무완료율·노무기록 점검"],
     ["수", "피트니스 매출·상담·재등록 후보 확인"],
     ["목", "공유오피스/창고 공실·계약 갱신 확인"],
     ["금", "주간 성과 리뷰·다음 주 우선순위 확정"],
     ["토", "현장/센터 운영 품질·고객경험 점검"],
-    ["일", "대표 회고·AI 코칭 반영·주간 지시 작성"],
+    ["日", "대표 회고·AI 코칭 반영·주간 지시 작성"],
   ].map(([day, text]) => `<article><strong>${escapeHtml(day)}</strong><span>${escapeHtml(text)}</span></article>`).join("");
 }
 
@@ -3588,7 +3588,7 @@ function renderSharedWorklogPanels(log = getSelectedLog()) {
     <section class="common-week-brief">
       <b>주간 운영 메모</b>
       <div>
-        <p>이 페이지는 Beyond Work의 주간섹션처럼 일~토 업무 흐름을 한 화면에서 확인하는 용도입니다.</p>
+        <p>이 페이지는 Beyond Work의 주간섹션처럼 日~土 업무 흐름을 한 화면에서 확인하는 용도입니다.</p>
         <p>각 요일을 누르면 해당 날짜의 방주/비욘드 업무일지로 이동합니다.</p>
       </div>
     </section>
@@ -3640,7 +3640,7 @@ function getWeekDateKeys(dateKey) {
 
 function formatWeekdayShort(dateKey) {
   const date = parseDateKey(dateKey);
-  return `${date.getMonth() + 1}/${date.getDate()} ${["일", "월", "화", "수", "목", "금", "토"][date.getDay()]}`;
+  return `${date.getMonth() + 1}/${date.getDate()} ${hanjaWeekdays[date.getDay()]}`;
 }
 
 function renderWorklogTaskBoard(log) {
@@ -5209,7 +5209,7 @@ function buildMonthlyLaborSummary(employeeId, employee) {
       .join(" / ");
     const row = {
       dateKey,
-      weekday: ["일", "월", "화", "수", "목", "금", "토"][parseDateKey(dateKey).getDay()],
+      weekday: hanjaWeekdays[parseDateKey(dateKey).getDay()],
       scheduled,
       clockIn: dayLog?.clockIn || "",
       clockOut: dayLog?.clockOut || "",

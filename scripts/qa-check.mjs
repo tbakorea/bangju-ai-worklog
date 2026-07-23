@@ -215,6 +215,14 @@ check(
 );
 
 check(
+  "dates use hanja weekday ordering",
+  js.includes('const hanjaWeekdays = ["日", "月", "火", "水", "木", "金", "土"]')
+    && /formatKoreanDate\(key\)[\s\S]{0,260}date\.getFullYear\(\)[\s\S]{0,220}hanjaWeekdays\[date\.getDay\(\)\]/.test(js)
+    && html.includes("<span>日</span><span>月</span><span>火</span><span>水</span><span>木</span><span>金</span><span>土</span>"),
+  "date labels and calendar headers should use year/month/day/(hanja weekday), starting Sunday"
+);
+
+check(
   "inactive worklog views are force-hidden at the end of CSS",
   /\.worklog-shell > \.worklog-view:not\(\.is-active\)[\s\S]{0,80}display:\s*none !important;[\s\S]*\.worklog-shell > \.report-backup-view\.is-active[\s\S]{0,80}display:\s*grid !important;/.test(css.slice(-1600)),
   "page-specific display rules must not make report/backup or other views appear under the active worklog"
