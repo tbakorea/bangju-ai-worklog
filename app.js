@@ -251,6 +251,16 @@ const fitnessEmployeeIds = ["beyond-fitness-manager", "fitness-trainer-1", "fitn
 const bangjuWorklogEmployeeIds = ["bangju-finance-manager", "bangju-finance-assistant", "bangju-spare-1"];
 const beyondWorklogEmployeeIds = ["beyond-company-leader", "beyond-shared-manager", "beyond-spare-1"];
 
+function isAssignedWorklogEmployee(employee) {
+  if (!employee) return false;
+  const source = `${employee.id || ""} ${employee.name || ""} ${employee.nickname || ""} ${employee.role || ""}`.toLowerCase();
+  return !/spare|예비|미배정|unassigned/.test(source);
+}
+
+function getAssignedWorklogEmployeeIds(employeeIds = []) {
+  return employeeIds.filter((employeeId) => isAssignedWorklogEmployee(employees.find((employee) => employee.id === employeeId)));
+}
+
 function createFitnessOps() {
   return {
     ptRegular: "",
@@ -525,7 +535,20 @@ function normalizeEmployeeLogRows(log) {
   log.schedule ||= [];
   log.tasks.forEach((task, index) => {
     task.id ||= `task-${Date.now()}-${index}-${Math.random().toString(36).slice(2, 7)}`;
-    task.priority ||= index === 0 ? "A" : index === 1 ? "B" : "?";
+    const isBlankDefaultTask = !String(task.text || "").trim()
+      && !task.done
+      && !task.delegate
+      && !task.postponeDate
+      && !task.scheduledSlot
+      && !task.scheduledText;
+    if (isBlankDefaultTask) {
+      task.priority = "?";
+      task.status = "예정";
+      task.done = false;
+    } else {
+      task.priority ||= "?";
+      task.status ||= "예정";
+    }
     task.status ||= "예정";
     task.done ||= false;
     task.text ||= "";
@@ -595,7 +618,7 @@ function getWorkdayKey(dateKey = getActiveDateKey()) {
 function getFitnessEmployees() {
   return fitnessEmployeeIds
     .map((id) => employees.find((employee) => employee.id === id))
-    .filter(Boolean);
+    .filter(isAssignedWorklogEmployee);
 }
 
 function getEmployeeAdminLabel(employee = getSelectedEmployee()) {
@@ -1136,9 +1159,9 @@ function getWorklogSiteGroups() {
 
 function getWorklogOverviewGroups() {
   return [
-    { id: "bangju", label: "방주", title: "(주)방주", view: "bangju-log", employeeIds: bangjuWorklogEmployeeIds },
-    { id: "beyond", label: "비욘드 컴퍼니", title: "(주)비욘드컴퍼니", view: "beyond-log", employeeIds: beyondWorklogEmployeeIds },
-    { id: "fitness", label: "피트니스", title: "비욘드 피트니스", view: "fitness-log", employeeIds: fitnessEmployeeIds },
+    { id: "bangju", label: "방주", title: "(주)방주", view: "bangju-log", employeeIds: getAssignedWorklogEmployeeIds(bangjuWorklogEmployeeIds) },
+    { id: "beyond", label: "비욘드 컴퍼니", title: "(주)비욘드컴퍼니", view: "beyond-log", employeeIds: getAssignedWorklogEmployeeIds(beyondWorklogEmployeeIds) },
+    { id: "fitness", label: "피트니스", title: "비욘드 피트니스", view: "fitness-log", employeeIds: getAssignedWorklogEmployeeIds(fitnessEmployeeIds) },
   ];
 }
 
@@ -1990,9 +2013,9 @@ function getUserWorklogView() {
 }
 
 function getWorklogEmployeeIdsForView(view) {
-  if (view === "fitness-log") return fitnessEmployeeIds;
-  if (view === "beyond-log") return beyondWorklogEmployeeIds;
-  if (view === "bangju-log" || view === "today") return bangjuWorklogEmployeeIds;
+  if (view === "fitness-log") return getAssignedWorklogEmployeeIds(fitnessEmployeeIds);
+  if (view === "beyond-log") return getAssignedWorklogEmployeeIds(beyondWorklogEmployeeIds);
+  if (view === "bangju-log" || view === "today") return getAssignedWorklogEmployeeIds(bangjuWorklogEmployeeIds);
   return [];
 }
 

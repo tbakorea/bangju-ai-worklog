@@ -140,6 +140,7 @@ async function checkOverviewCommandBoard(browser) {
       insightCount: document.querySelectorAll(".overview-insight-panel").length,
       hiddenTaskChrome,
       sheetCount: document.querySelectorAll(".worklog-overview-employee-sheet").length,
+      hiddenReserveSheets: !/예비|미배정|spare/i.test(document.querySelector("#worklogOverviewGrid")?.textContent || ""),
     };
   });
 
@@ -154,6 +155,7 @@ async function checkOverviewCommandBoard(browser) {
   if (!metrics.insightCount) fail("overview employee insight alerts are missing");
   if (!metrics.hiddenTaskChrome) fail("overview task markers/priorities should be hidden");
   if (metrics.sheetCount < 3) fail("overview should render employee sheets", String(metrics.sheetCount));
+  if (!metrics.hiddenReserveSheets) fail("overview should hide reserve/unassigned sheets");
   if (errors.length) fail("overview page errors", errors.join(" | "));
   await page.close();
 }
