@@ -9636,6 +9636,213 @@ body[data-layout-mode="phone"] #view-today .ai-section-button {
   border-radius: 10px !important;
 }
 
+/* Desktop employee worklog density pass. Keeps the worklog as the main surface,
+   while report/memo stay as compact supporting inputs instead of a long tail. */
+@media (min-width: 900px) {
+  body[data-active-view="bangju-log"]:not(.physical-phone-device) .worklog-shell,
+  body[data-active-view="beyond-log"]:not(.physical-phone-device) .worklog-shell {
+    width: min(1120px, calc(100vw - 56px)) !important;
+    margin: 18px auto 36px !important;
+  }
+
+  body[data-active-view="bangju-log"]:not(.physical-phone-device) #view-today.is-active,
+  body[data-active-view="beyond-log"]:not(.physical-phone-device) #view-today.is-active {
+    display: grid !important;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    gap: 10px;
+    padding: 12px !important;
+  }
+
+  body[data-active-view="bangju-log"]:not(.physical-phone-device) #view-today .worklog-today,
+  body[data-active-view="beyond-log"]:not(.physical-phone-device) #view-today .worklog-today {
+    grid-column: 1 / -1;
+    display: grid;
+    gap: 8px;
+  }
+
+  body[data-active-view="bangju-log"]:not(.physical-phone-device) #view-today .worklog-today-title,
+  body[data-active-view="beyond-log"]:not(.physical-phone-device) #view-today .worklog-today-title {
+    min-height: 58px !important;
+    gap: 8px !important;
+  }
+
+  body[data-active-view="bangju-log"]:not(.physical-phone-device) #view-today .worklog-today-title::before,
+  body[data-active-view="beyond-log"]:not(.physical-phone-device) #view-today .worklog-today-title::before {
+    width: 48px !important;
+    font-size: 9px !important;
+  }
+
+  body[data-active-view="bangju-log"]:not(.physical-phone-device) #view-today .worklog-summary-date,
+  body[data-active-view="beyond-log"]:not(.physical-phone-device) #view-today .worklog-summary-date {
+    padding-left: 56px !important;
+    grid-template-columns: 42px minmax(0, 1fr) 42px !important;
+  }
+
+  body[data-active-view="bangju-log"]:not(.physical-phone-device) #view-today .worklog-summary-date #selectedDateButton,
+  body[data-active-view="beyond-log"]:not(.physical-phone-device) #view-today .worklog-summary-date #selectedDateButton {
+    min-height: 46px !important;
+  }
+
+  body[data-active-view="bangju-log"]:not(.physical-phone-device) #view-today .worklog-summary-date span,
+  body[data-active-view="beyond-log"]:not(.physical-phone-device) #view-today .worklog-summary-date span {
+    font-size: clamp(25px, 2.15vw, 34px) !important;
+    line-height: 1 !important;
+    white-space: nowrap !important;
+  }
+
+  body[data-active-view="bangju-log"]:not(.physical-phone-device) #view-today .date-arrow-button,
+  body[data-active-view="beyond-log"]:not(.physical-phone-device) #view-today .date-arrow-button {
+    width: 42px !important;
+    min-width: 42px !important;
+    min-height: 46px !important;
+    font-size: 25px !important;
+  }
+
+  body[data-active-view="bangju-log"]:not(.physical-phone-device) #view-today .today-jump,
+  body[data-active-view="beyond-log"]:not(.physical-phone-device) #view-today .today-jump {
+    min-width: 58px !important;
+    padding-inline: 10px !important;
+  }
+
+  body[data-active-view="bangju-log"]:not(.physical-phone-device) #view-today .worklog-completion,
+  body[data-active-view="beyond-log"]:not(.physical-phone-device) #view-today .worklog-completion {
+    min-width: 70px !important;
+    padding-inline: 10px !important;
+  }
+
+  body[data-active-view="bangju-log"]:not(.physical-phone-device) #view-today .worklog-completion strong,
+  body[data-active-view="beyond-log"]:not(.physical-phone-device) #view-today .worklog-completion strong {
+    font-size: 26px !important;
+  }
+
+  body[data-active-view="bangju-log"]:not(.physical-phone-device) #view-today .worklog-pulse-row,
+  body[data-active-view="beyond-log"]:not(.physical-phone-device) #view-today .worklog-pulse-row {
+    min-height: 34px;
+  }
+
+  body[data-active-view="bangju-log"]:not(.physical-phone-device) #view-today .worklog-pulse,
+  body[data-active-view="bangju-log"]:not(.physical-phone-device) #view-today .worklog-side-nav,
+  body[data-active-view="beyond-log"]:not(.physical-phone-device) #view-today .worklog-pulse,
+  body[data-active-view="beyond-log"]:not(.physical-phone-device) #view-today .worklog-side-nav {
+    min-height: 34px !important;
+    padding-block: 6px !important;
+    font-size: 11px !important;
+  }
+
+  body[data-active-view="bangju-log"]:not(.physical-phone-device) #view-today .worklog-main,
+  body[data-active-view="beyond-log"]:not(.physical-phone-device) #view-today .worklog-main {
+    min-height: 0 !important;
+    height: auto !important;
+  }
+
+  body[data-active-view="bangju-log"]:not(.physical-phone-device) #view-today .worklog-main[data-today-page="daily"] .worklog-daily-page,
+  body[data-active-view="beyond-log"]:not(.physical-phone-device) #view-today .worklog-main[data-today-page="daily"] .worklog-daily-page {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) !important;
+    gap: 8px !important;
+    align-items: start;
+  }
+
+  body[data-active-view="bangju-log"]:not(.physical-phone-device) #view-today .worklog-panel,
+  body[data-active-view="beyond-log"]:not(.physical-phone-device) #view-today .worklog-panel {
+    max-height: calc(100dvh - 272px);
+    overflow: auto;
+  }
+
+  body[data-active-view="bangju-log"]:not(.physical-phone-device) #view-today .worklog-panel h3,
+  body[data-active-view="beyond-log"]:not(.physical-phone-device) #view-today .worklog-panel h3 {
+    min-height: 42px !important;
+    padding: 0 10px 0 12px !important;
+    font-size: 16px !important;
+  }
+
+  body[data-active-view="bangju-log"]:not(.physical-phone-device) #view-today .worklog-panel h3::before,
+  body[data-active-view="beyond-log"]:not(.physical-phone-device) #view-today .worklog-panel h3::before {
+    width: 6px !important;
+    height: 22px !important;
+  }
+
+  body[data-active-view="bangju-log"]:not(.physical-phone-device) #view-today .task-board,
+  body[data-active-view="bangju-log"]:not(.physical-phone-device) #view-today .appointment-list,
+  body[data-active-view="beyond-log"]:not(.physical-phone-device) #view-today .task-board,
+  body[data-active-view="beyond-log"]:not(.physical-phone-device) #view-today .appointment-list {
+    padding: 6px 10px 14px !important;
+  }
+
+  body[data-active-view="bangju-log"]:not(.physical-phone-device) #view-today .task-row,
+  body[data-active-view="beyond-log"]:not(.physical-phone-device) #view-today .task-row {
+    grid-template-columns: 24px minmax(30px, max-content) minmax(0, 1fr) 22px !important;
+    min-height: 34px !important;
+    column-gap: 6px !important;
+  }
+
+  body[data-active-view="bangju-log"]:not(.physical-phone-device) #view-today .task-cycle,
+  body[data-active-view="beyond-log"]:not(.physical-phone-device) #view-today .task-cycle {
+    width: 20px !important;
+    height: 20px !important;
+    min-height: 20px !important;
+    font-size: 12px !important;
+  }
+
+  body[data-active-view="bangju-log"]:not(.physical-phone-device) #view-today .priority-select,
+  body[data-active-view="beyond-log"]:not(.physical-phone-device) #view-today .priority-select {
+    width: 32px !important;
+    min-height: 28px !important;
+    font-size: 14px !important;
+  }
+
+  body[data-active-view="bangju-log"]:not(.physical-phone-device) #view-today .task-text-input,
+  body[data-active-view="bangju-log"]:not(.physical-phone-device) #view-today .appointment-row input[type="text"],
+  body[data-active-view="beyond-log"]:not(.physical-phone-device) #view-today .task-text-input,
+  body[data-active-view="beyond-log"]:not(.physical-phone-device) #view-today .appointment-row input[type="text"] {
+    min-height: 30px !important;
+    font-size: 14px !important;
+  }
+
+  body[data-active-view="bangju-log"]:not(.physical-phone-device) #view-today .appointment-row,
+  body[data-active-view="beyond-log"]:not(.physical-phone-device) #view-today .appointment-row {
+    grid-template-columns: 58px minmax(0, 1fr) 26px !important;
+    min-height: 34px !important;
+    gap: 7px !important;
+  }
+
+  body[data-active-view="bangju-log"]:not(.physical-phone-device) #view-today .appointment-time,
+  body[data-active-view="beyond-log"]:not(.physical-phone-device) #view-today .appointment-time {
+    font-size: 13px !important;
+  }
+
+  body[data-active-view="bangju-log"]:not(.physical-phone-device) #view-today > .planner-section,
+  body[data-active-view="beyond-log"]:not(.physical-phone-device) #view-today > .planner-section {
+    min-width: 0;
+    margin-top: 0 !important;
+    padding: 10px 12px 12px !important;
+    border: 1px solid rgba(17, 20, 17, 0.12) !important;
+    border-radius: 14px !important;
+    background: rgba(255, 254, 250, 0.72);
+  }
+
+  body[data-active-view="bangju-log"]:not(.physical-phone-device) #view-today > .planner-section h3,
+  body[data-active-view="beyond-log"]:not(.physical-phone-device) #view-today > .planner-section h3 {
+    margin-bottom: 8px !important;
+    font-size: 14px !important;
+  }
+
+  body[data-active-view="bangju-log"]:not(.physical-phone-device) #view-today > .planner-section h3::before,
+  body[data-active-view="beyond-log"]:not(.physical-phone-device) #view-today > .planner-section h3::before {
+    width: 6px !important;
+    height: 18px !important;
+  }
+
+  body[data-active-view="bangju-log"]:not(.physical-phone-device) #view-today > .planner-section textarea,
+  body[data-active-view="beyond-log"]:not(.physical-phone-device) #view-today > .planner-section textarea {
+    min-height: 72px !important;
+    height: 72px !important;
+    padding: 10px !important;
+    border-radius: 12px !important;
+    font-size: 13px !important;
+    line-height: 1.45 !important;
+  }
+}
+
 /* Report backup center: one place for reports, backups, and next OS ideas. */
 .report-backup-view {
   display: grid;
@@ -12130,4 +12337,18 @@ body[data-layout-mode="phone"] #view-today .ai-section-button {
   min-height: 34px !important;
   padding-inline: 7px !important;
   border-radius: 10px !important;
+}
+
+/* Absolute last-mile guard: inactive pages must stay hidden even when a page
+   has its own grid/flex display rule declared earlier. */
+.worklog-shell > .worklog-view:not(.is-active) {
+  display: none !important;
+}
+
+.worklog-shell > .worklog-view.is-active {
+  display: block !important;
+}
+
+.worklog-shell > .report-backup-view.is-active {
+  display: grid !important;
 }

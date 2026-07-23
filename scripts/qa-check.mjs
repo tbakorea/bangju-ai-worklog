@@ -178,6 +178,26 @@ check(
   "backup should live inside the existing report flow to avoid menu duplication"
 );
 
+check(
+  "inactive worklog views are force-hidden at the end of CSS",
+  /\.worklog-shell > \.worklog-view:not\(\.is-active\)[\s\S]{0,80}display:\s*none !important;[\s\S]*\.worklog-shell > \.report-backup-view\.is-active[\s\S]{0,80}display:\s*grid !important;/.test(css.slice(-1600)),
+  "page-specific display rules must not make report/backup or other views appear under the active worklog"
+);
+
+check(
+  "desktop employee worklog has compact density guard",
+  css.includes('body[data-active-view="bangju-log"]:not(.physical-phone-device) #view-today.is-active')
+    && css.includes('body[data-active-view="beyond-log"]:not(.physical-phone-device) #view-today > .planner-section textarea'),
+  "desktop employee worklogs should avoid oversized content and long report/memo tails"
+);
+
+check(
+  "logout clears auth runtime state",
+  /function clearAuthRuntimeState\(\)[\s\S]{0,420}authState\.user = null[\s\S]{0,420}authState\.saveTimer = null[\s\S]{0,420}authState\.approvalTimer = null/.test(js)
+    && /async function signOutWithSupabase\(\)[\s\S]{0,260}clearAuthRuntimeState\(\)/.test(js),
+  "login/logout labels and approval state should not remain stale after sign-out"
+);
+
 const riskPatterns = [
   {
     name: "avoid viewport-scaled font for overview hero",

@@ -2373,6 +2373,17 @@ function renderMainMenuVisibility() {
   renderApprovalNotification();
 }
 
+function clearAuthRuntimeState() {
+  authState.session = null;
+  authState.user = null;
+  authState.pendingApprovalCount = 0;
+  authState.applyingRemote = false;
+  clearTimeout(authState.saveTimer);
+  authState.saveTimer = null;
+  clearInterval(authState.approvalTimer);
+  authState.approvalTimer = null;
+}
+
 function getAuthCredentials() {
   const email = document.getElementById("authEmail").value.trim();
   const password = document.getElementById("authPassword").value;
@@ -2481,22 +2492,25 @@ async function resendSignupConfirmation(email) {
 }
 
 async function signOutWithSupabase() {
-  if (supabaseClient) await supabaseClient.auth.signOut();
-  authState.session = null;
-  authState.user = null;
-  authState.pendingApprovalCount = 0;
-  clearInterval(authState.approvalTimer);
-  authState.approvalTimer = null;
+  try {
+    if (supabaseClient) await supabaseClient.auth.signOut();
+  } finally {
+    clearAuthRuntimeState();
+  }
   renderApprovalNotification();
   renderAuthStatus("로그아웃되었습니다. 입력 내용은 이 기기에 계속 보관됩니다.");
   renderAll();
+  if (activeView === "auth") renderProfileForm();
 }
 
 async function applySession(session) {
   authState.session = session;
   authState.user = session?.user || null;
   if (!authState.user) {
+    clearAuthRuntimeState();
+    renderApprovalNotification();
     renderAuthStatus();
+    renderAll();
     return;
   }
   document.getElementById("authEmail").value = authState.user.email || "";
