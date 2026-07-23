@@ -12960,6 +12960,78 @@ body[data-layout-mode="phone"] #view-today .ai-section-button {
   display: grid !important;
 }
 
+/* Final mobile overview polish: keep the app title bar from floating over the
+   command board, and give the date row enough room to breathe. */
+body[data-layout-mode="phone"][data-active-view="worklog-overview"] .worklog-shell {
+  padding-top: max(16px, env(safe-area-inset-top));
+}
+
+body[data-layout-mode="phone"][data-active-view="worklog-overview"] .worklog-header {
+  position: sticky;
+  top: max(8px, env(safe-area-inset-top));
+  z-index: 120;
+  min-height: 86px;
+  margin: 0 0 16px;
+  border: 1px solid rgba(15, 59, 46, 0.08);
+  border-radius: 22px;
+  background:
+    linear-gradient(135deg, rgba(255, 254, 250, 0.98), rgba(247, 250, 246, 0.96)),
+    var(--nordic-sheet);
+  box-shadow:
+    0 16px 34px rgba(15, 59, 46, 0.1),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.72);
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+}
+
+body[data-layout-mode="phone"][data-active-view="worklog-overview"] .worklog-header h1 {
+  color: var(--ink);
+  font-size: clamp(25px, 6.4vw, 30px);
+  line-height: 1.05;
+}
+
+body[data-layout-mode="phone"][data-active-view="worklog-overview"] .worklog-view {
+  padding-top: 0;
+}
+
+body[data-layout-mode="phone"][data-active-view="worklog-overview"] .worklog-overview-view.is-active {
+  gap: 10px;
+}
+
+body[data-layout-mode="phone"][data-active-view="worklog-overview"] .worklog-overview-hero {
+  position: relative;
+  z-index: 1;
+  margin-top: 0;
+  min-height: 168px;
+  padding: 18px 16px 16px;
+  border-radius: 22px;
+  box-shadow: 0 16px 34px rgba(15, 59, 46, 0.14);
+}
+
+body[data-layout-mode="phone"][data-active-view="worklog-overview"] .worklog-overview-hero h2 {
+  display: block;
+  overflow: visible;
+  color: #fffefa;
+  font-size: clamp(30px, 8.2vw, 36px);
+  line-height: 1.02;
+  white-space: normal;
+}
+
+body[data-layout-mode="phone"][data-active-view="worklog-overview"] .overview-date-nav {
+  grid-template-columns: 42px minmax(0, 1fr) 42px 50px;
+  gap: 6px;
+  width: 100%;
+}
+
+body[data-layout-mode="phone"][data-active-view="worklog-overview"] .overview-date-nav button {
+  min-height: 48px;
+  border-radius: 16px;
+}
+
+body[data-layout-mode="phone"][data-active-view="worklog-overview"] .overview-date-nav #overviewDateTitle {
+  font-size: clamp(17px, 4.8vw, 20px);
+}
+
 @media (max-width: 900px) {
   .section-command-strip {
     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -12999,4 +13071,17 @@ body[data-layout-mode="phone"] #view-today .ai-section-button {
   .section-command-strip em {
     font-size: 11px;
   }
+}
+
+/* Keep this at the very end so QA catches accidental page stacking. */
+.worklog-shell > .worklog-view:not(.is-active) {
+  display: none !important;
+}
+
+.worklog-shell > .worklog-view.is-active {
+  display: block !important;
+}
+
+.worklog-shell > .report-backup-view.is-active {
+  display: grid !important;
 }

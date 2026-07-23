@@ -124,7 +124,10 @@ async function checkOverviewCommandBoard(browser) {
   const metrics = await page.evaluate(() => {
     const title = document.querySelector(".worklog-overview-hero h2");
     const dateTitle = document.querySelector("#overviewDateTitle");
+    const header = document.querySelector(".worklog-header");
     const hero = document.querySelector(".worklog-overview-hero");
+    const headerRect = header?.getBoundingClientRect();
+    const heroRect = hero?.getBoundingClientRect();
     const hiddenTaskChrome = [...document.querySelectorAll(".overview-task-marker, .overview-priority-box")]
       .every((node) => getComputedStyle(node).display === "none");
     return {
@@ -136,7 +139,8 @@ async function checkOverviewCommandBoard(browser) {
       subtitleCount: document.querySelectorAll(".worklog-overview-hero > div:first-child > span").length,
       dateText: dateTitle?.textContent?.trim() || "",
       dateFits: dateTitle ? dateTitle.scrollWidth <= dateTitle.clientWidth + 2 : false,
-      heroHeight: hero?.getBoundingClientRect().height || 0,
+      headerHeroGap: headerRect && heroRect ? heroRect.top - headerRect.bottom : 0,
+      heroHeight: heroRect?.height || 0,
       insightCount: document.querySelectorAll(".overview-insight-panel").length,
       hiddenTaskChrome,
       sheetCount: document.querySelectorAll(".worklog-overview-employee-sheet").length,
@@ -151,7 +155,8 @@ async function checkOverviewCommandBoard(browser) {
   if (metrics.titleHeight > 45) fail("overview title wrapped or became too tall", `${metrics.titleHeight}px`);
   if (metrics.subtitleCount) fail("overview subtitle should be removed", String(metrics.subtitleCount));
   if (!metrics.dateFits) fail("overview date title is clipped", metrics.dateText);
-  if (metrics.heroHeight > 132) fail("overview hero is too tall on phone mode", `${metrics.heroHeight}px`);
+  if (metrics.headerHeroGap < 10) fail("overview header overlaps command board", `${metrics.headerHeroGap}px`);
+  if (metrics.heroHeight > 190) fail("overview hero is too tall on phone mode", `${metrics.heroHeight}px`);
   if (!metrics.insightCount) fail("overview employee insight alerts are missing");
   if (!metrics.hiddenTaskChrome) fail("overview task markers/priorities should be hidden");
   if (metrics.sheetCount < 3) fail("overview should render employee sheets", String(metrics.sheetCount));
