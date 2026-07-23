@@ -3070,25 +3070,33 @@ function isEditableDayControl(target) {
 }
 
 function setupMobileDayFocus() {
-  document.querySelectorAll(".day-task-panel, .day-schedule-panel").forEach((panel) => {
-    setupSplitEditGate(panel, panel.classList.contains("day-task-panel") ? "tasks" : "schedule");
-  });
+  setupMobileFocusOpenButtons();
   setupMobileFocusCloseButtons();
   applyMobileDayFocusMode();
+}
+
+function setupMobileFocusOpenButtons() {
+  document.querySelectorAll("[data-mobile-focus-open]").forEach((button) => {
+    button.onclick = (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      setMobileDayFocusMode(button.dataset.mobileFocusOpen || "split");
+    };
+  });
 }
 
 function setupSplitEditGate(node, mode) {
   node.addEventListener("pointerdown", (event) => {
     if (!isMobilePhoneFocusLayout() || mobileDayFocusMode !== "split") return;
-    const shouldFocus = isEditableDayControl(event.target) || Boolean(event.target.closest(".day-task-panel, .day-schedule-panel"));
-    if (!shouldFocus || event.target.closest("[data-mobile-focus-close], .ai-section-button, .schedule-unit-button")) return;
+    const shouldFocus = Boolean(event.target.closest("[data-mobile-focus-open]"));
+    if (!shouldFocus) return;
     event.preventDefault();
     setMobileDayFocusMode(mode);
   }, true);
   node.addEventListener("click", (event) => {
     if (!isMobilePhoneFocusLayout() || mobileDayFocusMode !== "split") return;
-    const shouldFocus = isEditableDayControl(event.target) || Boolean(event.target.closest(".day-task-panel, .day-schedule-panel"));
-    if (!shouldFocus || event.target.closest("[data-mobile-focus-close], .ai-section-button, .schedule-unit-button")) return;
+    const shouldFocus = Boolean(event.target.closest("[data-mobile-focus-open]"));
+    if (!shouldFocus) return;
     event.preventDefault();
     event.stopPropagation();
   }, true);
@@ -3131,12 +3139,14 @@ function setMobileDayFocusMode(mode) {
 
 function applyMobileDayFocusMode() {
   const main = document.getElementById("worklogMain");
-  if (!main) return;
+  const fitnessView = document.getElementById("view-fitness-log");
   const mode = isMobilePhoneFocusLayout() ? mobileDayFocusMode : "split";
-  main.classList.toggle("is-focus-tasks", mode === "tasks");
-  main.classList.toggle("is-focus-schedule", mode === "schedule");
-  main.classList.toggle("is-mobile-focus-active", mode !== "split");
-  main.classList.toggle("day-swipe", true);
+  [main, fitnessView].filter(Boolean).forEach((node) => {
+    node.classList.toggle("is-focus-tasks", mode === "tasks");
+    node.classList.toggle("is-focus-schedule", mode === "schedule");
+    node.classList.toggle("is-mobile-focus-active", mode !== "split");
+    node.classList.toggle("day-swipe", true);
+  });
 }
 
 function resetMobileDayFocusToSplit({ blur = true } = {}) {
@@ -3148,6 +3158,11 @@ function resetMobileDayFocusToSplit({ blur = true } = {}) {
   if (main) {
     main.classList.add("is-focus-restoring");
     window.setTimeout(() => main.classList.remove("is-focus-restoring"), 230);
+  }
+  const fitnessView = document.getElementById("view-fitness-log");
+  if (fitnessView) {
+    fitnessView.classList.add("is-focus-restoring");
+    window.setTimeout(() => fitnessView.classList.remove("is-focus-restoring"), 230);
   }
   applyMobileDayFocusMode();
 }
@@ -3286,6 +3301,11 @@ function applyFitnessLogPermissionState() {
     .fitness-ops-section input,
     .fitness-ops-section textarea
   `).forEach((control) => {
+    if (control.matches("[data-mobile-focus-open], [data-mobile-focus-close]")) {
+      control.disabled = false;
+      control.setAttribute("aria-disabled", "false");
+      return;
+    }
     control.disabled = readOnly;
   });
 }

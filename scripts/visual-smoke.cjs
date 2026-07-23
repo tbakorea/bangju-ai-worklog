@@ -89,6 +89,22 @@ async function checkPhoneWorklog(browser) {
   if (metrics.reportDisplay !== "none") fail("phone inactive report view leaked", metrics.reportDisplay);
   const widthRatio = metrics.taskWidth / Math.max(1, metrics.scheduleWidth);
   if (widthRatio < 0.82 || widthRatio > 1.18) fail("phone task/schedule split is not balanced", String(widthRatio));
+
+  await page.click(".day-task-panel");
+  await page.waitForTimeout(100);
+  const panelTapFocus = await page.evaluate(() => document.querySelector("#worklogMain")?.classList.contains("is-focus-tasks"));
+  if (panelTapFocus) fail("phone worklog should not auto-expand when tapping the task panel");
+
+  await page.click('.day-task-panel [data-mobile-focus-open="tasks"]');
+  await page.waitForTimeout(150);
+  const buttonFocus = await page.evaluate(() => document.querySelector("#worklogMain")?.classList.contains("is-focus-tasks"));
+  if (!buttonFocus) fail("phone worklog task expand button did not open focus mode");
+
+  await page.click(".day-task-panel [data-mobile-focus-close]");
+  await page.waitForTimeout(150);
+  const restored = await page.evaluate(() => !document.querySelector("#worklogMain")?.classList.contains("is-mobile-focus-active"));
+  if (!restored) fail("phone worklog focus close button did not restore split mode");
+
   if (errors.length) fail("phone page errors", errors.join(" | "));
   await page.close();
 }

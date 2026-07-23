@@ -1427,6 +1427,7 @@ body[data-device-mode="narrow"] .os-mode-switch span[data-device-mode="narrow"] 
 
 .ai-section-button,
 .schedule-unit-button,
+.mobile-focus-open,
 .mobile-focus-done {
   min-height: 30px;
   border: 1px solid rgba(15, 59, 46, 0.16);
@@ -1443,6 +1444,10 @@ body[data-device-mode="narrow"] .os-mode-switch span[data-device-mode="narrow"] 
 }
 
 .mobile-focus-done {
+  display: none;
+}
+
+.mobile-focus-open {
   display: none;
 }
 
@@ -13030,6 +13035,64 @@ body[data-layout-mode="phone"][data-active-view="worklog-overview"] .overview-da
 
 body[data-layout-mode="phone"][data-active-view="worklog-overview"] .overview-date-nav #overviewDateTitle {
   font-size: clamp(17px, 4.8vw, 20px);
+}
+
+/* Explicit focus controls: worklog panels expand only from the title button. */
+body[data-layout-mode="phone"] .mobile-focus-open,
+body[data-view-mode="ceo"] .mobile-focus-open {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.worklog-main.is-focus-tasks .mobile-focus-open,
+.worklog-main.is-focus-schedule .mobile-focus-open,
+.fitness-log-view.is-focus-tasks .mobile-focus-open,
+.fitness-log-view.is-focus-schedule .mobile-focus-open {
+  display: none;
+}
+
+body[data-layout-mode="phone"] .fitness-log-view.is-focus-tasks,
+body[data-layout-mode="phone"] .fitness-log-view.is-focus-schedule,
+body[data-view-mode="ceo"] .fitness-log-view.is-focus-tasks,
+body[data-view-mode="ceo"] .fitness-log-view.is-focus-schedule {
+  grid-template-columns: minmax(0, 1fr);
+  overflow-x: hidden;
+}
+
+body[data-layout-mode="phone"] .fitness-log-view.is-focus-tasks .fitness-log-schedule-panel,
+body[data-layout-mode="phone"] .fitness-log-view.is-focus-schedule .fitness-log-task-panel,
+body[data-view-mode="ceo"] .fitness-log-view.is-focus-tasks .fitness-log-schedule-panel,
+body[data-view-mode="ceo"] .fitness-log-view.is-focus-schedule .fitness-log-task-panel {
+  display: none;
+}
+
+body[data-layout-mode="phone"] .fitness-log-view.is-focus-tasks .mobile-focus-done,
+body[data-layout-mode="phone"] .fitness-log-view.is-focus-schedule .mobile-focus-done,
+body[data-view-mode="ceo"] .fitness-log-view.is-focus-tasks .mobile-focus-done,
+body[data-view-mode="ceo"] .fitness-log-view.is-focus-schedule .mobile-focus-done {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+body[data-layout-mode="phone"] .fitness-log-view.is-focus-tasks .fitness-ops-section,
+body[data-layout-mode="phone"] .fitness-log-view.is-focus-schedule .fitness-ops-section,
+body[data-view-mode="ceo"] .fitness-log-view.is-focus-tasks .fitness-ops-section,
+body[data-view-mode="ceo"] .fitness-log-view.is-focus-schedule .fitness-ops-section {
+  display: none;
+}
+
+body[data-layout-mode="phone"] .fitness-log-view.is-focus-tasks .task-text-input,
+body[data-layout-mode="phone"] .fitness-log-view.is-focus-schedule .appointment-row input[type="text"],
+body[data-view-mode="ceo"] .fitness-log-view.is-focus-tasks .task-text-input,
+body[data-view-mode="ceo"] .fitness-log-view.is-focus-schedule .appointment-row input[type="text"] {
+  width: 100%;
+  max-width: 100%;
+  min-height: 42px;
+  min-width: 0;
+  font-size: 22px;
+  line-height: 1.25;
 }
 
 @media (max-width: 900px) {
