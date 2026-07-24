@@ -13563,6 +13563,72 @@ body[data-layout-mode="phone"][data-active-view="worklog-overview"] .worklog-ove
   margin-top: 0 !important;
 }
 
+/* Executive vs Control Tower separation:
+   executive is a decision room, control tower is a monitoring room. */
+.executive-hero {
+  background:
+    radial-gradient(circle at 88% 18%, rgba(255, 247, 207, 0.2), transparent 32%),
+    linear-gradient(135deg, rgba(7, 30, 25, 0.99), rgba(12, 58, 46, 0.94)),
+    var(--fitness-green) !important;
+}
+
+.executive-hero p::after {
+  content: " · 판단/지시/위임";
+}
+
+.control-tower-hero {
+  background:
+    linear-gradient(135deg, rgba(18, 63, 78, 0.96), rgba(29, 86, 68, 0.9)),
+    var(--fitness-green) !important;
+}
+
+.control-tower-hero p::after {
+  content: " · 현황/관찰/탐색";
+}
+
+.control-kpi-grid article {
+  background:
+    linear-gradient(180deg, rgba(248, 251, 250, 0.98), rgba(242, 247, 244, 0.9)) !important;
+}
+
+.executive-kpi-grid button {
+  border-color: rgba(9, 34, 27, 0.14);
+  background:
+    linear-gradient(180deg, rgba(255, 254, 250, 0.98), rgba(255, 250, 237, 0.82));
+}
+
+.executive-kpi-grid button:first-child {
+  border-color: rgba(170, 83, 36, 0.24);
+  background:
+    linear-gradient(180deg, rgba(255, 249, 240, 0.98), rgba(255, 239, 221, 0.86));
+}
+
+.control-briefing-card header span::after,
+.control-panel header span::after {
+  content: "모니터링";
+  display: inline-grid;
+  margin-left: 6px;
+  border-radius: 999px;
+  background: rgba(18, 63, 78, 0.08);
+  color: rgba(18, 63, 78, 0.82);
+  padding: 4px 8px;
+  font-size: 10px;
+  font-weight: 950;
+}
+
+.executive-decision-card header span::after,
+.executive-panel header span::after {
+  content: "결정";
+  display: inline-grid;
+  margin-left: 6px;
+  border-radius: 999px;
+  background: rgba(170, 83, 36, 0.1);
+  color: #8d3f18;
+  padding: 4px 8px;
+  font-size: 10px;
+  font-weight: 950;
+}
+
 /* Keep this at the absolute end so page-specific display rules never stack
    inactive sections under the active view. */
 .worklog-shell > .worklog-view:not(.is-active) {

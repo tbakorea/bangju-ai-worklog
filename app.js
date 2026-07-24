@@ -1491,7 +1491,7 @@ function renderControlTower() {
   const allowed = canAccessControlTower();
   if (accessCard) accessCard.hidden = allowed;
   body.hidden = !allowed;
-  if (accessLabel) accessLabel.textContent = allowed ? "대표·지정 관리자 접근 중" : "대표·지정 관리자 전용";
+  if (accessLabel) accessLabel.textContent = allowed ? "전 사업장 운영 현황 · 모니터링 중" : "대표·지정 관리자 전용";
   if (!allowed) return;
 
   const assetRows = getAssetRows();
@@ -1511,10 +1511,10 @@ function renderControlTower() {
     .filter((row) => row.aiSignal !== "정상" || row.taskCount === 0 || row.completedCount < row.taskCount)
     .slice(0, 6);
   const kpis = [
-    ["운영점수", `${operatingScore}`, operatingScore >= 82 ? "안정권" : operatingScore >= 68 ? "주의권" : "대표 개입"],
-    ["오늘 실행", `${completedTotal}/${taskTotal || 0}`, taskTotal ? `${completionRate}% 완료` : "입력 대기"],
-    ["직원 신호", `${issueCount}`, issueCount ? "확인 필요" : "정상 추적"],
-    ["고객 행동", `${salesActions}`, `유료PT ${fitnessOps.ptRegular + fitnessOps.ptOther}`],
+    ["운영 사업장", `${activeSites}`, `전체 ${assetRows.length} 공간/호실`],
+    ["직원 출결", `${presentCount}/${staffRows.length}`, issueCount ? `신호 ${issueCount}` : "정상 추적"],
+    ["업무 기록", `${completedTotal}/${taskTotal || 0}`, taskTotal ? `${completionRate}% 완료` : "입력 대기"],
+    ["피트니스 행동", `${salesActions}`, `유료PT ${fitnessOps.ptRegular + fitnessOps.ptOther}`],
   ];
   document.getElementById("controlKpiGrid").innerHTML = kpis.map(([label, value, meta]) => `
     <article><span>${escapeHtml(label)}</span><strong>${escapeHtml(value)}</strong><em>${escapeHtml(meta)}</em></article>
@@ -1552,10 +1552,10 @@ function renderControlTower() {
   `).join("");
 
   document.getElementById("controlOpsGrid").innerHTML = [
-    ["전사업장 업무일지", "직원별 오늘 업무보고와 실행 현황을 한 번에 엽니다.", "업무일지", "worklog-overview"],
-    ["가입승인", `${authState.pendingApprovalCount || 0}건의 승인 대기와 권한 배치를 확인합니다.`, "직원", "staff"],
-    ["노무", "월별 근무시간, 프리랜서 유료수업, 노무비 대장을 확인합니다.", "노무", "labor"],
-    ["AI 코칭", "대표 개입사항과 직원별 성장 코칭을 정리합니다.", "코칭", "manual-coaching"],
+    ["전사업장 업무일지", "사업장별·직원별 업무보고와 실행 현황을 그대로 투사합니다.", "현황", "worklog-overview"],
+    ["직원 원장", "소속, 직함, 권한, 가입승인, 온보딩 상태를 관리합니다.", "명부", "staff"],
+    ["노무 현황", "월별 근무시간, 프리랜서 유료수업, 노무비 대장을 확인합니다.", "노무", "attendance"],
+    ["매뉴얼·코칭", "역할별 매뉴얼과 직원 성장 코칭 데이터를 확인합니다.", "학습", "ai"],
   ].map(([title, text, tag, view]) => `
     <button type="button" data-control-jump="${escapeAttr(view)}">
       <b>${escapeHtml(title)}</b><span>${escapeHtml(text)}</span><em>${escapeHtml(tag)}</em>
@@ -1579,7 +1579,7 @@ function renderExecutiveManagement() {
   const allowed = isRepresentativeProfile();
   if (accessCard) accessCard.hidden = allowed;
   body.hidden = !allowed;
-  if (accessLabel) accessLabel.textContent = allowed ? "대표 접근 중 · 오늘의 경영 판단" : "대표 전용 · 의사결정과 개입사항";
+  if (accessLabel) accessLabel.textContent = allowed ? "대표 접근 중 · 오늘의 판단 · 지시 · 위임" : "대표 전용 · 의사결정과 개입사항";
   if (!allowed) return;
 
   const assetRows = getAssetRows();
@@ -1602,12 +1602,12 @@ function renderExecutiveManagement() {
   ].filter(Boolean).length;
 
   const kpis = [
-    ["경영점수", `${operatingScore}점`, operatingScore >= 82 ? "안정" : operatingScore >= 68 ? "주의" : "개입", "score", "사업장 운영점수와 전략 우선순위로 이동합니다."],
-    ["대표 개입", `${pendingDecisionCount}건`, pendingDecisionCount ? "오늘 처리" : "관찰", "intervention", "오늘 대표가 직접 판단하거나 위임할 항목으로 이동합니다."],
-    ["업무 실행률", taskTotal ? `${Math.round((completedTotal / taskTotal) * 100)}%` : "대기", `${completedTotal}/${taskTotal || 0}`, "tasks", "미완료 업무와 대표 지시 대기 항목으로 이동합니다."],
-    ["직원 신호", `${issueRows.length}건`, absentRows.length ? `결석 ${absentRows.length}` : "업무", "people", "근태, 태도, 역량 변화 신호로 이동합니다."],
-    ["고객행동", `${salesActions}건`, "상담·영업", "customer", "상담, 영업, 자금·수익 신호로 이동합니다."],
-    ["유료 P/T", `${fitnessOps.ptRegular + fitnessOps.ptOther}건`, `무료 ${fitnessOps.ptFree}`, "pt", "피트니스 수업과 주간 실행 보드로 이동합니다."],
+    ["오늘 판단", `${pendingDecisionCount}건`, pendingDecisionCount ? "처리 필요" : "대기 없음", "intervention", "오늘 대표가 직접 판단하거나 위임할 항목으로 이동합니다."],
+    ["대표 지시", `${Math.max(0, taskTotal - completedTotal)}건`, "미완료·후속", "tasks", "미완료 업무와 대표 지시 대기 항목으로 이동합니다."],
+    ["핵심 인력", `${issueRows.length}명`, absentRows.length ? `결석 ${absentRows.length}` : "성장/주의", "people", "근태, 태도, 역량 변화 신호로 이동합니다."],
+    ["전략 사업장", `${siteRows.filter((site) => site.issueCount || site.status === "보류" || site.status === "준비").length}곳`, `${operatingScore}점`, "score", "사업장 전략 우선순위로 이동합니다."],
+    ["수익 행동", `${salesActions}건`, "영업·고객", "customer", "상담, 영업, 자금·수익 신호로 이동합니다."],
+    ["주간 액션", `${fitnessOps.ptRegular + fitnessOps.ptOther}건`, "PT·운영", "pt", "이번 주 대표 경영 액션 보드로 이동합니다."],
   ];
   document.getElementById("executiveKpiGrid").innerHTML = kpis.map(([label, value, meta, target, title]) => `
     <button type="button" data-executive-jump="${escapeAttr(target)}" title="${escapeAttr(title)}">
