@@ -11156,9 +11156,11 @@ body[data-active-view="executive"] .worklog-header > .header-actions {
 }
 
 body[data-active-view="executive"] .worklog-header .main-menu-popover {
-  top: 72px;
+  position: fixed;
+  top: max(78px, calc(env(safe-area-inset-top) + 68px));
   left: auto;
-  right: 18px;
+  right: max(18px, env(safe-area-inset-right));
+  z-index: 260;
 }
 
 .executive-hero {

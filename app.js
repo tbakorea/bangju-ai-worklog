@@ -6721,11 +6721,13 @@ function switchView(view) {
 function toggleMainMenuPopover() {
   const popover = document.getElementById("mainMenuPopover");
   const button = document.getElementById("settingsGearButton");
+  const executiveButton = document.getElementById("executiveMenuButton");
   if (!popover) return;
   const willOpen = popover.hidden;
   if (willOpen) renderMainMenuAuthButton();
   popover.hidden = !willOpen;
   button?.setAttribute("aria-expanded", String(willOpen));
+  executiveButton?.setAttribute("aria-expanded", String(willOpen));
   if (willOpen) closeAttendancePopover();
   if (willOpen) popover.querySelector("button:not([hidden])")?.focus();
 }
@@ -6733,9 +6735,11 @@ function toggleMainMenuPopover() {
 function closeMainMenuPopover() {
   const popover = document.getElementById("mainMenuPopover");
   const button = document.getElementById("settingsGearButton");
+  const executiveButton = document.getElementById("executiveMenuButton");
   if (!popover || popover.hidden) return;
   popover.hidden = true;
   button?.setAttribute("aria-expanded", "false");
+  executiveButton?.setAttribute("aria-expanded", "false");
 }
 
 function renderAll() {
@@ -6907,6 +6911,9 @@ document.getElementById("mainMenuPopover")?.addEventListener("click", (event) =>
 document.addEventListener("click", () => {
   closeMainMenuPopover();
   closeAttendancePopover();
+});
+document.addEventListener("keydown", (event) => {
+  if (event.key === "Escape") closeMainMenuPopover();
 });
 document.getElementById("closeAuthButton").onclick = () => switchView("worklog");
 document.querySelectorAll("[data-auth-tab]").forEach((button) => {
@@ -7208,7 +7215,7 @@ document.getElementById("executiveTodayButton")?.addEventListener("click", () =>
 });
 document.getElementById("executiveMenuButton")?.addEventListener("click", (event) => {
   event.stopPropagation();
-  document.getElementById("settingsGearButton")?.click();
+  toggleMainMenuPopover();
 });
 document.getElementById("reportTone").onchange = (event) => {
   state.reportTone = event.target.value;

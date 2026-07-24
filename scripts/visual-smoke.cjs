@@ -374,6 +374,23 @@ async function checkExecutiveManagementPage(browser) {
   if (metrics.kpiButtonCount !== 6) fail("executive KPI buttons should be six navigators", String(metrics.kpiButtonCount));
   if (!metrics.menuVisible) fail("executive menu button should live inside hero");
   if (!metrics.closedContentHidden) fail("executive detail sections should start summarized");
+  await page.click("#executiveMenuButton");
+  await page.waitForTimeout(120);
+  const menuState = await page.evaluate(() => {
+    const popover = document.querySelector("#mainMenuPopover");
+    const firstButton = popover?.querySelector("button:not([hidden])");
+    const rect = popover?.getBoundingClientRect();
+    return {
+      hidden: popover?.hidden ?? true,
+      aria: document.querySelector("#executiveMenuButton")?.getAttribute("aria-expanded"),
+      hasVisibleItem: Boolean(firstButton?.offsetWidth),
+      inViewport: rect ? rect.width > 0 && rect.height > 0 && rect.right <= window.innerWidth && rect.left >= 0 : false,
+    };
+  });
+  if (menuState.hidden || menuState.aria !== "true" || !menuState.hasVisibleItem || !menuState.inViewport) {
+    fail("executive menu button should open the main menu", JSON.stringify(menuState));
+  }
+  await page.keyboard.press("Escape");
   await page.click('[data-executive-jump="score"]');
   await page.waitForTimeout(150);
   const opened = await page.evaluate(() => document.querySelector('[data-executive-section="score"]')?.classList.contains("is-open"));
