@@ -11208,7 +11208,9 @@ body[data-active-view="executive"] .worklog-header .main-menu-popover {
 .executive-hero-actions {
   display: flex;
   align-items: center;
+  justify-content: flex-end;
   gap: 7px;
+  min-width: 0;
 }
 
 .executive-hero-actions button {
@@ -11223,7 +11225,10 @@ body[data-active-view="executive"] .worklog-header .main-menu-popover {
 }
 
 #executiveTodayButton {
+  max-width: min(54vw, 280px);
   background: rgba(255, 254, 250, 0.2);
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .executive-body {
@@ -12372,8 +12377,20 @@ body[data-active-view="executive"] .worklog-header .main-menu-popover {
   }
 
   .executive-hero-actions button {
-    flex: 1 1 0;
+    flex: 0 0 auto;
     min-height: 40px;
+  }
+
+  #executiveTodayButton {
+    flex: 1 1 auto;
+    max-width: none;
+    padding-inline: 12px;
+    font-size: 13px;
+  }
+
+  #executiveMenuButton {
+    flex: 0 0 58px;
+    padding-inline: 0;
   }
 
   .executive-kpi-grid {

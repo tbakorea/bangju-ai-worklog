@@ -1088,6 +1088,11 @@ function formatKoreanDate(key) {
   return `${date.getFullYear()}.${String(date.getMonth() + 1).padStart(2, "0")}.${String(date.getDate()).padStart(2, "0")}(${hanjaWeekdays[date.getDay()]})`;
 }
 
+function formatFormalKoreanDate(key) {
+  const date = parseDateKey(key);
+  return `${date.getFullYear()}년 ${date.getMonth() + 1}월 ${date.getDate()}일 (${hanjaWeekdays[date.getDay()]})`;
+}
+
 function formatCompactDate(key) {
   return formatKoreanDate(key).replaceAll(" ", "");
 }
@@ -1565,7 +1570,12 @@ function renderExecutiveManagement() {
   const accessCard = document.getElementById("executiveAccessCard");
   const body = document.getElementById("executiveBody");
   const accessLabel = document.getElementById("executiveAccessLabel");
+  const todayButton = document.getElementById("executiveTodayButton");
   if (!body) return;
+  if (todayButton) {
+    todayButton.textContent = formatFormalKoreanDate(getActiveDateKey());
+    todayButton.setAttribute("aria-label", `${formatFormalKoreanDate(getActiveDateKey())} 기준, 오늘로 이동`);
+  }
   const allowed = isRepresentativeProfile();
   if (accessCard) accessCard.hidden = allowed;
   body.hidden = !allowed;
