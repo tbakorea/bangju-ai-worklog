@@ -214,6 +214,7 @@ const defaultProfile = {
   address: "",
   dailyWage: "",
   hourlyWage: "",
+  payDay: "",
   workHours: "08:00-18:00",
   weeklyWorkHours: {},
   manualSettings: {
@@ -552,6 +553,7 @@ function createState() {
     fitnessCenterMonth: todayKey.slice(0, 7),
     fitnessWritableEmployeeId: "beyond-fitness-manager",
     employeePermissions: {},
+    laborPayroll: {},
     reportTone: "executive",
     backupSettings: {
       recipientEmail: "j3010@ymail.com",
@@ -589,6 +591,7 @@ function normalizeState() {
   state.profile.permissions = { ...(state.profile.permissions || {}) };
   state.profile.accessPreset ||= getRecommendedPermissionPresetForProfile(state.profile);
   state.employeePermissions = normalizeEmployeePermissionState(state.employeePermissions || {});
+  state.laborPayroll = { ...(state.laborPayroll || {}) };
   state.profile.manualSettings = {
     ...defaultProfile.manualSettings,
     ...(state.profile.manualSettings || {}),
@@ -5473,11 +5476,13 @@ function renderAttendance() {
   const employee = getOwnLaborEmployee();
   const labor = buildMonthlyLaborSummary(employeeId, employee);
   const ledger = buildLaborCostLedger(labor, employee);
+  const payroll = buildPayrollStatement(labor, employee, ledger);
   const leaderLaborOverview = canAccessWorklogOverview() ? renderLeaderLaborOverviewMarkup() : "";
   const companyLaborLedgers = canAccessWorklogOverview() ? renderCompanyLaborLedgersMarkup() : "";
   list.innerHTML = `
     ${leaderLaborOverview}
     ${companyLaborLedgers}
+    ${renderPayrollStatement(payroll)}
     <section class="labor-cost-ledger-card">
       <header>
         <div>
@@ -5551,6 +5556,12 @@ function renderAttendance() {
     </section>
   `;
   document.getElementById("copyAllSiteLaborLedgersButton")?.addEventListener("click", copyAllSiteLaborLedgers);
+  document.getElementById("copyPayrollStatementButton")?.addEventListener("click", () => copyPayrollStatement(payroll));
+  list.querySelectorAll("[data-labor-payroll-field]").forEach((field) => {
+    field.addEventListener("change", () => {
+      updateLaborPayrollField(employeeId, labor.month, field.dataset.laborPayrollField, field.value);
+    });
+  });
   list.querySelectorAll("[data-copy-site-labor-ledger]").forEach((button) => {
     button.addEventListener("click", () => {
       const ledger = buildSiteLaborCostLedger(button.dataset.copySiteLaborLedger);
@@ -5565,6 +5576,231 @@ function renderAttendance() {
       renderAttendance();
     });
   });
+}
+
+function getLaborPayrollKey(employeeId, month) {
+  return `${employeeId || "profile-user"}:${month || getActiveDateKey().slice(0, 7)}`;
+}
+
+function getLaborPayrollDraft(employeeId, month) {
+  state.laborPayroll ||= {};
+  const key = getLaborPayrollKey(employeeId, month);
+  state.laborPayroll[key] ||= {
+    payDate: "",
+    mealAllowance: "",
+    bonus: "",
+    extraAllowance: "",
+    incomeTax: "",
+    localIncomeTax: "",
+    nationalPension: "",
+    healthInsurance: "",
+    longTermCare: "",
+    employmentInsurance: "",
+    otherDeduction: "",
+    memo: "",
+  };
+  return state.laborPayroll[key];
+}
+
+function updateLaborPayrollField(employeeId, month, field, value) {
+  const draft = getLaborPayrollDraft(employeeId, month);
+  draft[field] = value;
+  saveState();
+  renderAttendance();
+}
+
+function getPayrollPayDate(draft, month) {
+  if (draft.payDate) return draft.payDate;
+  const profilePayDay = String(state.profile?.payDay || "").trim();
+  const [year, monthNumber] = month.split("-").map(Number);
+  const lastDay = new Date(year, monthNumber, 0).getDate();
+  if (/^\d{1,2}$/.test(profilePayDay)) {
+    const day = Math.min(Number(profilePayDay), lastDay);
+    return `${month}-${String(day).padStart(2, "0")}`;
+  }
+  return `${month}-${String(lastDay).padStart(2, "0")}`;
+}
+
+function buildPayrollStatement(labor, employee, ledger) {
+  const profile = getLaborProfileForEmployee(employee);
+  const draft = getLaborPayrollDraft(employee.id || "profile-user", labor.month);
+  const hourlyWage = numberValue(profile.hourlyWage);
+  const dailyWage = numberValue(profile.dailyWage);
+  const regularCapMinutes = labor.scheduledMinutes || Math.max(0, labor.actualMinutes - labor.overtimeMinutes);
+  const regularMinutes = hourlyWage ? Math.min(labor.actualMinutes, regularCapMinutes) : labor.actualMinutes;
+  const basePay = dailyWage
+    ? dailyWage * labor.recordedDays
+    : hourlyWage
+      ? Math.round((regularMinutes / 60) * hourlyWage)
+      : ledger.totalPay || 0;
+  const overtimePay = hourlyWage ? Math.round((labor.overtimeMinutes / 60) * hourlyWage * 1.5) : 0;
+  const nightPay = hourlyWage ? Math.round((labor.nightMinutes / 60) * hourlyWage * 0.5) : 0;
+  const holidayPay = hourlyWage ? Math.round((labor.holidayMinutes / 60) * hourlyWage * 1.5) : 0;
+  const allowances = {
+    mealAllowance: numberValue(draft.mealAllowance),
+    bonus: numberValue(draft.bonus),
+    extraAllowance: numberValue(draft.extraAllowance),
+  };
+  const deductions = {
+    incomeTax: numberValue(draft.incomeTax),
+    localIncomeTax: numberValue(draft.localIncomeTax),
+    nationalPension: numberValue(draft.nationalPension),
+    healthInsurance: numberValue(draft.healthInsurance),
+    longTermCare: numberValue(draft.longTermCare),
+    employmentInsurance: numberValue(draft.employmentInsurance),
+    otherDeduction: numberValue(draft.otherDeduction),
+  };
+  const wageItems = [
+    ["기본급", basePay, dailyWage ? `${labor.recordedDays}일 x ${formatCurrency(dailyWage)}` : hourlyWage ? `${formatMinutesAsHours(regularMinutes)} x ${formatCurrency(hourlyWage)}` : "단가 입력 필요"],
+    ["연장근로수당", overtimePay, `${formatMinutesAsHours(labor.overtimeMinutes)} x 시급 x 1.5 추정`],
+    ["야간근로수당", nightPay, `${formatMinutesAsHours(labor.nightMinutes)} x 시급 x 0.5 추정`],
+    ["휴일/주말수당", holidayPay, `${formatMinutesAsHours(labor.holidayMinutes)} x 시급 x 1.5 추정`],
+    ["식대/복리후생", allowances.mealAllowance, "수기 입력"],
+    ["상여/성과", allowances.bonus, "수기 입력"],
+    ["기타수당", allowances.extraAllowance, "수기 입력"],
+  ];
+  const deductionItems = [
+    ["소득세", deductions.incomeTax],
+    ["지방소득세", deductions.localIncomeTax],
+    ["국민연금", deductions.nationalPension],
+    ["건강보험", deductions.healthInsurance],
+    ["장기요양", deductions.longTermCare],
+    ["고용보험", deductions.employmentInsurance],
+    ["기타공제", deductions.otherDeduction],
+  ];
+  const grossPay = wageItems.reduce((sum, [, amount]) => sum + amount, 0);
+  const deductionTotal = deductionItems.reduce((sum, [, amount]) => sum + amount, 0);
+  const netPay = Math.max(0, grossPay - deductionTotal);
+  const checks = [
+    ["근로자 특정정보", Boolean(employee.name || profile.name) && Boolean(profile.laborId || employee.id)],
+    ["임금지급일", Boolean(getPayrollPayDate(draft, labor.month))],
+    ["단가 기준", Boolean(dailyWage || hourlyWage)],
+    ["출근일수/근로시간", labor.recordedDays > 0 || labor.actualMinutes > 0],
+    ["연장·야간·휴일 시간", labor.overtimeMinutes || labor.nightMinutes || labor.holidayMinutes ? Boolean(hourlyWage) : true],
+    ["공제내역", deductionTotal > 0 || draft.memo.includes("공제 없음")],
+  ];
+  return {
+    employeeId: employee.id || "profile-user",
+    month: labor.month,
+    monthLabel: labor.monthLabel,
+    payDate: getPayrollPayDate(draft, labor.month),
+    workerName: employee.name || profile.name || "이름 미입력",
+    workerId: profile.laborId || employee.id || "사원번호 미입력",
+    org: profile.org || employee.org || "소속 미입력",
+    workplace: profile.workplace || ledger.site || "사업장 미입력",
+    role: profile.role || employee.role || "직함 미입력",
+    employmentType: profile.employmentType || employee.employmentType || "직원",
+    draft,
+    wageItems,
+    deductionItems,
+    grossPay,
+    deductionTotal,
+    netPay,
+    checks,
+    labor,
+  };
+}
+
+function renderPayrollMoneyInput(statement, field, label) {
+  const value = statement.draft[field] || "";
+  return `
+    <label>${escapeHtml(label)}
+      <input type="number" min="0" inputmode="numeric" data-labor-payroll-field="${escapeAttr(field)}" value="${escapeAttr(value)}" placeholder="0" />
+    </label>
+  `;
+}
+
+function renderPayrollStatement(statement) {
+  const readyCount = statement.checks.filter(([, ok]) => ok).length;
+  return `
+    <section class="payroll-statement-card">
+      <header>
+        <div>
+          <span>Payroll Statement Draft</span>
+          <h3>${escapeHtml(statement.monthLabel)} 급여명세서 초안</h3>
+          <p>${escapeHtml("급여 지급 전 노무사 검토용 초안입니다. 공제액과 수당은 실제 기준으로 확인 후 확정하세요.")}</p>
+        </div>
+        <button type="button" id="copyPayrollStatementButton">명세서 복사</button>
+      </header>
+      <div class="payroll-readiness">
+        <strong>제출 준비도 ${escapeHtml(String(readyCount))}/${escapeHtml(String(statement.checks.length))}</strong>
+        ${statement.checks.map(([label, ok]) => `<span class="${ok ? "is-ok" : "is-needed"}">${escapeHtml(label)}</span>`).join("")}
+      </div>
+      <div class="payroll-identity-grid">
+        ${[
+          ["직원", statement.workerName],
+          ["식별", maskLaborId(statement.workerId)],
+          ["소속", statement.org],
+          ["근무지", statement.workplace],
+          ["직함", statement.role],
+          ["고용형태", statement.employmentType],
+          ["지급일", statement.payDate],
+          ["지급총액", formatCurrency(statement.grossPay) || "계산 대기"],
+          ["공제총액", formatCurrency(statement.deductionTotal) || "0원"],
+          ["차인지급액", formatCurrency(statement.netPay) || "계산 대기"],
+        ].map(([label, value]) => `<span><b>${escapeHtml(label)}</b><strong>${escapeHtml(value)}</strong></span>`).join("")}
+      </div>
+      <div class="payroll-tables">
+        <article>
+          <h4>지급 항목 및 계산방법</h4>
+          ${statement.wageItems.map(([label, amount, formula]) => `
+            <div><span>${escapeHtml(label)}</span><strong>${escapeHtml(formatCurrency(amount) || "0원")}</strong><em>${escapeHtml(formula)}</em></div>
+          `).join("")}
+        </article>
+        <article>
+          <h4>공제 항목</h4>
+          ${statement.deductionItems.map(([label, amount]) => `
+            <div><span>${escapeHtml(label)}</span><strong>${escapeHtml(formatCurrency(amount) || "0원")}</strong><em>수기/외부 계산값</em></div>
+          `).join("")}
+        </article>
+      </div>
+      <div class="payroll-adjust-grid">
+        <label>임금지급일
+          <input type="date" data-labor-payroll-field="payDate" value="${escapeAttr(statement.draft.payDate || statement.payDate)}" />
+        </label>
+        ${renderPayrollMoneyInput(statement, "mealAllowance", "식대/복리후생")}
+        ${renderPayrollMoneyInput(statement, "bonus", "상여/성과")}
+        ${renderPayrollMoneyInput(statement, "extraAllowance", "기타수당")}
+        ${renderPayrollMoneyInput(statement, "incomeTax", "소득세")}
+        ${renderPayrollMoneyInput(statement, "localIncomeTax", "지방소득세")}
+        ${renderPayrollMoneyInput(statement, "nationalPension", "국민연금")}
+        ${renderPayrollMoneyInput(statement, "healthInsurance", "건강보험")}
+        ${renderPayrollMoneyInput(statement, "longTermCare", "장기요양")}
+        ${renderPayrollMoneyInput(statement, "employmentInsurance", "고용보험")}
+        ${renderPayrollMoneyInput(statement, "otherDeduction", "기타공제")}
+        <label class="payroll-memo-field">노무 메모
+          <textarea rows="2" data-labor-payroll-field="memo" placeholder="예: 공제 없음, 프리랜서 정산, 노무사 확인 필요">${escapeHtml(statement.draft.memo || "")}</textarea>
+        </label>
+      </div>
+    </section>
+  `;
+}
+
+async function copyPayrollStatement(statement) {
+  const text = [
+    `[${statement.monthLabel} 급여명세서 초안]`,
+    `직원: ${statement.workerName}`,
+    `식별: ${maskLaborId(statement.workerId)}`,
+    `소속/근무지: ${statement.org} / ${statement.workplace}`,
+    `직함/고용형태: ${statement.role} / ${statement.employmentType}`,
+    `임금지급일: ${statement.payDate}`,
+    `근로일수: ${statement.labor.recordedDays}일`,
+    `총 근로시간: ${formatMinutesAsHours(statement.labor.actualMinutes)}`,
+    `연장/야간/휴일: ${formatMinutesAsHours(statement.labor.overtimeMinutes)} / ${formatMinutesAsHours(statement.labor.nightMinutes)} / ${formatMinutesAsHours(statement.labor.holidayMinutes)}`,
+    "",
+    "지급항목\t금액\t계산방법",
+    ...statement.wageItems.map(([label, amount, formula]) => `${label}\t${formatCurrency(amount) || "0원"}\t${formula}`),
+    `지급총액\t${formatCurrency(statement.grossPay) || "0원"}`,
+    "",
+    "공제항목\t금액",
+    ...statement.deductionItems.map(([label, amount]) => `${label}\t${formatCurrency(amount) || "0원"}`),
+    `공제총액\t${formatCurrency(statement.deductionTotal) || "0원"}`,
+    `차인지급액\t${formatCurrency(statement.netPay) || "0원"}`,
+    "",
+    `메모: ${statement.draft.memo || "-"}`,
+  ].join("\n");
+  await navigator.clipboard?.writeText(text);
+  showAppToast("급여명세서 초안을 복사했습니다.");
 }
 
 function renderLeaderLaborOverviewMarkup() {
