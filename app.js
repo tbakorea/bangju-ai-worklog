@@ -75,6 +75,124 @@ const taskStatusGuideLabels = {
   "연기": "연기",
   "미완료": "미완료",
 };
+const permissionKeys = [
+  ["executiveRoom", "대표 의사결정"],
+  ["controlTower", "전사업장 현황"],
+  ["siteControl", "소속 사업장"],
+  ["worklogAll", "전직원 업무일지"],
+  ["worklogSite", "소속 업무일지"],
+  ["laborAll", "전직원 노무"],
+  ["laborSite", "소속 노무"],
+  ["staffApproval", "가입승인"],
+  ["staffManage", "직원/권한관리"],
+];
+const permissionPresets = {
+  owner: {
+    label: "대표",
+    caption: "의사결정실·전사업장·노무·직원승인 전체",
+    permissions: {
+      executiveRoom: true,
+      controlTower: true,
+      siteControl: true,
+      worklogAll: true,
+      worklogSite: true,
+      laborAll: true,
+      laborSite: true,
+      staffApproval: true,
+      staffManage: true,
+    },
+  },
+  executive_delegate: {
+    label: "대표 대리",
+    caption: "대표가 위임한 의사결정/전사업장 열람",
+    permissions: {
+      executiveRoom: true,
+      controlTower: true,
+      siteControl: true,
+      worklogAll: true,
+      worklogSite: true,
+      laborAll: false,
+      laborSite: true,
+      staffApproval: true,
+      staffManage: true,
+    },
+  },
+  operations_admin: {
+    label: "운영 관리자",
+    caption: "전사업장 현황과 직원 실행상태 관리",
+    permissions: {
+      executiveRoom: false,
+      controlTower: true,
+      siteControl: true,
+      worklogAll: true,
+      worklogSite: true,
+      laborAll: false,
+      laborSite: true,
+      staffApproval: true,
+      staffManage: true,
+    },
+  },
+  site_manager: {
+    label: "사업장 관리자",
+    caption: "소속 사업장과 소속 직원 중심",
+    permissions: {
+      executiveRoom: false,
+      controlTower: false,
+      siteControl: true,
+      worklogAll: false,
+      worklogSite: true,
+      laborAll: false,
+      laborSite: true,
+      staffApproval: true,
+      staffManage: false,
+    },
+  },
+  employee: {
+    label: "일반직원",
+    caption: "본인 업무일지·본인 노무",
+    permissions: {
+      executiveRoom: false,
+      controlTower: false,
+      siteControl: false,
+      worklogAll: false,
+      worklogSite: false,
+      laborAll: false,
+      laborSite: false,
+      staffApproval: false,
+      staffManage: false,
+    },
+  },
+  freelance: {
+    label: "프리랜서",
+    caption: "본인 업무일지·수업/정산 자료",
+    permissions: {
+      executiveRoom: false,
+      controlTower: false,
+      siteControl: false,
+      worklogAll: false,
+      worklogSite: false,
+      laborAll: false,
+      laborSite: false,
+      staffApproval: false,
+      staffManage: false,
+    },
+  },
+  readonly: {
+    label: "열람전용",
+    caption: "지정된 자료만 열람",
+    permissions: {
+      executiveRoom: false,
+      controlTower: false,
+      siteControl: false,
+      worklogAll: false,
+      worklogSite: false,
+      laborAll: false,
+      laborSite: false,
+      staffApproval: false,
+      staffManage: false,
+    },
+  },
+};
 const defaultScheduleTimes = ["08:00", "08:30", "09:00", "09:30", "10:00", "10:30", "11:00", "11:30", "12:00", "12:30", "13:00", "13:30", "14:00", "14:30", "15:00", "15:30", "16:00", "16:30", "17:00", "17:30", "18:00"];
 const hanjaWeekdays = ["日", "月", "火", "水", "木", "金", "土"];
 const lunarDateFormatter = new Intl.DateTimeFormat("ko-u-ca-chinese", { month: "numeric", day: "numeric" });
@@ -112,6 +230,8 @@ const defaultProfile = {
   approvalNote: "",
   approvedBy: "",
   approvedAt: "",
+  accessPreset: "employee",
+  permissions: {},
 };
 const fitnessManualTemplates = {
   manager: {
@@ -431,6 +551,7 @@ function createState() {
     fitnessLogPage: 1,
     fitnessCenterMonth: todayKey.slice(0, 7),
     fitnessWritableEmployeeId: "beyond-fitness-manager",
+    employeePermissions: {},
     reportTone: "executive",
     backupSettings: {
       recipientEmail: "j3010@ymail.com",
@@ -465,6 +586,9 @@ function normalizeState() {
   state.profile = { ...defaultProfile, ...(state.profile || {}) };
   state.profile.nickname ||= "";
   state.profile.weeklyWorkHours = { ...(state.profile.weeklyWorkHours || {}) };
+  state.profile.permissions = { ...(state.profile.permissions || {}) };
+  state.profile.accessPreset ||= getRecommendedPermissionPresetForProfile(state.profile);
+  state.employeePermissions = normalizeEmployeePermissionState(state.employeePermissions || {});
   state.profile.manualSettings = {
     ...defaultProfile.manualSettings,
     ...(state.profile.manualSettings || {}),
@@ -1263,11 +1387,11 @@ function renderOsDashboard() {
 }
 
 function canAccessControlTower() {
-  return hasApprovalAuthority();
+  return hasProfilePermission("controlTower") || hasProfilePermission("siteControl") || hasApprovalAuthority();
 }
 
 function canAccessWorklogOverview() {
-  return isRepresentativeProfile() || canAccessControlTower();
+  return hasProfilePermission("worklogAll") || isRepresentativeProfile() || canAccessControlTower();
 }
 
 function getWorklogSiteGroups() {
@@ -2438,10 +2562,67 @@ function getGeneralWorklogTitle(view = activeView) {
   return "방주 업무일지";
 }
 
+function getRecommendedPermissionPresetForProfile(profile = {}) {
+  const email = String(authState.user?.email || profile.email || "").trim().toLowerCase();
+  const roleText = `${profile.role || ""} ${profile.primaryWork || ""} ${profile.nickname || ""}`;
+  if (controlTowerEmails.has(email) || /대표|owner|ceo|회장/i.test(roleText)) return "owner";
+  if (/임원|총괄/i.test(roleText)) return "executive_delegate";
+  if (/실장|관리자|센터장|manager/i.test(roleText)) return "site_manager";
+  if (/프리랜서|트레이너/i.test(`${roleText} ${profile.employmentType || ""}`)) return "freelance";
+  return "employee";
+}
+
+function normalizePermissionPresetKey(value = "employee") {
+  return permissionPresets[value] ? value : "employee";
+}
+
+function getPermissionPresetOptions(selected = "employee") {
+  const value = normalizePermissionPresetKey(selected);
+  return Object.entries(permissionPresets)
+    .map(([key, preset]) => `<option value="${escapeAttr(key)}" ${key === value ? "selected" : ""}>${escapeHtml(preset.label)}</option>`)
+    .join("");
+}
+
+function buildPermissionSet(presetKey = "employee", overrides = {}) {
+  const preset = permissionPresets[normalizePermissionPresetKey(presetKey)] || permissionPresets.employee;
+  const permissions = { ...preset.permissions };
+  permissionKeys.forEach(([key]) => {
+    if (typeof overrides[key] === "boolean") permissions[key] = overrides[key];
+  });
+  return { presetKey: normalizePermissionPresetKey(presetKey), label: preset.label, caption: preset.caption, permissions };
+}
+
+function getProfilePermissionSet(profile = state.profile || {}) {
+  const recommended = getRecommendedPermissionPresetForProfile(profile);
+  const presetKey = normalizePermissionPresetKey(profile.accessPreset || recommended);
+  const set = buildPermissionSet(presetKey, profile.permissions || {});
+  if (recommended === "owner") {
+    return buildPermissionSet("owner", set.permissions);
+  }
+  return set;
+}
+
+function hasProfilePermission(key, profile = state.profile || {}) {
+  return Boolean(getProfilePermissionSet(profile).permissions[key]);
+}
+
+function normalizeEmployeePermissionState(source = {}) {
+  return Object.fromEntries(Object.entries(source || {}).map(([employeeId, value]) => {
+    const presetKey = normalizePermissionPresetKey(value?.preset || value?.accessPreset || "employee");
+    const permissions = {};
+    permissionKeys.forEach(([key]) => {
+      if (typeof value?.permissions?.[key] === "boolean") permissions[key] = value.permissions[key];
+      if (typeof value?.[key] === "boolean") permissions[key] = value[key];
+    });
+    return [employeeId, { preset: presetKey, permissions }];
+  }));
+}
+
 function isRepresentativeProfile() {
   const profile = state.profile || {};
   const email = String(authState.user?.email || profile.email || "").trim().toLowerCase();
   const roleText = `${profile.role || ""} ${profile.primaryWork || ""} ${profile.nickname || ""}`;
+  if (hasProfilePermission("executiveRoom", profile)) return true;
   if (controlTowerEmails.has(email)) return true;
   if (authState.user && (profile.approvalStatus || "pending") !== "approved") return false;
   return /대표|owner|ceo|회장|임원|총괄/i.test(roleText);
@@ -2450,6 +2631,7 @@ function isRepresentativeProfile() {
 function hasApprovalAuthority(profile = state.profile || {}) {
   const email = String(authState.user?.email || profile.email || "").trim().toLowerCase();
   const roleText = `${profile.role || ""} ${profile.primaryWork || ""} ${profile.nickname || ""}`;
+  if (hasProfilePermission("staffApproval", profile) || hasProfilePermission("staffManage", profile)) return true;
   if (controlTowerEmails.has(email)) return true;
   if (authState.user && (profile.approvalStatus || "pending") !== "approved") return false;
   return /대표|관리자|센터장|총괄|임원|admin|owner|manager/i.test(roleText);
@@ -2856,6 +3038,26 @@ function renderApprovalQueueButton(row, selectedId) {
   `;
 }
 
+function getApprovalAccessPreset(row = {}) {
+  const note = String(row.approval_note || "");
+  const noteMatch = note.match(/\[권한:([a-z_]+)\]/);
+  if (noteMatch?.[1] && permissionPresets[noteMatch[1]]) return noteMatch[1];
+  return getRecommendedPermissionPresetForProfile({
+    email: row.email,
+    org: row.org,
+    role: row.role,
+    primaryWork: row.primary_work,
+    employmentType: row.employment_type,
+  });
+}
+
+function mergeApprovalAccessNote(note = "", presetKey = "employee") {
+  const preset = permissionPresets[normalizePermissionPresetKey(presetKey)] || permissionPresets.employee;
+  const cleaned = String(note || "").replace(/\s*\[권한:[a-z_]+\]\s*[^|\n]*(\s*\|\s*)?/g, "").trim();
+  const accessLine = `[권한:${normalizePermissionPresetKey(presetKey)}] ${preset.label} - ${preset.caption}`;
+  return cleaned ? `${accessLine}\n${cleaned}` : accessLine;
+}
+
 function renderApprovalRequestCard(row) {
   const status = row.approval_status || "pending";
   const field = (name, label, value = "", type = "text") => `
@@ -2893,6 +3095,11 @@ function renderApprovalRequestCard(row) {
         ${field("secondary_work", "부업무", row.secondary_work)}
         ${field("work_hours", "근무시간", row.work_hours)}
         ${field("employment_type", "고용형태", row.employment_type || "직원")}
+        <label>승인 권한
+          <select data-approval-id="${escapeAttr(row.id)}" data-approval-access-preset>
+            ${getPermissionPresetOptions(getApprovalAccessPreset(row))}
+          </select>
+        </label>
         ${field("labor_id", "주민번호/식별번호", row.labor_id)}
         ${field("address", "주소", row.address)}
         ${field("hourly_wage", "시급", row.hourly_wage || "", "number")}
@@ -2925,6 +3132,10 @@ function collectApprovalCardPayload(id) {
     payload[name] = isPhoneField(field) ? formatPhoneNumber(value) : value;
     if (isPhoneField(field)) field.value = payload[name];
   });
+  const accessSelect = card.querySelector("[data-approval-access-preset]");
+  if (accessSelect) {
+    payload.approval_note = mergeApprovalAccessNote(payload.approval_note || "", accessSelect.value);
+  }
   return payload;
 }
 
@@ -6027,20 +6238,53 @@ function getEmployeeMasterRows() {
 }
 
 function getEmployeePermissionProfile(employee, group) {
+  const inferredPreset = getRecommendedPermissionPresetForEmployee(employee, group);
+  const override = state.employeePermissions?.[employee.id] || {};
+  const presetKey = normalizePermissionPresetKey(override.preset || inferredPreset);
+  const set = buildPermissionSet(presetKey, override.permissions || {});
+  const worklog = set.permissions.worklogAll ? "전사 열람" : set.permissions.worklogSite ? "소속 열람" : "본인 수정";
+  const labor = set.permissions.laborAll ? "전사 열람" : set.permissions.laborSite ? "소속 열람" : "본인 열람";
+  const approval = set.permissions.staffApproval ? "가능" : "불가";
+  return { role: set.label, caption: set.caption, presetKey: set.presetKey, permissions: set.permissions, worklog, labor, approval };
+}
+
+function getRecommendedPermissionPresetForEmployee(employee, group) {
   const roleText = `${employee.role || ""} ${employee.primaryWork || ""}`;
-  if (/대표|총괄|실장/.test(roleText)) {
-    return { role: "관리자", worklog: "전사 열람", labor: "사업장 열람", approval: "가능" };
-  }
-  if (/센터장|manager|관리자/i.test(roleText)) {
-    return { role: "센터장", worklog: "소속 열람", labor: "소속 열람", approval: "가능" };
-  }
-  if (/트레이너|프리랜서/.test(roleText) || employee.employmentType === "프리랜서") {
-    return { role: "프리랜서", worklog: "본인 수정", labor: "본인 열람", approval: "불가" };
-  }
-  if (/예비/.test(roleText)) {
-    return { role: "열람전용", worklog: "지정 시 사용", labor: "지정 시 사용", approval: "불가" };
-  }
-  return { role: "일반직원", worklog: group ? "소속 열람" : "본인 수정", labor: "본인 열람", approval: "불가" };
+  if (/대표/.test(roleText)) return "owner";
+  if (/총괄|실장/.test(roleText)) return "operations_admin";
+  if (/센터장|manager|관리자/i.test(roleText)) return "site_manager";
+  if (/트레이너|프리랜서/.test(roleText) || employee.employmentType === "프리랜서") return "freelance";
+  if (/예비/.test(roleText)) return "readonly";
+  return "employee";
+}
+
+function setEmployeePermissionPreset(employeeId, preset) {
+  state.employeePermissions ||= {};
+  const current = state.employeePermissions[employeeId] || {};
+  state.employeePermissions[employeeId] = {
+    preset: normalizePermissionPresetKey(preset),
+    permissions: { ...(current.permissions || {}) },
+  };
+  saveState();
+  renderStaffMaster();
+}
+
+function toggleEmployeePermission(employeeId, key, checked) {
+  state.employeePermissions ||= {};
+  const current = state.employeePermissions[employeeId] || { preset: getRecommendedPermissionPresetForEmployee(employees.find((employee) => employee.id === employeeId) || {}, null), permissions: {} };
+  state.employeePermissions[employeeId] = {
+    preset: normalizePermissionPresetKey(current.preset || "employee"),
+    permissions: { ...(current.permissions || {}), [key]: Boolean(checked) },
+  };
+  saveState();
+  renderStaffMaster();
+}
+
+function resetEmployeePermission(employeeId) {
+  if (!state.employeePermissions) return;
+  delete state.employeePermissions[employeeId];
+  saveState();
+  renderStaffMaster();
 }
 
 function getEmployeeOnboardingState(employee, labor, log) {
@@ -6053,6 +6297,33 @@ function getEmployeeOnboardingState(employee, labor, log) {
   ];
   const done = checks.filter(([, ok]) => ok).length;
   return { checks, done, total: checks.length };
+}
+
+function renderStaffPermissionRow(row) {
+  const hasOverride = Boolean(state.employeePermissions?.[row.id]);
+  return `
+    <article class="staff-permission-row" data-staff-permission-row="${escapeAttr(row.id)}">
+      <div class="staff-permission-identity">
+        <span>${escapeHtml(row.site)}</span>
+        <strong>${escapeHtml(row.role || "직원")} ${escapeHtml(row.name || "")}</strong>
+        <em>${escapeHtml(row.access.caption || "")}</em>
+      </div>
+      <label class="staff-permission-preset">권한 프리셋
+        <select data-staff-permission-preset="${escapeAttr(row.id)}">
+          ${getPermissionPresetOptions(row.access.presetKey)}
+        </select>
+      </label>
+      <div class="staff-permission-toggles">
+        ${permissionKeys.map(([key, label]) => `
+          <label>
+            <input type="checkbox" data-staff-permission-toggle="${escapeAttr(row.id)}" data-permission-key="${escapeAttr(key)}" ${row.access.permissions[key] ? "checked" : ""} />
+            <span>${escapeHtml(label)}</span>
+          </label>
+        `).join("")}
+      </div>
+      <button type="button" class="staff-permission-reset" data-staff-permission-reset="${escapeAttr(row.id)}" ${hasOverride ? "" : "disabled"}>기본값</button>
+    </article>
+  `;
 }
 
 function getManualTemplateForEmployee(employee) {
@@ -6091,7 +6362,7 @@ function renderStaffMaster() {
   const stats = [
     ["전체 직원", `${rows.length}명`],
     ["사업장", `${getWorklogSiteGroups().length}개`],
-    ["승인 가능", `${rows.filter((row) => row.access.approval === "가능").length}명`],
+    ["권한관리", `${rows.filter((row) => row.access.permissions.staffManage || row.access.permissions.staffApproval).length}명`],
     ["온보딩 완료", `${rows.filter((row) => row.onboarding.done === row.onboarding.total).length}명`],
     ["오늘 작성", `${rows.filter((row) => row.tasks.length).length}명`],
     ["노무 기록", `${rows.filter((row) => row.labor.recordedDays).length}명`],
@@ -6136,14 +6407,12 @@ function renderStaffMaster() {
           <h3>권한 체계</h3>
         </div>
       </header>
-      <div class="staff-permission-grid">
-        ${rows.map((row) => `
-          <article>
-            <strong>${escapeHtml(row.role || "직원")} ${escapeHtml(row.name || "")}</strong>
-            <span>${escapeHtml(row.site)}</span>
-            <p>업무일지 ${escapeHtml(row.access.worklog)} · 노무 ${escapeHtml(row.access.labor)} · 승인 ${escapeHtml(row.access.approval)}</p>
-          </article>
-        `).join("")}
+      <div class="staff-permission-matrix">
+        <div class="staff-permission-guide">
+          <strong>권한은 직원 원장에서 관리합니다.</strong>
+          <p>가입승인에서는 1차 권한을 정하고, 이후 이 화면에서 메뉴별/사업장별 접근권한을 조정합니다. 일반 직원은 본인 업무일지와 본인 노무만 수정할 수 있습니다.</p>
+        </div>
+        ${rows.map((row) => renderStaffPermissionRow(row)).join("")}
       </div>
     </section>
     <section class="staff-master-panel">
@@ -7189,6 +7458,12 @@ document.querySelectorAll("[data-section-shortcut]").forEach((button) => {
       openApprovalManagement();
       return;
     }
+    if (action === "permission" || action === "staff-list") {
+      switchView("staff");
+      const panel = document.querySelector(action === "permission" ? ".staff-permission-matrix" : ".staff-master-table-wrap");
+      panel?.scrollIntoView({ behavior: "smooth", block: "start" });
+      return;
+    }
     if (action === "manual") {
       switchView("settings");
       switchSettingsTab("manual");
@@ -7206,6 +7481,22 @@ document.querySelectorAll("[data-section-shortcut]").forEach((button) => {
       switchView("ai");
     }
   });
+});
+document.getElementById("staffMasterGrid")?.addEventListener("change", (event) => {
+  const presetSelect = event.target.closest("[data-staff-permission-preset]");
+  if (presetSelect) {
+    setEmployeePermissionPreset(presetSelect.dataset.staffPermissionPreset, presetSelect.value);
+    return;
+  }
+  const toggle = event.target.closest("[data-staff-permission-toggle]");
+  if (toggle) {
+    toggleEmployeePermission(toggle.dataset.staffPermissionToggle, toggle.dataset.permissionKey, toggle.checked);
+  }
+});
+document.getElementById("staffMasterGrid")?.addEventListener("click", (event) => {
+  const resetButton = event.target.closest("[data-staff-permission-reset]");
+  if (!resetButton) return;
+  resetEmployeePermission(resetButton.dataset.staffPermissionReset);
 });
 document.getElementById("mainMenuPopover")?.addEventListener("click", (event) => event.stopPropagation());
 document.addEventListener("click", () => {

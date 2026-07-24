@@ -2662,6 +2662,141 @@ body[data-device-mode="narrow"] .os-mode-switch span[data-device-mode="narrow"] 
   font-weight: 820;
 }
 
+.staff-permission-matrix {
+  display: grid;
+  gap: 9px;
+}
+
+.staff-permission-guide,
+.staff-permission-row {
+  border: 1px solid rgba(33, 55, 45, 0.1);
+  border-radius: 14px;
+  background: rgba(246, 245, 239, 0.58);
+  padding: 11px;
+}
+
+.staff-permission-guide strong {
+  display: block;
+  color: var(--ink);
+  font-size: 14px;
+  font-weight: 950;
+}
+
+.staff-permission-guide p {
+  margin: 5px 0 0;
+  color: rgba(38, 50, 56, 0.7);
+  font-size: 12px;
+  font-weight: 780;
+  line-height: 1.45;
+}
+
+.staff-permission-row {
+  display: grid;
+  grid-template-columns: minmax(160px, 0.8fr) minmax(140px, 0.48fr) minmax(0, 1.7fr) auto;
+  gap: 10px;
+  align-items: center;
+}
+
+.staff-permission-identity span,
+.staff-permission-preset {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 900;
+}
+
+.staff-permission-identity strong {
+  display: block;
+  margin-top: 3px;
+  color: var(--ink);
+  font-size: 14px;
+  font-weight: 950;
+}
+
+.staff-permission-identity em {
+  display: block;
+  margin-top: 3px;
+  color: rgba(38, 50, 56, 0.62);
+  font-size: 11px;
+  font-style: normal;
+  font-weight: 760;
+  line-height: 1.35;
+}
+
+.staff-permission-preset {
+  display: grid;
+  gap: 5px;
+}
+
+.staff-permission-preset select,
+.approval-edit-grid select {
+  width: 100%;
+  min-width: 0;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: rgba(255, 253, 248, 0.94);
+  color: var(--ink);
+  padding: 9px 10px;
+  font-weight: 850;
+}
+
+.staff-permission-toggles {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.staff-permission-toggles label {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-height: 30px;
+  border: 1px solid rgba(33, 55, 45, 0.1);
+  border-radius: 999px;
+  background: rgba(255, 253, 248, 0.76);
+  padding: 5px 9px;
+  color: rgba(38, 50, 56, 0.74);
+  font-size: 11px;
+  font-weight: 850;
+}
+
+.staff-permission-toggles input {
+  width: 13px;
+  height: 13px;
+  accent-color: var(--green);
+}
+
+.staff-permission-reset {
+  min-height: 32px;
+  border: 1px solid rgba(33, 55, 45, 0.16);
+  border-radius: 999px;
+  background: rgba(255, 253, 248, 0.9);
+  color: var(--ink);
+  padding: 6px 10px;
+  font-size: 11px;
+  font-weight: 950;
+  white-space: nowrap;
+}
+
+.staff-permission-reset:disabled {
+  opacity: 0.42;
+}
+
+@media (max-width: 760px) {
+  .staff-permission-row {
+    grid-template-columns: minmax(0, 1fr);
+    align-items: stretch;
+  }
+
+  .staff-permission-toggles {
+    gap: 5px;
+  }
+
+  .staff-permission-toggles label {
+    flex: 1 1 calc(50% - 5px);
+    justify-content: flex-start;
+  }
+}
+
 .staff-onboarding-list {
   display: grid;
   gap: 8px;
