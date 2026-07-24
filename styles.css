@@ -2130,6 +2130,177 @@ body[data-device-mode="narrow"] .os-mode-switch span[data-device-mode="narrow"] 
   font-weight: 780;
 }
 
+.labor-ops-console {
+  display: grid;
+  gap: 10px;
+  border: 1px solid rgba(33, 55, 45, 0.1);
+  border-radius: 20px;
+  background: rgba(255, 253, 248, 0.9);
+  padding: 12px;
+  box-shadow: 0 14px 30px rgba(33, 55, 45, 0.05);
+}
+
+.labor-ops-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.labor-ops-grid button {
+  display: grid;
+  gap: 5px;
+  min-height: 92px;
+  border: 1px solid rgba(33, 55, 45, 0.09);
+  border-radius: 16px;
+  background: rgba(246, 245, 239, 0.72);
+  padding: 11px;
+  color: var(--ink);
+  text-align: left;
+}
+
+.labor-ops-grid span {
+  color: rgba(38, 50, 56, 0.62);
+  font-size: 11px;
+  font-weight: 900;
+}
+
+.labor-ops-grid strong {
+  color: var(--green);
+  font-size: 22px;
+  font-weight: 950;
+  line-height: 1.02;
+}
+
+.labor-ops-grid em {
+  color: rgba(38, 50, 56, 0.58);
+  font-size: 11px;
+  font-style: normal;
+  font-weight: 760;
+  line-height: 1.35;
+}
+
+.labor-agent-panel {
+  display: grid;
+  gap: 10px;
+  border: 1px solid rgba(15, 59, 46, 0.12);
+  border-radius: 18px;
+  background:
+    linear-gradient(135deg, rgba(15, 59, 46, 0.95), rgba(34, 91, 72, 0.88)),
+    var(--fitness-green);
+  padding: 12px;
+  color: var(--nordic-sheet);
+}
+
+.labor-agent-panel header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.labor-agent-panel header span {
+  display: block;
+  color: rgba(255, 254, 250, 0.64);
+  font-size: 10px;
+  font-weight: 950;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.labor-agent-panel h3 {
+  margin: 2px 0 0;
+  color: var(--nordic-sheet);
+  font-size: 20px;
+  font-weight: 950;
+}
+
+.labor-agent-panel header button {
+  min-height: 34px;
+  border: 1px solid rgba(255, 254, 250, 0.22);
+  border-radius: 999px;
+  background: rgba(255, 254, 250, 0.12);
+  color: var(--nordic-sheet);
+  padding: 6px 12px;
+  font-size: 12px;
+  font-weight: 900;
+  white-space: nowrap;
+}
+
+.labor-agent-list {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 7px;
+}
+
+.labor-agent-list span {
+  position: relative;
+  display: grid;
+  gap: 4px;
+  border-radius: 13px;
+  background: rgba(255, 254, 250, 0.1);
+  padding: 10px 62px 10px 10px;
+}
+
+.labor-agent-list b {
+  color: var(--nordic-sheet);
+  font-size: 13px;
+  font-weight: 950;
+}
+
+.labor-agent-list em {
+  color: rgba(255, 254, 250, 0.72);
+  font-size: 11px;
+  font-style: normal;
+  font-weight: 760;
+  line-height: 1.4;
+}
+
+.labor-agent-list strong {
+  position: absolute;
+  top: 9px;
+  right: 9px;
+  border-radius: 999px;
+  background: rgba(255, 254, 250, 0.16);
+  color: var(--nordic-sheet);
+  padding: 4px 7px;
+  font-size: 10px;
+  font-weight: 950;
+}
+
+.labor-site-strip {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.labor-site-strip span {
+  display: grid;
+  gap: 4px;
+  border: 1px solid rgba(33, 55, 45, 0.08);
+  border-radius: 14px;
+  background: rgba(246, 245, 239, 0.64);
+  padding: 10px;
+}
+
+.labor-site-strip b {
+  color: rgba(38, 50, 56, 0.62);
+  font-size: 11px;
+  font-weight: 900;
+}
+
+.labor-site-strip strong {
+  color: var(--ink);
+  font-size: 18px;
+  font-weight: 950;
+}
+
+.labor-site-strip em {
+  color: rgba(38, 50, 56, 0.58);
+  font-size: 11px;
+  font-style: normal;
+  font-weight: 760;
+}
+
 .labor-month-card {
   display: grid;
   gap: 10px;
@@ -4123,6 +4294,24 @@ body[data-device-mode="narrow"] .os-mode-switch span[data-device-mode="narrow"] 
 }
 
 @media (max-width: 640px) {
+  .labor-ops-grid,
+  .labor-site-strip {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .labor-agent-list {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .labor-ops-grid button {
+    min-height: 86px;
+    padding: 10px;
+  }
+
+  .labor-ops-grid strong {
+    font-size: 20px;
+  }
+
   .labor-cost-ledger-card {
     padding: 12px;
   }

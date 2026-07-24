@@ -5470,6 +5470,7 @@ function renderAttendance() {
   const list = document.getElementById("attendanceList");
   const addButton = document.getElementById("addAttendanceButton");
   if (addButton) addButton.hidden = true;
+  preserveSectionDockBeforeRender("attendance");
   renderWorkHistorySummary();
   if (!list) return;
   const employeeId = getOwnLaborEmployeeId();
@@ -5481,9 +5482,9 @@ function renderAttendance() {
   const companyLaborLedgers = canAccessWorklogOverview() ? renderCompanyLaborLedgersMarkup() : "";
   list.innerHTML = `
     ${leaderLaborOverview}
-    ${companyLaborLedgers}
     ${renderPayrollStatement(payroll)}
-    <section class="labor-cost-ledger-card">
+    ${companyLaborLedgers}
+    <section class="labor-cost-ledger-card" id="laborCostLedger">
       <header>
         <div>
           <span>Labor Cost Ledger</span>
@@ -5531,7 +5532,7 @@ function renderAttendance() {
         </table>
       </div>
     </section>
-    <section class="labor-register-card">
+    <section class="labor-register-card" id="laborRegister">
       <header>
         <div>
           <span>Personal Labor Register</span>
@@ -5555,8 +5556,14 @@ function renderAttendance() {
       </div>
     </section>
   `;
+  dockGlobalHeaderActions("attendance");
   document.getElementById("copyAllSiteLaborLedgersButton")?.addEventListener("click", copyAllSiteLaborLedgers);
   document.getElementById("copyPayrollStatementButton")?.addEventListener("click", () => copyPayrollStatement(payroll));
+  list.querySelectorAll("[data-labor-jump]").forEach((button) => {
+    button.addEventListener("click", () => {
+      document.getElementById(button.dataset.laborJump)?.scrollIntoView({ behavior: "smooth", block: "start" });
+    });
+  });
   list.querySelectorAll("[data-labor-payroll-field]").forEach((field) => {
     field.addEventListener("change", () => {
       updateLaborPayrollField(employeeId, labor.month, field.dataset.laborPayrollField, field.value);
@@ -5576,6 +5583,115 @@ function renderAttendance() {
       renderAttendance();
     });
   });
+}
+
+function preserveSectionDockBeforeRender(panelView = worklogViewAliases[activeView] || activeView) {
+  const panel = getActiveViewPanel(panelView);
+  const dock = panel?.querySelector(".section-menu-dock");
+  if (!panel || !dock || dock.parentElement === panel) return;
+  panel.prepend(dock);
+}
+
+function getLaborSiteConsoleRows() {
+  return getWorklogSiteGroups().map((group) => {
+    const employeeIds = getAssignedWorklogEmployeeIds(group.employeeIds);
+    const summaries = employeeIds
+      .map((employeeId) => {
+        const employee = employees.find((item) => item.id === employeeId);
+        return employee ? buildMonthlyLaborSummary(employeeId, employee) : null;
+      })
+      .filter(Boolean);
+    const recordedEmployees = summaries.filter((item) => item.recordedDays > 0).length;
+    const actualMinutes = summaries.reduce((sum, item) => sum + item.actualMinutes, 0);
+    const issues = summaries.reduce((sum, item) => sum + item.lateCount + item.earlyCount + item.absenceCount, 0);
+    const paidPt = summaries.reduce((sum, item) => sum + item.settlementPtCount, 0);
+    return {
+      ...group,
+      employeeCount: employeeIds.length,
+      recordedEmployees,
+      actualMinutes,
+      issues,
+      paidPt,
+    };
+  });
+}
+
+function getLaborAgentSignals(labor, payroll) {
+  const missingChecks = payroll.checks.filter(([, ok]) => !ok).map(([label]) => label);
+  const signals = [];
+  if (!labor.recordedDays) {
+    signals.push(["근무기록 공백", "이번 달 근무기록이 부족합니다. 출근·퇴근 기록부터 채워야 노무자료가 성립합니다.", "주의"]);
+  }
+  if (labor.lateCount || labor.earlyCount || labor.absenceCount) {
+    signals.push(["근태관리", `지각 ${labor.lateCount}건 · 조퇴 ${labor.earlyCount}건 · 결근 ${labor.absenceCount}건을 확인하세요.`, "확인"]);
+  }
+  if (missingChecks.length) {
+    signals.push(["급여명세 보완", `${missingChecks.slice(0, 3).join(", ")} 항목을 보완하면 명세서 완성도가 올라갑니다.`, "보완"]);
+  }
+  if (labor.freePtCount) {
+    signals.push(["프리랜서 정산", `무료 PT ${labor.freePtCount}건은 정산 집계에서 제외되도록 구분되어 있습니다.`, "정상"]);
+  }
+  if (!signals.length) {
+    signals.push(["노무 흐름 정상", "근무기록과 급여명세 초안의 핵심 항목이 안정적으로 연결되어 있습니다.", "정상"]);
+  }
+  return signals;
+}
+
+function renderLaborOperationsConsole(labor, employee, payroll) {
+  const siteRows = getLaborSiteConsoleRows();
+  const siteRecorded = siteRows.reduce((sum, row) => sum + row.recordedEmployees, 0);
+  const siteEmployees = siteRows.reduce((sum, row) => sum + row.employeeCount, 0);
+  const totalIssues = siteRows.reduce((sum, row) => sum + row.issues, 0);
+  const readyCount = payroll.checks.filter(([, ok]) => ok).length;
+  const agentSignals = getLaborAgentSignals(labor, payroll);
+  const cards = [
+    ["사업장별 근무기록", `${siteRecorded}/${siteEmployees}명`, "사업장별 출역·근무시간 원장", "companyLaborLedgers"],
+    ["근태관리", totalIssues ? `${totalIssues}건 확인` : "정상", "지각·조퇴·결근·외출 추적", "laborRegister"],
+    ["급여명세현황", `${readyCount}/${payroll.checks.length}`, "지급·공제·계산방법 준비도", "payrollStatement"],
+    ["각 직원 근무기록", `${labor.recordedDays}일`, `${getEmployeeAdminLabel(employee)} 월별 기록`, "laborRegister"],
+  ];
+  return `
+    <section class="labor-ops-console">
+      <div class="labor-ops-grid">
+        ${cards.map(([label, value, description, target]) => `
+          <button type="button" data-labor-jump="${escapeAttr(target)}">
+            <span>${escapeHtml(label)}</span>
+            <strong>${escapeHtml(value)}</strong>
+            <em>${escapeHtml(description)}</em>
+          </button>
+        `).join("")}
+      </div>
+      <article class="labor-agent-panel">
+        <header>
+          <div>
+            <span>Labor Agent</span>
+            <h3>AI 노무 에이전트</h3>
+          </div>
+          <button type="button" data-labor-jump="payrollStatement">명세 보완</button>
+        </header>
+        <div class="labor-agent-list">
+          ${agentSignals.map(([title, text, badge]) => `
+            <span>
+              <b>${escapeHtml(title)}</b>
+              <em>${escapeHtml(text)}</em>
+              <strong>${escapeHtml(badge)}</strong>
+            </span>
+          `).join("")}
+        </div>
+      </article>
+      ${canAccessWorklogOverview() ? `
+        <div class="labor-site-strip">
+          ${siteRows.map((row) => `
+            <span>
+              <b>${escapeHtml(row.title)}</b>
+              <strong>${escapeHtml(`${row.recordedEmployees}/${row.employeeCount}`)}</strong>
+              <em>${escapeHtml(`${formatMinutesAsHours(row.actualMinutes)} · 유료PT ${row.paidPt}`)}</em>
+            </span>
+          `).join("")}
+        </div>
+      ` : ""}
+    </section>
+  `;
 }
 
 function getLaborPayrollKey(employeeId, month) {
@@ -5713,7 +5829,7 @@ function renderPayrollMoneyInput(statement, field, label) {
 function renderPayrollStatement(statement) {
   const readyCount = statement.checks.filter(([, ok]) => ok).length;
   return `
-    <section class="payroll-statement-card">
+    <section class="payroll-statement-card" id="payrollStatement">
       <header>
         <div>
           <span>Payroll Statement Draft</span>
@@ -5838,7 +5954,7 @@ function renderCompanyLaborLedgersMarkup() {
   const ledgers = getWorklogSiteGroups().map((group) => buildSiteLaborCostLedger(group.id));
   const monthLabel = getActiveDateKey().slice(0, 7).replace("-", ".");
   return `
-    <section class="company-labor-ledgers">
+    <section class="company-labor-ledgers" id="companyLaborLedgers">
       <header>
         <div>
           <span>Labor Payment Registers</span>
@@ -6020,6 +6136,8 @@ function renderWorkHistorySummary() {
     .map((item) => `${item.type || "외출"} ${item.start || "--:--"}~${item.end || "--:--"}`)
     .join(" · ");
   const labor = buildMonthlyLaborSummary(employeeId, employee);
+  const ledger = buildLaborCostLedger(labor, employee);
+  const payroll = buildPayrollStatement(labor, employee, ledger);
   const archives = buildLaborMonthArchives(employeeId, employee);
   const cards = [
     ["오늘 상태", getAttendanceStatusForLog(employee, log)],
@@ -6037,6 +6155,7 @@ function renderWorkHistorySummary() {
         <p>${escapeHtml(formatAttendanceSummary(log) || "아직 출결 시간이 기록되지 않았습니다.")}</p>
       </div>
     </article>
+    ${renderLaborOperationsConsole(labor, employee, payroll)}
     <div class="work-history-card-grid">
       ${cards.map(([label, value]) => `<span><b>${escapeHtml(label)}</b><strong>${escapeHtml(value)}</strong></span>`).join("")}
     </div>
