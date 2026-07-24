@@ -1592,11 +1592,13 @@ function renderExecutiveManagement() {
   const absentRows = staffRows.filter((row) => row.aiSignal === "결석확인");
   const salesActions = fitnessOps.consultation + fitnessOps.outbound + fitnessOps.outsideSales;
   const operatingScore = calculateOperatingScore();
+  const missionQueue = getMissionProposalQueue(4);
   const pendingDecisionCount = [
     taskTotal && completedTotal < taskTotal,
     issueRows.length > 0,
     salesActions === 0,
     siteRows.some((site) => site.status === "보류" || site.status === "준비"),
+    missionQueue.length > 0,
   ].filter(Boolean).length;
 
   const kpis = [
@@ -1619,7 +1621,7 @@ function renderExecutiveManagement() {
   setText("executiveSiteSummary", `${siteRows.length}개 · 이슈 ${siteRows.reduce((sum, site) => sum + site.issueCount, 0)}`);
   setText("executiveFinanceSummary", salesActions ? `고객행동 ${salesActions}` : "영업공백");
   setText("executivePeopleSummary", issueRows.length ? `신호 ${issueRows.length}` : "정상");
-  setText("executiveOrdersSummary", `${Math.max(0, taskTotal - completedTotal)}건 대기`);
+  setText("executiveOrdersSummary", `업무 ${Math.max(0, taskTotal - completedTotal)} · 미션 ${missionQueue.length}`);
   setText("executiveActionSummary", `PT ${fitnessOps.ptRegular + fitnessOps.ptOther} · 주간`);
   setExecutiveSectionAlert("intervention", warnAgendaCount > 0);
   setExecutiveSectionAlert("score", operatingScore < 75 || siteRows.some((site) => site.status === "보류" || site.status === "준비"));
@@ -1663,9 +1665,10 @@ function renderExecutiveManagement() {
   document.getElementById("executiveOrdersList").innerHTML = [
     ["승인", `${authState.pendingApprovalCount || 0}건`, "가입승인과 권한 부여를 처리합니다."],
     ["업무", `${Math.max(0, taskTotal - completedTotal)}건`, "미완료 업무의 담당자와 마감시간을 정합니다."],
+    ["AI미션", `${missionQueue.length}건`, "직원별 업무·프로젝트 제안을 검토해 업무일지에 반영합니다."],
     ["시설", `${siteRows.reduce((sum, site) => sum + site.issueCount, 0)}건`, "반복 시설·민원 이슈는 사업장 티켓으로 전환합니다."],
     ["보고", "1건", "오늘 마감 전 대표 일일보고서를 생성합니다."],
-  ].map(([title, count, text]) => `<article><b>${escapeHtml(title)}</b><strong>${escapeHtml(count)}</strong><span>${escapeHtml(text)}</span></article>`).join("");
+  ].map(([title, count, text]) => `<article><b>${escapeHtml(title)}</b><strong>${escapeHtml(count)}</strong><span>${escapeHtml(text)}</span></article>`).join("") + renderMissionProposalCards(missionQueue, { compact: true, showEmployee: true, allowApply: true });
 
   document.getElementById("executiveActionBoard").innerHTML = [
     ["月", "현금흐름·미수금·지급예정 확인"],
@@ -1900,6 +1903,237 @@ function buildPersonalGrowthModel(employee = getSelectedEmployee(), log = getSel
   };
 }
 
+function getEmployeeMissionBase(employee = getSelectedEmployee(), log = getEmployeeLogForDate(employee.id)) {
+  const growth = buildPersonalGrowthModel(employee, log);
+  const manual = getManualTemplateForEmployee(employee);
+  const customMission = state.profile?.manualSettings?.missionsByEmployee?.[employee.id] || "";
+  const tasks = (log.tasks || []).filter((task) => String(task.text || "").trim());
+  const entries = (log.schedule || []).filter((entry) => getScheduleEntryText(entry));
+  const reportText = String(log.report || log.memo || "").trim();
+  const attendance = getAttendanceStatusForLog(employee, log);
+  return { employee, log, growth, manual, customMission, tasks, entries, reportText, attendance };
+}
+
+function createMissionProposal(base, seed) {
+  const employee = base.employee;
+  const roleLabel = `${employee.role || "직원"} ${employee.nickname || employee.name || ""}`.trim();
+  const idSource = `${employee.id}:${seed.type}:${seed.title}:${getActiveDateKey()}`;
+  return {
+    id: `mission-${idSource.replace(/[^a-z0-9가-힣]+/gi, "-").toLowerCase()}`,
+    employeeId: employee.id,
+    employeeLabel: roleLabel,
+    type: seed.type || "업무",
+    priority: seed.priority || "A",
+    title: seed.title,
+    text: seed.text,
+    tip: seed.tip,
+    reason: seed.reason,
+    impact: seed.impact || "오늘 실행",
+    taskText: seed.taskText || seed.title,
+  };
+}
+
+function getMissionProposalsForEmployee(employee = getSelectedEmployee(), log = getEmployeeLogForDate(employee.id)) {
+  const base = getEmployeeMissionBase(employee, log);
+  const { growth, tasks, entries, reportText, attendance, customMission } = base;
+  const track = growth.track;
+  const proposals = [];
+  const add = (seed) => proposals.push(createMissionProposal(base, seed));
+
+  if (customMission) {
+    add({
+      type: "지정미션",
+      priority: "A",
+      title: customMission.split(/\n|\.|,/).find(Boolean)?.trim() || "대표 지정 미션 점검",
+      text: "직원설정에 입력된 지정 미션을 오늘 실행 가능한 업무로 쪼개어 기록합니다.",
+      tip: "지정 미션은 업무일지에 완료조건을 붙여야 실행 추적이 됩니다.",
+      reason: "직원별 미션 데이터",
+      impact: "대표 의도 반영",
+      taskText: customMission.split(/\n/).find(Boolean)?.trim() || "대표 지정 미션 실행",
+    });
+  }
+  if (tasks.length < 3) {
+    add({
+      type: "업무설계",
+      priority: "A",
+      title: "오늘 우선업무 3개를 먼저 확정",
+      text: "현재 우선업무 입력이 부족합니다. 역할 기준으로 가장 중요한 3가지를 먼저 업무화합니다.",
+      tip: "A는 오늘 반드시 끝낼 일, B는 진행할 일, ?는 대기/확인 업무로 나누세요.",
+      reason: "업무일지 공백",
+      impact: "실행 선명도",
+      taskText: "오늘 우선업무 3개 확정 및 완료조건 작성",
+    });
+  }
+  if (entries.length < 3) {
+    add({
+      type: "시간관리",
+      priority: "A",
+      title: "핵심업무를 시간표에 배치",
+      text: "업무는 있는데 실행 시간이 비어 있으면 추적이 약합니다. 최소 3개 시간대에 실제 실행 업무를 배치합니다.",
+      tip: "시간표에는 결과가 아니라 행동을 적어야 합니다. 예: 재등록 후보 5명 연락.",
+      reason: "시간별 일정 부족",
+      impact: "시간통제",
+      taskText: "핵심업무 3건을 시간별 일정에 배치",
+    });
+  }
+  if (/미기록|결석|지각|조퇴|퇴근/.test(attendance)) {
+    add({
+      type: "운영기본",
+      priority: "A",
+      title: "출결·근무흐름 먼저 정리",
+      text: "출결 기록은 업무 신뢰도와 노무 자료의 출발점입니다. 오늘 근무 시작/종료 또는 예외 사유를 정리합니다.",
+      tip: "외출, 조퇴, 프리랜서 수업도 나중에 노무/정산으로 연결됩니다.",
+      reason: attendance,
+      impact: "노무 정확도",
+      taskText: "오늘 출결과 근무 특이사항 정리",
+    });
+  }
+  if (reportText.length < 40) {
+    add({
+      type: "보고역량",
+      priority: "B",
+      title: "업무보고에 배운 점과 다음 행동 추가",
+      text: "짧은 보고는 업무의 맥락이 사라집니다. 오늘 결과, 문제, 다음 행동을 한 줄씩 남깁니다.",
+      tip: "보고는 대표가 개입할지, 위임할지, 기다릴지를 결정하는 재료입니다.",
+      reason: "보고 품질 보강",
+      impact: "소통 개선",
+      taskText: "업무보고에 결과·문제·다음 행동 1줄씩 작성",
+    });
+  }
+
+  if (track === "fitness") {
+    const ops = { ...createFitnessOps(), ...(log.fitnessOps || {}) };
+    const salesCount = numberValue(ops.consultation) + numberValue(ops.customerNew) + numberValue(ops.customerRenewal) + numberValue(ops.outbound) + numberValue(ops.outsideSales);
+    if (!salesCount) {
+      add({
+        type: "매출행동",
+        priority: "A",
+        title: "재등록·상담 후보 3명 추적",
+        text: "피트니스 업무는 고객 접점이 매출로 연결되어야 합니다. 만료예정, 무료PT, 상담 후보를 3명 이상 분류합니다.",
+        tip: "무료수업은 유료전환 가능성과 다음 연락일을 같이 남기세요.",
+        reason: "고객행동 기록 부족",
+        impact: "매출전환",
+        taskText: "재등록·상담 후보 3명 확인 및 후속 연락",
+      });
+    }
+  } else if (track === "finance") {
+    add({
+      type: "리스크",
+      priority: "A",
+      title: "오늘 자금·증빙 리스크 점검",
+      text: "지급, 입금, 세금, 증빙 누락은 대표 의사결정에 직접 영향을 줍니다. 오늘 리스크 1개를 명확히 보고합니다.",
+      tip: "금액, 기한, 상대방, 필요한 결정을 같이 적으면 대표 판단이 빨라집니다.",
+      reason: "재무 직무 기준",
+      impact: "자금 안정",
+      taskText: "오늘 자금·증빙·마감 리스크 1건 보고",
+    });
+  } else if (track === "project") {
+    add({
+      type: "프로젝트",
+      priority: "A",
+      title: "현장 품질·일정·원가 중 1개 점검",
+      text: "TBA/시공 업무는 현장 기록이 누락되면 하자와 정산 리스크가 커집니다. 사진 또는 메모 기준으로 1개를 점검합니다.",
+      tip: "변경사항은 비용, 일정 영향, 승인자를 함께 남기세요.",
+      reason: "프로젝트 직무 기준",
+      impact: "하자 예방",
+      taskText: "현장 품질·일정·원가 체크 및 증빙 기록",
+    });
+  } else if (track === "shared") {
+    add({
+      type: "운영개선",
+      priority: "A",
+      title: "공실·입주고객·시설 신호 1개 개선",
+      text: "공유사업은 작은 불편이 계약갱신과 공실률에 연결됩니다. 고객/공간/계약 중 하나를 개선 업무로 만듭니다.",
+      tip: "공실은 홍보채널, 가격, 사진, 문의수 중 하나라도 매일 업데이트하면 원인 분석이 됩니다.",
+      reason: "공유사업 직무 기준",
+      impact: "고객경험",
+      taskText: "공실·입주고객·시설 신호 1개 개선 실행",
+    });
+  } else if (track === "executive") {
+    add({
+      type: "경영판단",
+      priority: "A",
+      title: "대표 개입 1건·위임 1건 분리",
+      text: "대표 업무는 모든 일을 직접 처리하는 것이 아니라 개입할 일과 맡길 일을 분리하는 데서 성과가 납니다.",
+      tip: "오늘 대표가 직접 결정할 일, 직원에게 맡길 일, 기다릴 일을 3분류하세요.",
+      reason: "대표 성장 트랙",
+      impact: "위임력",
+      taskText: "오늘 대표 개입 1건과 위임 1건 결정",
+    });
+  }
+
+  return proposals
+    .filter((proposal, index, list) => list.findIndex((item) => item.title === proposal.title) === index)
+    .slice(0, 4);
+}
+
+function getMissionProposalQueue(limit = 8) {
+  const sourceEmployees = getEmployeeOptions()
+    .filter(isAssignedWorklogEmployee)
+    .filter((employee) => !employee.id.includes("profile-user"));
+  return sourceEmployees
+    .flatMap((employee) => getMissionProposalsForEmployee(employee, getEmployeeLogForDate(employee.id)).slice(0, 2))
+    .sort((a, b) => getPrioritySortValue(a.priority) - getPrioritySortValue(b.priority))
+    .slice(0, limit);
+}
+
+function canApplyMissionToEmployee(employeeId = "") {
+  if (!employeeId) return false;
+  return canAccessWorklogOverview() || canEditEmployeeSlot(employeeId);
+}
+
+function applyMissionProposal(proposalId) {
+  const queue = [...getMissionProposalQueue(24), ...getMissionProposalsForEmployee(getSelectedEmployee(), getSelectedLog())];
+  const proposal = queue.find((item) => item.id === proposalId);
+  if (!proposal) return;
+  const employee = getEmployeeOptions().find((item) => item.id === proposal.employeeId) || getSelectedEmployee();
+  if (!canApplyMissionToEmployee(proposal.employeeId)) {
+    alert("본인 업무 또는 권한이 있는 직원의 업무에만 반영할 수 있습니다.");
+    return;
+  }
+  const log = getEmployeeLogForDate(employee.id, getActiveDateKey());
+  const task = (log.tasks || []).find((item) => !String(item.text || "").trim()) || createWorklogTask(proposal.priority);
+  if (!log.tasks.includes(task)) log.tasks.push(task);
+  task.priority = proposal.priority || "A";
+  task.text = `[AI미션] ${proposal.taskText || proposal.title}`;
+  task.status = "미완료";
+  task.done = false;
+  task.aiProposalId = proposal.id;
+  task.aiProposalType = proposal.type;
+  saveState();
+  renderAll();
+  alert(`${getEmployeeAdminLabel(employee)} 업무일지에 AI 미션을 반영했습니다.`);
+}
+
+function renderMissionProposalCards(proposals, options = {}) {
+  const { compact = false, showEmployee = false, allowApply = true } = options;
+  return `
+    <div class="${compact ? "mission-proposal-list is-compact" : "mission-proposal-list"}">
+      ${proposals.map((proposal) => `
+        <article class="mission-proposal-card" data-type="${escapeAttr(proposal.type)}">
+          <header>
+            <span>${escapeHtml(proposal.type)}</span>
+            <em>${escapeHtml(proposal.priority)}</em>
+          </header>
+          <strong>${escapeHtml(proposal.title)}</strong>
+          ${showEmployee ? `<small>${escapeHtml(proposal.employeeLabel)}</small>` : ""}
+          <p>${escapeHtml(proposal.text)}</p>
+          <b>${escapeHtml(proposal.reason)} · ${escapeHtml(proposal.impact)}</b>
+          <footer>
+            <span>${escapeHtml(proposal.tip)}</span>
+            ${allowApply ? `<button type="button" data-ai-mission-apply="${escapeAttr(proposal.id)}">업무에 반영</button>` : ""}
+          </footer>
+        </article>
+      `).join("") || `
+        <article class="mission-proposal-card">
+          <strong>제안 대기</strong>
+          <p>업무일지, 시간표, 보고, 직원설정 데이터가 쌓이면 더 정밀한 미션을 제안합니다.</p>
+        </article>
+      `}
+    </div>
+  `;
+}
+
 function renderAiCoach() {
   const node = document.getElementById("aiCoachGrid");
   if (!node) return;
@@ -1907,6 +2141,8 @@ function renderAiCoach() {
   const log = getSelectedLog();
   const tasks = (log.tasks || []).filter((task) => task.text.trim());
   const growth = buildPersonalGrowthModel(getSelectedEmployee(), log);
+  const personalProposals = getMissionProposalsForEmployee(getSelectedEmployee(), log);
+  const queue = canAccessWorklogOverview() ? getMissionProposalQueue(6) : [];
   const coaching = [
     ["대표 AI 코치", `오늘 점검 우선순위는 운영점수 ${score}점 기준으로 매출, 공간 활용, 문서 연결입니다.`],
     ["사업장 AI 코치", "Beyond Fitness는 회원 240명, 월매출 2천만원을 기준 KPI로 두고 PT 전환율과 이탈률을 먼저 추적해야 합니다."],
@@ -1949,6 +2185,29 @@ function renderAiCoach() {
       <strong>가시적 성장 기준</strong>
       <p>점수는 업무 입력량이 아니라 완료율, 시간배치, 회고 품질, 출결 기록, 역할별 핵심 행동을 함께 반영합니다. 매일 3분만 기록해도 주간 성장 변화가 보이도록 설계했습니다.</p>
     </article>
+    <article class="ai-mission-command-card">
+      <header>
+        <div>
+          <span>AI Mission Architect</span>
+          <strong>업무·프로젝트 제안</strong>
+        </div>
+        <em>${personalProposals.length}건</em>
+      </header>
+      <p>직원 프로필, 직무 매뉴얼, 오늘 업무일지, 시간표, 출결, 사업장 목표를 근거로 지금 맡기기 좋은 일을 제안합니다.</p>
+      ${renderMissionProposalCards(personalProposals, { allowApply: true })}
+    </article>
+    ${queue.length ? `
+      <article class="ai-mission-command-card is-portfolio">
+        <header>
+          <div>
+            <span>CEO Approval Queue</span>
+            <strong>직원별 추천 미션</strong>
+          </div>
+          <em>${queue.length}건</em>
+        </header>
+        ${renderMissionProposalCards(queue, { compact: true, showEmployee: true, allowApply: true })}
+      </article>
+    ` : ""}
     ${coaching.map(([title, body]) => `
       <article>
         <strong>${escapeHtml(title)}</strong>
@@ -6881,6 +7140,13 @@ document.querySelectorAll("[data-menu-view]").forEach((button) => {
 document.querySelector("[data-menu-action='approval']")?.addEventListener("click", () => {
   closeMainMenuPopover();
   openApprovalManagement();
+});
+document.addEventListener("click", (event) => {
+  const button = event.target.closest("[data-ai-mission-apply]");
+  if (!button) return;
+  event.preventDefault();
+  event.stopPropagation();
+  applyMissionProposal(button.dataset.aiMissionApply || "");
 });
 document.querySelectorAll("[data-section-shortcut]").forEach((button) => {
   button.addEventListener("click", () => {

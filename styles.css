@@ -558,13 +558,15 @@ body[data-device-mode="narrow"] .os-mode-switch span[data-device-mode="narrow"] 
 
 .growth-mission-card,
 .growth-competency-card,
-.growth-coaching-card {
+.growth-coaching-card,
+.ai-mission-command-card {
   border-color: rgba(16, 75, 54, 0.12) !important;
   background: rgba(255, 254, 250, 0.86) !important;
 }
 
 .growth-mission-card header,
-.growth-competency-card header {
+.growth-competency-card header,
+.ai-mission-command-card header {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -573,10 +575,143 @@ body[data-device-mode="narrow"] .os-mode-switch span[data-device-mode="narrow"] 
 }
 
 .growth-mission-card header span,
-.growth-competency-card header span {
+.growth-competency-card header span,
+.ai-mission-command-card header span {
   color: rgba(17, 20, 17, 0.58);
   font-size: 12px;
   font-weight: 850;
+}
+
+.ai-mission-command-card {
+  grid-column: 1 / -1;
+  display: grid;
+  gap: 12px;
+}
+
+.ai-mission-command-card header {
+  margin-bottom: 0;
+}
+
+.ai-mission-command-card header strong {
+  display: block;
+  color: var(--ink);
+  font-size: 22px;
+  font-weight: 950;
+}
+
+.ai-mission-command-card header em {
+  border: 1px solid rgba(16, 75, 54, 0.16);
+  border-radius: 999px;
+  background: rgba(16, 75, 54, 0.08);
+  color: var(--fitness-green);
+  padding: 7px 10px;
+  font-size: 13px;
+  font-style: normal;
+  font-weight: 950;
+  white-space: nowrap;
+}
+
+.ai-mission-command-card > p {
+  margin: 0;
+  color: rgba(38, 50, 56, 0.7);
+  font-size: 14px;
+  font-weight: 760;
+  line-height: 1.45;
+}
+
+.mission-proposal-list {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.mission-proposal-list.is-compact {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.mission-proposal-card {
+  display: grid;
+  gap: 7px;
+  min-width: 0;
+  border: 1px solid rgba(16, 75, 54, 0.12);
+  border-radius: 14px;
+  background: rgba(255, 255, 251, 0.82);
+  padding: 11px;
+}
+
+.mission-proposal-card header {
+  margin: 0;
+}
+
+.mission-proposal-card header span,
+.mission-proposal-card b {
+  color: rgba(16, 75, 54, 0.72);
+  font-size: 11px;
+  font-weight: 950;
+}
+
+.mission-proposal-card header em {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 9px;
+  background: var(--fitness-green);
+  color: #fffefa;
+  font-size: 13px;
+  font-style: normal;
+  font-weight: 950;
+}
+
+.mission-proposal-card strong {
+  color: var(--ink);
+  font-size: 16px;
+  font-weight: 950;
+  line-height: 1.24;
+}
+
+.mission-proposal-card small {
+  color: rgba(38, 50, 56, 0.58);
+  font-size: 12px;
+  font-weight: 850;
+}
+
+.mission-proposal-card p,
+.mission-proposal-card footer span {
+  margin: 0;
+  color: rgba(38, 50, 56, 0.72);
+  font-size: 13px;
+  font-weight: 760;
+  line-height: 1.4;
+}
+
+.mission-proposal-card footer {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: center;
+  margin-top: 2px;
+}
+
+.mission-proposal-card footer button {
+  min-height: 34px;
+  border: 1px solid rgba(16, 75, 54, 0.14);
+  border-radius: 999px;
+  background: var(--fitness-green);
+  color: #fffefa;
+  padding: 0 12px;
+  font-size: 12px;
+  font-weight: 950;
+  white-space: nowrap;
+}
+
+.mission-proposal-list.is-compact .mission-proposal-card {
+  padding: 9px;
+}
+
+.mission-proposal-list.is-compact .mission-proposal-card p,
+.mission-proposal-list.is-compact .mission-proposal-card footer span {
+  font-size: 12px;
 }
 
 .growth-mission-card ol {
@@ -12411,6 +12546,19 @@ body[data-active-view="executive"] .worklog-header .main-menu-popover {
   .executive-board-grid,
   .executive-action-board {
     grid-template-columns: minmax(0, 1fr);
+  }
+
+  .mission-proposal-list,
+  .mission-proposal-list.is-compact {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .mission-proposal-card footer {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .mission-proposal-card footer button {
+    justify-self: start;
   }
 
   .executive-orders-list article {

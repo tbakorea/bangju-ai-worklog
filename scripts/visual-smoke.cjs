@@ -399,6 +399,48 @@ async function checkExecutiveManagementPage(browser) {
   await page.close();
 }
 
+async function checkAiMissionArchitect(browser) {
+  const page = await browser.newPage({ viewport: { width: 390, height: 844 } });
+  const errors = [];
+  page.on("pageerror", (error) => errors.push(error.message));
+  page.on("dialog", (dialog) => dialog.accept());
+  await page.addInitScript(() => {
+    localStorage.setItem("beyond-worklog-state-v1", JSON.stringify({
+      selectedDateKey: "2026-07-22",
+      selectedEmployeeId: "beyond-fitness-manager",
+      profile: {
+        email: "j3010@ymail.com",
+        role: "대표",
+        name: "정찬훈",
+        nickname: "베니",
+        approvalStatus: "approved",
+      },
+      employeeLogs: {},
+    }));
+  });
+  await page.goto(target, { waitUntil: "domcontentloaded" });
+  await page.evaluate(() => window.switchView?.("ai"));
+  await page.waitForTimeout(350);
+  const metrics = await page.evaluate(() => ({
+    activeView: document.body.dataset.activeView,
+    missionTitle: document.querySelector(".ai-mission-command-card strong")?.textContent?.trim() || "",
+    applyButtons: document.querySelectorAll("#view-ai [data-ai-mission-apply]").length,
+  }));
+  if (metrics.activeView !== "ai") fail("AI coaching view did not open", metrics.activeView);
+  if (metrics.missionTitle !== "업무·프로젝트 제안") fail("AI mission architect title missing", metrics.missionTitle);
+  if (!metrics.applyButtons) fail("AI mission apply buttons missing");
+  await page.locator("#view-ai [data-ai-mission-apply]").first().click();
+  await page.waitForTimeout(180);
+  const applied = await page.evaluate(() => {
+    const stored = JSON.parse(localStorage.getItem("beyond-worklog-state-v1") || "{}");
+    const logs = stored.employeeLogs?.[stored.selectedDateKey] || {};
+    return Object.values(logs).some((log) => (log.tasks || []).some((task) => String(task.text || "").includes("[AI미션]")));
+  });
+  if (!applied) fail("AI mission was not applied to worklog tasks");
+  if (errors.length) fail("AI mission page errors", errors.join(" | "));
+  await page.close();
+}
+
 (async () => {
   const browser = await chromium.launch({
     headless: true,
@@ -410,6 +452,7 @@ async function checkExecutiveManagementPage(browser) {
     await checkOverviewCommandBoard(browser);
     await checkControlTower(browser);
     await checkExecutiveManagementPage(browser);
+    await checkAiMissionArchitect(browser);
     await checkRepresentativeProfileSeparation(browser);
     await checkCalendarAnnotations(browser);
   } finally {
