@@ -13396,3 +13396,183 @@ body[data-view-mode="ceo"] .mobile-focus-open {
 .worklog-shell > .report-backup-view.is-active {
   display: grid !important;
 }
+
+/* Unified section chrome: the page title already lives inside each section, so
+   the old global title bar should not consume vertical space. Only the shared
+   action buttons are docked into the active section. */
+.worklog-header,
+body[data-layout-mode="phone"][data-active-view="worklog-overview"] .worklog-header,
+body[data-active-view="executive"] .worklog-header {
+  position: fixed !important;
+  inset: 0 auto auto 0 !important;
+  z-index: 1 !important;
+  width: 0 !important;
+  height: 0 !important;
+  min-height: 0 !important;
+  margin: 0 !important;
+  overflow: visible !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  padding: 0 !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+
+.worklog-header > div:first-child,
+.worklog-header > select,
+.worklog-header > .header-actions {
+  display: none !important;
+}
+
+.worklog-shell > .worklog-view.is-active {
+  position: relative;
+}
+
+.section-menu-dock {
+  position: absolute;
+  top: clamp(12px, 2vw, 18px);
+  right: clamp(12px, 2vw, 18px);
+  z-index: 140;
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 7px;
+  pointer-events: none;
+}
+
+.section-menu-dock > button {
+  pointer-events: auto;
+}
+
+.section-menu-dock #settingsGearButton,
+.section-menu-dock .global-view-mode-button,
+.section-menu-dock .global-attendance-button,
+.section-menu-dock .approval-alert-button {
+  display: inline-grid;
+  place-items: center;
+  width: auto;
+  min-width: 50px;
+  max-width: none;
+  min-height: 48px;
+  border: 1px solid rgba(18, 59, 45, 0.12);
+  border-radius: 17px;
+  background: rgba(255, 254, 250, 0.94);
+  color: var(--ink);
+  padding: 0 13px;
+  box-shadow:
+    0 12px 24px rgba(15, 59, 46, 0.08),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.64);
+  font-size: 13px;
+  font-weight: 950;
+  line-height: 1;
+  text-align: center;
+  white-space: nowrap;
+}
+
+.section-menu-dock #settingsGearButton {
+  min-width: 56px;
+}
+
+.section-menu-dock .global-attendance-button {
+  background: var(--fitness-green);
+  color: var(--nordic-sheet);
+}
+
+.section-menu-dock .global-attendance-button.is-recorded {
+  background: #0b241c;
+  box-shadow:
+    0 12px 24px rgba(15, 59, 46, 0.12),
+    inset 0 -3px 0 rgba(255, 254, 250, 0.18);
+}
+
+.section-menu-dock .global-view-mode-button[hidden],
+.section-menu-dock .global-attendance-button[hidden],
+.section-menu-dock .approval-alert-button[hidden] {
+  display: none !important;
+}
+
+.section-menu-dock .main-menu-popover {
+  position: absolute !important;
+  top: calc(100% + 8px) !important;
+  right: 0 !important;
+  left: auto !important;
+  z-index: 180 !important;
+  pointer-events: auto;
+}
+
+.section-menu-dock .attendance-popover {
+  position: absolute !important;
+  top: calc(100% + 8px) !important;
+  right: 68px !important;
+  left: auto !important;
+  z-index: 181 !important;
+  pointer-events: auto;
+}
+
+.section-menu-dock .main-menu-popover[hidden],
+.section-menu-dock .attendance-popover[hidden] {
+  display: none !important;
+}
+
+.settings-heading,
+.auth-heading,
+.section-heading-panel,
+.staff-master-hero,
+.report-command-card,
+.executive-hero,
+.worklog-overview-hero {
+  padding-right: clamp(76px, 14vw, 116px);
+}
+
+#view-management > h2,
+#view-attendance .worklog-title-row,
+#view-projects > h2,
+#view-organization > h2 {
+  padding-right: clamp(76px, 14vw, 116px);
+}
+
+.settings-heading .icon-close,
+.auth-heading .icon-close,
+#executiveMenuButton {
+  display: none !important;
+}
+
+body[data-layout-mode="phone"] .section-menu-dock {
+  top: 14px;
+  right: 14px;
+}
+
+body[data-layout-mode="phone"] .section-menu-dock #settingsGearButton,
+body[data-layout-mode="phone"] .section-menu-dock .global-view-mode-button,
+body[data-layout-mode="phone"] .section-menu-dock .global-attendance-button,
+body[data-layout-mode="phone"] .section-menu-dock .approval-alert-button {
+  min-width: 54px;
+  min-height: 48px;
+  border-radius: 17px;
+  padding-inline: 11px;
+  font-size: 13px;
+}
+
+body[data-layout-mode="phone"][data-active-view="worklog-overview"] .worklog-shell {
+  padding-top: max(12px, env(safe-area-inset-top)) !important;
+}
+
+body[data-layout-mode="phone"][data-active-view="worklog-overview"] .worklog-overview-hero {
+  margin-top: 0 !important;
+}
+
+/* Keep this at the absolute end so page-specific display rules never stack
+   inactive sections under the active view. */
+.worklog-shell > .worklog-view:not(.is-active) {
+  display: none !important;
+}
+
+.worklog-shell > .worklog-view.is-active {
+  display: block !important;
+}
+
+.worklog-shell > .report-backup-view.is-active {
+  display: grid !important;
+}

@@ -360,7 +360,7 @@ async function checkExecutiveManagementPage(browser) {
       todayText: todayButton?.textContent?.trim() || "",
       todayFits: todayButton ? todayButton.scrollWidth <= todayButton.clientWidth + 2 : false,
       kpiButtonCount: document.querySelectorAll("#executiveKpiGrid button[data-executive-jump]").length,
-      menuVisible: Boolean(document.querySelector("#executiveMenuButton")?.offsetWidth),
+      menuVisible: Boolean(document.querySelector("#view-executive > .section-menu-dock #settingsGearButton")?.offsetWidth),
       closedContentHidden: firstClosed ? getComputedStyle(firstClosed.querySelector(".executive-site-priorities")).display === "none" : false,
     };
   });
@@ -372,9 +372,9 @@ async function checkExecutiveManagementPage(browser) {
   if (!/^\d{4}년 \d{1,2}월 \d{1,2}일 \([日月火水木金土]\)$/.test(metrics.todayText)) fail("executive date button should show formal date", metrics.todayText);
   if (!metrics.todayFits) fail("executive date button is clipped", metrics.todayText);
   if (metrics.kpiButtonCount !== 6) fail("executive KPI buttons should be six navigators", String(metrics.kpiButtonCount));
-  if (!metrics.menuVisible) fail("executive menu button should live inside hero");
+  if (!metrics.menuVisible) fail("executive menu button should be docked inside the active section");
   if (!metrics.closedContentHidden) fail("executive detail sections should start summarized");
-  await page.click("#executiveMenuButton");
+  await page.click("#view-executive > .section-menu-dock #settingsGearButton");
   await page.waitForTimeout(120);
   const menuState = await page.evaluate(() => {
     const popover = document.querySelector("#mainMenuPopover");
@@ -382,7 +382,7 @@ async function checkExecutiveManagementPage(browser) {
     const rect = popover?.getBoundingClientRect();
     return {
       hidden: popover?.hidden ?? true,
-      aria: document.querySelector("#executiveMenuButton")?.getAttribute("aria-expanded"),
+      aria: document.querySelector("#settingsGearButton")?.getAttribute("aria-expanded"),
       hasVisibleItem: Boolean(firstButton?.offsetWidth),
       inViewport: rect ? rect.width > 0 && rect.height > 0 && rect.right <= window.innerWidth && rect.left >= 0 : false,
     };

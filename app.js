@@ -6955,6 +6955,7 @@ function switchView(view) {
   });
   const panelView = worklogViewAliases[view] || view;
   document.querySelectorAll(".worklog-view").forEach((panel) => panel.classList.toggle("is-active", panel.id === `view-${panelView}`));
+  dockGlobalHeaderActions(panelView);
   const menuSelect = document.getElementById("mainMenuWheelSelect");
   if (menuSelect) {
     const menuValue = ["fitness-log", "bangju-log", "beyond-log", "worklog-overview"].includes(view) || requestedView === "worklog" ? "worklog" : view;
@@ -6973,8 +6974,40 @@ function switchView(view) {
   renderManagement();
   renderOrganization();
   updateGlobalAttendanceVisibility(view);
+  dockGlobalHeaderActions(panelView);
   applyCurrentWorklogPermissionState(view);
   if (view === "fitness-log") window.setTimeout(() => showFitnessPageToast(), 80);
+}
+
+function getActiveViewPanel(panelView = worklogViewAliases[activeView] || activeView) {
+  return document.getElementById(`view-${panelView}`) || document.querySelector(".worklog-view.is-active");
+}
+
+function dockGlobalHeaderActions(panelView = worklogViewAliases[activeView] || activeView) {
+  const panel = getActiveViewPanel(panelView);
+  const menuButton = document.getElementById("settingsGearButton");
+  const menuPopover = document.getElementById("mainMenuPopover");
+  if (!panel || !menuButton || !menuPopover) return;
+
+  let dock = panel.querySelector(":scope > .section-menu-dock");
+  if (!dock) {
+    dock = document.createElement("div");
+    dock.className = "section-menu-dock";
+    dock.setAttribute("aria-label", "현재 섹션 메뉴");
+    panel.prepend(dock);
+  }
+
+  const modeButton = document.getElementById("globalViewModeButton");
+  const attendanceButton = document.getElementById("globalAttendanceButton");
+  const attendancePopover = document.getElementById("attendancePopover");
+  const approvalButton = document.getElementById("approvalAlertButton");
+
+  if (approvalButton && !approvalButton.hidden) dock.appendChild(approvalButton);
+  if (modeButton && !modeButton.hidden) dock.appendChild(modeButton);
+  if (attendanceButton && !attendanceButton.hidden) dock.appendChild(attendanceButton);
+  dock.appendChild(menuButton);
+  dock.appendChild(menuPopover);
+  if (attendancePopover) dock.appendChild(attendancePopover);
 }
 
 function toggleMainMenuPopover() {
@@ -7019,6 +7052,7 @@ function renderAll() {
   renderOrganization();
   renderReport();
   applyCurrentWorklogPermissionState();
+  dockGlobalHeaderActions();
 }
 
 function escapeAttr(value = "") {
