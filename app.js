@@ -2175,6 +2175,11 @@ function getUserWorklogView() {
   return "bangju-log";
 }
 
+function getInitialLandingView() {
+  if (isRepresentativeProfile()) return "executive";
+  return getUserWorklogView();
+}
+
 function getWorklogEmployeeIdsForView(view) {
   if (view === "fitness-log") return getAssignedWorklogEmployeeIds(fitnessEmployeeIds);
   if (view === "beyond-log") return getAssignedWorklogEmployeeIds(beyondWorklogEmployeeIds);
@@ -2879,6 +2884,7 @@ async function applySession(session) {
   startApprovalNotificationPolling();
   renderAll();
   renderAuthStatus();
+  switchView(getInitialLandingView());
 }
 
 function scheduleRemoteSave(delay = 700) {
@@ -7178,5 +7184,5 @@ renderInnovationLab();
 document.getElementById("authEmail").value = state.profile.email || "";
 renderAuthStatus();
 renderAll();
-switchView("worklog");
+switchView(getInitialLandingView());
 initializeAuth();
