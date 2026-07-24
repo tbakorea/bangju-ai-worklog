@@ -182,7 +182,10 @@
             <h2>대표 경영페이지</h2>
             <span id="executiveAccessLabel">대표 전용 · 의사결정과 개입사항</span>
           </div>
-          <button type="button" id="executiveTodayButton">오늘 기준</button>
+          <div class="executive-hero-actions">
+            <button type="button" id="executiveTodayButton">오늘 기준</button>
+            <button type="button" id="executiveMenuButton" aria-haspopup="menu">메뉴</button>
+          </div>
         </div>
         <div class="control-access-card" id="executiveAccessCard" hidden>
           <strong>대표 권한이 필요합니다.</strong>
@@ -190,49 +193,55 @@
         </div>
         <div class="executive-body" id="executiveBody">
           <div class="executive-kpi-grid" id="executiveKpiGrid"></div>
-          <section class="executive-decision-card">
-            <header>
+          <section class="executive-decision-card is-open" data-executive-section="intervention">
+            <header data-executive-toggle="intervention">
               <span>CEO Agenda</span>
               <h3>오늘 대표 개입사항</h3>
+              <em id="executiveAgendaSummary">핵심 판단</em>
             </header>
             <div id="executiveAgendaList" class="executive-agenda-list"></div>
           </section>
           <section class="executive-board-grid">
-            <article class="executive-panel">
-              <header>
+            <article class="executive-panel" data-executive-section="score">
+              <header data-executive-toggle="score">
                 <span>Business Portfolio</span>
                 <h3>사업장 전략 우선순위</h3>
+                <em id="executiveSiteSummary">사업장</em>
               </header>
               <div id="executiveSitePriorities" class="executive-site-priorities"></div>
             </article>
-            <article class="executive-panel">
-              <header>
+            <article class="executive-panel" data-executive-section="customer">
+              <header data-executive-toggle="customer">
                 <span>Capital & Labor</span>
                 <h3>자금·노무·수익 신호</h3>
+                <em id="executiveFinanceSummary">자금/매출</em>
               </header>
               <div id="executiveFinanceSignals" class="executive-signal-list"></div>
             </article>
           </section>
           <section class="executive-board-grid">
-            <article class="executive-panel">
-              <header>
+            <article class="executive-panel" data-executive-section="people">
+              <header data-executive-toggle="people">
                 <span>People</span>
                 <h3>핵심 인력 리포트</h3>
+                <em id="executivePeopleSummary">직원</em>
               </header>
               <div id="executivePeopleSignals" class="executive-people-list"></div>
             </article>
-            <article class="executive-panel">
-              <header>
+            <article class="executive-panel" data-executive-section="tasks">
+              <header data-executive-toggle="tasks">
                 <span>Orders</span>
                 <h3>대표 지시·결재 대기</h3>
+                <em id="executiveOrdersSummary">결재</em>
               </header>
               <div id="executiveOrdersList" class="executive-orders-list"></div>
             </article>
           </section>
-          <section class="executive-panel">
-            <header>
+          <section class="executive-panel" data-executive-section="pt">
+            <header data-executive-toggle="pt">
               <span>7 Days Execution</span>
               <h3>이번 주 경영 액션 보드</h3>
+              <em id="executiveActionSummary">실행</em>
             </header>
             <div id="executiveActionBoard" class="executive-action-board"></div>
           </section>

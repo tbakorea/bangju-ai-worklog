@@ -1590,18 +1590,33 @@ function renderExecutiveManagement() {
   ].filter(Boolean).length;
 
   const kpis = [
-    ["경영점수", `${operatingScore}점`, operatingScore >= 82 ? "안정" : operatingScore >= 68 ? "주의" : "개입"],
-    ["대표 개입", `${pendingDecisionCount}건`, pendingDecisionCount ? "오늘 처리" : "관찰"],
-    ["업무 실행률", taskTotal ? `${Math.round((completedTotal / taskTotal) * 100)}%` : "대기", `${completedTotal}/${taskTotal || 0}`],
-    ["직원 신호", `${issueRows.length}건`, absentRows.length ? `결석 ${absentRows.length}` : "업무"],
-    ["고객행동", `${salesActions}건`, "상담·영업"],
-    ["유료 P/T", `${fitnessOps.ptRegular + fitnessOps.ptOther}건`, `무료 ${fitnessOps.ptFree}`],
+    ["경영점수", `${operatingScore}점`, operatingScore >= 82 ? "안정" : operatingScore >= 68 ? "주의" : "개입", "score", "사업장 운영점수와 전략 우선순위로 이동합니다."],
+    ["대표 개입", `${pendingDecisionCount}건`, pendingDecisionCount ? "오늘 처리" : "관찰", "intervention", "오늘 대표가 직접 판단하거나 위임할 항목으로 이동합니다."],
+    ["업무 실행률", taskTotal ? `${Math.round((completedTotal / taskTotal) * 100)}%` : "대기", `${completedTotal}/${taskTotal || 0}`, "tasks", "미완료 업무와 대표 지시 대기 항목으로 이동합니다."],
+    ["직원 신호", `${issueRows.length}건`, absentRows.length ? `결석 ${absentRows.length}` : "업무", "people", "근태, 태도, 역량 변화 신호로 이동합니다."],
+    ["고객행동", `${salesActions}건`, "상담·영업", "customer", "상담, 영업, 자금·수익 신호로 이동합니다."],
+    ["유료 P/T", `${fitnessOps.ptRegular + fitnessOps.ptOther}건`, `무료 ${fitnessOps.ptFree}`, "pt", "피트니스 수업과 주간 실행 보드로 이동합니다."],
   ];
-  document.getElementById("executiveKpiGrid").innerHTML = kpis.map(([label, value, meta]) => `
-    <article><span>${escapeHtml(label)}</span><strong>${escapeHtml(value)}</strong><em>${escapeHtml(meta)}</em></article>
+  document.getElementById("executiveKpiGrid").innerHTML = kpis.map(([label, value, meta, target, title]) => `
+    <button type="button" data-executive-jump="${escapeAttr(target)}" title="${escapeAttr(title)}">
+      <span>${escapeHtml(label)}</span><strong>${escapeHtml(value)}</strong><em>${escapeHtml(meta)}</em>
+    </button>
   `).join("");
 
   const agenda = buildExecutiveAgenda({ staffRows, siteRows, fitnessOps, taskTotal, completedTotal, salesActions, operatingScore });
+  const warnAgendaCount = agenda.filter((item) => item.level === "warn").length;
+  setText("executiveAgendaSummary", warnAgendaCount ? `주의 ${warnAgendaCount}` : "정상");
+  setText("executiveSiteSummary", `${siteRows.length}개 · 이슈 ${siteRows.reduce((sum, site) => sum + site.issueCount, 0)}`);
+  setText("executiveFinanceSummary", salesActions ? `고객행동 ${salesActions}` : "영업공백");
+  setText("executivePeopleSummary", issueRows.length ? `신호 ${issueRows.length}` : "정상");
+  setText("executiveOrdersSummary", `${Math.max(0, taskTotal - completedTotal)}건 대기`);
+  setText("executiveActionSummary", `PT ${fitnessOps.ptRegular + fitnessOps.ptOther} · 주간`);
+  setExecutiveSectionAlert("intervention", warnAgendaCount > 0);
+  setExecutiveSectionAlert("score", operatingScore < 75 || siteRows.some((site) => site.status === "보류" || site.status === "준비"));
+  setExecutiveSectionAlert("customer", salesActions === 0);
+  setExecutiveSectionAlert("people", issueRows.length > 0);
+  setExecutiveSectionAlert("tasks", Math.max(0, taskTotal - completedTotal) > 0);
+  setExecutiveSectionAlert("pt", fitnessOps.ptFree > fitnessOps.ptRegular + fitnessOps.ptOther);
   document.getElementById("executiveAgendaList").innerHTML = agenda.map((item, index) => `
     <article data-level="${escapeAttr(item.level)}">
       <b>${String(index + 1).padStart(2, "0")}</b>
@@ -1651,6 +1666,39 @@ function renderExecutiveManagement() {
     ["토", "현장/센터 운영 품질·고객경험 점검"],
     ["日", "대표 회고·AI 코칭 반영·주간 지시 작성"],
   ].map(([day, text]) => `<article><strong>${escapeHtml(day)}</strong><span>${escapeHtml(text)}</span></article>`).join("");
+  setupExecutiveInteractions();
+}
+
+function setText(id, value) {
+  const node = document.getElementById(id);
+  if (node) node.textContent = value;
+}
+
+function setExecutiveSectionAlert(sectionId, isAlert) {
+  const section = document.querySelector(`[data-executive-section="${CSS.escape(sectionId)}"]`);
+  if (section) section.dataset.alert = isAlert ? "true" : "false";
+}
+
+function openExecutiveSection(sectionId = "intervention") {
+  document.querySelectorAll("[data-executive-section]").forEach((section) => {
+    section.classList.toggle("is-open", section.dataset.executiveSection === sectionId);
+  });
+  const target = document.querySelector(`[data-executive-section="${CSS.escape(sectionId)}"]`);
+  target?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+}
+
+function setupExecutiveInteractions() {
+  document.querySelectorAll("[data-executive-jump]").forEach((button) => {
+    button.onclick = () => openExecutiveSection(button.dataset.executiveJump || "intervention");
+  });
+  document.querySelectorAll("[data-executive-toggle]").forEach((header) => {
+    header.onclick = () => {
+      const sectionId = header.dataset.executiveToggle || "intervention";
+      const section = document.querySelector(`[data-executive-section="${CSS.escape(sectionId)}"]`);
+      if (section?.classList.contains("is-open")) section.classList.remove("is-open");
+      else openExecutiveSection(sectionId);
+    };
+  });
 }
 
 function buildExecutiveAgenda({ staffRows, siteRows, fitnessOps, taskTotal, completedTotal, salesActions, operatingScore }) {
@@ -7147,6 +7195,10 @@ document.getElementById("controlTowerRefreshButton")?.addEventListener("click", 
 document.getElementById("executiveTodayButton")?.addEventListener("click", () => {
   setSelectedDateKey(todayKey);
   switchView("executive");
+});
+document.getElementById("executiveMenuButton")?.addEventListener("click", (event) => {
+  event.stopPropagation();
+  document.getElementById("settingsGearButton")?.click();
 });
 document.getElementById("reportTone").onchange = (event) => {
   state.reportTone = event.target.value;

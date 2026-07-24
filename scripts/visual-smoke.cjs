@@ -320,6 +320,63 @@ async function checkCalendarAnnotations(browser) {
   await page.close();
 }
 
+async function checkExecutiveManagementPage(browser) {
+  const page = await browser.newPage({ viewport: { width: 390, height: 844 } });
+  const errors = [];
+  page.on("pageerror", (error) => errors.push(error.message));
+  await page.addInitScript(() => {
+    localStorage.setItem("beyond-worklog-state-v1", JSON.stringify({
+      selectedDateKey: "2026-07-22",
+      profile: {
+        email: "j3010@ymail.com",
+        role: "대표",
+        name: "정찬훈",
+        nickname: "베니",
+        approvalStatus: "approved",
+      },
+      employeeLogs: {},
+    }));
+  });
+  await page.goto(target, { waitUntil: "domcontentloaded" });
+  await page.evaluate(() => {
+    document.body.classList.add("physical-phone-device");
+    document.body.dataset.layoutMode = "phone";
+    document.body.dataset.viewMode = "ceo";
+    window.switchView?.("executive");
+  });
+  await page.waitForTimeout(350);
+  const metrics = await page.evaluate(() => {
+    const header = document.querySelector(".worklog-header");
+    const hero = document.querySelector(".executive-hero");
+    const title = document.querySelector(".executive-hero h2");
+    const firstClosed = document.querySelector('[data-executive-section="score"]');
+    return {
+      activeView: document.body.dataset.activeView,
+      headerHeight: header?.getBoundingClientRect().height || 0,
+      heroSticky: hero ? getComputedStyle(hero).position : "",
+      titleText: title?.textContent?.trim() || "",
+      titleColor: title ? getComputedStyle(title).color : "",
+      kpiButtonCount: document.querySelectorAll("#executiveKpiGrid button[data-executive-jump]").length,
+      menuVisible: Boolean(document.querySelector("#executiveMenuButton")?.offsetWidth),
+      closedContentHidden: firstClosed ? getComputedStyle(firstClosed.querySelector(".executive-site-priorities")).display === "none" : false,
+    };
+  });
+  if (metrics.activeView !== "executive") fail("executive active view mismatch", metrics.activeView);
+  if (metrics.headerHeight > 1) fail("executive duplicate top header should be visually removed", `${metrics.headerHeight}px`);
+  if (metrics.heroSticky !== "sticky") fail("executive hero should be sticky", metrics.heroSticky);
+  if (metrics.titleText !== "대표 경영페이지") fail("executive title mismatch", metrics.titleText);
+  if (metrics.titleColor !== "rgb(255, 247, 207)") fail("executive title color should stand out", metrics.titleColor);
+  if (metrics.kpiButtonCount !== 6) fail("executive KPI buttons should be six navigators", String(metrics.kpiButtonCount));
+  if (!metrics.menuVisible) fail("executive menu button should live inside hero");
+  if (!metrics.closedContentHidden) fail("executive detail sections should start summarized");
+  await page.click('[data-executive-jump="score"]');
+  await page.waitForTimeout(150);
+  const opened = await page.evaluate(() => document.querySelector('[data-executive-section="score"]')?.classList.contains("is-open"));
+  if (!opened) fail("executive KPI button did not open target section");
+  if (errors.length) fail("executive page errors", errors.join(" | "));
+  await page.close();
+}
+
 (async () => {
   const browser = await chromium.launch({
     headless: true,
@@ -330,6 +387,7 @@ async function checkCalendarAnnotations(browser) {
     await checkPhoneWorklog(browser);
     await checkOverviewCommandBoard(browser);
     await checkControlTower(browser);
+    await checkExecutiveManagementPage(browser);
     await checkRepresentativeProfileSeparation(browser);
     await checkCalendarAnnotations(browser);
   } finally {
