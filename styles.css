@@ -2068,13 +2068,14 @@ body[data-device-mode="narrow"] .os-mode-switch span[data-device-mode="narrow"] 
 }
 
 .work-history-hero {
+  position: relative;
   border: 1px solid rgba(33, 55, 45, 0.12);
   border-radius: 18px;
   background:
     linear-gradient(135deg, rgba(15, 59, 46, 0.95), rgba(23, 56, 47, 0.86)),
     var(--fitness-green);
   color: var(--nordic-sheet);
-  padding: 16px;
+  padding: 16px clamp(82px, 18vw, 132px) 16px 16px;
   box-shadow: 0 14px 34px rgba(15, 59, 46, 0.12);
 }
 
@@ -13666,6 +13667,24 @@ body[data-active-view="executive"] .worklog-header {
 #view-projects > h2,
 #view-organization > h2 {
   padding-right: clamp(76px, 14vw, 116px);
+}
+
+#view-attendance .worklog-title-row {
+  display: none;
+}
+
+#view-attendance .work-history-summary {
+  margin-top: 0;
+}
+
+#view-attendance .work-history-hero .section-menu-dock {
+  top: 14px;
+  right: 14px;
+}
+
+#view-attendance .work-history-hero .section-menu-dock #settingsGearButton {
+  border-color: rgba(255, 254, 250, 0.22);
+  background: rgba(255, 254, 250, 0.96);
 }
 
 .settings-heading .icon-close,

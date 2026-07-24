@@ -7258,12 +7258,15 @@ function dockGlobalHeaderActions(panelView = worklogViewAliases[activeView] || a
   const menuPopover = document.getElementById("mainMenuPopover");
   if (!panel || !menuButton || !menuPopover) return;
 
-  let dock = panel.querySelector(":scope > .section-menu-dock");
+  const target = panelView === "attendance" ? panel.querySelector(".work-history-hero") || panel : panel;
+  let dock = target.querySelector(":scope > .section-menu-dock") || panel.querySelector(":scope > .section-menu-dock");
   if (!dock) {
     dock = document.createElement("div");
     dock.className = "section-menu-dock";
     dock.setAttribute("aria-label", "현재 섹션 메뉴");
-    panel.prepend(dock);
+  }
+  if (dock.parentElement !== target) {
+    target.prepend(dock);
   }
 
   const modeButton = document.getElementById("globalViewModeButton");
