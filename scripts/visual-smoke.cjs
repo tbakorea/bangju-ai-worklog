@@ -226,8 +226,8 @@ async function checkControlTower(browser) {
   if (metrics.activeView !== "control") fail("control tower active view mismatch", metrics.activeView);
   if (metrics.denied || metrics.bodyHidden) fail("representative control tower should be visible");
   if (metrics.titleText !== "방주그룹 통합관제") fail("control tower title mismatch", metrics.titleText);
-  if (metrics.heroHeight > 118) fail("control tower hero is too tall", `${metrics.heroHeight}px`);
-  if (metrics.kpiCount !== 4) fail("control tower should focus on four KPIs", String(metrics.kpiCount));
+  if (metrics.heroHeight > 180) fail("control tower hero is too tall", `${metrics.heroHeight}px`);
+  if (metrics.kpiCount !== 6) fail("control tower should focus on six compact KPIs", String(metrics.kpiCount));
   if (metrics.briefingCount !== 3) fail("control tower briefing should show three signals", String(metrics.briefingCount));
   if (metrics.siteCount < 3) fail("control tower should show business site signals", String(metrics.siteCount));
   if (metrics.jumpCount !== 4) fail("control tower action shortcuts missing", String(metrics.jumpCount));

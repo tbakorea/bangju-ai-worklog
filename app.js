@@ -1614,7 +1614,12 @@ function renderControlTower() {
   const accessCard = document.getElementById("controlAccessCard");
   const body = document.getElementById("controlTowerBody");
   const accessLabel = document.getElementById("controlTowerAccessLabel");
+  const todayButton = document.getElementById("controlTowerRefreshButton");
   if (!body) return;
+  if (todayButton) {
+    todayButton.textContent = formatFormalKoreanDate(getActiveDateKey());
+    todayButton.setAttribute("aria-label", `${formatFormalKoreanDate(getActiveDateKey())} 기준, 오늘로 이동`);
+  }
   const allowed = canAccessControlTower();
   if (accessCard) accessCard.hidden = allowed;
   body.hidden = !allowed;
@@ -1641,7 +1646,9 @@ function renderControlTower() {
     ["운영 사업장", `${activeSites}`, `전체 ${assetRows.length} 공간/호실`],
     ["직원 출결", `${presentCount}/${staffRows.length}`, issueCount ? `신호 ${issueCount}` : "정상 추적"],
     ["업무 기록", `${completedTotal}/${taskTotal || 0}`, taskTotal ? `${completionRate}% 완료` : "입력 대기"],
+    ["관제 신호", `${issueCount}건`, issueCount ? "확인 필요" : "정상"],
     ["피트니스 행동", `${salesActions}`, `유료PT ${fitnessOps.ptRegular + fitnessOps.ptOther}`],
+    ["운영 점수", `${operatingScore}점`, operatingScore < 75 ? "보강 필요" : "추적 중"],
   ];
   document.getElementById("controlKpiGrid").innerHTML = kpis.map(([label, value, meta]) => `
     <article><span>${escapeHtml(label)}</span><strong>${escapeHtml(value)}</strong><em>${escapeHtml(meta)}</em></article>
@@ -7762,12 +7769,14 @@ function toggleMainMenuPopover() {
   const popover = document.getElementById("mainMenuPopover");
   const button = document.getElementById("settingsGearButton");
   const executiveButton = document.getElementById("executiveMenuButton");
+  const controlButton = document.getElementById("controlTowerMenuButton");
   if (!popover) return;
   const willOpen = popover.hidden;
   if (willOpen) renderMainMenuAuthButton();
   popover.hidden = !willOpen;
   button?.setAttribute("aria-expanded", String(willOpen));
   executiveButton?.setAttribute("aria-expanded", String(willOpen));
+  controlButton?.setAttribute("aria-expanded", String(willOpen));
   if (willOpen) closeAttendancePopover();
   if (willOpen) popover.querySelector("button:not([hidden])")?.focus();
 }
@@ -7776,10 +7785,12 @@ function closeMainMenuPopover() {
   const popover = document.getElementById("mainMenuPopover");
   const button = document.getElementById("settingsGearButton");
   const executiveButton = document.getElementById("executiveMenuButton");
+  const controlButton = document.getElementById("controlTowerMenuButton");
   if (!popover || popover.hidden) return;
   popover.hidden = true;
   button?.setAttribute("aria-expanded", "false");
   executiveButton?.setAttribute("aria-expanded", "false");
+  controlButton?.setAttribute("aria-expanded", "false");
 }
 
 function renderAll() {
@@ -8285,6 +8296,10 @@ document.getElementById("executiveTodayButton")?.addEventListener("click", () =>
   switchView("executive");
 });
 document.getElementById("executiveMenuButton")?.addEventListener("click", (event) => {
+  event.stopPropagation();
+  toggleMainMenuPopover();
+});
+document.getElementById("controlTowerMenuButton")?.addEventListener("click", (event) => {
   event.stopPropagation();
   toggleMainMenuPopover();
 });
