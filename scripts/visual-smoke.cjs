@@ -349,7 +349,7 @@ async function checkExecutiveManagementPage(browser) {
     const header = document.querySelector(".worklog-header");
     const hero = document.querySelector(".executive-hero");
     const title = document.querySelector(".executive-hero h2");
-    const todayButton = document.querySelector("#executiveTodayButton");
+    const dateButton = document.querySelector("#executiveDateButton");
     const firstClosed = document.querySelector('[data-executive-section="score"]');
     return {
       activeView: document.body.dataset.activeView,
@@ -357,10 +357,10 @@ async function checkExecutiveManagementPage(browser) {
       heroSticky: hero ? getComputedStyle(hero).position : "",
       titleText: title?.textContent?.trim() || "",
       titleColor: title ? getComputedStyle(title).color : "",
-      todayText: todayButton?.textContent?.trim() || "",
-      todayFits: todayButton ? todayButton.scrollWidth <= todayButton.clientWidth + 2 : false,
+      todayText: dateButton?.textContent?.trim() || "",
+      todayFits: dateButton ? dateButton.scrollWidth <= dateButton.clientWidth + 2 : false,
       kpiButtonCount: document.querySelectorAll("#executiveKpiGrid button[data-executive-jump]").length,
-      menuVisible: Boolean(document.querySelector("#view-executive > .section-menu-dock #settingsGearButton")?.offsetWidth),
+      menuVisible: Boolean(document.querySelector("#executiveMenuButton")?.offsetWidth),
       closedContentHidden: firstClosed ? getComputedStyle(firstClosed.querySelector(".executive-site-priorities")).display === "none" : false,
     };
   });
@@ -369,12 +369,12 @@ async function checkExecutiveManagementPage(browser) {
   if (metrics.heroSticky !== "sticky") fail("executive hero should be sticky", metrics.heroSticky);
   if (metrics.titleText !== "대표 경영페이지") fail("executive title mismatch", metrics.titleText);
   if (metrics.titleColor !== "rgb(255, 247, 207)") fail("executive title color should stand out", metrics.titleColor);
-  if (!/^\d{4}년 \d{1,2}월 \d{1,2}일 \([日月火水木金土]\)$/.test(metrics.todayText)) fail("executive date button should show formal date", metrics.todayText);
+  if (!/^\d{4}\.\d{2}\.\d{2}\([日月火水木金土]\)$/.test(metrics.todayText)) fail("executive date button should show compact date", metrics.todayText);
   if (!metrics.todayFits) fail("executive date button is clipped", metrics.todayText);
   if (metrics.kpiButtonCount !== 6) fail("executive KPI buttons should be six navigators", String(metrics.kpiButtonCount));
   if (!metrics.menuVisible) fail("executive menu button should be docked inside the active section");
   if (!metrics.closedContentHidden) fail("executive detail sections should start summarized");
-  await page.click("#view-executive > .section-menu-dock #settingsGearButton");
+  await page.click("#executiveMenuButton");
   await page.waitForTimeout(120);
   const menuState = await page.evaluate(() => {
     const popover = document.querySelector("#mainMenuPopover");

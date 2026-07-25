@@ -11933,9 +11933,11 @@ body[data-active-view="control"] .worklog-header .main-menu-popover {
   justify-content: flex-end;
   gap: 7px;
   min-width: 0;
+  width: 100%;
 }
 
-.executive-hero-actions button {
+.executive-hero-actions button,
+.control-tower-hero-actions button {
   min-height: 44px;
   border: 1px solid rgba(255, 254, 250, 0.26);
   border-radius: 999px;
@@ -11946,11 +11948,31 @@ body[data-active-view="control"] .worklog-header .main-menu-popover {
   font-weight: 950;
 }
 
-#executiveTodayButton {
+.executive-hero-actions .dashboard-date-button,
+.control-tower-hero-actions .dashboard-date-button {
+  flex: 1 1 auto;
   max-width: min(54vw, 280px);
   background: rgba(255, 254, 250, 0.2);
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+.executive-hero-actions .dashboard-date-arrow,
+.control-tower-hero-actions .dashboard-date-arrow {
+  display: inline-grid;
+  flex: 0 0 44px;
+  place-items: center;
+  width: 44px;
+  padding-inline: 0;
+  font-size: 25px;
+  line-height: 1;
+}
+
+.executive-hero-actions .dashboard-today-button,
+.control-tower-hero-actions .dashboard-today-button {
+  flex: 0 0 auto;
+  background: rgba(255, 247, 207, 0.22);
+  color: #fff7cf;
 }
 
 .executive-body {
@@ -12275,24 +12297,7 @@ body[data-active-view="control"] .worklog-header .main-menu-popover {
   justify-content: flex-end;
   gap: 7px;
   min-width: 0;
-}
-
-.control-tower-hero-actions button {
-  min-height: 44px;
-  border: 1px solid rgba(255, 254, 250, 0.26);
-  border-radius: 999px;
-  background: rgba(255, 254, 250, 0.13);
-  color: var(--nordic-sheet);
-  padding: 8px 13px;
-  white-space: nowrap;
-  font-weight: 950;
-}
-
-#controlTowerRefreshButton {
-  max-width: min(54vw, 280px);
-  background: rgba(255, 254, 250, 0.2);
-  overflow: hidden;
-  text-overflow: ellipsis;
+  width: 100%;
 }
 
 @media (max-width: 1100px) {
@@ -12309,7 +12314,7 @@ body[data-active-view="control"] .worklog-header .main-menu-popover {
     flex: 0 0 auto;
   }
 
-  #controlTowerRefreshButton {
+  .control-tower-hero-actions .dashboard-date-button {
     flex: 1 1 auto;
     max-width: none;
   }
@@ -12331,8 +12336,8 @@ body[data-view-mode="ceo"] .control-tower-hero-actions button {
   flex: 0 0 auto;
 }
 
-body[data-layout-mode="phone"] #controlTowerRefreshButton,
-body[data-view-mode="ceo"] #controlTowerRefreshButton {
+body[data-layout-mode="phone"] .control-tower-hero-actions .dashboard-date-button,
+body[data-view-mode="ceo"] .control-tower-hero-actions .dashboard-date-button {
   flex: 1 1 auto;
   max-width: none;
 }
@@ -13181,7 +13186,7 @@ body[data-view-mode="ceo"] .control-kpi-grid {
     min-height: 40px;
   }
 
-  #executiveTodayButton {
+  .executive-hero-actions .dashboard-date-button {
     flex: 1 1 auto;
     max-width: none;
     padding-inline: 12px;
@@ -13247,7 +13252,7 @@ body[data-view-mode="ceo"] .control-kpi-grid {
     min-height: 40px;
   }
 
-  #controlTowerRefreshButton {
+  .control-tower-hero-actions .dashboard-date-button {
     flex: 1 1 auto;
     max-width: none;
     padding-inline: 12px;
@@ -14330,8 +14335,7 @@ body[data-active-view="executive"] .worklog-header {
 }
 
 .settings-heading .icon-close,
-.auth-heading .icon-close,
-#executiveMenuButton {
+.auth-heading .icon-close {
   display: none !important;
 }
 
@@ -14380,6 +14384,100 @@ body[data-layout-mode="phone"][data-active-view="worklog-overview"] .worklog-ove
 
 .control-tower-hero p::after {
   content: " · 현황/관찰/탐색";
+}
+
+body[data-active-view="executive"] .executive-hero,
+body[data-active-view="control"] .control-tower-hero {
+  grid-template-columns: minmax(0, 1fr) !important;
+}
+
+body[data-active-view="executive"] .executive-hero {
+  padding-right: 16px !important;
+}
+
+body[data-active-view="executive"] .executive-hero-actions,
+body[data-active-view="control"] .control-tower-hero-actions {
+  width: 100% !important;
+  justify-content: stretch !important;
+}
+
+body[data-active-view="executive"] .executive-hero-actions button,
+body[data-active-view="control"] .control-tower-hero-actions button {
+  flex: 0 0 auto;
+}
+
+body[data-active-view="executive"] .executive-hero-actions .dashboard-date-button,
+body[data-active-view="control"] .control-tower-hero-actions .dashboard-date-button {
+  flex: 1 1 auto !important;
+  max-width: none !important;
+  min-width: 0;
+}
+
+body[data-layout-mode="phone"] .executive-hero-actions .dashboard-date-arrow,
+body[data-view-mode="ceo"] .executive-hero-actions .dashboard-date-arrow,
+body.physical-phone-device .executive-hero-actions .dashboard-date-arrow,
+body[data-layout-mode="phone"] .control-tower-hero-actions .dashboard-date-arrow,
+body[data-view-mode="ceo"] .control-tower-hero-actions .dashboard-date-arrow,
+body.physical-phone-device .control-tower-hero-actions .dashboard-date-arrow {
+  flex-basis: 36px;
+  width: 36px;
+  min-height: 40px;
+  font-size: 22px;
+}
+
+body[data-layout-mode="phone"] #executiveMenuButton,
+body[data-view-mode="ceo"] #executiveMenuButton,
+body.physical-phone-device #executiveMenuButton,
+body[data-layout-mode="phone"] #controlTowerMenuButton,
+body[data-view-mode="ceo"] #controlTowerMenuButton,
+body.physical-phone-device #controlTowerMenuButton {
+  flex-basis: 44px;
+  min-width: 44px;
+  padding-inline: 0;
+}
+
+body[data-layout-mode="phone"] .executive-hero-actions,
+body[data-view-mode="ceo"] .executive-hero-actions,
+body.physical-phone-device .executive-hero-actions,
+body[data-layout-mode="phone"] .control-tower-hero-actions,
+body[data-view-mode="ceo"] .control-tower-hero-actions,
+body.physical-phone-device .control-tower-hero-actions {
+  gap: 5px !important;
+}
+
+body[data-layout-mode="phone"] .executive-hero-actions .dashboard-today-button,
+body[data-view-mode="ceo"] .executive-hero-actions .dashboard-today-button,
+body.physical-phone-device .executive-hero-actions .dashboard-today-button,
+body[data-layout-mode="phone"] .control-tower-hero-actions .dashboard-today-button,
+body[data-view-mode="ceo"] .control-tower-hero-actions .dashboard-today-button,
+body.physical-phone-device .control-tower-hero-actions .dashboard-today-button {
+  flex-basis: 44px;
+  padding-inline: 0;
+}
+
+body[data-layout-mode="phone"] .executive-hero-actions .dashboard-date-button,
+body[data-view-mode="ceo"] .executive-hero-actions .dashboard-date-button,
+body.physical-phone-device .executive-hero-actions .dashboard-date-button,
+body[data-layout-mode="phone"] .control-tower-hero-actions .dashboard-date-button,
+body[data-view-mode="ceo"] .control-tower-hero-actions .dashboard-date-button,
+body.physical-phone-device .control-tower-hero-actions .dashboard-date-button {
+  padding-inline: 8px;
+  font-size: 14px;
+}
+
+body[data-active-view="executive"] .executive-hero-actions .main-menu-popover,
+body[data-active-view="control"] .control-tower-hero-actions .main-menu-popover {
+  position: fixed !important;
+  top: max(78px, calc(env(safe-area-inset-top) + 68px)) !important;
+  right: max(18px, env(safe-area-inset-right)) !important;
+  left: auto !important;
+  z-index: 260 !important;
+  pointer-events: auto;
+}
+
+body[data-active-view="executive"] .executive-hero-actions .main-menu-popover[hidden],
+body[data-active-view="control"] .control-tower-hero-actions .main-menu-popover[hidden] {
+  display: none !important;
 }
 
 .control-kpi-grid article {

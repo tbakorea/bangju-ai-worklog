@@ -1179,7 +1179,7 @@ function moveSelectedDate(offsetDays, animate = true) {
 }
 
 function animateDateTitle(delta, nextDateKey) {
-  const titleButtons = ["selectedDateButton", "fitnessDateButton", "overviewDateButton"]
+  const titleButtons = ["selectedDateButton", "fitnessDateButton", "overviewDateButton", "executiveDateButton", "controlTowerDateButton"]
     .map((id) => document.getElementById(id))
     .filter(Boolean);
   if (!titleButtons.length) {
@@ -1196,7 +1196,7 @@ function animateDateTitle(delta, nextDateKey) {
 
   dateSlideTimer = window.setTimeout(() => {
     setSelectedDateKey(nextDateKey);
-    const nextTitleButtons = ["selectedDateButton", "fitnessDateButton", "overviewDateButton"]
+    const nextTitleButtons = ["selectedDateButton", "fitnessDateButton", "overviewDateButton", "executiveDateButton", "controlTowerDateButton"]
       .map((id) => document.getElementById(id))
       .filter(Boolean);
     nextTitleButtons.forEach((button) => {
@@ -1614,12 +1614,7 @@ function renderControlTower() {
   const accessCard = document.getElementById("controlAccessCard");
   const body = document.getElementById("controlTowerBody");
   const accessLabel = document.getElementById("controlTowerAccessLabel");
-  const todayButton = document.getElementById("controlTowerRefreshButton");
   if (!body) return;
-  if (todayButton) {
-    todayButton.textContent = formatFormalKoreanDate(getActiveDateKey());
-    todayButton.setAttribute("aria-label", `${formatFormalKoreanDate(getActiveDateKey())} 기준, 오늘로 이동`);
-  }
   const allowed = canAccessControlTower();
   if (accessCard) accessCard.hidden = allowed;
   body.hidden = !allowed;
@@ -1704,12 +1699,7 @@ function renderExecutiveManagement() {
   const accessCard = document.getElementById("executiveAccessCard");
   const body = document.getElementById("executiveBody");
   const accessLabel = document.getElementById("executiveAccessLabel");
-  const todayButton = document.getElementById("executiveTodayButton");
   if (!body) return;
-  if (todayButton) {
-    todayButton.textContent = formatFormalKoreanDate(getActiveDateKey());
-    todayButton.setAttribute("aria-label", `${formatFormalKoreanDate(getActiveDateKey())} 기준, 오늘로 이동`);
-  }
   const allowed = isRepresentativeProfile();
   if (accessCard) accessCard.hidden = allowed;
   body.hidden = !allowed;
@@ -2479,14 +2469,28 @@ function renderDateNav() {
   const overviewDateButton = document.getElementById("overviewDateButton");
   const overviewDateTitle = document.getElementById("overviewDateTitle");
   const overviewTodayButton = document.getElementById("worklogOverviewTodayButton");
+  const executiveDateButton = document.getElementById("executiveDateButton");
+  const executiveTodayButton = document.getElementById("executiveTodayButton");
+  const executiveNextButton = document.getElementById("executiveNextDateButton");
+  const controlDateButton = document.getElementById("controlTowerDateButton");
+  const controlTodayButton = document.getElementById("controlTowerTodayButton");
+  const controlNextButton = document.getElementById("controlTowerNextDateButton");
   const activeDateKey = getActiveDateKey();
+  const isToday = activeDateKey === todayKey;
   calendarViewDate = parseDateKey(activeDateKey);
   if (dayTitle) dayTitle.textContent = formatKoreanDate(activeDateKey);
   if (overviewDateTitle) overviewDateTitle.textContent = formatKoreanDate(activeDateKey);
+  if (executiveDateButton) {
+    executiveDateButton.textContent = formatKoreanDate(activeDateKey);
+    executiveDateButton.setAttribute("aria-label", `${formatFormalKoreanDate(activeDateKey)} 대표 경영페이지 기준일 선택`);
+  }
+  if (controlDateButton) {
+    controlDateButton.textContent = formatKoreanDate(activeDateKey);
+    controlDateButton.setAttribute("aria-label", `${formatFormalKoreanDate(activeDateKey)} 통합관제 기준일 선택`);
+  }
   selectedDateButton?.setAttribute("aria-label", `${formatKoreanDate(activeDateKey)} 업무일지 날짜 선택`);
   overviewDateButton?.setAttribute("aria-label", `${formatKoreanDate(activeDateKey)} 전체 업무일지 날짜 선택`);
   if (todayJumpButton) {
-    const isToday = activeDateKey === todayKey;
     todayJumpButton.hidden = false;
     todayJumpButton.disabled = isToday;
     todayJumpButton.classList.toggle("is-current-date", isToday);
@@ -2498,6 +2502,20 @@ function renderDateNav() {
     overviewTodayButton.classList.toggle("is-current-date", isToday);
     overviewTodayButton.setAttribute("aria-disabled", String(isToday));
   }
+  [
+    [executiveTodayButton, executiveNextButton],
+    [controlTodayButton, controlNextButton],
+  ].forEach(([todayButton, nextButton]) => {
+    if (todayButton) {
+      todayButton.hidden = isToday;
+      todayButton.disabled = isToday;
+      todayButton.setAttribute("aria-disabled", String(isToday));
+    }
+    if (nextButton) {
+      nextButton.disabled = isToday;
+      nextButton.setAttribute("aria-disabled", String(isToday));
+    }
+  });
   renderWorklogCalendar();
 }
 
@@ -2511,6 +2529,13 @@ function openWorklogCalendar() {
 function openOverviewCalendar() {
   calendarPickerMode = "worklog";
   calendarTriggerButtonId = "overviewDateButton";
+  calendarPostponeTask = null;
+  openCalendarSheet(parseDateKey(getActiveDateKey()));
+}
+
+function openDashboardCalendar(mode) {
+  calendarPickerMode = mode === "executive" ? "executive" : "control";
+  calendarTriggerButtonId = mode === "executive" ? "executiveDateButton" : "controlTowerDateButton";
   calendarPostponeTask = null;
   openCalendarSheet(parseDateKey(getActiveDateKey()));
 }
@@ -2536,7 +2561,7 @@ function openCalendarSheet(viewDate) {
   calendarViewDate = viewDate;
   popover.hidden = false;
   backdrop.hidden = false;
-  selectedDateButton.setAttribute("aria-expanded", "true");
+  selectedDateButton?.setAttribute("aria-expanded", "true");
   renderWorklogCalendar();
   requestAnimationFrame(() => {
     popover.classList.add("is-open");
@@ -2586,12 +2611,17 @@ function renderWorklogCalendar() {
   const year = calendarViewDate.getFullYear();
   const month = calendarViewDate.getMonth();
   const selectedDateKey = calendarPickerMode === "postpone" ? calendarPostponeTask?.postponeDate : getActiveDateKey();
+  const isDashboardCalendar = ["executive", "control"].includes(calendarPickerMode);
   monthTitle.textContent = `${year}년`;
   selectedLabel.textContent = calendarPickerMode === "postpone"
     ? `연기일 ${selectedDateKey ? formatKoreanDate(selectedDateKey) : "미정"}`
     : calendarPickerMode === "fitness"
       ? `피트니스 업무일지 ${formatKoreanDate(getActiveDateKey())}`
-      : formatKoreanDate(getActiveDateKey());
+      : calendarPickerMode === "executive"
+        ? `대표 경영페이지 ${formatFormalKoreanDate(getActiveDateKey())}`
+        : calendarPickerMode === "control"
+          ? `통합관제 ${formatFormalKoreanDate(getActiveDateKey())}`
+          : formatKoreanDate(getActiveDateKey());
   todayButton.textContent = calendarPickerMode === "postpone" ? "오늘로 지정" : "오늘로 이동";
   dayGrid.innerHTML = "";
   const firstDay = new Date(year, month, 1).getDay();
@@ -2605,6 +2635,7 @@ function renderWorklogCalendar() {
     const subLabels = [...meta.holidayLabels.slice(0, 1), meta.lunarLabel].filter(Boolean);
     const button = document.createElement("button");
     button.type = "button";
+    if (isDashboardCalendar && key > todayKey) button.disabled = true;
     button.innerHTML = `
       <strong>${String(date)}</strong>
       ${subLabels.length ? `<small>${subLabels.map(escapeHtml).join(" · ")}</small>` : ""}
@@ -2658,6 +2689,7 @@ function selectCalendarDate(dateKey) {
     renderEntries();
     return;
   }
+  if (["executive", "control"].includes(calendarPickerMode) && dateKey > todayKey) return;
   setSelectedDateKey(dateKey);
 }
 
@@ -7714,6 +7746,7 @@ function switchView(view) {
     if (menuSelect.value !== menuValue) menuSelect.value = menuValue;
   }
   renderEmployeeTitle();
+  renderDateNav();
   renderGlobalEmployeeIdentity();
   renderOsDashboard();
   renderExecutiveManagement();
@@ -7740,6 +7773,14 @@ function dockGlobalHeaderActions(panelView = worklogViewAliases[activeView] || a
   const menuButton = document.getElementById("settingsGearButton");
   const menuPopover = document.getElementById("mainMenuPopover");
   if (!panel || !menuButton || !menuPopover) return;
+
+  if (panelView === "executive" || panelView === "control") {
+    const actions = panelView === "executive"
+      ? document.querySelector(".executive-hero-actions")
+      : document.querySelector(".control-tower-hero-actions");
+    if (actions && menuPopover.parentElement !== actions) actions.appendChild(menuPopover);
+    return;
+  }
 
   const target = panelView === "attendance" ? panel.querySelector(".work-history-hero") || panel : panel;
   let dock = target.querySelector(":scope > .section-menu-dock") || panel.querySelector(":scope > .section-menu-dock");
@@ -7796,6 +7837,7 @@ function closeMainMenuPopover() {
 function renderAll() {
   renderGlobalEmployeeIdentity();
   renderMainMenuAuthButton();
+  renderDateNav();
   renderOsDashboard();
   renderExecutiveManagement();
   renderControlTower();
@@ -8287,11 +8329,46 @@ document.getElementById("fitnessCoachButton")?.addEventListener("click", () => {
   switchView("fitness");
   alert("피트니스 OS는 업무일지의 PT, 고객관리, 특이사항, 시간별일정을 기준으로 영업·운영·관리 코칭을 생성합니다.");
 });
-document.getElementById("controlTowerRefreshButton")?.addEventListener("click", () => {
+function moveDashboardDate(view, offsetDays) {
+  const date = parseDateKey(getActiveDateKey());
+  date.setDate(date.getDate() + offsetDays);
+  const nextDateKey = formatDateKey(date);
+  if (nextDateKey > todayKey) return;
+  moveSelectedDate(offsetDays, true);
+  window.setTimeout(() => switchView(view), 180);
+}
+
+document.getElementById("controlTowerPrevDateButton")?.addEventListener("click", (event) => {
+  event.stopPropagation();
+  moveDashboardDate("control", -1);
+});
+document.getElementById("controlTowerNextDateButton")?.addEventListener("click", (event) => {
+  event.stopPropagation();
+  moveDashboardDate("control", 1);
+});
+document.getElementById("controlTowerDateButton")?.addEventListener("click", (event) => {
+  event.stopPropagation();
+  openDashboardCalendar("control");
+});
+document.getElementById("controlTowerTodayButton")?.addEventListener("click", (event) => {
+  event.stopPropagation();
   setSelectedDateKey(todayKey);
   switchView("control");
 });
-document.getElementById("executiveTodayButton")?.addEventListener("click", () => {
+document.getElementById("executivePrevDateButton")?.addEventListener("click", (event) => {
+  event.stopPropagation();
+  moveDashboardDate("executive", -1);
+});
+document.getElementById("executiveNextDateButton")?.addEventListener("click", (event) => {
+  event.stopPropagation();
+  moveDashboardDate("executive", 1);
+});
+document.getElementById("executiveDateButton")?.addEventListener("click", (event) => {
+  event.stopPropagation();
+  openDashboardCalendar("executive");
+});
+document.getElementById("executiveTodayButton")?.addEventListener("click", (event) => {
+  event.stopPropagation();
   setSelectedDateKey(todayKey);
   switchView("executive");
 });
