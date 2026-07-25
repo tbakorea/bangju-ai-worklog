@@ -1391,10 +1391,12 @@ function renderOsDashboard() {
 }
 
 function canAccessControlTower() {
+  if (isExplicitlySignedOut()) return false;
   return hasProfilePermission("controlTower") || hasProfilePermission("siteControl") || hasApprovalAuthority();
 }
 
 function canAccessWorklogOverview() {
+  if (isExplicitlySignedOut()) return false;
   return hasProfilePermission("worklogAll") || isRepresentativeProfile() || canAccessControlTower();
 }
 
@@ -2767,6 +2769,7 @@ function getProfilePermissionSet(profile = state.profile || {}) {
 }
 
 function hasProfilePermission(key, profile = state.profile || {}) {
+  if (isExplicitlySignedOut()) return false;
   return Boolean(getProfilePermissionSet(profile).permissions[key]);
 }
 
@@ -2783,6 +2786,7 @@ function normalizeEmployeePermissionState(source = {}) {
 }
 
 function isRepresentativeProfile() {
+  if (isExplicitlySignedOut()) return false;
   const profile = state.profile || {};
   const email = String(authState.user?.email || profile.email || "").trim().toLowerCase();
   const roleText = `${profile.role || ""} ${profile.primaryWork || ""} ${profile.nickname || ""}`;
@@ -2793,6 +2797,7 @@ function isRepresentativeProfile() {
 }
 
 function hasApprovalAuthority(profile = state.profile || {}) {
+  if (isExplicitlySignedOut()) return false;
   const email = String(authState.user?.email || profile.email || "").trim().toLowerCase();
   const roleText = `${profile.role || ""} ${profile.primaryWork || ""} ${profile.nickname || ""}`;
   if (hasProfilePermission("staffApproval", profile) || hasProfilePermission("staffManage", profile)) return true;
@@ -2802,11 +2807,13 @@ function hasApprovalAuthority(profile = state.profile || {}) {
 }
 
 function canShowApprovalMenu() {
+  if (isExplicitlySignedOut()) return false;
   const email = String(authState.user?.email || state.profile?.email || "").trim().toLowerCase();
   return controlTowerEmails.has(email) || hasApprovalAuthority();
 }
 
 function isProfileApproved() {
+  if (isExplicitlySignedOut()) return false;
   if (!authState.user) return true;
   if (hasApprovalAuthority()) return true;
   const status = state.profile?.approvalStatus || "approved";
@@ -3387,10 +3394,14 @@ function renderAuthStatus(message) {
 
 function isKnownLoggedInProfile() {
   if (authState.user) return true;
-  if (localStorage.getItem(localAuthSignedOutKey) === "1") return false;
+  if (isExplicitlySignedOut()) return false;
   const email = String(state.profile?.email || "").trim().toLowerCase();
   const status = state.profile?.approvalStatus || "";
   return Boolean(email && status === "approved");
+}
+
+function isExplicitlySignedOut() {
+  return localStorage.getItem(localAuthSignedOutKey) === "1" && !authState.user;
 }
 
 function renderMainMenuAuthButton() {
@@ -3410,7 +3421,14 @@ function renderMainMenuVisibility() {
   const showFullMenu = canAccessWorklogOverview();
   document.querySelectorAll("#mainMenuPopover [data-menu-view]").forEach((item) => {
     const view = item.dataset.menuView;
+    if (isExplicitlySignedOut()) {
+      item.hidden = view !== "auth";
+      return;
+    }
     item.hidden = !showFullMenu && !generalMenuViews.has(view);
+  });
+  document.querySelectorAll("#mainMenuPopover [data-menu-action]").forEach((item) => {
+    if (isExplicitlySignedOut() && !item.dataset.menuView) item.hidden = true;
   });
   renderApprovalNotification();
 }
@@ -3545,7 +3563,8 @@ async function signOutWithSupabase() {
   renderApprovalNotification();
   renderAuthStatus("로그아웃되었습니다. 입력 내용은 이 기기에 계속 보관됩니다.");
   renderAll();
-  if (activeView === "auth") renderProfileForm();
+  switchView("auth");
+  renderProfileForm();
 }
 
 async function applySession(session) {
@@ -7730,6 +7749,10 @@ async function shareFitnessReport() {
 
 function switchView(view) {
   const requestedView = view;
+  if (isExplicitlySignedOut() && view !== "auth") {
+    view = "auth";
+    renderAuthStatus("로그아웃되었습니다. 다시 사용하려면 로그인 또는 직원등록을 진행해주세요.");
+  }
   if (!["auth", "settings"].includes(view) && authState.user && !isProfileApproved()) {
     view = "auth";
     renderAuthStatus(`현재 상태: ${getApprovalStatusLabel()}. 승인 후 업무일지를 사용할 수 있습니다.`);
