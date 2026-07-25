@@ -503,7 +503,9 @@ const authState = {
   applyingRemote: false,
   saveTimer: null,
   pendingApprovalCount: 0,
+  pendingPasswordResetCount: 0,
   approvalRows: [],
+  passwordResetRows: [],
   selectedApprovalId: "",
   approvalTimer: null,
 };
@@ -3064,16 +3066,19 @@ function renderApprovalAccess() {
   if (panel) panel.classList.toggle("is-disabled", !allowed);
   if (!allowed) {
     const list = document.getElementById("approvalRequestList");
+    const resetList = document.getElementById("passwordResetRequestList");
     if (list) list.innerHTML = `<p class="empty-note">대표 또는 승인 권한자만 직원등록 신청을 확인할 수 있습니다.</p>`;
+    if (resetList) resetList.innerHTML = `<p class="empty-note">대표 또는 승인 권한자만 비밀번호 재설정 요청을 확인할 수 있습니다.</p>`;
     return;
   }
   loadApprovalRequests();
+  loadPasswordResetRequests();
 }
 
 function renderApprovalNotification() {
   const menuAllowed = canShowApprovalMenu();
   const alertAllowed = Boolean(authState.user && hasApprovalAuthority());
-  const count = alertAllowed ? authState.pendingApprovalCount || 0 : 0;
+  const count = alertAllowed ? (authState.pendingApprovalCount || 0) + (authState.pendingPasswordResetCount || 0) : 0;
   const alertButton = document.getElementById("approvalAlertButton");
   const alertCount = document.getElementById("approvalAlertCount");
   const menuBadge = document.getElementById("menuApprovalBadge");
@@ -3093,6 +3098,7 @@ function renderApprovalNotification() {
 async function refreshApprovalNotification() {
   if (!supabaseClient || !authState.user || !hasApprovalAuthority()) {
     authState.pendingApprovalCount = 0;
+    authState.pendingPasswordResetCount = 0;
     renderApprovalNotification();
     return;
   }
@@ -3101,6 +3107,11 @@ async function refreshApprovalNotification() {
     .select("id", { count: "exact", head: true })
     .eq("approval_status", "pending");
   if (!error) authState.pendingApprovalCount = Math.max(0, Number(count || 0));
+  const { count: resetCount, error: resetError } = await supabaseClient
+    .from("password_reset_requests")
+    .select("id", { count: "exact", head: true })
+    .eq("status", "pending");
+  if (!resetError) authState.pendingPasswordResetCount = Math.max(0, Number(resetCount || 0));
   renderApprovalNotification();
 }
 
@@ -3350,6 +3361,157 @@ async function updateApprovalRequest(id, action) {
   await refreshApprovalNotification();
 }
 
+async function requestPasswordResetApproval() {
+  const emailInput = document.getElementById("authEmail");
+  const email = String(emailInput?.value || "").trim().toLowerCase();
+  const requesterName = String(document.querySelector('[data-profile-field="name"]')?.value || state.profile?.name || "").trim();
+  if (!email) {
+    renderAuthStatus("비밀번호를 재설정할 직원 이메일을 입력해주세요.");
+    emailInput?.focus();
+    return;
+  }
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    renderAuthStatus("이메일 형식을 확인해주세요.");
+    emailInput?.focus();
+    return;
+  }
+  if (!supabaseClient) {
+    renderAuthStatus("원격 저장 연결 후 비밀번호 재설정 요청을 보낼 수 있습니다.");
+    return;
+  }
+  renderAuthStatus("비밀번호 재설정 승인을 요청하는 중입니다...");
+  const { error } = await supabaseClient.from("password_reset_requests").insert({
+    email,
+    requester_name: requesterName || email.split("@")[0],
+    status: "pending",
+    note: "직원이 로그인 화면에서 비밀번호 재설정을 요청했습니다.",
+    updated_at: new Date().toISOString(),
+  });
+  if (error) {
+    renderAuthStatus(`비밀번호 재설정 요청 실패: ${error.message}`);
+    return;
+  }
+  renderAuthStatus("비밀번호 재설정 요청이 대표 승인 목록에 접수되었습니다. 승인 후 재설정 메일을 받을 수 있습니다.");
+}
+
+async function loadPasswordResetRequests() {
+  const list = document.getElementById("passwordResetRequestList");
+  if (!list) return;
+  if (!supabaseClient || !authState.user || !hasApprovalAuthority()) {
+    list.innerHTML = `<p class="empty-note">대표 또는 승인 권한자만 비밀번호 재설정 요청을 확인할 수 있습니다.</p>`;
+    return;
+  }
+  list.innerHTML = `<p class="empty-note">비밀번호 재설정 요청을 불러오는 중입니다...</p>`;
+  const { data, error } = await supabaseClient
+    .from("password_reset_requests")
+    .select("*")
+    .in("status", ["pending", "approved", "rejected", "sent"])
+    .order("updated_at", { ascending: false })
+    .limit(30);
+  if (error) {
+    list.innerHTML = `<p class="empty-note">비밀번호 재설정 요청을 불러오지 못했습니다. 최신 SQL 구조를 적용했는지 확인해주세요.<br>${escapeHtml(error.message)}</p>`;
+    return;
+  }
+  authState.passwordResetRows = data || [];
+  authState.pendingPasswordResetCount = authState.passwordResetRows.filter((row) => (row.status || "pending") === "pending").length;
+  renderPasswordResetRequests();
+  renderApprovalNotification();
+}
+
+function getPasswordResetStatusLabel(status = "pending") {
+  if (status === "approved") return "승인완료";
+  if (status === "rejected") return "반려";
+  if (status === "sent") return "메일발송";
+  return "승인대기";
+}
+
+function renderPasswordResetRequests() {
+  const list = document.getElementById("passwordResetRequestList");
+  if (!list) return;
+  const rows = authState.passwordResetRows || [];
+  if (!rows.length) {
+    list.innerHTML = `
+      <div class="approval-empty-state">
+        <strong>비밀번호 재설정 요청 없음</strong>
+        <p>직원이 로그인 화면에서 비밀번호 재설정을 요청하면 이곳에 표시됩니다.</p>
+      </div>
+    `;
+    return;
+  }
+  list.innerHTML = `
+    <div class="password-reset-cards">
+      ${rows.map((row) => renderPasswordResetRequestCard(row)).join("")}
+    </div>
+  `;
+}
+
+function renderPasswordResetRequestCard(row) {
+  const status = row.status || "pending";
+  const created = row.created_at ? new Date(row.created_at).toLocaleString("ko-KR", { dateStyle: "medium", timeStyle: "short" }) : "";
+  return `
+    <article class="password-reset-card" data-password-reset-card="${escapeAttr(row.id)}" data-status="${escapeAttr(status)}">
+      <div>
+        <strong>${escapeHtml(row.requester_name || row.email || "직원")}</strong>
+        <span>${escapeHtml(row.email || "이메일 없음")}</span>
+        <small>${escapeHtml(created ? `요청일 ${created}` : "요청일 미기록")}</small>
+      </div>
+      <em data-status="${escapeAttr(status)}">${escapeHtml(getPasswordResetStatusLabel(status))}</em>
+      <label>처리 메모
+        <textarea rows="2" data-password-reset-note>${escapeHtml(row.note || "")}</textarea>
+      </label>
+      <div class="password-reset-actions">
+        ${status !== "approved" && status !== "sent" ? `<button type="button" data-password-reset-action="approve" data-password-reset-id="${escapeAttr(row.id)}">승인</button>` : ""}
+        ${status !== "rejected" ? `<button type="button" data-password-reset-action="reject" data-password-reset-id="${escapeAttr(row.id)}">반려</button>` : ""}
+        ${status === "approved" || status === "sent" ? `<button type="button" data-password-reset-action="send" data-password-reset-id="${escapeAttr(row.id)}">재설정 메일 발송</button>` : ""}
+      </div>
+    </article>
+  `;
+}
+
+function collectPasswordResetPayload(id) {
+  const card = Array.from(document.querySelectorAll("[data-password-reset-card]")).find((node) => node.dataset.passwordResetCard === id);
+  return {
+    note: card?.querySelector("[data-password-reset-note]")?.value.trim() || "",
+    updated_at: new Date().toISOString(),
+  };
+}
+
+async function updatePasswordResetRequest(id, action) {
+  if (!supabaseClient || !authState.user || !hasApprovalAuthority()) return;
+  const row = (authState.passwordResetRows || []).find((item) => item.id === id);
+  if (!row) return;
+  const payload = collectPasswordResetPayload(id);
+  if (action === "approve") {
+    payload.status = "approved";
+    payload.approved_by = authState.user.id;
+    payload.approved_at = new Date().toISOString();
+  }
+  if (action === "reject") {
+    payload.status = "rejected";
+    payload.approved_by = authState.user.id;
+    payload.approved_at = new Date().toISOString();
+  }
+  if (action === "send") {
+    const { error: mailError } = await supabaseClient.auth.resetPasswordForEmail(row.email, {
+      redirectTo: getAuthRedirectUrl(),
+    });
+    if (mailError) {
+      alert(`재설정 메일 발송 실패: ${mailError.message}`);
+      return;
+    }
+    payload.status = "sent";
+    payload.processed_at = new Date().toISOString();
+    payload.note = payload.note || "대표 승인 후 비밀번호 재설정 메일을 발송했습니다.";
+  }
+  const { error } = await supabaseClient.from("password_reset_requests").update(payload).eq("id", id);
+  if (error) {
+    alert(`비밀번호 재설정 처리 실패: ${error.message}`);
+    return;
+  }
+  await loadPasswordResetRequests();
+  await refreshApprovalNotification();
+}
+
 function applyProfileFields(selector, datasetKey) {
   state.profile = { ...defaultProfile, ...(state.profile || {}) };
   document.querySelectorAll(selector).forEach((field) => {
@@ -3483,7 +3645,9 @@ function clearAuthRuntimeState() {
   authState.session = null;
   authState.user = null;
   authState.pendingApprovalCount = 0;
+  authState.pendingPasswordResetCount = 0;
   authState.approvalRows = [];
+  authState.passwordResetRows = [];
   authState.selectedApprovalId = "";
   authState.applyingRemote = false;
   clearTimeout(authState.saveTimer);
@@ -8140,6 +8304,7 @@ document.getElementById("closeSettingsButton")?.addEventListener("click", () => 
 document.getElementById("saveProfileButton").onclick = saveProfileFromForm;
 document.getElementById("saveSettingsProfileButton")?.addEventListener("click", saveSettingsProfileFromForm);
 document.getElementById("refreshApprovalRequestsButton")?.addEventListener("click", loadApprovalRequests);
+document.getElementById("refreshPasswordResetRequestsButton")?.addEventListener("click", loadPasswordResetRequests);
 document.getElementById("staffOpenApprovalButton")?.addEventListener("click", () => {
   openApprovalManagement();
 });
@@ -8153,6 +8318,11 @@ document.getElementById("approvalRequestList")?.addEventListener("click", (event
   const button = event.target.closest("[data-approval-action]");
   if (!button) return;
   updateApprovalRequest(button.dataset.approvalId, button.dataset.approvalAction);
+});
+document.getElementById("passwordResetRequestList")?.addEventListener("click", (event) => {
+  const button = event.target.closest("[data-password-reset-action]");
+  if (!button) return;
+  updatePasswordResetRequest(button.dataset.passwordResetId, button.dataset.passwordResetAction);
 });
 document.getElementById("manualRoleSelect")?.addEventListener("change", () => {
   getManualSettings().roleKey = document.getElementById("manualRoleSelect")?.value || "manager";
@@ -8173,6 +8343,7 @@ document.getElementById("manualMissionEditor")?.addEventListener("input", () => 
 document.getElementById("loadDefaultManualButton")?.addEventListener("click", loadDefaultManualForSelectedRole);
 document.getElementById("loginButton").onclick = signInWithSupabase;
 document.getElementById("signupButton").onclick = signUpWithSupabase;
+document.getElementById("passwordResetButton").onclick = requestPasswordResetApproval;
 document.getElementById("logoutButton").onclick = signOutWithSupabase;
 document.getElementById("employeeSelect").onchange = (event) => {
   state.selectedEmployeeId = event.target.value;

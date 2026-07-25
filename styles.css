@@ -3757,6 +3757,10 @@ body[data-device-mode="narrow"] .os-mode-switch span[data-device-mode="narrow"] 
   padding: 14px;
 }
 
+.password-reset-admin-card {
+  margin-top: 12px;
+}
+
 .approval-admin-head {
   display: flex;
   justify-content: space-between;
@@ -3790,7 +3794,8 @@ body[data-device-mode="narrow"] .os-mode-switch span[data-device-mode="narrow"] 
 }
 
 .approval-admin-head button,
-.approval-request-actions button {
+.approval-request-actions button,
+.password-reset-actions button {
   border: 1px solid rgba(33, 55, 45, 0.14);
   border-radius: 999px;
   background: var(--ink);
@@ -4155,6 +4160,100 @@ body[data-device-mode="narrow"] .os-mode-switch span[data-device-mode="narrow"] 
 }
 
 .approval-request-actions button[data-approval-action="reject"] {
+  background: #fff7f4;
+  color: #9a2a2a;
+}
+
+.password-reset-cards {
+  display: grid;
+  gap: 10px;
+}
+
+.password-reset-card {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: start;
+  border: 1px solid rgba(33, 55, 45, 0.1);
+  border-radius: 16px;
+  background: rgba(255, 253, 248, 0.8);
+  padding: 12px;
+}
+
+.password-reset-card strong,
+.password-reset-card span,
+.password-reset-card small {
+  display: block;
+}
+
+.password-reset-card strong {
+  color: var(--ink);
+  font-size: 15px;
+  font-weight: 950;
+}
+
+.password-reset-card span,
+.password-reset-card small {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 780;
+}
+
+.password-reset-card em {
+  border-radius: 999px;
+  background: rgba(214, 156, 46, 0.14);
+  color: #8a5f12;
+  padding: 6px 9px;
+  font-size: 11px;
+  font-style: normal;
+  font-weight: 950;
+  white-space: nowrap;
+}
+
+.password-reset-card em[data-status="approved"],
+.password-reset-card em[data-status="sent"] {
+  background: rgba(15, 59, 46, 0.1);
+  color: var(--fitness-green);
+}
+
+.password-reset-card em[data-status="rejected"] {
+  background: rgba(180, 48, 48, 0.11);
+  color: #9a2a2a;
+}
+
+.password-reset-card label {
+  grid-column: 1 / -1;
+  display: grid;
+  gap: 6px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 850;
+}
+
+.password-reset-card textarea {
+  width: 100%;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: rgba(255, 253, 248, 0.92);
+  color: var(--ink);
+  padding: 9px 10px;
+}
+
+.password-reset-actions {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.password-reset-actions button {
+  min-height: 34px;
+  padding: 7px 11px;
+  font-size: 12px;
+}
+
+.password-reset-actions button[data-password-reset-action="reject"] {
   background: #fff7f4;
   color: #9a2a2a;
 }

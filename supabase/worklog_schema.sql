@@ -177,6 +177,27 @@ create table if not exists public.worklog_states (
 alter table public.profiles enable row level security;
 alter table public.worklog_states enable row level security;
 
+create table if not exists public.password_reset_requests (
+  id uuid primary key default gen_random_uuid(),
+  email text not null,
+  requester_name text not null default '',
+  status text not null default 'pending',
+  note text not null default '',
+  approved_by uuid references auth.users(id),
+  approved_at timestamptz,
+  processed_at timestamptz,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+alter table public.password_reset_requests add column if not exists requester_name text not null default '';
+alter table public.password_reset_requests add column if not exists status text not null default 'pending';
+alter table public.password_reset_requests add column if not exists note text not null default '';
+alter table public.password_reset_requests add column if not exists approved_by uuid references auth.users(id);
+alter table public.password_reset_requests add column if not exists approved_at timestamptz;
+alter table public.password_reset_requests add column if not exists processed_at timestamptz;
+alter table public.password_reset_requests enable row level security;
+
 create or replace function public.is_profile_approver()
 returns boolean
 language sql
@@ -245,6 +266,28 @@ on public.profiles for update
 to authenticated
 using (auth.uid() = id or public.is_profile_approver())
 with check (auth.uid() = id or public.is_profile_approver());
+
+drop policy if exists "password_reset_insert_request" on public.password_reset_requests;
+create policy "password_reset_insert_request"
+on public.password_reset_requests for insert
+to anon, authenticated
+with check (
+  status = 'pending'
+  and nullif(trim(email), '') is not null
+);
+
+drop policy if exists "password_reset_select_approver" on public.password_reset_requests;
+create policy "password_reset_select_approver"
+on public.password_reset_requests for select
+to authenticated
+using (public.is_profile_approver());
+
+drop policy if exists "password_reset_update_approver" on public.password_reset_requests;
+create policy "password_reset_update_approver"
+on public.password_reset_requests for update
+to authenticated
+using (public.is_profile_approver())
+with check (public.is_profile_approver());
 
 drop policy if exists "worklog_select_own" on public.worklog_states;
 create policy "worklog_select_own"

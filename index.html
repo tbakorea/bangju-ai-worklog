@@ -930,6 +930,19 @@
               <p class="empty-note">승인 권한이 있으면 직원등록 신청 목록이 표시됩니다.</p>
             </div>
           </section>
+          <section class="approval-admin-card password-reset-admin-card">
+            <div class="approval-admin-head">
+              <div>
+                <p>Password Reset</p>
+                <h3>비밀번호 재설정 승인</h3>
+                <span>기존 직원의 비밀번호 분실 요청을 확인하고 재설정 메일을 발송합니다.</span>
+              </div>
+              <button id="refreshPasswordResetRequestsButton" type="button">새로고침</button>
+            </div>
+            <div id="passwordResetRequestList" class="password-reset-request-list">
+              <p class="empty-note">승인 권한이 있으면 비밀번호 재설정 요청이 표시됩니다.</p>
+            </div>
+          </section>
           <p class="profile-note">대표 또는 대표가 권한을 부여한 직원만 직원등록 신청을 승인할 수 있습니다.</p>
         </div>
         <div class="settings-actions">
@@ -957,6 +970,7 @@
           <div class="login-actions">
             <button id="loginButton" type="button">로그인</button>
             <button id="signupButton" type="button">직원등록</button>
+            <button id="passwordResetButton" type="button">비밀번호 재설정</button>
             <button id="logoutButton" type="button">로그아웃</button>
           </div>
         </section>
