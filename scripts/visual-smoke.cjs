@@ -635,6 +635,106 @@ async function checkSectionChromeReleasePolish(browser) {
   await page.close();
 }
 
+async function checkRealDeviceRegressionLayouts(browser) {
+  const cases = [
+    { view: "attendance", label: "labor" },
+    { view: "fitness-log", label: "fitness" },
+    { view: "bangju-log", label: "general-worklog" },
+  ];
+
+  for (const item of cases) {
+    const page = await browser.newPage({ viewport: { width: 390, height: 844 } });
+    const errors = [];
+    page.on("pageerror", (error) => errors.push(error.message));
+    await page.addInitScript(() => {
+      localStorage.setItem("beyond-worklog-state-v1", JSON.stringify({
+        selectedDateKey: "2026-07-24",
+        selectedEmployeeId: "bangju-finance-manager",
+        fitnessWritableEmployeeId: "beyond-fitness-manager",
+        profile: {
+          email: "j3010@ymail.com",
+          role: "대표",
+          name: "정찬훈",
+          nickname: "베니",
+          approvalStatus: "approved",
+        },
+        employeeLogs: {},
+      }));
+      localStorage.setItem("beyond-worklog-global-view-mode", "ceo");
+    });
+    await page.goto(target, { waitUntil: "domcontentloaded" });
+    await page.evaluate((targetView) => {
+      document.body.classList.add("physical-phone-device");
+      document.body.dataset.layoutMode = "phone";
+      document.body.dataset.viewMode = "ceo";
+      window.switchView?.(targetView);
+    }, item.view);
+    await page.waitForTimeout(350);
+
+    const metrics = await page.evaluate(() => {
+      const rect = (selector) => {
+        const node = document.querySelector(selector);
+        if (!node) return null;
+        const box = node.getBoundingClientRect();
+        return { left: box.left, top: box.top, right: box.right, bottom: box.bottom, width: box.width, height: box.height };
+      };
+      const overlaps = (a, b) => Boolean(a && b && a.left < b.right && a.right > b.left && a.top < b.bottom && a.bottom > b.top);
+      const fitnessDate = document.querySelector("#fitnessWorklogDate");
+      const worklogDate = document.querySelector("#worklogDayTitle");
+      const taskPanel = document.querySelector("#view-today .worklog-task-panel");
+      const schedulePanel = document.querySelector("#view-today .worklog-schedule-panel");
+      const dock = rect(".worklog-view.is-active .section-menu-dock");
+      const todayDate = rect("#view-today .worklog-today-title");
+      const fitnessCoaching = rect("#view-fitness-log .fitness-coaching-row");
+      const fitnessDateButton = rect("#fitnessDateButton");
+      const fitnessPrev = rect("#fitnessPrevDateButton");
+      const fitnessNext = rect("#fitnessNextDateButton");
+      const pager = rect("#fitnessLogPager");
+      const ops = rect("#view-fitness-log .fitness-ops-section");
+      const fitnessTask = rect("#view-fitness-log .fitness-log-task-panel");
+      const fitnessSchedule = rect("#view-fitness-log .fitness-log-schedule-panel");
+      const hero = rect("#view-attendance .work-history-hero");
+      const laborConsole = rect("#view-attendance .labor-ops-console");
+      return {
+        activeView: document.body.dataset.activeView,
+        horizontalOverflow: document.documentElement.scrollWidth - window.innerWidth,
+        fitnessDateFits: !fitnessDate || fitnessDate.scrollWidth <= fitnessDate.clientWidth + 2,
+        worklogDateFits: !worklogDate || worklogDate.scrollWidth <= worklogDate.clientWidth + 2,
+        pagerBeforeOps: !pager || !ops || pager.bottom <= ops.top + 1,
+        fitnessOpsBeforePanels: !ops || !fitnessTask || !fitnessSchedule || (ops.bottom <= fitnessTask.top + 1 && fitnessTask.bottom <= fitnessSchedule.top + 1),
+        heroBeforeLabor: !hero || !laborConsole || hero.bottom <= laborConsole.top + 2,
+        dockOverlapsDate: overlaps(dock, todayDate),
+        dockOverlapsFitnessCoaching: overlaps(dock, fitnessCoaching),
+        fitnessDateNavClear: !fitnessDateButton || (!overlaps(fitnessDateButton, fitnessPrev) && !overlaps(fitnessDateButton, fitnessNext)),
+        taskWidth: taskPanel?.getBoundingClientRect().width || 0,
+        scheduleWidth: schedulePanel?.getBoundingClientRect().width || 0,
+        taskHeaderHeight: rect("#view-today .worklog-task-panel h3")?.height || 0,
+        scheduleHeaderHeight: rect("#view-today .worklog-schedule-panel h3")?.height || 0,
+      };
+    });
+
+    if (metrics.activeView !== item.view) fail("real-device active view mismatch", `${item.label}: ${metrics.activeView}`);
+    if (metrics.horizontalOverflow > 2) fail("real-device horizontal overflow", `${item.label}: ${metrics.horizontalOverflow}px`);
+    if (!metrics.fitnessDateFits) fail("fitness date is clipped on phone", item.label);
+    if (!metrics.worklogDateFits) fail("worklog date is clipped on phone", item.label);
+    if (!metrics.pagerBeforeOps) fail("fitness pager overlaps the operations summary", JSON.stringify(metrics));
+    if (!metrics.fitnessOpsBeforePanels) fail("fitness operations summary overlaps worklog panels", JSON.stringify(metrics));
+    if (!metrics.heroBeforeLabor) fail("labor hero overlaps the operations console", JSON.stringify(metrics));
+    if (metrics.dockOverlapsDate) fail("worklog menu dock overlaps the date band", JSON.stringify(metrics));
+    if (metrics.dockOverlapsFitnessCoaching) fail("fitness menu overlaps the AI coaching band", JSON.stringify(metrics));
+    if (!metrics.fitnessDateNavClear) fail("fitness date navigation controls overlap", JSON.stringify(metrics));
+    if (metrics.taskWidth && metrics.scheduleWidth) {
+      const ratio = metrics.taskWidth / Math.max(1, metrics.scheduleWidth);
+      if (ratio < 0.9 || ratio > 1.1) fail("real-device worklog split is not 50:50", `${item.label}: ${ratio}`);
+    }
+    if (metrics.taskHeaderHeight > 54 || metrics.scheduleHeaderHeight > 54) {
+      fail("real-device worklog panel header is too tall", `${item.label}: ${metrics.taskHeaderHeight}/${metrics.scheduleHeaderHeight}`);
+    }
+    if (errors.length) fail("real-device layout page errors", `${item.label}: ${errors.join(" | ")}`);
+    await page.close();
+  }
+}
+
 async function checkFitnessNewEmployeeRegistrationFlow(browser) {
   const viewports = [
     { width: 390, height: 844, label: "phone" },
@@ -835,6 +935,7 @@ async function checkFitnessNewEmployeeRegistrationFlow(browser) {
     await checkPremiumOperatingSystem(browser);
     await checkSectionAiWorklogActions(browser);
     await checkSectionChromeReleasePolish(browser);
+    await checkRealDeviceRegressionLayouts(browser);
     await checkFitnessNewEmployeeRegistrationFlow(browser);
     await checkRepresentativeProfileSeparation(browser);
     await checkCalendarAnnotations(browser);

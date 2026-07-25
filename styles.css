@@ -14289,18 +14289,21 @@ body[data-layout-mode="phone"][data-active-view="worklog-overview"] .worklog-ove
 }
 
 body[data-layout-mode="phone"][data-active-view="worklog-overview"] .overview-date-nav {
-  grid-template-columns: 42px minmax(0, 1fr) 42px 50px;
-  gap: 6px;
+  grid-template-columns: 38px minmax(0, 1fr) 38px 46px;
+  gap: 4px;
   width: 100%;
 }
 
 body[data-layout-mode="phone"][data-active-view="worklog-overview"] .overview-date-nav button {
-  min-height: 48px;
-  border-radius: 16px;
+  min-height: 44px;
+  border-radius: 15px;
+  padding-inline: 4px;
 }
 
 body[data-layout-mode="phone"][data-active-view="worklog-overview"] .overview-date-nav #overviewDateTitle {
-  font-size: clamp(17px, 4.8vw, 20px);
+  font-size: clamp(14px, 4vw, 16px);
+  line-height: 1;
+  text-overflow: clip;
 }
 
 /* Explicit focus controls: worklog panels expand only from the title button. */
@@ -15057,6 +15060,496 @@ body.physical-phone-device .premium-operator-layout {
   }
 }
 
+/* Real-device release guard: these rules protect the phone and tablet layouts
+   that are easiest to break when section chrome is docked dynamically. */
+body[data-layout-mode="phone"] .worklog-shell,
+body.physical-phone-device .worklog-shell {
+  width: min(100vw - 16px, 440px) !important;
+  max-width: 440px !important;
+  gap: 10px !important;
+  margin-inline: auto !important;
+  padding: max(10px, env(safe-area-inset-top)) 8px max(24px, env(safe-area-inset-bottom)) !important;
+  overflow: visible;
+}
+
+body[data-layout-mode="phone"] .worklog-view,
+body.physical-phone-device .worklog-view {
+  min-width: 0;
+}
+
+body[data-layout-mode="phone"] .section-menu-dock,
+body.physical-phone-device .section-menu-dock {
+  top: 10px !important;
+  right: 10px !important;
+  gap: 5px !important;
+}
+
+body[data-layout-mode="phone"] .section-menu-dock #settingsGearButton,
+body[data-layout-mode="phone"] .section-menu-dock .global-view-mode-button,
+body[data-layout-mode="phone"] .section-menu-dock .global-attendance-button,
+body[data-layout-mode="phone"] .section-menu-dock .approval-alert-button,
+body.physical-phone-device .section-menu-dock #settingsGearButton,
+body.physical-phone-device .section-menu-dock .global-view-mode-button,
+body.physical-phone-device .section-menu-dock .global-attendance-button,
+body.physical-phone-device .section-menu-dock .approval-alert-button {
+  min-width: 48px !important;
+  min-height: 48px !important;
+  border-radius: 16px !important;
+  padding-inline: 9px !important;
+  font-size: 12px !important;
+}
+
+#view-attendance .work-history-hero {
+  position: relative;
+  min-height: 118px;
+  padding: 24px 92px 22px 20px !important;
+  overflow: hidden;
+}
+
+#view-attendance .work-history-hero .section-menu-dock {
+  position: absolute;
+}
+
+#view-attendance .work-history-hero strong {
+  display: block;
+  max-width: 100%;
+  overflow: visible;
+  font-size: clamp(26px, 7vw, 34px);
+  line-height: 1.04;
+  white-space: normal;
+  word-break: keep-all;
+}
+
+#view-attendance .labor-ops-console {
+  margin-top: 10px;
+}
+
+body[data-layout-mode="phone"] #view-attendance .work-history-hero,
+body.physical-phone-device #view-attendance .work-history-hero {
+  min-height: 116px;
+  padding: 22px 82px 20px 18px !important;
+  border-radius: 24px;
+}
+
+body[data-layout-mode="phone"] #view-attendance .work-history-hero span,
+body.physical-phone-device #view-attendance .work-history-hero span {
+  overflow: hidden;
+  max-width: 100%;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+body[data-layout-mode="phone"] #view-attendance .work-history-hero strong,
+body.physical-phone-device #view-attendance .work-history-hero strong {
+  font-size: clamp(24px, 6.5vw, 30px);
+}
+
+body[data-layout-mode="phone"] #view-attendance .labor-ops-console,
+body.physical-phone-device #view-attendance .labor-ops-console {
+  gap: 9px;
+  padding: 10px;
+  border-radius: 20px;
+}
+
+body[data-layout-mode="phone"] #view-attendance .labor-ops-grid,
+body.physical-phone-device #view-attendance .labor-ops-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  gap: 8px;
+}
+
+body[data-layout-mode="phone"] #view-attendance .labor-ops-grid button,
+body.physical-phone-device #view-attendance .labor-ops-grid button {
+  min-height: 82px;
+  padding: 10px;
+}
+
+body[data-layout-mode="phone"] #view-attendance .labor-agent-panel,
+body.physical-phone-device #view-attendance .labor-agent-panel {
+  border-radius: 20px;
+  padding: 12px;
+}
+
+body[data-layout-mode="phone"] #view-attendance .labor-site-strip,
+body.physical-phone-device #view-attendance .labor-site-strip {
+  grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+}
+
+body[data-layout-mode="phone"] #view-fitness-log,
+body.physical-phone-device #view-fitness-log {
+  grid-auto-flow: row !important;
+  gap: 8px !important;
+  align-content: start !important;
+  padding-top: 60px !important;
+}
+
+body[data-layout-mode="phone"] #view-fitness-log .section-menu-dock,
+body.physical-phone-device #view-fitness-log .section-menu-dock {
+  top: 2px !important;
+  right: 8px !important;
+}
+
+body[data-layout-mode="phone"] #view-fitness-log .fitness-coaching-row,
+body.physical-phone-device #view-fitness-log .fitness-coaching-row {
+  order: 1 !important;
+  position: static !important;
+  top: auto !important;
+  bottom: auto !important;
+}
+
+body[data-layout-mode="phone"] #view-fitness-log .fitness-coaching-ticker,
+body.physical-phone-device #view-fitness-log .fitness-coaching-ticker {
+  min-height: 42px !important;
+  border-radius: 16px !important;
+}
+
+body[data-layout-mode="phone"] #view-fitness-log .fitness-log-title,
+body.physical-phone-device #view-fitness-log .fitness-log-title {
+  order: 2 !important;
+  position: static !important;
+  top: auto !important;
+  bottom: auto !important;
+  grid-template-columns: minmax(0, 1fr) 50px !important;
+  gap: 6px !important;
+  padding: 6px !important;
+  border-radius: 22px !important;
+}
+
+body[data-layout-mode="phone"] #view-fitness-log .fitness-date-nav,
+body.physical-phone-device #view-fitness-log .fitness-date-nav {
+  grid-template-columns: 40px minmax(0, 1fr) 40px !important;
+  gap: 5px !important;
+  min-width: 0;
+}
+
+body[data-layout-mode="phone"] #view-fitness-log #fitnessDateButton,
+body.physical-phone-device #view-fitness-log #fitnessDateButton {
+  min-width: 0 !important;
+  min-height: 46px !important;
+  padding-inline: 3px !important;
+}
+
+body[data-layout-mode="phone"] #view-fitness-log #fitnessWorklogDate,
+body.physical-phone-device #view-fitness-log #fitnessWorklogDate {
+  display: block;
+  max-width: 100%;
+  overflow: hidden;
+  font-size: clamp(18px, 4.8vw, 21px) !important;
+  line-height: 1 !important;
+  text-overflow: clip;
+  white-space: nowrap;
+}
+
+body[data-layout-mode="phone"] #view-fitness-log #fitnessPrevDateButton,
+body[data-layout-mode="phone"] #view-fitness-log #fitnessNextDateButton,
+body.physical-phone-device #view-fitness-log #fitnessPrevDateButton,
+body.physical-phone-device #view-fitness-log #fitnessNextDateButton {
+  width: 40px !important;
+  min-width: 40px !important;
+  min-height: 46px !important;
+  border-radius: 16px !important;
+  font-size: 25px !important;
+}
+
+body[data-layout-mode="phone"] #view-fitness-log #fitnessTodayButton,
+body.physical-phone-device #view-fitness-log #fitnessTodayButton {
+  width: 50px !important;
+  min-width: 50px !important;
+  min-height: 46px !important;
+  border-radius: 16px !important;
+}
+
+body[data-layout-mode="phone"] #view-fitness-log .fitness-page-toast,
+body.physical-phone-device #view-fitness-log .fitness-page-toast {
+  top: auto !important;
+  bottom: max(18px, env(safe-area-inset-bottom)) !important;
+  max-width: min(300px, calc(100vw - 56px)) !important;
+}
+
+body[data-layout-mode="phone"] #view-fitness-log .fitness-log-pager,
+body.physical-phone-device #view-fitness-log .fitness-log-pager {
+  order: 3 !important;
+  position: relative !important;
+  z-index: 2 !important;
+  top: auto !important;
+  bottom: auto !important;
+  grid-template-columns: minmax(76px, 0.78fr) minmax(0, 1.3fr) minmax(76px, 0.78fr) !important;
+  gap: 6px !important;
+  min-height: 48px !important;
+  margin-bottom: 4px;
+}
+
+body[data-layout-mode="phone"] #view-fitness-log .fitness-log-pager button,
+body[data-layout-mode="phone"] #view-fitness-log .fitness-log-pager div,
+body.physical-phone-device #view-fitness-log .fitness-log-pager button,
+body.physical-phone-device #view-fitness-log .fitness-log-pager div {
+  min-height: 48px !important;
+  border-radius: 18px !important;
+}
+
+body[data-layout-mode="phone"] #view-fitness-log .fitness-log-pager strong,
+body.physical-phone-device #view-fitness-log .fitness-log-pager strong {
+  font-size: clamp(14px, 3.8vw, 16px) !important;
+}
+
+body[data-layout-mode="phone"] #view-fitness-log .fitness-ops-section,
+body.physical-phone-device #view-fitness-log .fitness-ops-section {
+  order: 4 !important;
+  position: relative !important;
+  z-index: 1 !important;
+  margin-top: 0 !important;
+  padding: 10px !important;
+  border-radius: 20px !important;
+  transform: none !important;
+}
+
+body[data-layout-mode="phone"] #view-fitness-log .fitness-ops-section h3,
+body.physical-phone-device #view-fitness-log .fitness-ops-section h3 {
+  min-height: 38px;
+  margin-bottom: 6px;
+  padding-bottom: 5px;
+  font-size: 21px !important;
+}
+
+body[data-layout-mode="phone"] #view-fitness-log .fitness-ops-summary-button,
+body.physical-phone-device #view-fitness-log .fitness-ops-summary-button {
+  grid-template-columns: 48px repeat(4, minmax(0, 1fr)) !important;
+  gap: 5px !important;
+  min-height: 54px !important;
+  padding: 6px !important;
+}
+
+body[data-layout-mode="phone"] #view-fitness-log .ops-summary-note,
+body.physical-phone-device #view-fitness-log .ops-summary-note {
+  display: none !important;
+}
+
+body[data-layout-mode="phone"] #view-fitness-log .fitness-log-task-panel,
+body.physical-phone-device #view-fitness-log .fitness-log-task-panel {
+  order: 5 !important;
+}
+
+body[data-layout-mode="phone"] #view-fitness-log .fitness-log-schedule-panel,
+body.physical-phone-device #view-fitness-log .fitness-log-schedule-panel {
+  order: 6 !important;
+}
+
+body[data-layout-mode="phone"] #view-fitness-log .fitness-report-menu-button,
+body.physical-phone-device #view-fitness-log .fitness-report-menu-button {
+  order: 7 !important;
+}
+
+body[data-layout-mode="phone"] #view-today,
+body.physical-phone-device #view-today {
+  padding-top: 56px !important;
+}
+
+body[data-layout-mode="phone"] #view-today .section-menu-dock,
+body.physical-phone-device #view-today .section-menu-dock {
+  top: 4px !important;
+  right: 8px !important;
+}
+
+body[data-layout-mode="phone"] #view-today .worklog-today-title,
+body.physical-phone-device #view-today .worklog-today-title {
+  grid-template-columns: minmax(0, 1fr) auto !important;
+  grid-template-rows: minmax(0, auto) !important;
+  gap: 5px !important;
+  min-height: 58px !important;
+  padding: 6px !important;
+  align-items: center !important;
+}
+
+body[data-layout-mode="phone"] #view-today .worklog-today-title::before,
+body[data-layout-mode="phone"] #view-today .worklog-today-title::after,
+body.physical-phone-device #view-today .worklog-today-title::before {
+  content: none !important;
+  display: none !important;
+}
+
+body.physical-phone-device #view-today .worklog-today-title::after {
+  content: none !important;
+  display: none !important;
+}
+
+body[data-layout-mode="phone"] #view-today .worklog-summary-date,
+body.physical-phone-device #view-today .worklog-summary-date {
+  grid-template-columns: 40px minmax(0, 1fr) 40px !important;
+  gap: 4px !important;
+  min-width: 0;
+}
+
+body[data-layout-mode="phone"] #view-today #selectedDateButton,
+body.physical-phone-device #view-today #selectedDateButton {
+  min-width: 0 !important;
+  min-height: 46px !important;
+  padding-inline: 2px !important;
+}
+
+body[data-layout-mode="phone"] #view-today #worklogDayTitle,
+body.physical-phone-device #view-today #worklogDayTitle {
+  display: block;
+  overflow: hidden;
+  font-size: clamp(13px, 3.55vw, 14px) !important;
+  line-height: 1 !important;
+  text-overflow: clip;
+  white-space: nowrap;
+}
+
+body[data-layout-mode="phone"] #view-today .date-arrow-button,
+body.physical-phone-device #view-today .date-arrow-button {
+  width: 40px !important;
+  min-width: 40px !important;
+  min-height: 46px !important;
+  font-size: 27px !important;
+}
+
+body[data-layout-mode="phone"] #view-today .worklog-main,
+body.physical-phone-device #view-today .worklog-main {
+  min-height: 0 !important;
+  height: auto !important;
+}
+
+body[data-layout-mode="phone"] #view-today .worklog-main[data-today-page="daily"] .worklog-daily-page,
+body.physical-phone-device #view-today .worklog-main[data-today-page="daily"] .worklog-daily-page {
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) !important;
+  gap: 5px !important;
+  align-items: start;
+}
+
+body[data-layout-mode="phone"] #view-today .worklog-panel,
+body.physical-phone-device #view-today .worklog-panel {
+  min-width: 0 !important;
+  padding: 0 !important;
+  overflow: hidden !important;
+}
+
+body[data-layout-mode="phone"] #view-today .worklog-panel h3,
+body.physical-phone-device #view-today .worklog-panel h3 {
+  display: grid !important;
+  grid-template-columns: 5px minmax(0, 1fr) auto auto auto !important;
+  gap: 3px !important;
+  align-items: center !important;
+  min-height: 38px !important;
+  padding: 6px 5px !important;
+}
+
+body[data-layout-mode="phone"] #view-today .worklog-panel h3::before,
+body.physical-phone-device #view-today .worklog-panel h3::before {
+  grid-column: 1;
+  width: 5px !important;
+  height: 22px !important;
+}
+
+body[data-layout-mode="phone"] #view-today .worklog-panel h3::after,
+body.physical-phone-device #view-today .worklog-panel h3::after {
+  content: none !important;
+  display: none !important;
+}
+
+body[data-layout-mode="phone"] #view-today .worklog-panel h3 > span,
+body.physical-phone-device #view-today .worklog-panel h3 > span {
+  grid-column: 2;
+  overflow: hidden !important;
+  font-size: 13px !important;
+  line-height: 1.05 !important;
+  text-overflow: clip !important;
+  white-space: nowrap !important;
+  word-break: keep-all !important;
+}
+
+body[data-layout-mode="phone"] #view-today .worklog-schedule-panel h3 > span,
+body.physical-phone-device #view-today .worklog-schedule-panel h3 > span {
+  font-size: 11px !important;
+}
+
+body[data-layout-mode="phone"] #view-today .mobile-focus-open,
+body.physical-phone-device #view-today .mobile-focus-open {
+  min-width: 28px !important;
+  min-height: 28px !important;
+  padding-inline: 0 !important;
+  border-radius: 999px !important;
+  font-size: 0 !important;
+}
+
+body[data-layout-mode="phone"] #view-today .mobile-focus-open::after,
+body.physical-phone-device #view-today .mobile-focus-open::after {
+  content: "↗";
+  font-size: 15px;
+  line-height: 1;
+}
+
+body[data-layout-mode="phone"] #view-today .schedule-unit-button,
+body[data-layout-mode="phone"] #view-today .ai-section-button,
+body.physical-phone-device #view-today .schedule-unit-button,
+body.physical-phone-device #view-today .ai-section-button {
+  min-width: 30px !important;
+  min-height: 28px !important;
+  padding-inline: 4px !important;
+  border-radius: 10px !important;
+  font-size: 10px !important;
+  white-space: nowrap;
+}
+
+body[data-layout-mode="phone"] #view-today .task-board,
+body[data-layout-mode="phone"] #view-today .appointment-list,
+body.physical-phone-device #view-today .task-board,
+body.physical-phone-device #view-today .appointment-list {
+  padding: 6px 8px 12px !important;
+}
+
+body[data-layout-mode="phone"] #view-today > .planner-section,
+body.physical-phone-device #view-today > .planner-section {
+  margin-top: 10px !important;
+}
+
+body[data-layout-mode="phone"] .executive-hero-actions,
+body[data-layout-mode="phone"] .control-tower-hero-actions,
+body.physical-phone-device .executive-hero-actions,
+body.physical-phone-device .control-tower-hero-actions {
+  grid-template-columns: 38px minmax(0, 1fr) 38px 46px 46px !important;
+  display: grid !important;
+  gap: 4px !important;
+}
+
+body[data-layout-mode="phone"] .executive-hero-actions .dashboard-date-arrow,
+body[data-layout-mode="phone"] .control-tower-hero-actions .dashboard-date-arrow,
+body.physical-phone-device .executive-hero-actions .dashboard-date-arrow,
+body.physical-phone-device .control-tower-hero-actions .dashboard-date-arrow {
+  width: 38px !important;
+  min-width: 38px !important;
+  min-height: 42px !important;
+  padding-inline: 0 !important;
+  font-size: 22px !important;
+}
+
+body[data-layout-mode="phone"] .executive-hero-actions .dashboard-date-button,
+body[data-layout-mode="phone"] .control-tower-hero-actions .dashboard-date-button,
+body.physical-phone-device .executive-hero-actions .dashboard-date-button,
+body.physical-phone-device .control-tower-hero-actions .dashboard-date-button {
+  min-width: 0 !important;
+  min-height: 42px !important;
+  padding-inline: 3px !important;
+  overflow: hidden !important;
+  font-size: clamp(12px, 3.5vw, 13.5px) !important;
+  line-height: 1 !important;
+  text-overflow: clip !important;
+  white-space: nowrap !important;
+}
+
+body[data-layout-mode="phone"] .executive-hero-actions .dashboard-today-button,
+body[data-layout-mode="phone"] .control-tower-hero-actions .dashboard-today-button,
+body[data-layout-mode="phone"] #executiveMenuButton,
+body[data-layout-mode="phone"] #controlTowerMenuButton,
+body.physical-phone-device .executive-hero-actions .dashboard-today-button,
+body.physical-phone-device .control-tower-hero-actions .dashboard-today-button,
+body.physical-phone-device #executiveMenuButton,
+body.physical-phone-device #controlTowerMenuButton {
+  min-width: 46px !important;
+  min-height: 42px !important;
+  padding-inline: 0 !important;
+  font-size: 12px !important;
+}
+
 /* Keep this at the absolute end so page-specific display rules never stack
    inactive sections under the active view. */
 .worklog-shell > .worklog-view:not(.is-active) {
@@ -15072,5 +15565,11 @@ body.physical-phone-device .premium-operator-layout {
 }
 
 .worklog-shell > .premium-operating-view.is-active {
+  display: grid !important;
+}
+
+.worklog-shell > .fitness-log-view.is-active,
+.worklog-shell > #view-today.is-active,
+.worklog-shell > #view-attendance.is-active {
   display: grid !important;
 }
