@@ -3392,6 +3392,13 @@ function renderAuthStatus(message) {
   renderMainMenuAuthButton();
 }
 
+function clearAuthFormCredentials() {
+  const emailInput = document.getElementById("authEmail");
+  const passwordInput = document.getElementById("authPassword");
+  if (emailInput) emailInput.value = "";
+  if (passwordInput) passwordInput.value = "";
+}
+
 function isKnownLoggedInProfile() {
   if (authState.user) return true;
   if (isExplicitlySignedOut()) return false;
@@ -3561,10 +3568,12 @@ async function signOutWithSupabase() {
     localStorage.setItem(localAuthSignedOutKey, "1");
   }
   renderApprovalNotification();
-  renderAuthStatus("로그아웃되었습니다. 입력 내용은 이 기기에 계속 보관됩니다.");
+  clearAuthFormCredentials();
+  renderAuthStatus("로그아웃되었습니다. 업무 입력 내용은 이 기기에 계속 보관됩니다.");
   renderAll();
   switchView("auth");
   renderProfileForm();
+  clearAuthFormCredentials();
 }
 
 async function applySession(session) {
@@ -3572,6 +3581,7 @@ async function applySession(session) {
   authState.user = session?.user || null;
   if (!authState.user) {
     clearAuthRuntimeState();
+    if (isExplicitlySignedOut()) clearAuthFormCredentials();
     renderApprovalNotification();
     renderAuthStatus();
     renderAll();
@@ -8443,7 +8453,8 @@ normalizeState();
 document.getElementById("reportTone").value = state.reportTone;
 renderBackupCenter();
 renderInnovationLab();
-document.getElementById("authEmail").value = state.profile.email || "";
+if (isExplicitlySignedOut()) clearAuthFormCredentials();
+else document.getElementById("authEmail").value = state.profile.email || "";
 renderAuthStatus();
 renderAll();
 switchView(getInitialLandingView());
