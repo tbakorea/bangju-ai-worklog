@@ -1,6 +1,7 @@
 const storageKey = "beyond-worklog-state-v1";
 const layoutModeStorageKey = "beyond-worklog-layout-mode";
 const globalViewModeStorageKey = "beyond-worklog-global-view-mode";
+const localAuthSignedOutKey = "beyond-worklog-auth-signed-out";
 const productionAppUrl = "https://bangju-ai-worklog.vercel.app/";
 const supabaseConfig = {
   url: "https://zllpfaijahyfppivkxzu.supabase.co",
@@ -3385,12 +3386,16 @@ function renderAuthStatus(message) {
 }
 
 function isKnownLoggedInProfile() {
-  return Boolean(authState.user);
+  if (authState.user) return true;
+  if (localStorage.getItem(localAuthSignedOutKey) === "1") return false;
+  const email = String(state.profile?.email || "").trim().toLowerCase();
+  const status = state.profile?.approvalStatus || "";
+  return Boolean(email && status === "approved");
 }
 
 function renderMainMenuAuthButton() {
   const button = document.querySelector('[data-menu-view="auth"]');
-  const email = authState.user?.email || "";
+  const email = authState.user?.email || state.profile?.email || "";
   const isLoggedIn = isKnownLoggedInProfile();
   if (button) {
     button.textContent = isLoggedIn ? "로그아웃" : "로그인";
@@ -3535,6 +3540,7 @@ async function signOutWithSupabase() {
     if (supabaseClient) await supabaseClient.auth.signOut();
   } finally {
     clearAuthRuntimeState();
+    localStorage.setItem(localAuthSignedOutKey, "1");
   }
   renderApprovalNotification();
   renderAuthStatus("로그아웃되었습니다. 입력 내용은 이 기기에 계속 보관됩니다.");
@@ -3552,6 +3558,7 @@ async function applySession(session) {
     renderAll();
     return;
   }
+  localStorage.removeItem(localAuthSignedOutKey);
   document.getElementById("authEmail").value = authState.user.email || "";
   state.profile.email = authState.user.email || state.profile.email || "";
   await loadRemoteProfile();
