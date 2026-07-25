@@ -8640,25 +8640,361 @@ function printFitnessReport() {
   window.setTimeout(() => document.body.classList.remove("is-printing-fitness-report"), 500);
 }
 
-function saveFitnessReportImage() {
-  const lines = buildFitnessReportLines();
-  const svgLines = lines.slice(0, 44).map((line, index) => {
-    const safe = escapeHtml(line || " ");
-    const size = index === 0 ? 30 : 18;
-    const weight = index === 0 || /^\[/.test(line) ? 800 : 500;
-    return `<text x="56" y="${72 + index * 28}" font-size="${size}" font-weight="${weight}" fill="#111411">${safe}</text>`;
-  }).join("");
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="1240" height="1754" viewBox="0 0 1240 1754"><rect width="1240" height="1754" fill="#fffefa"/><rect x="38" y="38" width="1164" height="1678" fill="none" stroke="#111411" stroke-width="3"/>${svgLines}</svg>`;
-  const blob = new Blob([svg], { type: "image/svg+xml" });
+function getFitnessReportFileBase() {
+  return `beyond-fitness-report-${getActiveDateKey()}`;
+}
+
+function getFitnessReportExportCss() {
+  return `
+    * { box-sizing: border-box; }
+    body { margin: 0; }
+    :root {
+      --ink: #111411;
+      --fitness-green: #0f4637;
+      --nordic-sheet: #fffefa;
+      --hairline: rgba(18, 59, 45, 0.13);
+    }
+    .fitness-report-page {
+      width: 1240px !important;
+      height: 1754px !important;
+      min-height: 1754px !important;
+      aspect-ratio: auto !important;
+      margin: 0 !important;
+      border: 0 !important;
+      border-radius: 0 !important;
+      box-shadow: none !important;
+      background: #fffefa !important;
+      color: #111411 !important;
+      overflow: hidden !important;
+      padding: 48px !important;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+    .fitness-paper-top {
+      display: grid;
+      grid-template-columns: minmax(0, 1.15fr) minmax(320px, 0.85fr);
+      gap: 16px;
+      border-bottom: 4px solid rgba(18, 59, 45, 0.92);
+      padding-bottom: 16px;
+    }
+    .fitness-paper-top > div {
+      display: grid;
+      align-content: center;
+      min-height: 118px;
+      border-radius: 18px;
+      background: linear-gradient(135deg, #0a3529, #176047);
+      color: #fff7d5;
+      padding: 22px 26px;
+    }
+    .fitness-paper-top strong {
+      color: #fff7d5;
+      font-size: 42px;
+      line-height: 1.06;
+      font-weight: 950;
+      letter-spacing: 0;
+    }
+    .fitness-paper-top span {
+      margin-top: 10px;
+      color: #ffffff;
+      font-size: 22px;
+      line-height: 1.25;
+      font-weight: 900;
+    }
+    .fitness-paper-top dl {
+      display: grid;
+      grid-template-columns: 110px minmax(0, 1fr);
+      margin: 0;
+      border: 2px solid rgba(18, 59, 45, 0.28);
+      border-radius: 14px;
+      overflow: hidden;
+    }
+    .fitness-paper-top dt,
+    .fitness-paper-top dd {
+      min-height: 48px;
+      border-bottom: 2px solid rgba(18, 59, 45, 0.18);
+      margin: 0;
+      padding: 10px 12px;
+      font-size: 20px;
+      line-height: 1.15;
+    }
+    .fitness-paper-top dt {
+      display: grid;
+      place-items: center;
+      background: rgba(237, 244, 224, 0.95);
+      border-right: 2px solid rgba(18, 59, 45, 0.18);
+      font-weight: 950;
+    }
+    .fitness-paper-top dd { font-weight: 900; }
+    .fitness-paper-top dt:nth-last-child(2),
+    .fitness-paper-top dd:last-child { border-bottom: 0; }
+    .fitness-paper-summary {
+      display: grid;
+      grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr);
+      gap: 16px;
+      margin-top: 16px;
+    }
+    .fitness-paper-tasks,
+    .fitness-paper-kpi,
+    .fitness-paper-attendance-table,
+    .fitness-paper-schedule,
+    .fitness-paper-footer-grid > div {
+      border: 2px solid rgba(18, 59, 45, 0.22);
+      border-radius: 14px;
+      overflow: hidden;
+      background: rgba(255, 254, 250, 0.95);
+    }
+    .fitness-paper-tasks h3,
+    .fitness-paper-attendance-table h3,
+    .fitness-paper-schedule h3,
+    .fitness-paper-footer-grid h3 {
+      margin: 0;
+      background: rgba(237, 244, 224, 0.86);
+      color: #111411;
+      padding: 12px 14px;
+      font-size: 22px;
+      font-weight: 950;
+    }
+    .fitness-paper-tasks p,
+    .fitness-paper-footer-grid p {
+      display: grid;
+      grid-template-columns: 50px minmax(0, 1fr);
+      min-height: 48px;
+      margin: 0;
+      border-top: 2px solid rgba(18, 59, 45, 0.12);
+    }
+    .fitness-paper-tasks p b,
+    .fitness-paper-footer-grid p b {
+      display: grid;
+      place-items: center;
+      border-right: 2px solid rgba(18, 59, 45, 0.12);
+      font-size: 19px;
+      font-weight: 950;
+    }
+    .fitness-paper-tasks p span,
+    .fitness-paper-footer-grid p span {
+      padding: 10px 12px;
+      font-size: 20px;
+      line-height: 1.25;
+      font-weight: 830;
+    }
+    .fitness-paper-summary .fitness-paper-kpi {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+    .fitness-paper-summary .fitness-paper-kpi div {
+      min-height: 82px;
+      border-right: 2px solid rgba(18, 59, 45, 0.12);
+      border-bottom: 2px solid rgba(18, 59, 45, 0.12);
+      padding: 14px;
+    }
+    .fitness-paper-summary .fitness-paper-kpi span {
+      display: block;
+      color: rgba(17, 20, 17, 0.68);
+      font-size: 18px;
+      font-weight: 900;
+    }
+    .fitness-paper-summary .fitness-paper-kpi strong {
+      display: block;
+      margin-top: 4px;
+      color: #111411;
+      font-size: 28px;
+      font-weight: 950;
+    }
+    .fitness-paper-attendance-table,
+    .fitness-paper-schedule,
+    .fitness-paper-footer-grid { margin-top: 16px; }
+    .fitness-paper-attendance-table table,
+    .fitness-paper-schedule table {
+      width: 100%;
+      border-collapse: collapse;
+      table-layout: fixed;
+    }
+    .fitness-paper-attendance-table th,
+    .fitness-paper-attendance-table td,
+    .fitness-paper-schedule th,
+    .fitness-paper-schedule td {
+      border-top: 2px solid rgba(18, 59, 45, 0.13);
+      border-right: 2px solid rgba(18, 59, 45, 0.13);
+      padding: 8px 10px;
+      font-size: 18px;
+      line-height: 1.12;
+    }
+    .fitness-paper-attendance-table th,
+    .fitness-paper-schedule th {
+      background: rgba(250, 250, 245, 0.95);
+      font-weight: 950;
+    }
+    .fitness-paper-schedule th:nth-child(1),
+    .fitness-paper-schedule td:nth-child(1) {
+      width: 166px;
+      text-align: center;
+      font-weight: 900;
+    }
+    .fitness-paper-schedule th:nth-child(3),
+    .fitness-paper-schedule td:nth-child(3) {
+      width: 118px;
+      text-align: center;
+    }
+    .fitness-paper-schedule td {
+      height: 31px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .fitness-paper-footer-grid {
+      display: grid;
+      grid-template-columns: minmax(0, 0.95fr) minmax(0, 1.05fr);
+      gap: 16px;
+    }
+  `;
+}
+
+async function renderFitnessReportCanvas() {
+  const width = 1240;
+  const height = 1754;
+  const html = `
+    <div xmlns="http://www.w3.org/1999/xhtml">
+      <style>${getFitnessReportExportCss()}</style>
+      ${renderFitnessReportTemplate(buildFitnessReportModel())}
+    </div>
+  `;
+  const svg = `
+    <svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}">
+      <foreignObject width="${width}" height="${height}">${html}</foreignObject>
+    </svg>
+  `;
+  if (document.fonts?.ready) await document.fonts.ready;
+  const svgBlob = new Blob([svg], { type: "image/svg+xml;charset=utf-8" });
+  const url = URL.createObjectURL(svgBlob);
+  try {
+    const image = new Image();
+    image.decoding = "async";
+    image.src = url;
+    await new Promise((resolve, reject) => {
+      image.onload = resolve;
+      image.onerror = reject;
+    });
+    const canvas = document.createElement("canvas");
+    canvas.width = width;
+    canvas.height = height;
+    const ctx = canvas.getContext("2d");
+    ctx.fillStyle = "#fffefa";
+    ctx.fillRect(0, 0, width, height);
+    ctx.drawImage(image, 0, 0);
+    return canvas;
+  } finally {
+    URL.revokeObjectURL(url);
+  }
+}
+
+function canvasToBlob(canvas, type = "image/png", quality) {
+  return new Promise((resolve, reject) => {
+    canvas.toBlob((blob) => {
+      if (blob) resolve(blob);
+      else reject(new Error("보고서 이미지 생성에 실패했습니다."));
+    }, type, quality);
+  });
+}
+
+function downloadBlob(blob, filename) {
   const url = URL.createObjectURL(blob);
   const link = document.createElement("a");
   link.href = url;
-  link.download = `beyond-fitness-report-${getActiveDateKey()}.svg`;
+  link.download = filename;
+  document.body.appendChild(link);
   link.click();
-  URL.revokeObjectURL(url);
+  link.remove();
+  window.setTimeout(() => URL.revokeObjectURL(url), 500);
+}
+
+function concatUint8Arrays(parts) {
+  const total = parts.reduce((sum, part) => sum + part.length, 0);
+  const merged = new Uint8Array(total);
+  let offset = 0;
+  parts.forEach((part) => {
+    merged.set(part, offset);
+    offset += part.length;
+  });
+  return merged;
+}
+
+function dataUrlToUint8Array(dataUrl) {
+  const base64 = String(dataUrl).split(",")[1] || "";
+  const binary = atob(base64);
+  const bytes = new Uint8Array(binary.length);
+  for (let index = 0; index < binary.length; index += 1) bytes[index] = binary.charCodeAt(index);
+  return bytes;
+}
+
+function createPdfBlobFromCanvas(canvas) {
+  const encoder = new TextEncoder();
+  const jpegBytes = dataUrlToUint8Array(canvas.toDataURL("image/jpeg", 0.92));
+  const pageWidth = 595.28;
+  const pageHeight = 841.89;
+  const content = `q\n${pageWidth} 0 0 ${pageHeight} 0 0 cm\n/Im0 Do\nQ`;
+  const objects = [
+    encoder.encode("1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n"),
+    encoder.encode("2 0 obj\n<< /Type /Pages /Kids [3 0 R] /Count 1 >>\nendobj\n"),
+    encoder.encode(`3 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${pageWidth} ${pageHeight}] /Resources << /XObject << /Im0 5 0 R >> >> /Contents 4 0 R >>\nendobj\n`),
+    encoder.encode(`4 0 obj\n<< /Length ${content.length} >>\nstream\n${content}\nendstream\nendobj\n`),
+    concatUint8Arrays([
+      encoder.encode(`5 0 obj\n<< /Type /XObject /Subtype /Image /Width ${canvas.width} /Height ${canvas.height} /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode /Length ${jpegBytes.length} >>\nstream\n`),
+      jpegBytes,
+      encoder.encode("\nendstream\nendobj\n"),
+    ]),
+  ];
+  const chunks = [encoder.encode("%PDF-1.4\n%\n")];
+  const offsets = [0];
+  let length = chunks[0].length;
+  objects.forEach((object) => {
+    offsets.push(length);
+    chunks.push(object);
+    length += object.length;
+  });
+  const xrefStart = length;
+  const xref = [
+    "xref",
+    `0 ${objects.length + 1}`,
+    "0000000000 65535 f ",
+    ...offsets.slice(1).map((offset) => `${String(offset).padStart(10, "0")} 00000 n `),
+    "trailer",
+    `<< /Size ${objects.length + 1} /Root 1 0 R >>`,
+    "startxref",
+    String(xrefStart),
+    "%%EOF",
+  ].join("\n");
+  chunks.push(encoder.encode(xref));
+  return new Blob(chunks, { type: "application/pdf" });
+}
+
+async function saveFitnessReportImage() {
+  const canvas = await renderFitnessReportCanvas();
+  const blob = await canvasToBlob(canvas, "image/png");
+  downloadBlob(blob, `${getFitnessReportFileBase()}.png`);
 }
 
 async function shareFitnessReport() {
+  const canvas = await renderFitnessReportCanvas();
+  const pngBlob = await canvasToBlob(canvas, "image/png");
+  const pdfBlob = createPdfBlobFromCanvas(canvas);
+  const base = getFitnessReportFileBase();
+  const pngFile = new File([pngBlob], `${base}.png`, { type: "image/png" });
+  const pdfFile = new File([pdfBlob], `${base}.pdf`, { type: "application/pdf" });
+  if (navigator.canShare?.({ files: [pngFile, pdfFile] }) && navigator.share) {
+    await navigator.share({
+      title: "Beyond Fitness Report",
+      text: "비욘드 피트니스 업무보고서 PNG/PDF 파일입니다.",
+      files: [pngFile, pdfFile],
+    });
+    return;
+  }
+  if (navigator.canShare?.({ files: [pngFile] }) && navigator.share) {
+    await navigator.share({
+      title: "Beyond Fitness Report",
+      text: "비욘드 피트니스 업무보고서 이미지입니다.",
+      files: [pngFile],
+    });
+    return;
+  }
   const text = buildFitnessReportLines().join("\n");
   if (navigator.share) {
     await navigator.share({ title: "Beyond Fitness Report", text });
@@ -9217,7 +9553,9 @@ document.getElementById("fitnessReportMenuButton")?.addEventListener("click", op
 document.getElementById("fitnessReportCloseButton")?.addEventListener("click", closeFitnessReportSheet);
 document.getElementById("fitnessReportBackdrop")?.addEventListener("click", closeFitnessReportSheet);
 document.getElementById("fitnessReportPrintButton")?.addEventListener("click", printFitnessReport);
-document.getElementById("fitnessReportImageButton")?.addEventListener("click", saveFitnessReportImage);
+document.getElementById("fitnessReportImageButton")?.addEventListener("click", () => {
+  saveFitnessReportImage().catch(() => alert("이미지 파일을 만들지 못했습니다. 출력 메뉴에서 PDF 저장을 이용해주세요."));
+});
 document.getElementById("fitnessReportShareButton")?.addEventListener("click", () => {
   shareFitnessReport().catch(() => alert("공유 기능을 사용할 수 없어 보고서 미리보기를 확인해주세요."));
 });

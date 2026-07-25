@@ -9284,15 +9284,18 @@ body[data-layout-mode="phone"] .fitness-log-schedule-panel .fitness-appointment-
     overflow: visible;
   }
 
-body.is-printing-fitness-report .fitness-report-page {
+  body.is-printing-fitness-report .fitness-report-page {
     box-sizing: border-box;
-    width: 194mm;
+    width: 194mm !important;
+    height: 281mm !important;
     aspect-ratio: auto;
-    min-height: auto;
+    min-height: 281mm;
     max-height: 281mm;
     overflow: hidden;
     border: 0;
     padding: 0;
+    box-shadow: none;
+    border-radius: 0;
   }
 
   body.is-printing-fitness-report .fitness-paper-title strong {
@@ -9725,20 +9728,23 @@ body[data-layout-mode="phone"] .fitness-log-schedule-panel .appointment-merge-bu
   align-content: center;
   min-height: 52px;
   border-radius: 8px;
-  background: var(--fitness-green);
-  color: var(--nordic-sheet);
+  background: linear-gradient(135deg, #0a3529 0%, #155941 100%);
+  color: #fff7d5;
   padding: 10px 12px;
+  box-shadow: inset 0 0 0 1px rgba(255, 247, 213, 0.16);
 }
 
 .fitness-paper-top strong {
+  color: #fff7d5;
   font-size: 21px;
   line-height: 1.1;
   font-weight: 950;
+  text-shadow: 0 1px 0 rgba(0, 0, 0, 0.18);
 }
 
 .fitness-paper-top span {
   margin-top: 4px;
-  color: rgba(255, 254, 250, 0.78);
+  color: #fffefa;
   font-size: 11px;
   font-weight: 850;
 }
