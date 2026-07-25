@@ -536,7 +536,9 @@ const dailyEditingState = {
 
 function loadState() {
   try {
-    return JSON.parse(localStorage.getItem(storageKey)) || createState();
+    const saved = JSON.parse(localStorage.getItem(storageKey)) || createState();
+    saved.selectedDateKey = todayKey;
+    return saved;
   } catch {
     return createState();
   }
