@@ -8150,9 +8150,9 @@ body[data-layout-mode="phone"] .fitness-log-schedule-panel .fitness-appointment-
   right: 10px;
   z-index: 70;
   display: grid;
-  grid-template-columns: repeat(2, minmax(110px, 1fr));
+  grid-template-columns: repeat(2, minmax(122px, 1fr));
   gap: 5px;
-  width: min(284px, calc(100vw - 28px));
+  width: min(310px, calc(100vw - 28px));
   border: 1px solid var(--hardline);
   background: rgba(252, 252, 247, 0.98);
   padding: 8px;
@@ -8284,6 +8284,7 @@ body[data-layout-mode="phone"] .fitness-log-schedule-panel .fitness-appointment-
   border-radius: 0;
   padding: 5px 8px;
   text-align: left;
+  word-break: keep-all;
 }
 
 .fitness-coaching-row {

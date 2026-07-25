@@ -3398,9 +3398,9 @@ function renderMainMenuAuthButton() {
   const email = authState.user?.email || state.profile?.email || "";
   const isLoggedIn = isKnownLoggedInProfile();
   if (button) {
-    button.textContent = isLoggedIn ? "로그아웃" : "로그인";
+    button.textContent = isLoggedIn ? "로그아웃" : "로그인/직원등록";
     button.dataset.menuAction = isLoggedIn ? "logout" : "login";
-    button.setAttribute("aria-label", isLoggedIn ? `${email || "현재 계정"} 로그아웃` : "로그인 페이지 열기");
+    button.setAttribute("aria-label", isLoggedIn ? `${email || "현재 계정"} 로그아웃` : "로그인과 직원등록 페이지 열기");
   }
   renderMainMenuVisibility();
 }
