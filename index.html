@@ -23,6 +23,7 @@
           <option value="management">사업장</option>
           <option value="staff">직원</option>
           <option value="attendance">노무</option>
+          <option value="premium">AI 운영총괄</option>
           <option value="ai">매뉴얼·코칭</option>
           <option value="report">보고서·백업</option>
           <option value="settings">설정</option>
@@ -45,6 +46,7 @@
           <button type="button" data-menu-view="worklog">업무일지</button>
           <button type="button" data-menu-view="staff">직원</button>
           <button type="button" data-menu-view="attendance">노무</button>
+          <button type="button" data-menu-view="premium">AI 운영총괄</button>
           <button type="button" data-menu-view="ai">매뉴얼·코칭</button>
           <button type="button" data-menu-view="report">보고서·백업</button>
           <button type="button" data-menu-view="settings">설정</button>
@@ -80,6 +82,7 @@
         <button type="button" data-view="management">사업장</button>
         <button type="button" data-view="staff">직원</button>
         <button type="button" data-view="attendance">노무</button>
+        <button type="button" data-view="premium">AI 운영총괄</button>
         <button type="button" data-view="ai">매뉴얼·코칭</button>
         <button type="button" data-view="report">보고서·백업</button>
         <button type="button" data-view="settings">설정</button>
@@ -692,6 +695,40 @@
           </button>
         </div>
         <div class="ai-coach-grid" id="aiCoachGrid"></div>
+      </section>
+
+      <section class="worklog-view premium-operating-view" id="view-premium">
+        <div class="premium-operating-hero">
+          <div>
+            <p>AI Operating Partner</p>
+            <h2>AI 운영총괄</h2>
+            <span>업무일지 · 노무 · 직원성장 · 매출행동을 하나의 실행 OS로 묶습니다.</span>
+          </div>
+          <strong id="premiumReadinessScore">0</strong>
+        </div>
+        <div class="section-command-strip premium-command-strip" aria-label="AI 운영총괄 주요 기능">
+          <button type="button" data-section-shortcut="premium-growth">
+            <span>01</span>
+            <strong>성장 엔진</strong>
+            <em>직원별 역량·미션 제안</em>
+          </button>
+          <button type="button" data-section-shortcut="premium-revenue">
+            <span>02</span>
+            <strong>수익 행동</strong>
+            <em>상담·계약·재등록 추적</em>
+          </button>
+          <button type="button" data-section-shortcut="premium-labor">
+            <span>03</span>
+            <strong>노무 자동화</strong>
+            <em>출결·수업·월마감 연결</em>
+          </button>
+          <button type="button" data-section-shortcut="premium-roadmap">
+            <span>04</span>
+            <strong>500만원 골격</strong>
+            <em>프리미엄 패키지 로드맵</em>
+          </button>
+        </div>
+        <div class="premium-operating-grid" id="premiumOperatingGrid"></div>
       </section>
 
       <section class="worklog-view report-backup-view" id="view-report">

@@ -132,6 +132,28 @@ check(
 );
 
 check(
+  "premium AI operating OS exists",
+  html.includes('id="view-premium"')
+    && html.includes('data-menu-view="premium"')
+    && html.includes('data-view="premium"')
+    && /function buildPremiumOperatingModel\(\)/.test(js)
+    && /function renderPremiumOperatingSystem\(\)/.test(js)
+    && /renderPremiumOperatingSystem\(\)/.test(js)
+    && css.includes(".premium-operating-hero")
+    && css.includes(".premium-agent-grid"),
+  "premium operating section should consolidate worklog, labor, growth, revenue, and backup signals without touching worklog editors"
+);
+
+check(
+  "premium OS is kept inside existing report and coaching flow",
+  html.includes('data-section-shortcut="premium-growth"')
+    && html.includes('data-section-shortcut="premium-roadmap"')
+    && /action\?\.startsWith\("premium-"\)/.test(js)
+    && css.includes(".worklog-shell > .premium-operating-view.is-active"),
+  "premium features need a single hub and final display guard"
+);
+
+check(
   "growth engine has visual competency styles",
   css.includes(".growth-command-card") && css.includes(".growth-competency-card") && css.includes("--growth-score"),
   "self-development progress should be visible, not only textual"

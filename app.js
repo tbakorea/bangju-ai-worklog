@@ -2478,6 +2478,168 @@ function renderAiCoach() {
   `;
 }
 
+function buildPremiumOperatingModel() {
+  const assetRows = getAssetRows();
+  const staffRows = getControlStaffRows();
+  const siteRows = getControlSiteRows(assetRows, staffRows);
+  const fitnessOps = getFitnessOpsSummary();
+  const missionQueue = getMissionProposalQueue(8);
+  const operatingScore = calculateOperatingScore();
+  const taskTotal = staffRows.reduce((sum, row) => sum + row.taskCount, 0);
+  const completedTotal = staffRows.reduce((sum, row) => sum + row.completedCount, 0);
+  const issueRows = staffRows.filter((row) => row.aiSignal !== "정상");
+  const missingLogs = staffRows.filter((row) => row.taskCount === 0);
+  const salesActions = fitnessOps.consultation + fitnessOps.outbound + fitnessOps.outsideSales + fitnessOps.customerNew + fitnessOps.customerRenewal;
+  const laborSignals = staffRows.filter((row) => row.attendanceStatus === "미기록" || row.attendanceStatus.includes("결석")).length;
+  const dataCaptureScore = taskTotal ? clampScore((completedTotal / Math.max(1, taskTotal)) * 70 + Math.min(30, taskTotal * 3)) : 18;
+  const peopleScore = clampScore(100 - issueRows.length * 10 - missingLogs.length * 4);
+  const revenueScore = clampScore(salesActions ? 55 + Math.min(40, salesActions * 8) : 28);
+  const laborScore = clampScore(100 - laborSignals * 12);
+  const automationScore = clampScore((authState.remoteReady ? 22 : 8) + (authState.user ? 22 : 8) + 16 + (missionQueue.length ? 18 : 8) + (state.backupSettings ? 14 : 8));
+  const readinessScore = clampScore((operatingScore * 0.22) + (dataCaptureScore * 0.2) + (peopleScore * 0.18) + (revenueScore * 0.16) + (laborScore * 0.12) + (automationScore * 0.12));
+  const growthModels = getEmployeeOptions()
+    .filter(isAssignedWorklogEmployee)
+    .slice(0, 8)
+    .map((employee) => buildPersonalGrowthModel(employee, getEmployeeLogForDate(employee.id)));
+  const weakestGrowth = [...growthModels].sort((a, b) => a.score - b.score).slice(0, 3);
+  const proofItems = [
+    ["직원 원장", `${staffRows.length}명`, "소속·직함·권한·승인 데이터를 한 원장으로 사용"],
+    ["업무 실행", `${completedTotal}/${taskTotal || 0}`, "업무일지와 시간표가 성과·보고·코칭의 원천"],
+    ["노무 연결", `${laborSignals}건 확인`, "출결, 근무시간, 유료/무료 PT를 월마감 자료로 연결"],
+    ["AI 미션", `${missionQueue.length}건`, "역할·매뉴얼·오늘 기록 기반으로 실행업무 제안"],
+    ["운영 점수", `${operatingScore}점`, "사업장, 직원, 매출 행동의 최소 운영 신호"],
+    ["백업 패키지", state.backupSettings?.recipientEmail || "대표 메일 준비", "보고서·노무·직원 현황을 하나의 운영기록으로 보존"],
+  ];
+  const agentLanes = [
+    {
+      title: "대표 의사결정 에이전트",
+      metric: `${issueRows.length + Math.max(0, taskTotal - completedTotal)}건`,
+      text: issueRows.length ? `${issueRows.slice(0, 3).map((row) => `${row.role} ${row.name}`).join(", ")} 신호를 먼저 확인합니다.` : "오늘 직원 위험 신호는 안정적입니다.",
+      action: "통합관제에서 근태·미완료·사업장 신호를 확인",
+      view: "control",
+    },
+    {
+      title: "직원 성장 에이전트",
+      metric: `${weakestGrowth[0]?.score || 0}점`,
+      text: weakestGrowth.length ? `${weakestGrowth.map((item) => item.employee.nickname || item.employee.name).join(", ")}에게 오늘 성장 미션을 제안합니다.` : "업무 데이터가 쌓이면 개인별 성장 미션이 정교해집니다.",
+      action: "매뉴얼·코칭에서 개인별 미션을 업무에 반영",
+      view: "ai",
+    },
+    {
+      title: "수익 행동 에이전트",
+      metric: `${salesActions}건`,
+      text: salesActions ? "고객행동이 기록되었습니다. 후속업무와 계약 전환을 연결하세요." : "상담, 아웃바운드, 재등록 후보 기록이 비어 있습니다.",
+      action: "피트니스/업무일지에 상담·계약·재등록 행동 지정",
+      view: "worklog",
+    },
+    {
+      title: "노무·보고 에이전트",
+      metric: `${laborSignals}건`,
+      text: laborSignals ? "출결 미기록 또는 결석 신호가 노무 확정 전 확인 대상입니다." : "노무 신호는 현재 안정적입니다.",
+      action: "노무와 보고서·백업에서 월마감 자료 검증",
+      view: "attendance",
+    },
+  ];
+  const roadmap = [
+    ["1단계", "데이터 신뢰도", "직원 원장, 승인, 권한, 출결, 업무일지 입력률을 90% 이상으로 올립니다.", dataCaptureScore],
+    ["2단계", "수익 KPI 연결", "PT, 상담, 재등록, 계약, 홍보 행동이 일일 업무와 월 목표로 자동 집계됩니다.", revenueScore],
+    ["3단계", "AI 매뉴얼 코칭", "직함별 매뉴얼과 오늘 업무를 비교하여 부족한 실행을 자동 제안합니다.", automationScore],
+    ["4단계", "대표 개입 최소화", "위험 신호, 칭찬 신호, 위임 후보를 매일 10분 보고서로 압축합니다.", peopleScore],
+    ["5단계", "월 500만원 패키지", "운영진단, 노무자료, 직원성장, 매출행동, 백업을 월간 컨설팅 산출물로 제공합니다.", readinessScore],
+  ];
+  return { readinessScore, proofItems, agentLanes, roadmap, missionQueue, growthModels, weakestGrowth };
+}
+
+function renderPremiumOperatingSystem() {
+  const node = document.getElementById("premiumOperatingGrid");
+  if (!node) return;
+  const model = buildPremiumOperatingModel();
+  const personalGrowth = buildPersonalGrowthModel(getSelectedEmployee(), getSelectedLog());
+  const personalMissions = getMissionProposalsForEmployee(getSelectedEmployee(), getSelectedLog());
+  setText("premiumReadinessScore", `${model.readinessScore}`);
+  node.innerHTML = `
+    <section class="premium-score-card">
+      <div>
+        <span>Premium Readiness</span>
+        <strong>${model.readinessScore}점</strong>
+        <p>월 500만원급 운영 OS는 화면의 화려함보다 데이터 신뢰도, 반복 가능한 매뉴얼, AI가 제안한 업무가 실제 실행되는 구조에서 완성됩니다.</p>
+      </div>
+      <ol>
+        <li>업무일지 → 실행 데이터</li>
+        <li>출결·노무 → 월마감 데이터</li>
+        <li>직원원장 → 권한·성장 데이터</li>
+        <li>AI미션 → 다음 행동 데이터</li>
+      </ol>
+    </section>
+    <section class="premium-proof-grid">
+      ${model.proofItems.map(([title, value, text]) => `
+        <article>
+          <span>${escapeHtml(title)}</span>
+          <strong>${escapeHtml(value)}</strong>
+          <p>${escapeHtml(text)}</p>
+        </article>
+      `).join("")}
+    </section>
+    <section class="premium-agent-grid" id="premium-growth">
+      ${model.agentLanes.map((lane, index) => `
+        <button type="button" data-premium-jump="${escapeAttr(lane.view)}">
+          <em>${String(index + 1).padStart(2, "0")}</em>
+          <strong>${escapeHtml(lane.title)}</strong>
+          <b>${escapeHtml(lane.metric)}</b>
+          <span>${escapeHtml(lane.text)}</span>
+          <small>${escapeHtml(lane.action)}</small>
+        </button>
+      `).join("")}
+    </section>
+    <section class="premium-operator-layout">
+      <article class="premium-personal-card">
+        <header>
+          <span>Personal Growth OS</span>
+          <strong>${escapeHtml(personalGrowth.trackProfile.title)}</strong>
+          <em>${personalGrowth.score}점</em>
+        </header>
+        <p>${escapeHtml(personalGrowth.trackProfile.focus)}</p>
+        <div>
+          ${personalGrowth.competencyScores.map((item) => `
+            <section>
+              <label><span>${escapeHtml(item.name)}</span><b>${item.score}</b></label>
+              <i style="--growth-score:${item.score}%"></i>
+            </section>
+          `).join("")}
+        </div>
+      </article>
+      <article class="premium-mission-card">
+        <header>
+          <span>AI Mission Queue</span>
+          <strong>오늘 제안 업무</strong>
+        </header>
+        ${renderMissionProposalCards(personalMissions.length ? personalMissions : model.missionQueue.slice(0, 4), { compact: true, showEmployee: !personalMissions.length, allowApply: true })}
+      </article>
+    </section>
+    <section class="premium-roadmap-card" id="premium-roadmap">
+      <header>
+        <span>500만원 패키지 골격</span>
+        <strong>운영 컨설팅 산출물 로드맵</strong>
+      </header>
+      <div>
+        ${model.roadmap.map(([step, title, text, score]) => `
+          <article>
+            <em>${escapeHtml(step)}</em>
+            <div>
+              <strong>${escapeHtml(title)}</strong>
+              <p>${escapeHtml(text)}</p>
+            </div>
+            <b>${score}</b>
+          </article>
+        `).join("")}
+      </div>
+    </section>
+  `;
+  node.querySelectorAll("[data-premium-jump]").forEach((button) => {
+    button.addEventListener("click", () => switchView(button.dataset.premiumJump || "control"));
+  });
+}
+
 function renderDateNav() {
   const selectedDateButton = document.getElementById("selectedDateButton");
   const dayTitle = document.getElementById("worklogDayTitle");
@@ -2893,6 +3055,7 @@ function getGlobalHeaderTitle(view = activeView, personLabel = "") {
   if (view === "management") return "사업장 운영관리";
   if (view === "staff") return "직원";
   if (view === "organization") return "조직";
+  if (view === "premium") return "AI 운영총괄";
   if (view === "ai") return "매뉴얼·코칭";
   if (view === "report") return "보고서";
   if (view === "projects") return "프로젝트";
@@ -8297,6 +8460,7 @@ function switchView(view) {
   renderControlTower();
   renderWorklogOverview();
   renderAiCoach();
+  renderPremiumOperatingSystem();
   renderFitnessDashboard();
   renderStaffMaster();
   renderAttendance();
@@ -8387,6 +8551,7 @@ function renderAll() {
   renderControlTower();
   renderWorklogOverview();
   renderAiCoach();
+  renderPremiumOperatingSystem();
   renderFitnessDashboard();
   renderStaffMaster();
   renderEmployeeSelect();
@@ -8551,6 +8716,13 @@ document.querySelectorAll("[data-section-shortcut]").forEach((button) => {
     }
     if (action === "labor") {
       switchView("attendance");
+      return;
+    }
+    if (action?.startsWith("premium-")) {
+      switchView("premium");
+      if (action === "premium-labor") window.setTimeout(() => switchView("attendance"), 120);
+      else if (action === "premium-revenue") window.setTimeout(() => switchView("worklog"), 120);
+      else document.getElementById(action)?.scrollIntoView({ behavior: "smooth", block: "start" });
       return;
     }
     if (action === "coaching" || action === "growth") {

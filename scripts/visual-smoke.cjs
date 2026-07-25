@@ -441,6 +441,85 @@ async function checkAiMissionArchitect(browser) {
   await page.close();
 }
 
+async function checkPremiumOperatingSystem(browser) {
+  for (const viewport of [
+    { label: "phone", width: 390, height: 844 },
+    { label: "desktop", width: 1280, height: 900 },
+  ]) {
+    const page = await browser.newPage({ viewport });
+    const errors = [];
+    page.on("pageerror", (error) => errors.push(error.message));
+    await page.addInitScript(() => {
+      localStorage.setItem("beyond-worklog-state-v1", JSON.stringify({
+        selectedDateKey: "2026-07-22",
+        selectedEmployeeId: "beyond-fitness-manager",
+        profile: {
+          email: "j3010@ymail.com",
+          role: "대표",
+          name: "정찬훈",
+          nickname: "베니",
+          approvalStatus: "approved",
+        },
+        employeeLogs: {
+          "2026-07-22": {
+            "beyond-fitness-manager": {
+              tasks: [
+                { id: "t1", priority: "A", text: "재등록 후보 3명 연락", status: "완료", done: true },
+                { id: "t2", priority: "B", text: "샤워실 청결 점검", status: "미완료", done: false },
+              ],
+              schedule: [
+                { time: "08:00", text: "(P/T) 김영수", items: [{ type: "P/T", text: "김영수" }] },
+                { time: "10:00", text: "(상담) 재등록 상담", items: [{ type: "상담", text: "재등록 상담" }] },
+              ],
+              clockIn: "06:00",
+              clockOut: "",
+              fitnessOps: { ptRegular: 1, consultation: 1, customerRenewal: 1 },
+              report: "재등록 후보 확인 및 센터 청결 점검 진행",
+            },
+          },
+        },
+      }));
+    });
+    await page.goto(target, { waitUntil: "domcontentloaded" });
+    await page.evaluate((label) => {
+      document.body.classList.toggle("physical-phone-device", label === "phone");
+      document.body.dataset.layoutMode = label === "phone" ? "phone" : "classic";
+      document.body.dataset.viewMode = label === "phone" ? "ceo" : "classic";
+      window.switchView?.("premium");
+    }, viewport.label);
+    await page.waitForTimeout(350);
+    const metrics = await page.evaluate(() => {
+      const hero = document.querySelector(".premium-operating-hero");
+      const firstAgent = document.querySelector(".premium-agent-grid button");
+      return {
+        activeView: document.body.dataset.activeView,
+        title: document.querySelector(".premium-operating-hero h2")?.textContent?.trim() || "",
+        score: Number(document.querySelector("#premiumReadinessScore")?.textContent?.trim() || 0),
+        proofCount: document.querySelectorAll(".premium-proof-grid article").length,
+        agentCount: document.querySelectorAll(".premium-agent-grid button").length,
+        roadmapCount: document.querySelectorAll(".premium-roadmap-card article").length,
+        heroWidth: hero?.getBoundingClientRect().width || 0,
+        firstAgentVisible: Boolean(firstAgent?.offsetWidth),
+      };
+    });
+    if (metrics.activeView !== "premium") fail("premium OS did not open", `${viewport.label}: ${metrics.activeView}`);
+    if (metrics.title !== "AI 운영총괄") fail("premium OS title missing", `${viewport.label}: ${metrics.title}`);
+    if (metrics.score <= 0 || metrics.score > 100) fail("premium readiness score invalid", `${viewport.label}: ${metrics.score}`);
+    if (metrics.proofCount !== 6) fail("premium proof grid should have six cards", `${viewport.label}: ${metrics.proofCount}`);
+    if (metrics.agentCount !== 4) fail("premium agent grid should have four lanes", `${viewport.label}: ${metrics.agentCount}`);
+    if (metrics.roadmapCount !== 5) fail("premium roadmap should have five steps", `${viewport.label}: ${metrics.roadmapCount}`);
+    if (!metrics.firstAgentVisible || metrics.heroWidth <= 0) fail("premium OS is not visually rendered", `${viewport.label}: ${JSON.stringify(metrics)}`);
+    await page.click(".premium-agent-grid button");
+    await page.waitForTimeout(160);
+    const jumpedView = await page.evaluate(() => document.body.dataset.activeView);
+    if (!["control", "ai", "worklog", "attendance", "fitness-log", "bangju-log", "beyond-log"].includes(jumpedView)) {
+      fail("premium agent lane did not navigate", `${viewport.label}: ${jumpedView}`);
+    }
+    if (errors.length) fail("premium OS page errors", `${viewport.label}: ${errors.join(" | ")}`);
+    await page.close();
+  }
+}
+
 async function checkSectionAiWorklogActions(browser) {
   const { page, errors } = await openPage(browser, { width: 390, height: 844 });
   await page.evaluate(() => {
@@ -753,6 +832,7 @@ async function checkFitnessNewEmployeeRegistrationFlow(browser) {
     await checkControlTower(browser);
     await checkExecutiveManagementPage(browser);
     await checkAiMissionArchitect(browser);
+    await checkPremiumOperatingSystem(browser);
     await checkSectionAiWorklogActions(browser);
     await checkSectionChromeReleasePolish(browser);
     await checkFitnessNewEmployeeRegistrationFlow(browser);
