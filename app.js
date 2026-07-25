@@ -2938,12 +2938,28 @@ function formatAttendanceSummary(log = getSelectedLog()) {
 }
 
 function renderProfileForm() {
+  if (isExplicitlySignedOut() && !isAuthRegistrationVisible()) {
+    clearSignupProfileFields();
+    renderSettingsForm();
+    return;
+  }
   document.querySelectorAll("[data-profile-field]").forEach((field) => {
     const value = state.profile?.[field.dataset.profileField] || "";
     field.value = isPhoneField(field) ? formatPhoneNumber(value) : value;
   });
   renderSignupSheetStatus();
   renderSettingsForm();
+}
+
+function clearSignupProfileFields() {
+  document.querySelectorAll("[data-profile-field]").forEach((field) => {
+    field.value = "";
+  });
+  const status = document.getElementById("signupApprovalStatus");
+  if (status) {
+    status.textContent = "작성 전";
+    status.dataset.status = "draft";
+  }
 }
 
 function renderSignupSheetStatus() {
@@ -3048,7 +3064,7 @@ function renderApprovalAccess() {
   if (panel) panel.classList.toggle("is-disabled", !allowed);
   if (!allowed) {
     const list = document.getElementById("approvalRequestList");
-    if (list) list.innerHTML = `<p class="empty-note">대표 또는 승인 권한자만 가입신청을 확인할 수 있습니다.</p>`;
+    if (list) list.innerHTML = `<p class="empty-note">대표 또는 승인 권한자만 직원등록 신청을 확인할 수 있습니다.</p>`;
     return;
   }
   loadApprovalRequests();
@@ -3109,17 +3125,17 @@ async function loadApprovalRequests() {
   const list = document.getElementById("approvalRequestList");
   if (!list) return;
   if (!supabaseClient || !authState.user) {
-    list.innerHTML = `<p class="empty-note">Supabase 로그인 후 가입신청을 확인할 수 있습니다.</p>`;
+    list.innerHTML = `<p class="empty-note">로그인 후 직원등록 신청을 확인할 수 있습니다.</p>`;
     return;
   }
-  list.innerHTML = `<p class="empty-note">가입신청을 불러오는 중입니다...</p>`;
+  list.innerHTML = `<p class="empty-note">직원등록 신청을 불러오는 중입니다...</p>`;
   const { data, error } = await supabaseClient
     .from("profiles")
     .select("*")
     .in("approval_status", ["pending", "approved", "rejected"])
     .order("updated_at", { ascending: false });
   if (error) {
-    list.innerHTML = `<p class="empty-note">가입신청을 불러오지 못했습니다. Supabase 승인 정책을 적용했는지 확인해주세요.<br>${escapeHtml(error.message)}</p>`;
+    list.innerHTML = `<p class="empty-note">직원등록 신청을 불러오지 못했습니다. 승인 데이터 구조를 적용했는지 확인해주세요.<br>${escapeHtml(error.message)}</p>`;
     return;
   }
   const rows = (data || []).filter((row) => row.id !== authState.user.id);
@@ -3129,7 +3145,7 @@ async function loadApprovalRequests() {
   if (!rows.length) {
     list.innerHTML = `
       <div class="approval-empty-state">
-        <strong>가입신청 없음</strong>
+        <strong>직원등록 신청 없음</strong>
         <p>대기, 승인완료, 반려 목록이 비어 있습니다. 새 신청이 들어오면 이곳에 상태별로 정리됩니다.</p>
       </div>
     `;
@@ -3175,7 +3191,7 @@ function renderApprovalQueue() {
         ${groups.map(([status, label]) => renderApprovalQueueGroup(status, label, rows, selected?.id)).join("")}
       </aside>
       <div class="approval-detail-panel">
-        ${selected ? renderApprovalRequestCard(selected) : `<p class="empty-note">선택된 가입신청이 없습니다.</p>`}
+        ${selected ? renderApprovalRequestCard(selected) : `<p class="empty-note">선택된 직원등록 신청이 없습니다.</p>`}
       </div>
     </div>
   `;
@@ -3377,7 +3393,7 @@ function saveProfileChanges({ stayInSettings = false } = {}) {
   renderAll();
   if (authState.user && !isProfileApproved()) {
     switchView("auth");
-    renderAuthStatus("가입신청 정보가 저장되었습니다. 대표 승인 후 업무일지를 사용할 수 있습니다.");
+    renderAuthStatus("직원등록 정보가 저장되었습니다. 대표 승인 후 업무일지를 사용할 수 있습니다.");
     return;
   }
   switchView(stayInSettings ? "settings" : state.selectedEmployeeId === "profile-user" ? "today" : "fitness-log");
@@ -3386,7 +3402,7 @@ function saveProfileChanges({ stayInSettings = false } = {}) {
 function renderAuthStatus(message) {
   const status = document.getElementById("authStatus");
   const email = authState.user?.email || "";
-  const readyText = authState.remoteReady ? "Supabase 연결 준비됨" : "Supabase 스크립트 로딩 필요";
+  const readyText = authState.remoteReady ? "직원 계정 연결 준비됨" : "원격 저장 준비 중";
   status.textContent = message || (email ? `${email} 로그인됨 · 원격 저장 켜짐` : `${readyText} · 로그인하면 원격 저장됩니다.`);
   document.getElementById("logoutButton").disabled = !authState.user;
   renderMainMenuAuthButton();
@@ -3397,6 +3413,29 @@ function clearAuthFormCredentials() {
   const passwordInput = document.getElementById("authPassword");
   if (emailInput) emailInput.value = "";
   if (passwordInput) passwordInput.value = "";
+}
+
+function isAuthRegistrationVisible() {
+  const panel = document.querySelector("[data-auth-registration]");
+  return Boolean(panel && !panel.hidden);
+}
+
+function setAuthRegistrationVisible(visible, { clear = false } = {}) {
+  document.querySelectorAll("[data-auth-registration]").forEach((node) => {
+    node.hidden = !visible;
+  });
+  if (!visible) {
+    switchAuthTab("personal");
+    return;
+  }
+  switchAuthTab("personal");
+  if (clear) clearSignupProfileFields();
+}
+
+function openEmployeeRegistrationForm({ clear = false } = {}) {
+  setAuthRegistrationVisible(true, { clear });
+  renderAuthStatus("직원등록 시트를 작성한 뒤 다시 직원등록을 누르면 신청됩니다.");
+  document.querySelector('[data-profile-field="name"]')?.focus();
 }
 
 function isKnownLoggedInProfile() {
@@ -3497,9 +3536,13 @@ function collectSignupMetadata(credentials = {}) {
 }
 
 async function signUpWithSupabase() {
+  if (!isAuthRegistrationVisible()) {
+    openEmployeeRegistrationForm({ clear: isExplicitlySignedOut() || !authState.user });
+    return;
+  }
   const credentials = getAuthCredentials();
   if (!credentials || !supabaseClient) return;
-  renderAuthStatus("가입 처리 중입니다...");
+  renderAuthStatus("직원등록 처리 중입니다...");
   const signupMetadata = collectSignupMetadata(credentials);
   const { data, error } = await supabaseClient.auth.signUp({
     email: credentials.email,
@@ -3510,7 +3553,7 @@ async function signUpWithSupabase() {
     },
   });
   if (error) {
-    renderAuthStatus(`가입 실패: ${error.message}`);
+    renderAuthStatus(`직원등록 실패: ${error.message}`);
     return;
   }
   if (data.user) {
@@ -3521,13 +3564,13 @@ async function signUpWithSupabase() {
       await applySession(data.session);
       setOwnApprovalPending();
       await saveRemoteProfile();
-      renderAuthStatus("가입신청이 접수되었습니다. 대표 또는 권한자의 승인 후 사용할 수 있습니다.");
+      renderAuthStatus("직원등록 신청이 접수되었습니다. 대표 또는 권한자의 승인 후 사용할 수 있습니다.");
       return;
     }
-    renderAuthStatus("가입 계정이 생성되었습니다. 이메일 확인 후 로그인하면 가입신청 정보가 대표 승인 목록에 저장됩니다.");
+    renderAuthStatus("직원 계정이 생성되었습니다. 이메일 확인 후 로그인하면 직원등록 정보가 대표 승인 목록에 저장됩니다.");
     return;
   }
-  renderAuthStatus("가입신청이 접수되었습니다. 대표 또는 권한자의 승인 후 사용할 수 있습니다.");
+  renderAuthStatus("직원등록 신청이 접수되었습니다. 대표 또는 권한자의 승인 후 사용할 수 있습니다.");
 }
 
 async function signInWithSupabase() {
@@ -3569,11 +3612,13 @@ async function signOutWithSupabase() {
   }
   renderApprovalNotification();
   clearAuthFormCredentials();
+  setAuthRegistrationVisible(false, { clear: true });
   renderAuthStatus("로그아웃되었습니다. 업무 입력 내용은 이 기기에 계속 보관됩니다.");
   renderAll();
   switchView("auth");
   renderProfileForm();
   clearAuthFormCredentials();
+  setAuthRegistrationVisible(false, { clear: true });
 }
 
 async function applySession(session) {
@@ -3581,7 +3626,10 @@ async function applySession(session) {
   authState.user = session?.user || null;
   if (!authState.user) {
     clearAuthRuntimeState();
-    if (isExplicitlySignedOut()) clearAuthFormCredentials();
+    if (isExplicitlySignedOut()) {
+      clearAuthFormCredentials();
+      setAuthRegistrationVisible(false, { clear: true });
+    }
     renderApprovalNotification();
     renderAuthStatus();
     renderAll();
@@ -3762,7 +3810,7 @@ async function loadRemoteProfile() {
 
 async function initializeAuth() {
   if (!supabaseClient) {
-    renderAuthStatus("Supabase 스크립트를 불러오지 못했습니다. 로컬 저장으로 동작합니다.");
+    renderAuthStatus("원격 저장 모듈을 불러오지 못했습니다. 이 기기 저장으로 동작합니다.");
     return;
   }
   const { data } = await supabaseClient.auth.getSession();
@@ -7276,7 +7324,7 @@ function buildBackupPayload(options = {}) {
       note: "hash field is calculated in the browser preview and download flow",
     },
     automationPlan: {
-      recommended: "Supabase Edge Function 또는 Vercel Cron + Email API",
+      recommended: "서버 자동실행 또는 Vercel Cron + Email API",
       reason: "정적 웹앱은 앱이 닫힌 상태에서 주기적 메일 발송을 실행할 수 없습니다.",
       endpointContract: {
         method: "POST",
