@@ -964,15 +964,8 @@
             <span id="authStatus">로그인하면 업무일지가 원격으로 저장됩니다.</span>
           </div>
           <div class="login-grid">
-            <label class="login-email-field">이메일
-              <span class="login-email-control">
-                <input id="authEmail" type="email" autocomplete="email" placeholder="name@example.com" />
-                <button id="emailCheckButton" type="button">중복확인</button>
-              </span>
-              <em id="emailCheckStatus">직원등록 전 이메일 중복확인을 해주세요.</em>
-            </label>
+            <label>이메일 <input id="authEmail" type="email" autocomplete="email" placeholder="name@example.com" /></label>
             <label>비밀번호 <input id="authPassword" type="password" autocomplete="current-password" placeholder="6자 이상" /></label>
-            <label>비밀번호 확인 <input id="authPasswordConfirm" type="password" autocomplete="new-password" placeholder="직원등록 시 한 번 더 입력" /></label>
           </div>
           <div class="login-actions">
             <button id="loginButton" type="button">로그인</button>
@@ -991,7 +984,22 @@
               <strong id="signupApprovalStatus">작성 중</strong>
             </header>
             <article class="signup-sheet-section">
-              <h4>1. 기본 신원</h4>
+              <h4>1. 등록 계정</h4>
+              <div class="profile-grid">
+                <label class="login-email-field">등록 이메일
+                  <span class="login-email-control">
+                    <input id="registrationEmail" type="email" autocomplete="email" placeholder="name@example.com" />
+                    <button id="emailCheckButton" type="button">중복확인</button>
+                  </span>
+                  <em id="emailCheckStatus">직원등록 전 이메일 중복확인을 해주세요.</em>
+                </label>
+                <label>등록 비밀번호 <input id="registrationPassword" type="password" autocomplete="new-password" placeholder="6자 이상" /></label>
+                <label>비밀번호 확인 <input id="authPasswordConfirm" type="password" autocomplete="new-password" placeholder="한 번 더 입력" /></label>
+              </div>
+              <p class="profile-note">기존 직원은 이 과정을 거치지 않고 위의 로그인 화면에서 바로 로그인합니다.</p>
+            </article>
+            <article class="signup-sheet-section">
+              <h4>2. 기본 신원</h4>
               <div class="profile-grid">
                 <label>이름 <input data-profile-field="name" type="text" placeholder="예: 홍길동" /></label>
                 <label>닉네임 <input data-profile-field="nickname" type="text" placeholder="업무일지 표시명" /></label>
@@ -1000,7 +1008,7 @@
               </div>
             </article>
             <article class="signup-sheet-section">
-              <h4>2. 소속/직무 배치</h4>
+              <h4>3. 소속/직무 배치</h4>
               <div class="profile-grid">
                 <label>소속
                   <select data-profile-field="org" data-registration-org-select>
@@ -1020,7 +1028,7 @@
               <p class="profile-note">직함, 고용형태, 주업무, 부업무는 승인 과정에서 대표 또는 승인 권한자가 확정합니다.</p>
             </article>
             <article class="signup-sheet-section">
-              <h4>3. 근무/노무 기준</h4>
+              <h4>4. 근무/노무 기준</h4>
               <div class="profile-grid">
                 <label>기본 근무시간 <input data-profile-field="workHours" type="text" placeholder="예: 09:00-18:00" /></label>
                 <label>주민번호/식별번호 <input data-profile-field="laborId" type="text" placeholder="노무대장용 식별번호" /></label>
@@ -1042,7 +1050,7 @@
               <p class="profile-note">시급과 일당은 승인 과정에서 대표 또는 승인 권한자가 확정하며, 노무비 지급대장에 사용됩니다.</p>
             </article>
             <article class="signup-sheet-section signup-approval-flow">
-              <h4>4. 승인 흐름</h4>
+              <h4>5. 승인 흐름</h4>
               <ol>
                 <li>직원이 직원등록 신청 시트를 작성합니다.</li>
                 <li>대표 또는 승인 권한자가 소속·직함·근무·노무 정보를 검토합니다.</li>

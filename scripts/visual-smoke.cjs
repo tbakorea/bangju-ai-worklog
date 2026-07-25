@@ -641,12 +641,23 @@ async function checkFitnessNewEmployeeRegistrationFlow(browser) {
 
     await page.click("#signupButton");
     await page.waitForTimeout(120);
-    if (!dialogs.some((message) => message.includes("이메일 누락"))) {
-      fail("registration should block opening sheet before account fields", viewport.label);
+    const initiallyOpened = await page.evaluate(() => ({
+      loginHidden: document.querySelector(".login-card")?.hidden,
+      sheetVisible: !document.querySelector("#auth-panel-personal")?.hidden,
+      emailCheckInLogin: Boolean(document.querySelector(".login-card #emailCheckButton")),
+      confirmInLogin: Boolean(document.querySelector(".login-card #authPasswordConfirm")),
+      emailCheckInSheet: Boolean(document.querySelector("#auth-panel-personal #emailCheckButton")),
+      confirmInSheet: Boolean(document.querySelector("#auth-panel-personal #authPasswordConfirm")),
+    }));
+    if (!initiallyOpened.loginHidden || !initiallyOpened.sheetVisible) {
+      fail("employee registration should open the sheet without login-only checks", `${viewport.label}: ${JSON.stringify(initiallyOpened)}`);
+    }
+    if (initiallyOpened.emailCheckInLogin || initiallyOpened.confirmInLogin || !initiallyOpened.emailCheckInSheet || !initiallyOpened.confirmInSheet) {
+      fail("duplicate email and password confirmation controls should live inside the registration sheet", `${viewport.label}: ${JSON.stringify(initiallyOpened)}`);
     }
 
-    await page.fill("#authEmail", "newfitness@example.com");
-    await page.fill("#authPassword", "beyond3010");
+    await page.fill("#registrationEmail", "newfitness@example.com");
+    await page.fill("#registrationPassword", "beyond3010");
     await page.fill("#authPasswordConfirm", "wrong3010");
     await page.click("#emailCheckButton");
     await page.waitForTimeout(160);
@@ -660,31 +671,6 @@ async function checkFitnessNewEmployeeRegistrationFlow(browser) {
     }
     if (emailCheck.rpc?.name !== "check_registration_email" || emailCheck.rpc?.payload?.email_to_check !== "newfitness@example.com") {
       fail("email duplicate check did not call the expected RPC", `${viewport.label}: ${JSON.stringify(emailCheck.rpc)}`);
-    }
-
-    await page.click("#signupButton");
-    await page.waitForTimeout(120);
-    if (!dialogs.some((message) => message.includes("비밀번호 확인이 일치하지 않습니다"))) {
-      fail("registration should block mismatched passwords", viewport.label);
-    }
-
-    await page.fill("#authPasswordConfirm", "beyond3010");
-    await page.click("#signupButton");
-    await page.waitForTimeout(160);
-    const opened = await page.evaluate(() => ({
-      loginHidden: document.querySelector(".login-card")?.hidden,
-      sheetVisible: !document.querySelector("#auth-panel-personal")?.hidden,
-      authTabs: document.querySelectorAll(".auth-tabs[data-auth-registration]").length,
-      roleField: Boolean(document.querySelector('[data-profile-field="role"]')),
-      employmentField: Boolean(document.querySelector('[data-profile-field="employmentType"]')),
-      primaryWorkField: Boolean(document.querySelector('[data-profile-field="primaryWork"]')),
-      wageField: Boolean(document.querySelector('[data-profile-field="hourlyWage"], [data-profile-field="dailyWage"]')),
-    }));
-    if (!opened.loginHidden || !opened.sheetVisible) {
-      fail("registration account card should close and sheet should open", `${viewport.label}: ${JSON.stringify(opened)}`);
-    }
-    if (opened.authTabs || opened.roleField || opened.employmentField || opened.primaryWorkField || opened.wageField) {
-      fail("employee registration sheet still exposes approver-only fields", `${viewport.label}: ${JSON.stringify(opened)}`);
     }
 
     await page.fill('[data-profile-field="name"]', "비욘드신입");
@@ -702,6 +688,25 @@ async function checkFitnessNewEmployeeRegistrationFlow(browser) {
     await page.fill('[data-profile-field="address"]', "울산 남구");
     await page.fill('[data-profile-work-hours-day="mon"]', "16:00-20:00");
     await page.fill('[data-profile-work-hours-day="tue"]', "16:00-20:00");
+
+    await page.click("#saveProfileButton");
+    await page.waitForTimeout(120);
+    if (!dialogs.some((message) => message.includes("비밀번호 확인이 일치하지 않습니다"))) {
+      fail("registration should block mismatched passwords", viewport.label);
+    }
+
+    await page.fill("#authPasswordConfirm", "beyond3010");
+    const opened = await page.evaluate(() => ({
+      authTabs: document.querySelectorAll(".auth-tabs[data-auth-registration]").length,
+      roleField: Boolean(document.querySelector('[data-profile-field="role"]')),
+      employmentField: Boolean(document.querySelector('[data-profile-field="employmentType"]')),
+      primaryWorkField: Boolean(document.querySelector('[data-profile-field="primaryWork"]')),
+      wageField: Boolean(document.querySelector('[data-profile-field="hourlyWage"], [data-profile-field="dailyWage"]')),
+    }));
+    if (opened.authTabs || opened.roleField || opened.employmentField || opened.primaryWorkField || opened.wageField) {
+      fail("employee registration sheet still exposes approver-only fields", `${viewport.label}: ${JSON.stringify(opened)}`);
+    }
+
     await page.click("#saveProfileButton");
     await page.waitForTimeout(200);
 

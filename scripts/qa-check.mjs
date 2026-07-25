@@ -9,6 +9,7 @@ const html = read("index.html");
 const js = read("app.js");
 const css = read("styles.css");
 const backupApi = existsSync(join(root, "api/backup-mail.js")) ? read("api/backup-mail.js") : "";
+const loginCardHtml = html.slice(html.indexOf('<section class="login-card"'), html.indexOf('<div class="auth-panel'));
 const failures = [];
 
 function check(name, condition, detail = "") {
@@ -215,14 +216,17 @@ check(
 );
 
 check(
-  "employee registration has email duplicate and password confirmation gate",
+  "employee registration sheet has email duplicate and password confirmation gate",
   html.includes('id="emailCheckButton"')
+    && html.includes('id="registrationEmail"')
+    && html.includes('id="registrationPassword"')
     && html.includes('id="authPasswordConfirm"')
+    && !loginCardHtml.includes('id="emailCheckButton"')
+    && !loginCardHtml.includes('id="authPasswordConfirm"')
     && js.includes("function checkSignupEmailDuplicate()")
     && js.includes('supabaseClient.rpc("check_registration_email"')
-    && js.includes("function validateRegistrationAccountGate()")
     && /if \(password !== passwordConfirm\)[\s\S]{0,120}비밀번호 확인이 일치하지 않습니다/.test(js),
-  "new employee registration must check duplicate email and two password entries before opening the sheet"
+  "login should stay simple, while new employee registration checks duplicate email and two password entries inside the sheet"
 );
 
 check(

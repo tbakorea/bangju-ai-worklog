@@ -3576,8 +3576,8 @@ function applyProfileWeeklyWorkHoursFields() {
 
 function getRequiredSignupFields() {
   return [
-    { label: "이메일", element: document.getElementById("authEmail"), getValue: () => document.getElementById("authEmail")?.value.trim() || "" },
-    { label: "비밀번호", element: document.getElementById("authPassword"), getValue: () => document.getElementById("authPassword")?.value || "" },
+    { label: "등록 이메일", element: document.getElementById("registrationEmail"), getValue: () => document.getElementById("registrationEmail")?.value.trim() || "" },
+    { label: "등록 비밀번호", element: document.getElementById("registrationPassword"), getValue: () => document.getElementById("registrationPassword")?.value || "" },
     { label: "이름", element: document.querySelector('[data-profile-field="name"]'), getValue: () => document.querySelector('[data-profile-field="name"]')?.value.trim() || "" },
     { label: "전화", element: document.querySelector('[data-profile-field="phone"]'), getValue: () => document.querySelector('[data-profile-field="phone"]')?.value.trim() || "" },
     { label: "소속", element: document.querySelector('[data-profile-field="org"]'), getValue: () => document.querySelector('[data-profile-field="org"]')?.value.trim() || "" },
@@ -3597,13 +3597,13 @@ function validateSignupRequiredFields() {
       return false;
     }
   }
-  const password = document.getElementById("authPassword")?.value || "";
+  const password = document.getElementById("registrationPassword")?.value || "";
   const passwordConfirm = document.getElementById("authPasswordConfirm")?.value || "";
   if (password.length < 6) {
     const message = "비밀번호는 6자 이상이어야 합니다.";
     renderAuthStatus(message);
     alert(message);
-    document.getElementById("authPassword")?.focus();
+    document.getElementById("registrationPassword")?.focus();
     return false;
   }
   if (password !== passwordConfirm) {
@@ -3617,7 +3617,7 @@ function validateSignupRequiredFields() {
     const message = "이메일 중복확인을 먼저 완료해주세요.";
     renderAuthStatus(message);
     alert(message);
-    document.getElementById("authEmail")?.focus();
+    document.getElementById("registrationEmail")?.focus();
     return false;
   }
   return true;
@@ -3634,7 +3634,7 @@ function closeSignupAfterSubmit() {
 
 async function completeEmployeeRegistration() {
   if (!isAuthRegistrationVisible()) {
-    openEmployeeRegistrationForm({ clear: isExplicitlySignedOut() || !authState.user });
+    openEmployeeRegistrationForm({ clear: isExplicitlySignedOut() || !authState.user, prefill: true });
     return;
   }
   if (!validateSignupRequiredFields()) return;
@@ -3697,9 +3697,13 @@ function renderAuthStatus(message) {
 function clearAuthFormCredentials() {
   const emailInput = document.getElementById("authEmail");
   const passwordInput = document.getElementById("authPassword");
+  const registrationEmailInput = document.getElementById("registrationEmail");
+  const registrationPasswordInput = document.getElementById("registrationPassword");
   const passwordConfirmInput = document.getElementById("authPasswordConfirm");
   if (emailInput) emailInput.value = "";
   if (passwordInput) passwordInput.value = "";
+  if (registrationEmailInput) registrationEmailInput.value = "";
+  if (registrationPasswordInput) registrationPasswordInput.value = "";
   if (passwordConfirmInput) passwordConfirmInput.value = "";
   resetSignupEmailCheck();
 }
@@ -3724,15 +3728,24 @@ function setAuthRegistrationVisible(visible, { clear = false } = {}) {
   if (clear) clearSignupProfileFields();
 }
 
-function openEmployeeRegistrationForm({ clear = false } = {}) {
+function openEmployeeRegistrationForm({ clear = false, prefill = false } = {}) {
+  if (prefill) {
+    const loginEmail = document.getElementById("authEmail")?.value || "";
+    const loginPassword = document.getElementById("authPassword")?.value || "";
+    const registrationEmail = document.getElementById("registrationEmail");
+    const registrationPassword = document.getElementById("registrationPassword");
+    if (registrationEmail && !registrationEmail.value) registrationEmail.value = loginEmail;
+    if (registrationPassword && !registrationPassword.value) registrationPassword.value = loginPassword;
+  }
   setAuthRegistrationVisible(true, { clear });
   renderAuthStatus("직원등록 시트를 작성한 뒤 다시 직원등록을 누르면 신청됩니다.");
   updateRegistrationWorkplaceOptions({ preserve: true });
-  document.querySelector('[data-profile-field="name"]')?.focus();
+  document.getElementById("registrationEmail")?.focus();
 }
 
 function getNormalizedAuthEmail() {
-  return String(document.getElementById("authEmail")?.value || "").trim().toLowerCase();
+  const source = isAuthRegistrationVisible() ? "registrationEmail" : "authEmail";
+  return String(document.getElementById(source)?.value || "").trim().toLowerCase();
 }
 
 function isValidEmail(value = "") {
@@ -3774,7 +3787,7 @@ async function checkSignupEmailDuplicate() {
     resetSignupEmailCheck(message);
     renderAuthStatus(message);
     alert(message);
-    document.getElementById("authEmail")?.focus();
+    document.getElementById(isAuthRegistrationVisible() ? "registrationEmail" : "authEmail")?.focus();
     return false;
   }
   if (!isValidEmail(email)) {
@@ -3782,7 +3795,7 @@ async function checkSignupEmailDuplicate() {
     resetSignupEmailCheck(message);
     renderAuthStatus(message);
     alert(message);
-    document.getElementById("authEmail")?.focus();
+    document.getElementById(isAuthRegistrationVisible() ? "registrationEmail" : "authEmail")?.focus();
     return false;
   }
   if (!supabaseClient) {
@@ -3822,24 +3835,24 @@ async function checkSignupEmailDuplicate() {
 
 function validateRegistrationAccountGate() {
   const email = getNormalizedAuthEmail();
-  const password = document.getElementById("authPassword")?.value || "";
+  const password = document.getElementById("registrationPassword")?.value || "";
   const passwordConfirm = document.getElementById("authPasswordConfirm")?.value || "";
   if (!email) {
     renderAuthStatus("이메일 누락입니다.");
     alert("이메일 누락입니다.");
-    document.getElementById("authEmail")?.focus();
+    document.getElementById("registrationEmail")?.focus();
     return false;
   }
   if (!isValidEmail(email)) {
     renderAuthStatus("이메일 형식을 확인해주세요.");
     alert("이메일 형식을 확인해주세요.");
-    document.getElementById("authEmail")?.focus();
+    document.getElementById("registrationEmail")?.focus();
     return false;
   }
   if (password.length < 6) {
     renderAuthStatus("비밀번호는 6자 이상이어야 합니다.");
     alert("비밀번호는 6자 이상이어야 합니다.");
-    document.getElementById("authPassword")?.focus();
+    document.getElementById("registrationPassword")?.focus();
     return false;
   }
   if (password !== passwordConfirm) {
@@ -3913,9 +3926,10 @@ function clearAuthRuntimeState() {
   authState.approvalTimer = null;
 }
 
-function getAuthCredentials() {
-  const email = document.getElementById("authEmail").value.trim();
-  const password = document.getElementById("authPassword").value;
+function getAuthCredentials({ registration = false } = {}) {
+  const useRegistrationFields = registration || isAuthRegistrationVisible();
+  const email = document.getElementById(useRegistrationFields ? "registrationEmail" : "authEmail")?.value.trim() || "";
+  const password = document.getElementById(useRegistrationFields ? "registrationPassword" : "authPassword")?.value || "";
   if (!email || !password) {
     renderAuthStatus("이메일과 비밀번호를 입력해주세요.");
     return null;
@@ -3966,12 +3980,11 @@ function collectSignupMetadata(credentials = {}) {
 
 async function signUpWithSupabase(options = {}) {
   if (!isAuthRegistrationVisible()) {
-    if (!validateRegistrationAccountGate()) return;
-    openEmployeeRegistrationForm({ clear: isExplicitlySignedOut() || !authState.user });
+    openEmployeeRegistrationForm({ clear: isExplicitlySignedOut() || !authState.user, prefill: true });
     return;
   }
   if (!validateSignupRequiredFields()) return;
-  const credentials = getAuthCredentials();
+  const credentials = getAuthCredentials({ registration: true });
   if (!credentials || !supabaseClient) return;
   renderAuthStatus("직원등록 처리 중입니다...");
   const signupMetadata = collectSignupMetadata(credentials);
@@ -8625,6 +8638,9 @@ document.getElementById("signupButton").onclick = signUpWithSupabase;
 document.getElementById("passwordResetButton").onclick = requestPasswordResetApproval;
 document.getElementById("emailCheckButton")?.addEventListener("click", checkSignupEmailDuplicate);
 document.getElementById("authEmail")?.addEventListener("input", () => {
+  resetSignupEmailCheck();
+});
+document.getElementById("registrationEmail")?.addEventListener("input", () => {
   resetSignupEmailCheck();
 });
 document.getElementById("logoutButton")?.addEventListener("click", signOutWithSupabase);
