@@ -1024,6 +1024,19 @@
                 <label>시급 <input data-profile-field="hourlyWage" type="number" min="0" inputmode="numeric" placeholder="예: 12000" /></label>
                 <label>일당 <input data-profile-field="dailyWage" type="number" min="0" inputmode="numeric" placeholder="예: 120000" /></label>
               </div>
+              <div class="signup-weekly-hours">
+                <strong>근무요일 / 요일별 시간</strong>
+                <p>요일별 시간이 다르면 입력하세요. 비워두면 기본 근무시간을 사용하고, 쉬는 날은 휴무로 입력합니다.</p>
+                <div>
+                  <label>日 <input data-profile-work-hours-day="sun" type="text" placeholder="휴무" /></label>
+                  <label>月 <input data-profile-work-hours-day="mon" type="text" placeholder="09:00-18:00" /></label>
+                  <label>火 <input data-profile-work-hours-day="tue" type="text" placeholder="09:00-18:00" /></label>
+                  <label>水 <input data-profile-work-hours-day="wed" type="text" placeholder="09:00-18:00" /></label>
+                  <label>木 <input data-profile-work-hours-day="thu" type="text" placeholder="09:00-18:00" /></label>
+                  <label>金 <input data-profile-work-hours-day="fri" type="text" placeholder="09:00-18:00" /></label>
+                  <label>土 <input data-profile-work-hours-day="sat" type="text" placeholder="10:00-18:00" /></label>
+                </div>
+              </div>
               <p class="profile-note">임금·식별 정보는 대표 승인 과정에서 수정될 수 있으며 노무비 지급대장에 사용됩니다.</p>
             </article>
           </section>
@@ -1051,7 +1064,7 @@
           </section>
         </div>
         <div class="auth-actions" data-auth-registration hidden>
-          <button id="saveProfileButton" type="button">직원등록 시트 저장</button>
+          <button id="saveProfileButton" type="button">신청 완료</button>
         </div>
       </section>
     </main>

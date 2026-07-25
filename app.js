@@ -2949,6 +2949,7 @@ function renderProfileForm() {
     const value = state.profile?.[field.dataset.profileField] || "";
     field.value = isPhoneField(field) ? formatPhoneNumber(value) : value;
   });
+  renderProfileWeeklyWorkHoursFields();
   renderSignupSheetStatus();
   renderSettingsForm();
 }
@@ -2957,11 +2958,20 @@ function clearSignupProfileFields() {
   document.querySelectorAll("[data-profile-field]").forEach((field) => {
     field.value = "";
   });
+  document.querySelectorAll("[data-profile-work-hours-day]").forEach((field) => {
+    field.value = "";
+  });
   const status = document.getElementById("signupApprovalStatus");
   if (status) {
     status.textContent = "작성 전";
     status.dataset.status = "draft";
   }
+}
+
+function renderProfileWeeklyWorkHoursFields() {
+  document.querySelectorAll("[data-profile-work-hours-day]").forEach((field) => {
+    field.value = state.profile?.weeklyWorkHours?.[field.dataset.profileWorkHoursDay] || "";
+  });
 }
 
 function renderSignupSheetStatus() {
@@ -3521,8 +3531,77 @@ function applyProfileFields(selector, datasetKey) {
   });
 }
 
+function applyProfileWeeklyWorkHoursFields() {
+  state.profile.weeklyWorkHours = { ...(state.profile.weeklyWorkHours || {}) };
+  document.querySelectorAll("[data-profile-work-hours-day]").forEach((field) => {
+    const key = field.dataset.profileWorkHoursDay;
+    const value = field.value.trim();
+    if (value) state.profile.weeklyWorkHours[key] = value;
+    else delete state.profile.weeklyWorkHours[key];
+  });
+}
+
+function getRequiredSignupFields() {
+  return [
+    { label: "이메일", element: document.getElementById("authEmail"), getValue: () => document.getElementById("authEmail")?.value.trim() || "" },
+    { label: "비밀번호", element: document.getElementById("authPassword"), getValue: () => document.getElementById("authPassword")?.value || "" },
+    { label: "이름", element: document.querySelector('[data-profile-field="name"]'), getValue: () => document.querySelector('[data-profile-field="name"]')?.value.trim() || "" },
+    { label: "전화", element: document.querySelector('[data-profile-field="phone"]'), getValue: () => document.querySelector('[data-profile-field="phone"]')?.value.trim() || "" },
+    { label: "소속", element: document.querySelector('[data-profile-field="org"]'), getValue: () => document.querySelector('[data-profile-field="org"]')?.value.trim() || "" },
+    { label: "근무지", element: document.querySelector('[data-profile-field="workplace"]'), getValue: () => document.querySelector('[data-profile-field="workplace"]')?.value.trim() || "" },
+    { label: "직함", element: document.querySelector('[data-profile-field="role"]'), getValue: () => document.querySelector('[data-profile-field="role"]')?.value.trim() || "" },
+    { label: "주업무", element: document.querySelector('[data-profile-field="primaryWork"]'), getValue: () => document.querySelector('[data-profile-field="primaryWork"]')?.value.trim() || "" },
+    { label: "기본 근무시간", element: document.querySelector('[data-profile-field="workHours"]'), getValue: () => document.querySelector('[data-profile-field="workHours"]')?.value.trim() || "" },
+  ];
+}
+
+function validateSignupRequiredFields() {
+  for (const field of getRequiredSignupFields()) {
+    const value = field.getValue();
+    if (!value) {
+      const message = `${field.label} 누락입니다.`;
+      renderAuthStatus(message);
+      alert(message);
+      field.element?.focus();
+      return false;
+    }
+  }
+  const password = document.getElementById("authPassword")?.value || "";
+  if (password.length < 6) {
+    const message = "비밀번호는 6자 이상이어야 합니다.";
+    renderAuthStatus(message);
+    alert(message);
+    document.getElementById("authPassword")?.focus();
+    return false;
+  }
+  return true;
+}
+
+function showSignupSubmittedMessage() {
+  alert("직원등록 신청이 완료되었습니다. 승인이 되면 정상적으로 앱 사용이 가능합니다.");
+}
+
+function closeSignupAfterSubmit() {
+  setAuthRegistrationVisible(false, { clear: false });
+  switchAuthTab("personal");
+}
+
+async function completeEmployeeRegistration() {
+  if (!isAuthRegistrationVisible()) {
+    openEmployeeRegistrationForm({ clear: isExplicitlySignedOut() || !authState.user });
+    return;
+  }
+  if (!validateSignupRequiredFields()) return;
+  await signUpWithSupabase({ closeOnSuccess: true });
+}
+
 function saveProfileFromForm() {
+  if (isAuthRegistrationVisible()) {
+    completeEmployeeRegistration();
+    return;
+  }
   applyProfileFields("[data-profile-field]", "profileField");
+  applyProfileWeeklyWorkHoursFields();
   saveProfileChanges();
 }
 
@@ -3672,6 +3751,7 @@ function getAuthRedirectUrl() {
 
 function collectSignupMetadata(credentials = {}) {
   applyProfileFields("[data-profile-field]", "profileField");
+  applyProfileWeeklyWorkHoursFields();
   const profile = { ...defaultProfile, ...(state.profile || {}) };
   profile.email = credentials.email || profile.email || "";
   state.profile = profile;
@@ -3692,6 +3772,7 @@ function collectSignupMetadata(credentials = {}) {
     dailyWage: profile.dailyWage || "",
     hourlyWage: profile.hourlyWage || "",
     workHours: profile.workHours || defaultProfile.workHours,
+    weeklyWorkHours: profile.weeklyWorkHours || {},
     extra: profile.extra || "",
     strengths: profile.strengths || "",
     weaknesses: profile.weaknesses || "",
@@ -3699,11 +3780,12 @@ function collectSignupMetadata(credentials = {}) {
   };
 }
 
-async function signUpWithSupabase() {
+async function signUpWithSupabase(options = {}) {
   if (!isAuthRegistrationVisible()) {
     openEmployeeRegistrationForm({ clear: isExplicitlySignedOut() || !authState.user });
     return;
   }
+  if (!validateSignupRequiredFields()) return;
   const credentials = getAuthCredentials();
   if (!credentials || !supabaseClient) return;
   renderAuthStatus("직원등록 처리 중입니다...");
@@ -3729,12 +3811,24 @@ async function signUpWithSupabase() {
       setOwnApprovalPending();
       await saveRemoteProfile();
       renderAuthStatus("직원등록 신청이 접수되었습니다. 대표 또는 권한자의 승인 후 사용할 수 있습니다.");
+      if (options.closeOnSuccess) {
+        showSignupSubmittedMessage();
+        closeSignupAfterSubmit();
+      }
       return;
     }
     renderAuthStatus("직원 계정이 생성되었습니다. 이메일 확인 후 로그인하면 직원등록 정보가 대표 승인 목록에 저장됩니다.");
+    if (options.closeOnSuccess) {
+      showSignupSubmittedMessage();
+      closeSignupAfterSubmit();
+    }
     return;
   }
   renderAuthStatus("직원등록 신청이 접수되었습니다. 대표 또는 권한자의 승인 후 사용할 수 있습니다.");
+  if (options.closeOnSuccess) {
+    showSignupSubmittedMessage();
+    closeSignupAfterSubmit();
+  }
 }
 
 async function signInWithSupabase() {
