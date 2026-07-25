@@ -20,6 +20,22 @@
 - 날짜 이동 UI 필수 요소
 - 휴대폰에서는 CEO 전용 모드 유지
 
+## 모바일 브라우저 시뮬레이션
+
+UI, 권한, 로그인/직원등록, 업무일지, 피트니스 업무일지, 노무, 보고서, 대표/통합관제 화면을 수정했다면 아래 명령을 추가로 실행합니다.
+
+```bash
+./scripts/mobile-browser-qa.sh
+```
+
+이 명령은 로컬 서버가 없으면 자동으로 `http://127.0.0.1:8782/index.html` 서버를 띄운 뒤, Playwright 기반 스모크 테스트를 실행합니다.
+
+전체 출시 전 점검은 아래 명령으로 한 번에 실행합니다.
+
+```bash
+./scripts/full-qa.sh
+```
+
 ## 화면별 필수 시운전
 
 수정 후 아래 조합을 확인합니다.
@@ -56,6 +72,7 @@
 
 ```bash
 ./scripts/qa-check.sh
+./scripts/mobile-browser-qa.sh
 git diff --check
 git status --short
 ```
