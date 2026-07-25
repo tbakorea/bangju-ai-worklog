@@ -2232,6 +2232,127 @@ function applyMissionProposal(proposalId) {
   alert(`${getEmployeeAdminLabel(employee)} 업무일지에 AI 미션을 반영했습니다.`);
 }
 
+function getAiWorklogContextForCurrentView() {
+  if (activeView === "fitness-log") {
+    const page = getCurrentFitnessLogPage();
+    if (page?.type !== "employee") return null;
+    return {
+      employee: page.employee || getEmployeeOptions().find((item) => item.id === page.id) || getSelectedEmployee(),
+      log: getEmployeeLogForDate(page.id, getActiveDateKey()),
+      isFitness: true,
+      canEdit: isCurrentFitnessLogEditable() && canEditCurrentWorklog("fitness-log"),
+    };
+  }
+  const employee = getSelectedEmployee();
+  return {
+    employee,
+    log: getSelectedLog(),
+    isFitness: false,
+    canEdit: canEditCurrentWorklog(activeView),
+  };
+}
+
+function getActionableMissionProposal(employee, log, target = "task") {
+  const proposals = getMissionProposalsForEmployee(employee, log);
+  const usedText = [
+    ...(log.tasks || []).map((task) => String(task.text || "")),
+    ...(log.schedule || []).map((entry) => getScheduleEntryText(entry)),
+  ].join(" ");
+  const preferred = proposals.find((proposal) => {
+    const text = proposal.taskText || proposal.title || "";
+    if (!text || usedText.includes(text)) return false;
+    if (target === "schedule") return /시간|일정|배치|출결|상담|점검|후속|확인|기록/.test(`${proposal.type} ${proposal.title} ${proposal.text}`);
+    return true;
+  });
+  return preferred || proposals.find((proposal) => !usedText.includes(proposal.taskText || proposal.title || "")) || proposals[0] || null;
+}
+
+function findOrCreateAiTaskSlot(log, priority = "A") {
+  log.tasks ||= [];
+  const empty = log.tasks.find((task) => !String(task.text || "").trim());
+  if (empty) return empty;
+  const task = createWorklogTask(priority);
+  log.tasks.push(task);
+  return task;
+}
+
+function findAiScheduleSlot(log) {
+  normalizeWorklogSchedule(log);
+  const now = new Date();
+  const currentMinutes = getActiveDateKey() === todayKey ? now.getHours() * 60 + now.getMinutes() : 0;
+  return (log.schedule || []).find((entry) => !getScheduleEntryText(entry) && timeToMinutes(entry.time) >= currentMinutes)
+    || (log.schedule || []).find((entry) => !getScheduleEntryText(entry))
+    || ensureWorklogAppointmentSlot(log, minutesToTime(Math.max(8 * 60, Math.ceil(currentMinutes / 60) * 60)));
+}
+
+function applyAiProposalToTask(context, proposal) {
+  const task = findOrCreateAiTaskSlot(context.log, proposal.priority || "A");
+  task.priority = proposal.priority || "A";
+  task.text = `[AI미션] ${proposal.taskText || proposal.title}`;
+  task.status = "미완료";
+  task.done = false;
+  task.aiProposalId = proposal.id;
+  task.aiProposalType = proposal.type;
+  syncWorklogTaskTimeHintToSchedule(task, context.log);
+}
+
+function applyAiProposalToSchedule(context, proposal) {
+  const entry = findAiScheduleSlot(context.log);
+  normalizeScheduleEntryItems(entry);
+  const text = proposal.taskText || proposal.title || "AI 추천 업무 실행";
+  if (entry.items.length === 1 && !String(entry.items[0].text || "").trim()) entry.items.splice(0, 1);
+  entry.items.push(createScheduleItem(text, context.isFitness ? inferScheduleType(text) : "업무"));
+  syncScheduleEntryText(entry);
+  normalizeWorklogSchedule(context.log);
+}
+
+function refreshAfterAiWorklogAction(context, message) {
+  saveState();
+  if (context.isFitness) {
+    renderFitnessWorklog(context.log);
+    renderFitnessDashboard();
+    renderTodayContext();
+    renderReport();
+  } else {
+    normalizeEmployeeLogRows(context.log);
+    renderWorklogToday(context.log);
+    renderSharedWorklogPanels(context.log);
+    renderEmployeeDetailFields();
+    renderClockPanel();
+    renderEmployeeTitle();
+    renderDateNav();
+    renderTodayContext();
+    renderReport();
+    applyMobileDayFocusMode();
+    applyCurrentWorklogPermissionState();
+  }
+  showAppToast(message);
+}
+
+function runSectionAiAction(target = "task") {
+  const context = getAiWorklogContextForCurrentView();
+  if (!context) {
+    showAppToast("직원 업무일지에서 사용할 수 있습니다");
+    return;
+  }
+  if (!context.canEdit) {
+    showAppToast("열람 전용 업무일지는 AI가 수정하지 않습니다");
+    return;
+  }
+  const proposal = getActionableMissionProposal(context.employee, context.log, target);
+  if (!proposal) {
+    showAppToast("업무 데이터가 쌓이면 더 정밀하게 제안합니다");
+    return;
+  }
+  if (target === "schedule") {
+    applyAiProposalToSchedule(context, proposal);
+    refreshAfterAiWorklogAction(context, "AI가 시간별 일정에 실행 업무를 배치했습니다");
+    return;
+  }
+  applyAiProposalToTask(context, proposal);
+  refreshAfterAiWorklogAction(context, "AI 미션을 오늘의 업무에 반영했습니다");
+}
+
 function renderMissionProposalCards(proposals, options = {}) {
   const { compact = false, showEmployee = false, allowApply = true } = options;
   return `
@@ -8061,14 +8182,15 @@ document.getElementById("fitnessReportImageButton")?.addEventListener("click", s
 document.getElementById("fitnessReportShareButton")?.addEventListener("click", () => {
   shareFitnessReport().catch(() => alert("공유 기능을 사용할 수 없어 보고서 미리보기를 확인해주세요."));
 });
-document.getElementById("addEntryButton").onclick = () => {
-  alert("시간별 일정 AI 추천은 이후 Beyond Work 오늘 섹션의 추천 로직과 연결합니다.");
-};
 document.querySelectorAll("[data-section-ai]").forEach((button) => {
-  button.onclick = () => alert("오늘의 우선업무 AI 추천은 이후 Beyond Work 추천 로직과 연결합니다.");
+  button.onclick = () => {
+    const section = button.dataset.sectionAi || "";
+    if (section.includes("schedule")) runSectionAiAction("schedule");
+    else runSectionAiAction("task");
+  };
 });
 document.querySelectorAll("[data-os-action]").forEach((button) => {
-  button.onclick = () => alert("Beyond OS AI는 마스터 데이터, 운영점수, 리스크, 실행 추적 데이터를 기준으로 코칭합니다.");
+  button.onclick = () => switchView("ai");
 });
 setupMobileDayFocus();
 document.getElementById("addAttendanceButton")?.addEventListener("click", addAttendance);

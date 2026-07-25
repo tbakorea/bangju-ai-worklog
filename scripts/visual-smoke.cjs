@@ -441,6 +441,50 @@ async function checkAiMissionArchitect(browser) {
   await page.close();
 }
 
+async function checkSectionAiWorklogActions(browser) {
+  const { page, errors } = await openPage(browser, { width: 390, height: 844 });
+  await page.evaluate(() => {
+    window.eval(`
+      state.profile = {
+        ...state.profile,
+        email: "finance@example.com",
+        role: "재무과장",
+        name: "재무과장",
+        nickname: "재무",
+        org: "(주)방주",
+        approvalStatus: "approved"
+      };
+      state.selectedEmployeeId = "bangju-finance-manager";
+      authState.user = { id: "qa-user", email: "finance@example.com" };
+    `);
+    document.body.classList.add("physical-phone-device");
+    document.body.dataset.layoutMode = "phone";
+    document.body.dataset.viewMode = "ceo";
+    window.switchView?.("bangju-log");
+  });
+  await page.waitForTimeout(250);
+  await page.click('.worklog-task-panel [data-section-ai="tasks"]');
+  await page.waitForTimeout(250);
+  await page.click('.worklog-schedule-panel [data-section-ai="schedule"]');
+  await page.waitForTimeout(250);
+  const metrics = await page.evaluate(() => {
+    const log = window.eval(`state.employeeLogs?.[getActiveDateKey()]?.["bangju-finance-manager"]`);
+    return {
+      activeView: document.body.dataset.activeView,
+      taskTexts: (log?.tasks || []).map((task) => task.text || ""),
+      scheduleTexts: (log?.schedule || []).map((entry) => window.getScheduleEntryText ? window.getScheduleEntryText(entry) : entry.text || ""),
+      toast: document.querySelector("#appToast")?.textContent?.trim() || "",
+    };
+  });
+  if (metrics.activeView !== "bangju-log") fail("section AI worklog view mismatch", metrics.activeView);
+  if (!metrics.taskTexts.some((text) => text.includes("[AI미션]"))) fail("section AI task button did not create an AI mission", metrics.taskTexts.join(" | "));
+  if (!metrics.scheduleTexts.some((text) => text.includes("AI") || text.includes("핵심업무") || text.includes("리스크") || text.includes("출결"))) {
+    fail("section AI schedule button did not create an execution slot", metrics.scheduleTexts.join(" | "));
+  }
+  if (errors.length) fail("section AI worklog errors", errors.join(" | "));
+  await page.close();
+}
+
 async function checkSectionChromeReleasePolish(browser) {
   const { page, errors } = await openPage(browser, { width: 390, height: 844 });
   await page.addInitScript(() => {
@@ -524,6 +568,7 @@ async function checkSectionChromeReleasePolish(browser) {
     await checkControlTower(browser);
     await checkExecutiveManagementPage(browser);
     await checkAiMissionArchitect(browser);
+    await checkSectionAiWorklogActions(browser);
     await checkSectionChromeReleasePolish(browser);
     await checkRepresentativeProfileSeparation(browser);
     await checkCalendarAnnotations(browser);
