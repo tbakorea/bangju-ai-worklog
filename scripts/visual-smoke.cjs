@@ -441,6 +441,77 @@ async function checkAiMissionArchitect(browser) {
   await page.close();
 }
 
+async function checkSectionChromeReleasePolish(browser) {
+  const { page, errors } = await openPage(browser, { width: 390, height: 844 });
+  await page.addInitScript(() => {
+    localStorage.setItem("beyond-worklog-state-v1", JSON.stringify({
+      selectedDateKey: "2026-07-24",
+      selectedEmployeeId: "beyond-fitness-manager",
+      profile: {
+        email: "j3010@ymail.com",
+        role: "대표",
+        name: "정찬훈",
+        nickname: "베니",
+        approvalStatus: "approved",
+      },
+      employeeLogs: {},
+    }));
+    localStorage.setItem("beyond-worklog-global-view-mode", "ceo");
+  });
+  await page.reload({ waitUntil: "domcontentloaded" });
+  await page.evaluate(() => {
+    document.body.classList.add("physical-phone-device");
+    document.body.dataset.layoutMode = "phone";
+    document.body.dataset.viewMode = "ceo";
+  });
+
+  const views = ["attendance", "report", "settings", "auth", "staff", "ai", "management"];
+  for (const view of views) {
+    await page.evaluate((targetView) => window.switchView?.(targetView), view);
+    await page.waitForTimeout(220);
+    const metrics = await page.evaluate(() => {
+      const panel = document.querySelector(".worklog-view.is-active");
+      const dock = panel?.querySelector(".section-menu-dock");
+      const menuButton = dock?.querySelector("#settingsGearButton");
+      const dockRect = dock?.getBoundingClientRect();
+      const buttonRect = menuButton?.getBoundingClientRect();
+      const activeViews = [...document.querySelectorAll(".worklog-view.is-active")].map((node) => node.id);
+      return {
+        activeView: document.body.dataset.activeView,
+        panelId: panel?.id || "",
+        activeViews,
+        horizontalOverflow: document.documentElement.scrollWidth - window.innerWidth,
+        dockVisible: Boolean(dockRect && dockRect.width > 0 && dockRect.height > 0),
+        menuVisible: Boolean(buttonRect && buttonRect.width > 0 && buttonRect.height > 0),
+        menuInViewport: Boolean(buttonRect && buttonRect.left >= 0 && buttonRect.right <= window.innerWidth && buttonRect.top >= 0),
+      };
+    });
+    if (metrics.activeViews.length !== 1) fail("only one active section should be visible", `${view}: ${metrics.activeViews.join(",")}`);
+    if (metrics.horizontalOverflow > 2) fail("section has horizontal overflow", `${view}: ${metrics.horizontalOverflow}px`);
+    if (!metrics.dockVisible || !metrics.menuVisible || !metrics.menuInViewport) {
+      fail("section menu dock is not release-ready", `${view}: ${JSON.stringify(metrics)}`);
+    }
+    await page.click(".worklog-view.is-active .section-menu-dock #settingsGearButton");
+    await page.waitForTimeout(120);
+    const menuState = await page.evaluate(() => {
+      const popover = document.querySelector("#mainMenuPopover");
+      const rect = popover?.getBoundingClientRect();
+      return {
+        hidden: popover?.hidden ?? true,
+        hasItems: document.querySelectorAll("#mainMenuPopover button:not([hidden])").length,
+        inViewport: Boolean(rect && rect.width > 0 && rect.height > 0 && rect.left >= 0 && rect.right <= window.innerWidth && rect.bottom <= window.innerHeight),
+      };
+    });
+    if (menuState.hidden || !menuState.hasItems || !menuState.inViewport) {
+      fail("section menu popover is clipped or empty", `${view}: ${JSON.stringify(menuState)}`);
+    }
+    await page.keyboard.press("Escape");
+    await page.evaluate(() => window.closeMainMenuPopover?.());
+  }
+  if (errors.length) fail("section chrome polish errors", errors.join(" | "));
+  await page.close();
+}
+
 (async () => {
   const browser = await chromium.launch({
     headless: true,
@@ -453,6 +524,7 @@ async function checkAiMissionArchitect(browser) {
     await checkControlTower(browser);
     await checkExecutiveManagementPage(browser);
     await checkAiMissionArchitect(browser);
+    await checkSectionChromeReleasePolish(browser);
     await checkRepresentativeProfileSeparation(browser);
     await checkCalendarAnnotations(browser);
   } finally {

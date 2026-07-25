@@ -18,6 +18,11 @@
   box-sizing: border-box;
 }
 
+html {
+  -webkit-text-size-adjust: 100%;
+  text-rendering: geometricPrecision;
+}
+
 [hidden] {
   display: none !important;
 }
@@ -27,6 +32,7 @@ body {
   background: linear-gradient(180deg, rgba(15, 59, 46, 0.08), transparent 220px), var(--paper);
   color: var(--ink);
   font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Apple SD Gothic Neo", "Noto Sans KR", sans-serif;
+  -webkit-font-smoothing: antialiased;
 }
 
 button,
@@ -34,6 +40,18 @@ input,
 select,
 textarea {
   font: inherit;
+  min-width: 0;
+}
+
+button {
+  cursor: pointer;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+}
+
+button:disabled,
+[aria-disabled="true"] {
+  cursor: default;
 }
 
 .worklog-shell {
@@ -13805,6 +13823,92 @@ body[data-layout-mode="phone"] #view-today .ai-section-button {
 
 /* Absolute last-mile guard: inactive pages must stay hidden even when a page
    has its own grid/flex display rule declared earlier. */
+.worklog-shell > .worklog-view:not(.is-active) {
+  display: none !important;
+}
+
+.worklog-shell > .worklog-view.is-active {
+  display: block !important;
+}
+
+.worklog-shell > .report-backup-view.is-active {
+  display: grid !important;
+}
+
+/* Paid-release polish guardrails: keep shared chrome compact, readable, and
+   resilient across phone, tablet, and desktop sections. */
+.worklog-view {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.worklog-view :where(article, section, div, header, button, input, select, textarea) {
+  min-width: 0;
+}
+
+.worklog-view :where(h1, h2, h3, strong, b, p, span, label, button) {
+  text-wrap: pretty;
+}
+
+.worklog-view :where(button, input, select, textarea):focus-visible,
+.section-menu-dock :where(button, input, select):focus-visible,
+.main-menu-popover button:focus-visible {
+  outline: 3px solid rgba(15, 88, 66, 0.28);
+  outline-offset: 2px;
+}
+
+.section-menu-dock {
+  max-width: calc(100vw - 24px);
+}
+
+.section-menu-dock > button {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.section-menu-dock .main-menu-popover {
+  max-height: min(440px, calc(100vh - 120px));
+  overflow: auto;
+  border-radius: 16px;
+}
+
+.section-menu-dock .main-menu-popover button {
+  min-width: 0;
+  overflow-wrap: break-word;
+  line-height: 1.22;
+}
+
+body[data-layout-mode="phone"] .section-menu-dock .main-menu-popover {
+  width: min(292px, calc(100vw - 32px));
+}
+
+body[data-layout-mode="phone"] .section-menu-dock .attendance-popover {
+  right: 0 !important;
+  width: min(292px, calc(100vw - 32px));
+}
+
+.settings-heading,
+.auth-heading,
+.section-heading-panel,
+.staff-master-hero,
+.report-command-card,
+.executive-hero,
+.worklog-overview-hero,
+.work-history-hero {
+  overflow: hidden;
+}
+
+.settings-heading :where(h2, p),
+.auth-heading :where(h2, p),
+.section-heading-panel :where(h2, p),
+.staff-master-hero :where(h2, p),
+.report-command-card :where(h2, span),
+.executive-hero :where(h2, p),
+.worklog-overview-hero :where(h2, p),
+.work-history-hero :where(strong, p) {
+  max-width: 100%;
+}
+
 .worklog-shell > .worklog-view:not(.is-active) {
   display: none !important;
 }
