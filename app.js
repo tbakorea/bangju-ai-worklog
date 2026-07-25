@@ -521,6 +521,8 @@ const authState = {
   },
 };
 let dateSlideTimer = 0;
+let verticalDateSwipeTimer = 0;
+let verticalDateSwipeAnimating = false;
 let calendarViewDate = parseDateKey(todayKey);
 let calendarPickerMode = "worklog";
 let calendarPostponeTask = null;
@@ -1222,6 +1224,99 @@ function animateDateTitle(delta, nextDateKey) {
       nextTitleButtons.forEach((button) => button.classList.remove("slide-in-next", "slide-in-prev"));
     }, 220);
   }, 150);
+}
+
+function getActiveDateSwipePanel() {
+  if (activeView === "fitness-log") return document.getElementById("view-fitness-log");
+  if (["bangju-log", "beyond-log", "today"].includes(activeView)) return document.getElementById("view-today");
+  return null;
+}
+
+function isDateVerticalSwipeTargetBlocked(target) {
+  return Boolean(target?.closest?.([
+    "button",
+    "input",
+    "textarea",
+    "select",
+    "label",
+    "[contenteditable='true']",
+    ".worklog-calendar-popover",
+    ".fitness-schedule-editor",
+    ".fitness-coaching-sheet",
+    ".attendance-popover",
+    ".main-menu-popover",
+    ".report-sheet",
+  ].join(",")));
+}
+
+function canElementScrollVertically(element, direction) {
+  if (!element) return false;
+  const maxScrollTop = Math.max(0, element.scrollHeight - element.clientHeight);
+  if (maxScrollTop <= 6) return false;
+  if (direction > 0) return element.scrollTop < maxScrollTop - 6;
+  return element.scrollTop > 6;
+}
+
+function canScrollVerticallyFromTarget(target, root, direction) {
+  let node = target;
+  while (node && node !== document.body && node !== document.documentElement) {
+    if (root && node instanceof Element && !root.contains(node)) break;
+    if (node instanceof Element && canElementScrollVertically(node, direction)) return true;
+    node = node.parentElement;
+  }
+  const scroller = document.scrollingElement || document.documentElement;
+  return canElementScrollVertically(scroller, direction);
+}
+
+function animateSelectedDateVertically(offsetDays) {
+  if (verticalDateSwipeAnimating) return;
+  const panel = getActiveDateSwipePanel();
+  if (!panel) return moveSelectedDate(offsetDays);
+  const date = parseDateKey(getActiveDateKey());
+  date.setDate(date.getDate() + offsetDays);
+  const nextDateKey = formatDateKey(date);
+  verticalDateSwipeAnimating = true;
+  clearTimeout(verticalDateSwipeTimer);
+  panel.classList.remove("date-sheet-out-next", "date-sheet-out-prev", "date-sheet-in-next", "date-sheet-in-prev");
+  void panel.offsetWidth;
+  panel.classList.add(offsetDays > 0 ? "date-sheet-out-next" : "date-sheet-out-prev");
+  verticalDateSwipeTimer = window.setTimeout(() => {
+    setSelectedDateKey(nextDateKey);
+    const nextPanel = getActiveDateSwipePanel();
+    nextPanel?.classList.add(offsetDays > 0 ? "date-sheet-in-next" : "date-sheet-in-prev");
+    window.setTimeout(() => {
+      nextPanel?.classList.remove("date-sheet-out-next", "date-sheet-out-prev", "date-sheet-in-next", "date-sheet-in-prev");
+      verticalDateSwipeAnimating = false;
+    }, 240);
+  }, 150);
+}
+
+function setupVerticalDateSwipe(panel) {
+  if (!panel) return;
+  let startX = 0;
+  let startY = 0;
+  let startTarget = null;
+  let blocked = false;
+  panel.addEventListener("pointerdown", (event) => {
+    if (!isWorklogEditView(activeView)) {
+      blocked = true;
+      return;
+    }
+    startTarget = event.target;
+    startX = event.clientX;
+    startY = event.clientY;
+    blocked = verticalDateSwipeAnimating || isEditingDailyField() || isDateVerticalSwipeTargetBlocked(event.target);
+  });
+  panel.addEventListener("pointerup", (event) => {
+    if (blocked || !startTarget || isEditingDailyField()) return;
+    const dx = event.clientX - startX;
+    const dy = event.clientY - startY;
+    if (Math.abs(dy) < 96 || Math.abs(dy) < Math.abs(dx) * 1.35) return;
+    const offsetDays = dy < 0 ? 1 : -1;
+    const scrollDirection = dy < 0 ? 1 : -1;
+    if (canScrollVerticallyFromTarget(startTarget, panel, scrollDirection)) return;
+    animateSelectedDateVertically(offsetDays);
+  });
 }
 
 function formatKoreanDate(key) {
@@ -8816,6 +8911,8 @@ document.getElementById("worklogPulse")?.addEventListener("click", () => switchV
     moveTodayPage(dx < 0 ? 1 : -1);
   });
 }
+setupVerticalDateSwipe(document.getElementById("view-today"));
+setupVerticalDateSwipe(document.getElementById("view-fitness-log"));
 
 document.getElementById("settingsGearButton").onclick = (event) => {
   event.stopPropagation();

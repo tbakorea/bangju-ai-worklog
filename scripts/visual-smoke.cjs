@@ -63,6 +63,29 @@ async function checkDesktopEmployeeWorklog(browser) {
   const widthRatio = metrics.taskWidth / Math.max(1, metrics.scheduleWidth);
   if (widthRatio < 0.88 || widthRatio > 1.12) fail("task/schedule columns are not balanced", String(widthRatio));
   if (metrics.scrollHeight > metrics.viewportHeight * 1.9) fail("desktop worklog still has excessive vertical tail", `${metrics.scrollHeight}/${metrics.viewportHeight}`);
+
+  await page.evaluate(() => {
+    window.setSelectedDateKey?.("2026-07-22");
+    window.scrollTo(0, 0);
+  });
+  await page.waitForTimeout(120);
+  await page.dispatchEvent("#view-today", "pointerdown", { pointerId: 1, clientX: 520, clientY: 260, bubbles: true });
+  await page.dispatchEvent("#view-today", "pointerup", { pointerId: 1, clientX: 520, clientY: 390, bubbles: true });
+  await page.waitForTimeout(450);
+  const prevSwipeDate = await page.evaluate(() => JSON.parse(localStorage.getItem("beyond-worklog-state-v1") || "{}").selectedDateKey);
+  if (prevSwipeDate !== "2026-07-21") fail("vertical pull-down should move to previous date", prevSwipeDate);
+
+  await page.evaluate(() => {
+    window.setSelectedDateKey?.("2026-07-22");
+    window.scrollTo(0, document.scrollingElement?.scrollHeight || 0);
+  });
+  await page.waitForTimeout(120);
+  await page.dispatchEvent("#view-today", "pointerdown", { pointerId: 2, clientX: 520, clientY: 620, bubbles: true });
+  await page.dispatchEvent("#view-today", "pointerup", { pointerId: 2, clientX: 520, clientY: 470, bubbles: true });
+  await page.waitForTimeout(450);
+  const nextSwipeDate = await page.evaluate(() => JSON.parse(localStorage.getItem("beyond-worklog-state-v1") || "{}").selectedDateKey);
+  if (nextSwipeDate !== "2026-07-23") fail("vertical push-up should move to next date", nextSwipeDate);
+
   if (errors.length) fail("desktop page errors", errors.join(" | "));
   await page.close();
 }
