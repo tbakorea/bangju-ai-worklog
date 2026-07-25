@@ -200,6 +200,12 @@ const lunarDateFormatter = new Intl.DateTimeFormat("ko-u-ca-chinese", { month: "
 const koreanHolidayCache = new Map();
 const attendanceActions = ["출근", "퇴근", "조퇴", "외출"];
 let attendancePopoverAction = "출근";
+const registrationWorkplaceOptions = {
+  "(주)방주": ["본사", "분양사무실", "외근", "기타"],
+  "(주)비욘드 컴퍼니": ["공유사업부", "TBA studio", "비욘드 피트니스", "기타"],
+  "(주)비제이종합건설": ["옥동 헤이븐빌 신축현장", "동천체육관 현장", "기타"],
+  "기타": ["기타"],
+};
 const defaultProfile = {
   org: "(주)방주",
   role: "직원",
@@ -508,6 +514,11 @@ const authState = {
   passwordResetRows: [],
   selectedApprovalId: "",
   approvalTimer: null,
+  signupEmailCheck: {
+    email: "",
+    status: "idle",
+    message: "직원등록 전 이메일 중복확인을 해주세요.",
+  },
 };
 let dateSlideTimer = 0;
 let calendarViewDate = parseDateKey(todayKey);
@@ -2949,6 +2960,7 @@ function renderProfileForm() {
     const value = state.profile?.[field.dataset.profileField] || "";
     field.value = isPhoneField(field) ? formatPhoneNumber(value) : value;
   });
+  updateRegistrationWorkplaceOptions({ preserve: true });
   renderProfileWeeklyWorkHoursFields();
   renderSignupSheetStatus();
   renderSettingsForm();
@@ -2958,6 +2970,7 @@ function clearSignupProfileFields() {
   document.querySelectorAll("[data-profile-field]").forEach((field) => {
     field.value = "";
   });
+  updateRegistrationWorkplaceOptions({ preserve: false });
   document.querySelectorAll("[data-profile-work-hours-day]").forEach((field) => {
     field.value = "";
   });
@@ -2972,6 +2985,26 @@ function renderProfileWeeklyWorkHoursFields() {
   document.querySelectorAll("[data-profile-work-hours-day]").forEach((field) => {
     field.value = state.profile?.weeklyWorkHours?.[field.dataset.profileWorkHoursDay] || "";
   });
+}
+
+function updateRegistrationWorkplaceOptions({ preserve = true } = {}) {
+  const orgSelect = document.querySelector("[data-registration-org-select]");
+  const workplaceSelect = document.querySelector("[data-registration-workplace-select]");
+  if (!orgSelect || !workplaceSelect) return;
+  const selectedOrg = orgSelect.value || "";
+  const current = preserve ? workplaceSelect.value : "";
+  const options = registrationWorkplaceOptions[selectedOrg] || [];
+  workplaceSelect.innerHTML = [
+    `<option value="">근무지 선택</option>`,
+    ...options.map((item) => `<option value="${escapeAttr(item)}">${escapeHtml(item)}</option>`),
+  ].join("");
+  if (current && options.includes(current)) {
+    workplaceSelect.value = current;
+  } else if (preserve && state.profile?.workplace && options.includes(state.profile.workplace)) {
+    workplaceSelect.value = state.profile.workplace;
+  } else {
+    workplaceSelect.value = "";
+  }
 }
 
 function renderSignupSheetStatus() {
@@ -3549,8 +3582,6 @@ function getRequiredSignupFields() {
     { label: "전화", element: document.querySelector('[data-profile-field="phone"]'), getValue: () => document.querySelector('[data-profile-field="phone"]')?.value.trim() || "" },
     { label: "소속", element: document.querySelector('[data-profile-field="org"]'), getValue: () => document.querySelector('[data-profile-field="org"]')?.value.trim() || "" },
     { label: "근무지", element: document.querySelector('[data-profile-field="workplace"]'), getValue: () => document.querySelector('[data-profile-field="workplace"]')?.value.trim() || "" },
-    { label: "직함", element: document.querySelector('[data-profile-field="role"]'), getValue: () => document.querySelector('[data-profile-field="role"]')?.value.trim() || "" },
-    { label: "주업무", element: document.querySelector('[data-profile-field="primaryWork"]'), getValue: () => document.querySelector('[data-profile-field="primaryWork"]')?.value.trim() || "" },
     { label: "기본 근무시간", element: document.querySelector('[data-profile-field="workHours"]'), getValue: () => document.querySelector('[data-profile-field="workHours"]')?.value.trim() || "" },
   ];
 }
@@ -3567,11 +3598,26 @@ function validateSignupRequiredFields() {
     }
   }
   const password = document.getElementById("authPassword")?.value || "";
+  const passwordConfirm = document.getElementById("authPasswordConfirm")?.value || "";
   if (password.length < 6) {
     const message = "비밀번호는 6자 이상이어야 합니다.";
     renderAuthStatus(message);
     alert(message);
     document.getElementById("authPassword")?.focus();
+    return false;
+  }
+  if (password !== passwordConfirm) {
+    const message = "비밀번호 확인이 일치하지 않습니다.";
+    renderAuthStatus(message);
+    alert(message);
+    document.getElementById("authPasswordConfirm")?.focus();
+    return false;
+  }
+  if (!isSignupEmailConfirmedAvailable()) {
+    const message = "이메일 중복확인을 먼저 완료해주세요.";
+    renderAuthStatus(message);
+    alert(message);
+    document.getElementById("authEmail")?.focus();
     return false;
   }
   return true;
@@ -3645,15 +3691,17 @@ function renderAuthStatus(message) {
   const email = authState.user?.email || "";
   const readyText = authState.remoteReady ? "직원 계정 연결 준비됨" : "원격 저장 준비 중";
   status.textContent = message || (email ? `${email} 로그인됨 · 원격 저장 켜짐` : `${readyText} · 로그인하면 원격 저장됩니다.`);
-  document.getElementById("logoutButton").disabled = !authState.user;
   renderMainMenuAuthButton();
 }
 
 function clearAuthFormCredentials() {
   const emailInput = document.getElementById("authEmail");
   const passwordInput = document.getElementById("authPassword");
+  const passwordConfirmInput = document.getElementById("authPasswordConfirm");
   if (emailInput) emailInput.value = "";
   if (passwordInput) passwordInput.value = "";
+  if (passwordConfirmInput) passwordConfirmInput.value = "";
+  resetSignupEmailCheck();
 }
 
 function isAuthRegistrationVisible() {
@@ -3664,6 +3712,9 @@ function isAuthRegistrationVisible() {
 function setAuthRegistrationVisible(visible, { clear = false } = {}) {
   document.querySelectorAll("[data-auth-registration]").forEach((node) => {
     node.hidden = !visible;
+  });
+  document.querySelectorAll(".login-card").forEach((node) => {
+    node.hidden = visible;
   });
   if (!visible) {
     switchAuthTab("personal");
@@ -3676,7 +3727,134 @@ function setAuthRegistrationVisible(visible, { clear = false } = {}) {
 function openEmployeeRegistrationForm({ clear = false } = {}) {
   setAuthRegistrationVisible(true, { clear });
   renderAuthStatus("직원등록 시트를 작성한 뒤 다시 직원등록을 누르면 신청됩니다.");
+  updateRegistrationWorkplaceOptions({ preserve: true });
   document.querySelector('[data-profile-field="name"]')?.focus();
+}
+
+function getNormalizedAuthEmail() {
+  return String(document.getElementById("authEmail")?.value || "").trim().toLowerCase();
+}
+
+function isValidEmail(value = "") {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(value || "").trim());
+}
+
+function resetSignupEmailCheck(message = "직원등록 전 이메일 중복확인을 해주세요.") {
+  authState.signupEmailCheck = {
+    email: "",
+    status: "idle",
+    message,
+  };
+  renderSignupEmailCheckStatus();
+}
+
+function renderSignupEmailCheckStatus() {
+  const node = document.getElementById("emailCheckStatus");
+  const button = document.getElementById("emailCheckButton");
+  if (!node) return;
+  const check = authState.signupEmailCheck || {};
+  node.textContent = check.message || "";
+  node.dataset.status = check.status || "idle";
+  if (button) {
+    button.disabled = check.status === "checking";
+    button.textContent = check.status === "checking" ? "확인 중" : "중복확인";
+  }
+}
+
+function isSignupEmailConfirmedAvailable() {
+  const email = getNormalizedAuthEmail();
+  const check = authState.signupEmailCheck || {};
+  return Boolean(email && check.email === email && check.status === "available");
+}
+
+async function checkSignupEmailDuplicate() {
+  const email = getNormalizedAuthEmail();
+  if (!email) {
+    const message = "이메일 누락입니다.";
+    resetSignupEmailCheck(message);
+    renderAuthStatus(message);
+    alert(message);
+    document.getElementById("authEmail")?.focus();
+    return false;
+  }
+  if (!isValidEmail(email)) {
+    const message = "이메일 형식을 확인해주세요.";
+    resetSignupEmailCheck(message);
+    renderAuthStatus(message);
+    alert(message);
+    document.getElementById("authEmail")?.focus();
+    return false;
+  }
+  if (!supabaseClient) {
+    const message = "원격 저장 연결 후 이메일 중복확인이 가능합니다.";
+    authState.signupEmailCheck = { email, status: "unknown", message };
+    renderSignupEmailCheckStatus();
+    renderAuthStatus(message);
+    alert(message);
+    return false;
+  }
+  authState.signupEmailCheck = { email, status: "checking", message: "이메일을 확인하고 있습니다..." };
+  renderSignupEmailCheckStatus();
+  const { data, error } = await supabaseClient.rpc("check_registration_email", { email_to_check: email });
+  if (error) {
+    const message = "이메일 중복확인 기능을 준비해야 합니다. Supabase SQL을 최신으로 적용해주세요.";
+    authState.signupEmailCheck = { email, status: "unknown", message };
+    renderSignupEmailCheckStatus();
+    renderAuthStatus(message);
+    alert(`${message}\n${error.message}`);
+    return false;
+  }
+  const exists = Boolean(data?.exists);
+  if (exists) {
+    const message = "이미 등록된 이메일입니다. 로그인 또는 비밀번호 재설정을 이용해주세요.";
+    authState.signupEmailCheck = { email, status: "duplicate", message };
+    renderSignupEmailCheckStatus();
+    renderAuthStatus(message);
+    alert(message);
+    return false;
+  }
+  const message = "사용 가능한 이메일입니다.";
+  authState.signupEmailCheck = { email, status: "available", message };
+  renderSignupEmailCheckStatus();
+  renderAuthStatus(message);
+  return true;
+}
+
+function validateRegistrationAccountGate() {
+  const email = getNormalizedAuthEmail();
+  const password = document.getElementById("authPassword")?.value || "";
+  const passwordConfirm = document.getElementById("authPasswordConfirm")?.value || "";
+  if (!email) {
+    renderAuthStatus("이메일 누락입니다.");
+    alert("이메일 누락입니다.");
+    document.getElementById("authEmail")?.focus();
+    return false;
+  }
+  if (!isValidEmail(email)) {
+    renderAuthStatus("이메일 형식을 확인해주세요.");
+    alert("이메일 형식을 확인해주세요.");
+    document.getElementById("authEmail")?.focus();
+    return false;
+  }
+  if (password.length < 6) {
+    renderAuthStatus("비밀번호는 6자 이상이어야 합니다.");
+    alert("비밀번호는 6자 이상이어야 합니다.");
+    document.getElementById("authPassword")?.focus();
+    return false;
+  }
+  if (password !== passwordConfirm) {
+    renderAuthStatus("비밀번호 확인이 일치하지 않습니다.");
+    alert("비밀번호 확인이 일치하지 않습니다.");
+    document.getElementById("authPasswordConfirm")?.focus();
+    return false;
+  }
+  if (!isSignupEmailConfirmedAvailable()) {
+    renderAuthStatus("이메일 중복확인을 먼저 완료해주세요.");
+    alert("이메일 중복확인을 먼저 완료해주세요.");
+    document.getElementById("emailCheckButton")?.focus();
+    return false;
+  }
+  return true;
 }
 
 function isKnownLoggedInProfile() {
@@ -3754,23 +3932,29 @@ function collectSignupMetadata(credentials = {}) {
   applyProfileWeeklyWorkHoursFields();
   const profile = { ...defaultProfile, ...(state.profile || {}) };
   profile.email = credentials.email || profile.email || "";
+  profile.role = defaultProfile.role;
+  profile.primaryWork = "";
+  profile.secondaryWork = "";
+  profile.employmentType = defaultProfile.employmentType;
+  profile.dailyWage = "";
+  profile.hourlyWage = "";
   state.profile = profile;
   saveState();
   return {
     org: profile.org || defaultProfile.org,
-    role: profile.role || defaultProfile.role,
+    role: defaultProfile.role,
     name: profile.name || "",
     nickname: profile.nickname || "",
     phone: profile.phone || "",
     email: profile.email || "",
-    primaryWork: profile.primaryWork || "",
-    secondaryWork: profile.secondaryWork || "",
+    primaryWork: "",
+    secondaryWork: "",
     workplace: profile.workplace || "",
-    employmentType: profile.employmentType || defaultProfile.employmentType,
+    employmentType: defaultProfile.employmentType,
     laborId: profile.laborId || "",
     address: profile.address || "",
-    dailyWage: profile.dailyWage || "",
-    hourlyWage: profile.hourlyWage || "",
+    dailyWage: "",
+    hourlyWage: "",
     workHours: profile.workHours || defaultProfile.workHours,
     weeklyWorkHours: profile.weeklyWorkHours || {},
     extra: profile.extra || "",
@@ -3782,6 +3966,7 @@ function collectSignupMetadata(credentials = {}) {
 
 async function signUpWithSupabase(options = {}) {
   if (!isAuthRegistrationVisible()) {
+    if (!validateRegistrationAccountGate()) return;
     openEmployeeRegistrationForm({ clear: isExplicitlySignedOut() || !authState.user });
     return;
   }
@@ -8438,7 +8623,14 @@ document.getElementById("loadDefaultManualButton")?.addEventListener("click", lo
 document.getElementById("loginButton").onclick = signInWithSupabase;
 document.getElementById("signupButton").onclick = signUpWithSupabase;
 document.getElementById("passwordResetButton").onclick = requestPasswordResetApproval;
-document.getElementById("logoutButton").onclick = signOutWithSupabase;
+document.getElementById("emailCheckButton")?.addEventListener("click", checkSignupEmailDuplicate);
+document.getElementById("authEmail")?.addEventListener("input", () => {
+  resetSignupEmailCheck();
+});
+document.getElementById("logoutButton")?.addEventListener("click", signOutWithSupabase);
+document.querySelector("[data-registration-org-select]")?.addEventListener("change", () => {
+  updateRegistrationWorkplaceOptions({ preserve: false });
+});
 document.getElementById("employeeSelect").onchange = (event) => {
   state.selectedEmployeeId = event.target.value;
   const fitnessIndex = getFitnessLogPages().findIndex((page) => page.id === event.target.value);

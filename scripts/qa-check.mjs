@@ -215,6 +215,41 @@ check(
 );
 
 check(
+  "employee registration has email duplicate and password confirmation gate",
+  html.includes('id="emailCheckButton"')
+    && html.includes('id="authPasswordConfirm"')
+    && js.includes("function checkSignupEmailDuplicate()")
+    && js.includes('supabaseClient.rpc("check_registration_email"')
+    && js.includes("function validateRegistrationAccountGate()")
+    && /if \(password !== passwordConfirm\)[\s\S]{0,120}비밀번호 확인이 일치하지 않습니다/.test(js),
+  "new employee registration must check duplicate email and two password entries before opening the sheet"
+);
+
+check(
+  "employee registration keeps approver-only fields out of signup sheet",
+  !html.includes('data-profile-field="role"')
+    && !html.includes('data-profile-field="employmentType"')
+    && !html.includes('data-profile-field="primaryWork"')
+    && !html.includes('data-profile-field="secondaryWork"')
+    && !html.includes('data-profile-field="hourlyWage"')
+    && !html.includes('data-profile-field="dailyWage"')
+    && js.includes("profile.role = defaultProfile.role")
+    && js.includes("primaryWork: \"\"")
+    && js.includes("hourlyWage: \"\""),
+  "role, employment type, duties, and wages should be assigned during approval, not by the applicant"
+);
+
+check(
+  "Supabase schema exposes registration email check and auth-to-profile repair",
+  read("supabase/worklog_schema.sql").includes("create or replace function public.check_registration_email")
+    && read("supabase/worklog_schema.sql").includes("from auth.users u")
+    && read("supabase/worklog_schema.sql").includes("where lower(coalesce(u.email, ''))")
+    && read("supabase/worklog_schema.sql").includes("update public.profiles p")
+    && read("supabase/worklog_schema.sql").includes("from auth.users u"),
+  "SQL schema should support duplicate checks and make Auth signups visible in approval queue"
+);
+
+check(
   "dates use hanja weekday ordering",
   js.includes('const hanjaWeekdays = ["日", "月", "火", "水", "木", "金", "土"]')
     && /formatKoreanDate\(key\)[\s\S]{0,260}date\.getFullYear\(\)[\s\S]{0,220}hanjaWeekdays\[date\.getDay\(\)\]/.test(js)

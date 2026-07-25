@@ -964,20 +964,22 @@
             <span id="authStatus">로그인하면 업무일지가 원격으로 저장됩니다.</span>
           </div>
           <div class="login-grid">
-            <label>이메일 <input id="authEmail" type="email" autocomplete="email" placeholder="name@example.com" /></label>
+            <label class="login-email-field">이메일
+              <span class="login-email-control">
+                <input id="authEmail" type="email" autocomplete="email" placeholder="name@example.com" />
+                <button id="emailCheckButton" type="button">중복확인</button>
+              </span>
+              <em id="emailCheckStatus">직원등록 전 이메일 중복확인을 해주세요.</em>
+            </label>
             <label>비밀번호 <input id="authPassword" type="password" autocomplete="current-password" placeholder="6자 이상" /></label>
+            <label>비밀번호 확인 <input id="authPasswordConfirm" type="password" autocomplete="new-password" placeholder="직원등록 시 한 번 더 입력" /></label>
           </div>
           <div class="login-actions">
             <button id="loginButton" type="button">로그인</button>
             <button id="signupButton" type="button">직원등록</button>
             <button id="passwordResetButton" type="button">비밀번호 재설정</button>
-            <button id="logoutButton" type="button">로그아웃</button>
           </div>
         </section>
-        <div class="auth-tabs" data-auth-registration hidden aria-label="직원등록 설정 메뉴">
-          <button class="is-active" type="button" data-auth-tab="personal">개인설정</button>
-          <button type="button" data-auth-tab="app">앱설정</button>
-        </div>
         <div class="auth-panel is-active" id="auth-panel-personal" data-auth-registration hidden>
           <section class="signup-sheet">
             <header class="signup-sheet-head">
@@ -1000,20 +1002,22 @@
             <article class="signup-sheet-section">
               <h4>2. 소속/직무 배치</h4>
               <div class="profile-grid">
-                <label>소속 <input data-profile-field="org" type="text" placeholder="예: (주)방주 / 비욘드 피트니스" /></label>
-                <label>근무지 <input data-profile-field="workplace" type="text" placeholder="사업장 / 지점 / 현장" /></label>
-                <label>직함 <input data-profile-field="role" type="text" placeholder="예: 대표 / 센터장 / 트레이너 / 인포" /></label>
-                <label>고용형태
-                  <select data-profile-field="employmentType">
-                    <option value="직원">직원</option>
-                    <option value="프리랜서">프리랜서</option>
-                    <option value="파트타임">파트타임</option>
-                    <option value="관리자">관리자</option>
+                <label>소속
+                  <select data-profile-field="org" data-registration-org-select>
+                    <option value="">소속 선택</option>
+                    <option value="(주)방주">(주)방주</option>
+                    <option value="(주)비욘드 컴퍼니">(주)비욘드 컴퍼니</option>
+                    <option value="(주)비제이종합건설">(주)비제이종합건설</option>
+                    <option value="기타">기타</option>
                   </select>
                 </label>
-                <label>주업무 <input data-profile-field="primaryWork" type="text" placeholder="주요 담당 업무" /></label>
-                <label>부업무 <input data-profile-field="secondaryWork" type="text" placeholder="보조 담당 업무" /></label>
+                <label>근무지
+                  <select data-profile-field="workplace" data-registration-workplace-select>
+                    <option value="">근무지 선택</option>
+                  </select>
+                </label>
               </div>
+              <p class="profile-note">직함, 고용형태, 주업무, 부업무는 승인 과정에서 대표 또는 승인 권한자가 확정합니다.</p>
             </article>
             <article class="signup-sheet-section">
               <h4>3. 근무/노무 기준</h4>
@@ -1021,8 +1025,6 @@
                 <label>기본 근무시간 <input data-profile-field="workHours" type="text" placeholder="예: 09:00-18:00" /></label>
                 <label>주민번호/식별번호 <input data-profile-field="laborId" type="text" placeholder="노무대장용 식별번호" /></label>
                 <label>주소 <input data-profile-field="address" type="text" placeholder="노무대장용 주소" /></label>
-                <label>시급 <input data-profile-field="hourlyWage" type="number" min="0" inputmode="numeric" placeholder="예: 12000" /></label>
-                <label>일당 <input data-profile-field="dailyWage" type="number" min="0" inputmode="numeric" placeholder="예: 120000" /></label>
               </div>
               <div class="signup-weekly-hours">
                 <strong>근무요일 / 요일별 시간</strong>
@@ -1037,24 +1039,10 @@
                   <label>土 <input data-profile-work-hours-day="sat" type="text" placeholder="10:00-18:00" /></label>
                 </div>
               </div>
-              <p class="profile-note">임금·식별 정보는 대표 승인 과정에서 수정될 수 있으며 노무비 지급대장에 사용됩니다.</p>
-            </article>
-          </section>
-        </div>
-        <div class="auth-panel" id="auth-panel-app" data-auth-registration hidden>
-          <section class="signup-sheet">
-            <article class="signup-sheet-section">
-              <h4>4. 역량/성장 데이터</h4>
-              <div class="profile-grid profile-grid-wide">
-                <label>장점 <textarea data-profile-field="strengths" rows="4" placeholder="강점, 잘하는 업무, 성과 패턴"></textarea></label>
-                <label>보완점 <textarea data-profile-field="weaknesses" rows="4" placeholder="어려운 업무, 개선 필요 역량"></textarea></label>
-                <label>자기개발 목표 <textarea data-profile-field="developmentGoals" rows="4" placeholder="학습 목표, 역량강화 계획, 필요한 교육"></textarea></label>
-                <label>기타 <textarea data-profile-field="extra" rows="4" placeholder="업무 환경, 자격, 관심 분야, 필요한 지원"></textarea></label>
-              </div>
-              <p class="profile-note">이 데이터는 AI가 업무 배치, 매뉴얼 추천, 역량강화 코칭을 만들기 위한 기초 자료로 사용됩니다.</p>
+              <p class="profile-note">시급과 일당은 승인 과정에서 대표 또는 승인 권한자가 확정하며, 노무비 지급대장에 사용됩니다.</p>
             </article>
             <article class="signup-sheet-section signup-approval-flow">
-              <h4>5. 승인 흐름</h4>
+              <h4>4. 승인 흐름</h4>
               <ol>
                 <li>직원이 직원등록 신청 시트를 작성합니다.</li>
                 <li>대표 또는 승인 권한자가 소속·직함·근무·노무 정보를 검토합니다.</li>

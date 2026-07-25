@@ -3534,13 +3534,52 @@ body[data-device-mode="narrow"] .os-mode-switch span[data-device-mode="narrow"] 
   font-weight: 850;
 }
 
-.login-grid input {
+.login-email-field {
+  grid-column: 1 / -1;
+}
+
+.login-email-control {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+}
+
+.login-grid input,
+.profile-grid select {
   width: 100%;
   border: 1px solid var(--line);
   border-radius: 10px;
   background: rgba(255, 253, 248, 0.95);
   color: var(--ink);
   padding: 10px 11px;
+}
+
+.login-email-control button {
+  min-height: 40px;
+  border: 1px solid rgba(33, 55, 45, 0.14);
+  border-radius: 10px;
+  background: var(--ink);
+  color: #fffefa;
+  padding: 0 12px;
+  font-size: 12px;
+  font-weight: 900;
+  white-space: nowrap;
+}
+
+.login-email-field em {
+  color: var(--muted);
+  font-size: 11px;
+  font-style: normal;
+  font-weight: 800;
+}
+
+.login-email-field em[data-status="available"] {
+  color: #0f6b4f;
+}
+
+.login-email-field em[data-status="duplicate"],
+.login-email-field em[data-status="unknown"] {
+  color: #9d3d2f;
 }
 
 .login-actions {

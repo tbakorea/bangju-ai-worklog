@@ -131,7 +131,22 @@ insert into public.profiles (
   org,
   role,
   name,
+  phone,
   email,
+  primary_work,
+  secondary_work,
+  workplace,
+  employment_type,
+  labor_id,
+  address,
+  daily_wage,
+  hourly_wage,
+  work_hours,
+  weekly_work_hours,
+  extra,
+  strengths,
+  weaknesses,
+  development_goals,
   approval_status,
   approved_at,
   updated_at
@@ -141,7 +156,22 @@ select
   coalesce(nullif(u.raw_user_meta_data->>'org', ''), '(주)방주'),
   coalesce(nullif(u.raw_user_meta_data->>'role', ''), '직원'),
   coalesce(nullif(u.raw_user_meta_data->>'name', ''), split_part(coalesce(u.email, ''), '@', 1), '내 프로필'),
+  coalesce(u.raw_user_meta_data->>'phone', ''),
   coalesce(u.email, ''),
+  coalesce(u.raw_user_meta_data->>'primaryWork', ''),
+  coalesce(u.raw_user_meta_data->>'secondaryWork', ''),
+  coalesce(u.raw_user_meta_data->>'workplace', ''),
+  coalesce(nullif(u.raw_user_meta_data->>'employmentType', ''), '직원'),
+  coalesce(u.raw_user_meta_data->>'laborId', ''),
+  coalesce(u.raw_user_meta_data->>'address', ''),
+  public.to_numeric_or_null(u.raw_user_meta_data->>'dailyWage'),
+  public.to_numeric_or_null(u.raw_user_meta_data->>'hourlyWage'),
+  coalesce(nullif(u.raw_user_meta_data->>'workHours', ''), '08:00-18:00'),
+  coalesce(u.raw_user_meta_data->'weeklyWorkHours', '{}'::jsonb),
+  coalesce(u.raw_user_meta_data->>'extra', ''),
+  coalesce(u.raw_user_meta_data->>'strengths', ''),
+  coalesce(u.raw_user_meta_data->>'weaknesses', ''),
+  coalesce(u.raw_user_meta_data->>'developmentGoals', ''),
   case
     when lower(coalesce(u.email, '')) in ('j3010@ymail.com', 'tbakorea@gmail.com')
       or coalesce(u.raw_user_meta_data->>'role', '') ~* '대표|관리자|센터장|총괄|임원|admin|owner|manager'
@@ -159,6 +189,46 @@ from auth.users u
 where not exists (
   select 1 from public.profiles p where p.id = u.id
 );
+
+update public.profiles p
+set org = coalesce(nullif(u.raw_user_meta_data->>'org', ''), nullif(p.org, ''), '(주)방주'),
+    role = coalesce(nullif(u.raw_user_meta_data->>'role', ''), nullif(p.role, ''), '직원'),
+    name = coalesce(nullif(u.raw_user_meta_data->>'name', ''), nullif(p.name, ''), split_part(coalesce(u.email, ''), '@', 1), '내 프로필'),
+    phone = coalesce(nullif(u.raw_user_meta_data->>'phone', ''), p.phone, ''),
+    email = coalesce(nullif(u.email, ''), nullif(p.email, ''), u.raw_user_meta_data->>'email', ''),
+    primary_work = coalesce(nullif(u.raw_user_meta_data->>'primaryWork', ''), p.primary_work, ''),
+    secondary_work = coalesce(nullif(u.raw_user_meta_data->>'secondaryWork', ''), p.secondary_work, ''),
+    workplace = coalesce(nullif(u.raw_user_meta_data->>'workplace', ''), p.workplace, ''),
+    employment_type = coalesce(nullif(u.raw_user_meta_data->>'employmentType', ''), p.employment_type, '직원'),
+    labor_id = coalesce(nullif(u.raw_user_meta_data->>'laborId', ''), p.labor_id, ''),
+    address = coalesce(nullif(u.raw_user_meta_data->>'address', ''), p.address, ''),
+    daily_wage = coalesce(public.to_numeric_or_null(u.raw_user_meta_data->>'dailyWage'), p.daily_wage),
+    hourly_wage = coalesce(public.to_numeric_or_null(u.raw_user_meta_data->>'hourlyWage'), p.hourly_wage),
+    work_hours = coalesce(nullif(u.raw_user_meta_data->>'workHours', ''), nullif(p.work_hours, ''), '08:00-18:00'),
+    weekly_work_hours = coalesce(u.raw_user_meta_data->'weeklyWorkHours', p.weekly_work_hours, '{}'::jsonb),
+    extra = coalesce(nullif(u.raw_user_meta_data->>'extra', ''), p.extra, ''),
+    strengths = coalesce(nullif(u.raw_user_meta_data->>'strengths', ''), p.strengths, ''),
+    weaknesses = coalesce(nullif(u.raw_user_meta_data->>'weaknesses', ''), p.weaknesses, ''),
+    development_goals = coalesce(nullif(u.raw_user_meta_data->>'developmentGoals', ''), p.development_goals, ''),
+    approval_status = case
+      when lower(coalesce(u.email, '')) in ('j3010@ymail.com', 'tbakorea@gmail.com')
+        or coalesce(u.raw_user_meta_data->>'role', '') ~* '대표|관리자|센터장|총괄|임원|admin|owner|manager'
+      then 'approved'
+      else coalesce(nullif(p.approval_status, ''), 'pending')
+    end,
+    approved_at = case
+      when lower(coalesce(u.email, '')) in ('j3010@ymail.com', 'tbakorea@gmail.com')
+        or coalesce(u.raw_user_meta_data->>'role', '') ~* '대표|관리자|센터장|총괄|임원|admin|owner|manager'
+      then coalesce(p.approved_at, now())
+      else p.approved_at
+    end,
+    updated_at = now()
+from auth.users u
+where p.id = u.id
+  and (
+    coalesce(p.approval_status, 'pending') <> 'approved'
+    or lower(coalesce(u.email, '')) in ('j3010@ymail.com', 'tbakorea@gmail.com')
+  );
 
 update public.profiles
 set approval_status = 'approved',
@@ -219,6 +289,42 @@ as $$
       )
   );
 $$;
+
+create or replace function public.check_registration_email(email_to_check text)
+returns jsonb
+language plpgsql
+stable
+security definer
+set search_path = public
+as $$
+declare
+  normalized_email text := lower(trim(coalesce(email_to_check, '')));
+  profile_exists boolean := false;
+  auth_exists boolean := false;
+begin
+  if normalized_email = '' then
+    return jsonb_build_object('exists', false, 'profileExists', false, 'authExists', false);
+  end if;
+
+  select exists (
+    select 1 from public.profiles p
+    where lower(coalesce(p.email, '')) = normalized_email
+  ) into profile_exists;
+
+  select exists (
+    select 1 from auth.users u
+    where lower(coalesce(u.email, '')) = normalized_email
+  ) into auth_exists;
+
+  return jsonb_build_object(
+    'exists', profile_exists or auth_exists,
+    'profileExists', profile_exists,
+    'authExists', auth_exists
+  );
+end;
+$$;
+
+grant execute on function public.check_registration_email(text) to anon, authenticated;
 
 create or replace function public.guard_profile_approval_fields()
 returns trigger

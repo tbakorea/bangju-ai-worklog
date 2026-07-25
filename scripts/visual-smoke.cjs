@@ -556,6 +556,186 @@ async function checkSectionChromeReleasePolish(browser) {
   await page.close();
 }
 
+async function checkFitnessNewEmployeeRegistrationFlow(browser) {
+  const viewports = [
+    { width: 390, height: 844, label: "phone" },
+    { width: 820, height: 1180, label: "tablet" },
+    { width: 1280, height: 820, label: "desktop" },
+  ];
+
+  for (const viewport of viewports) {
+    const page = await browser.newPage({ viewport: { width: viewport.width, height: viewport.height } });
+    const errors = [];
+    const dialogs = [];
+    page.on("pageerror", (error) => errors.push(error.message));
+    page.on("dialog", async (dialog) => {
+      dialogs.push(dialog.message());
+      await dialog.accept();
+    });
+    await page.route("https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2", async (route) => {
+      await route.fulfill({
+        contentType: "application/javascript",
+        body: `
+          window.supabase = {
+            createClient() {
+              return {
+                rpc(name, payload) {
+                  window.__lastRpc = { name, payload };
+                  if (name === "check_registration_email") {
+                    return Promise.resolve({ data: { exists: false, profileExists: false, authExists: false }, error: null });
+                  }
+                  return Promise.resolve({ data: null, error: { message: "unknown rpc " + name } });
+                },
+                auth: {
+                  getSession: () => Promise.resolve({ data: { session: null } }),
+                  onAuthStateChange: () => ({ data: { subscription: { unsubscribe() {} } } }),
+                  signUp(payload) {
+                    window.__signupPayloads.push(payload);
+                    return Promise.resolve({
+                      data: {
+                        user: {
+                          id: "new-fitness-user",
+                          email: payload.email,
+                          raw_user_meta_data: payload.options?.data || {},
+                        },
+                        session: null,
+                      },
+                      error: null,
+                    });
+                  },
+                  signInWithPassword: () => Promise.resolve({ data: { session: null }, error: null }),
+                  resend: () => Promise.resolve({ data: {}, error: null }),
+                  signOut: () => Promise.resolve({ error: null }),
+                },
+                from() {
+                  return {
+                    select() { return this; },
+                    eq() { return this; },
+                    in() { return this; },
+                    order() { return this; },
+                    limit() { return this; },
+                    maybeSingle: () => Promise.resolve({ data: null, error: null }),
+                    insert: () => Promise.resolve({ data: null, error: null }),
+                    update() { return this; },
+                    upsert: () => Promise.resolve({ data: null, error: null }),
+                  };
+                },
+              };
+            },
+          };
+        `,
+      });
+    });
+    await page.addInitScript(() => {
+      localStorage.clear();
+      window.__signupPayloads = [];
+    });
+    await page.goto(target, { waitUntil: "domcontentloaded" });
+    await page.evaluate((mode) => {
+      document.body.classList.toggle("physical-phone-device", mode === "phone");
+      document.body.dataset.layoutMode = mode === "phone" ? "phone" : "classic";
+      document.body.dataset.viewMode = mode === "phone" ? "ceo" : "classic";
+      window.switchView?.("auth");
+    }, viewport.label);
+    await page.waitForTimeout(250);
+
+    await page.click("#signupButton");
+    await page.waitForTimeout(120);
+    if (!dialogs.some((message) => message.includes("이메일 누락"))) {
+      fail("registration should block opening sheet before account fields", viewport.label);
+    }
+
+    await page.fill("#authEmail", "newfitness@example.com");
+    await page.fill("#authPassword", "beyond3010");
+    await page.fill("#authPasswordConfirm", "wrong3010");
+    await page.click("#emailCheckButton");
+    await page.waitForTimeout(160);
+    const emailCheck = await page.evaluate(() => ({
+      status: document.querySelector("#emailCheckStatus")?.dataset.status || "",
+      text: document.querySelector("#emailCheckStatus")?.textContent?.trim() || "",
+      rpc: window.__lastRpc,
+    }));
+    if (emailCheck.status !== "available" || !emailCheck.text.includes("사용 가능한")) {
+      fail("email duplicate check should approve unused email", `${viewport.label}: ${JSON.stringify(emailCheck)}`);
+    }
+    if (emailCheck.rpc?.name !== "check_registration_email" || emailCheck.rpc?.payload?.email_to_check !== "newfitness@example.com") {
+      fail("email duplicate check did not call the expected RPC", `${viewport.label}: ${JSON.stringify(emailCheck.rpc)}`);
+    }
+
+    await page.click("#signupButton");
+    await page.waitForTimeout(120);
+    if (!dialogs.some((message) => message.includes("비밀번호 확인이 일치하지 않습니다"))) {
+      fail("registration should block mismatched passwords", viewport.label);
+    }
+
+    await page.fill("#authPasswordConfirm", "beyond3010");
+    await page.click("#signupButton");
+    await page.waitForTimeout(160);
+    const opened = await page.evaluate(() => ({
+      loginHidden: document.querySelector(".login-card")?.hidden,
+      sheetVisible: !document.querySelector("#auth-panel-personal")?.hidden,
+      authTabs: document.querySelectorAll(".auth-tabs[data-auth-registration]").length,
+      roleField: Boolean(document.querySelector('[data-profile-field="role"]')),
+      employmentField: Boolean(document.querySelector('[data-profile-field="employmentType"]')),
+      primaryWorkField: Boolean(document.querySelector('[data-profile-field="primaryWork"]')),
+      wageField: Boolean(document.querySelector('[data-profile-field="hourlyWage"], [data-profile-field="dailyWage"]')),
+    }));
+    if (!opened.loginHidden || !opened.sheetVisible) {
+      fail("registration account card should close and sheet should open", `${viewport.label}: ${JSON.stringify(opened)}`);
+    }
+    if (opened.authTabs || opened.roleField || opened.employmentField || opened.primaryWorkField || opened.wageField) {
+      fail("employee registration sheet still exposes approver-only fields", `${viewport.label}: ${JSON.stringify(opened)}`);
+    }
+
+    await page.fill('[data-profile-field="name"]', "비욘드신입");
+    await page.fill('[data-profile-field="nickname"]', "신입");
+    await page.fill('[data-profile-field="phone"]', "01012345678");
+    await page.selectOption('[data-registration-org-select]', "(주)비욘드 컴퍼니");
+    await page.waitForTimeout(80);
+    const workplaceOptions = await page.evaluate(() => [...document.querySelectorAll('[data-registration-workplace-select] option')].map((option) => option.value));
+    if (!workplaceOptions.includes("비욘드 피트니스") || !workplaceOptions.includes("TBA studio")) {
+      fail("Beyond Company workplace options are incomplete", `${viewport.label}: ${workplaceOptions.join(",")}`);
+    }
+    await page.selectOption('[data-registration-workplace-select]', "비욘드 피트니스");
+    await page.fill('[data-profile-field="workHours"]', "16:00-20:00");
+    await page.fill('[data-profile-field="laborId"]', "900101");
+    await page.fill('[data-profile-field="address"]', "울산 남구");
+    await page.fill('[data-profile-work-hours-day="mon"]', "16:00-20:00");
+    await page.fill('[data-profile-work-hours-day="tue"]', "16:00-20:00");
+    await page.click("#saveProfileButton");
+    await page.waitForTimeout(200);
+
+    const submitted = await page.evaluate(() => {
+      const payload = window.__signupPayloads?.[0] || {};
+      return {
+        payload,
+        sheetHidden: document.querySelector("#auth-panel-personal")?.hidden,
+        loginHidden: document.querySelector(".login-card")?.hidden,
+        savedState: JSON.parse(localStorage.getItem("beyond-worklog-state-v1") || "{}"),
+      };
+    });
+    const metadata = submitted.payload.options?.data || {};
+    if (submitted.payload.email !== "newfitness@example.com") fail("signup email mismatch", `${viewport.label}: ${submitted.payload.email}`);
+    if (metadata.name !== "비욘드신입" || metadata.phone !== "010-1234-5678") {
+      fail("signup metadata should contain normalized personal info", `${viewport.label}: ${JSON.stringify(metadata)}`);
+    }
+    if (metadata.org !== "(주)비욘드 컴퍼니" || metadata.workplace !== "비욘드 피트니스" || metadata.workHours !== "16:00-20:00") {
+      fail("signup metadata should contain fitness placement", `${viewport.label}: ${JSON.stringify(metadata)}`);
+    }
+    if (metadata.role !== "직원" || metadata.primaryWork !== "" || metadata.secondaryWork !== "" || metadata.employmentType !== "직원" || metadata.hourlyWage !== "" || metadata.dailyWage !== "") {
+      fail("signup metadata should leave approver-only fields for approval", `${viewport.label}: ${JSON.stringify(metadata)}`);
+    }
+    if (metadata.weeklyWorkHours?.mon !== "16:00-20:00" || metadata.weeklyWorkHours?.tue !== "16:00-20:00") {
+      fail("weekly work hours were not submitted", `${viewport.label}: ${JSON.stringify(metadata.weeklyWorkHours)}`);
+    }
+    if (!submitted.sheetHidden || submitted.loginHidden) {
+      fail("successful registration should close the sheet and return to the account card", `${viewport.label}: ${JSON.stringify(submitted)}`);
+    }
+    if (errors.length) fail("fitness registration flow page errors", `${viewport.label}: ${errors.join(" | ")}`);
+    await page.close();
+  }
+}
+
 (async () => {
   const browser = await chromium.launch({
     headless: true,
@@ -570,6 +750,7 @@ async function checkSectionChromeReleasePolish(browser) {
     await checkAiMissionArchitect(browser);
     await checkSectionAiWorklogActions(browser);
     await checkSectionChromeReleasePolish(browser);
+    await checkFitnessNewEmployeeRegistrationFlow(browser);
     await checkRepresentativeProfileSeparation(browser);
     await checkCalendarAnnotations(browser);
   } finally {
