@@ -15744,6 +15744,26 @@ body.physical-phone-device #view-fitness-log {
   padding-top: 58px !important;
 }
 
+body[data-layout-mode="phone"] #view-fitness-log::before,
+body.physical-phone-device #view-fitness-log::before {
+  content: "beyond fitness";
+  position: absolute;
+  top: max(17px, calc(env(safe-area-inset-top) + 9px));
+  left: max(18px, env(safe-area-inset-left));
+  z-index: 125;
+  display: inline-flex;
+  align-items: center;
+  min-height: 34px;
+  max-width: calc(100% - 158px);
+  overflow: hidden;
+  color: rgba(14, 47, 37, 0.9);
+  font-size: 17px;
+  font-weight: 950;
+  letter-spacing: 0;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 body[data-layout-mode="phone"] #view-fitness-log .fitness-coaching-row,
 body[data-layout-mode="phone"] #view-fitness-log .fitness-log-title,
 body[data-layout-mode="phone"] #view-fitness-log .fitness-log-pager,
@@ -15757,6 +15777,7 @@ body.physical-phone-device #view-fitness-log .fitness-log-pager {
 body[data-layout-mode="phone"] #view-fitness-log .fitness-coaching-row,
 body.physical-phone-device #view-fitness-log .fitness-coaching-row {
   grid-template-columns: minmax(0, 1fr) !important;
+  margin-top: 2px !important;
 }
 
 body[data-layout-mode="phone"] #view-fitness-log .fitness-coaching-row .layout-mode-toggle,
@@ -15766,9 +15787,9 @@ body.physical-phone-device #view-fitness-log .fitness-coaching-row .layout-mode-
 
 body[data-layout-mode="phone"] #view-fitness-log .fitness-coaching-ticker,
 body.physical-phone-device #view-fitness-log .fitness-coaching-ticker {
-  min-height: 38px !important;
+  min-height: 40px !important;
   border: 0 !important;
-  border-radius: 19px !important;
+  border-radius: 20px !important;
   background:
     linear-gradient(90deg, rgba(9, 45, 35, 0.98), rgba(17, 77, 58, 0.96));
   box-shadow:
@@ -15778,11 +15799,17 @@ body.physical-phone-device #view-fitness-log .fitness-coaching-ticker {
 
 body[data-layout-mode="phone"] #view-fitness-log .fitness-coaching-ticker b,
 body.physical-phone-device #view-fitness-log .fitness-coaching-ticker b {
-  min-width: 88px;
+  min-width: 84px;
   border-right: 0;
-  border-radius: 19px;
+  border-radius: 20px;
   background: rgba(255, 254, 250, 0.08);
   font-size: 14px;
+}
+
+body[data-layout-mode="phone"] #view-fitness-log .fitness-coaching-ticker span,
+body.physical-phone-device #view-fitness-log .fitness-coaching-ticker span {
+  min-width: 0 !important;
+  padding-right: 16px !important;
 }
 
 body[data-layout-mode="phone"] #view-fitness-log .fitness-coaching-ticker span::before,
@@ -15795,10 +15822,10 @@ body.physical-phone-device #view-fitness-log .fitness-coaching-ticker span::befo
 body[data-layout-mode="phone"] #view-fitness-log .fitness-log-title,
 body.physical-phone-device #view-fitness-log .fitness-log-title {
   grid-template-columns: minmax(0, 1fr) 52px !important;
-  gap: 7px !important;
-  padding: 7px !important;
+  gap: 6px !important;
+  padding: 6px !important;
   border: 0 !important;
-  border-radius: 24px !important;
+  border-radius: 22px !important;
   background:
     linear-gradient(180deg, rgba(255, 254, 250, 0.98), rgba(243, 248, 244, 0.94));
   box-shadow:
@@ -15857,8 +15884,8 @@ body.physical-phone-device #view-fitness-log #fitnessTodayButton {
 
 body[data-layout-mode="phone"] #view-fitness-log .fitness-log-pager,
 body.physical-phone-device #view-fitness-log .fitness-log-pager {
-  grid-template-columns: minmax(84px, 0.82fr) minmax(0, 1.18fr) minmax(84px, 0.82fr) !important;
-  gap: 7px !important;
+  grid-template-columns: minmax(92px, 0.86fr) minmax(0, 1.1fr) minmax(92px, 0.86fr) !important;
+  gap: 6px !important;
   min-height: 46px !important;
   margin-bottom: 2px !important;
 }
@@ -15886,9 +15913,12 @@ body[data-layout-mode="phone"] #view-fitness-log #fitnessLogPrevPageButton,
 body[data-layout-mode="phone"] #view-fitness-log #fitnessLogNextPageButton,
 body.physical-phone-device #view-fitness-log #fitnessLogPrevPageButton,
 body.physical-phone-device #view-fitness-log #fitnessLogNextPageButton {
-  padding-inline: 12px !important;
+  padding-inline: 9px !important;
   clip-path: none !important;
-  font-size: 12px !important;
+  font-size: 11.5px !important;
+  line-height: 1.05 !important;
+  word-break: keep-all !important;
+  white-space: nowrap !important;
 }
 
 body[data-layout-mode="phone"] #view-fitness-log #fitnessLogPrevPageButton::before,
@@ -15909,17 +15939,17 @@ body.physical-phone-device #view-fitness-log .fitness-ops-section {
   position: relative !important;
   z-index: 1 !important;
   margin-top: 0 !important;
-  padding: 10px !important;
+  padding: 9px !important;
   border-radius: 20px !important;
   transform: none !important;
 }
 
 body[data-layout-mode="phone"] #view-fitness-log .fitness-ops-section h3,
 body.physical-phone-device #view-fitness-log .fitness-ops-section h3 {
-  min-height: 38px;
-  margin-bottom: 6px;
+  min-height: 34px;
+  margin-bottom: 5px;
   padding-bottom: 5px;
-  font-size: 21px !important;
+  font-size: 20px !important;
 }
 
 body[data-layout-mode="phone"] #view-fitness-log .fitness-ops-summary-button,
