@@ -1817,6 +1817,7 @@ function renderWorklogOverview() {
   }
   const dateKey = getActiveDateKey();
   const dateLabel = formatShortDate(dateKey);
+  const activeScope = getActiveWorklogOverviewScope();
   const groups = getFilteredWorklogOverviewGroups();
   grid.innerHTML = groups.map((group) => {
     const employeeCards = group.employeeIds.map((employeeId, index) => {
@@ -1832,7 +1833,7 @@ function renderWorklogOverview() {
       return renderOverviewEmployeeSheet({ group, employee, employeeId, index, dayLog, context });
     }).join("");
     return `
-      <section class="worklog-overview-site" data-overview-site="${escapeAttr(group.id)}">
+      <section class="worklog-overview-site ${activeScope === group.id ? "is-active-site" : ""}" data-overview-site="${escapeAttr(group.id)}">
         <header class="overview-site-header">
           <span>${escapeHtml(dateLabel)} · ${escapeHtml(group.label)}</span>
           <h3>${escapeHtml(group.title)}</h3>
@@ -9273,6 +9274,15 @@ function dockGlobalHeaderActions(panelView = worklogViewAliases[activeView] || a
       ? document.querySelector(".executive-hero-actions")
       : document.querySelector(".control-tower-hero-actions");
     if (actions && menuPopover.parentElement !== actions) actions.appendChild(menuPopover);
+    return;
+  }
+
+  if (panelView === "worklog-overview") {
+    const overviewDateNav = document.getElementById("overviewDateSwipeArea");
+    if (overviewDateNav) {
+      overviewDateNav.appendChild(menuButton);
+      overviewDateNav.appendChild(menuPopover);
+    }
     return;
   }
 

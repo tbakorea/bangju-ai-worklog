@@ -11960,9 +11960,14 @@ body[data-layout-mode="phone"] #view-today .appointment-row .appointment-text {
 
   body[data-view-mode="ceo"][data-active-view="worklog-overview"]:not(.physical-phone-device) .overview-date-nav {
     justify-self: end;
-    grid-template-columns: 42px minmax(0, 1fr) 42px 56px;
-    width: min(100%, 440px);
+    grid-template-columns: 42px minmax(0, 1fr) 42px 56px 52px;
+    width: min(100%, 506px);
     min-width: 0;
+  }
+
+  body[data-view-mode="ceo"][data-active-view="worklog-overview"]:not(.physical-phone-device) .overview-date-nav:has(#worklogOverviewTodayButton.is-current-date) {
+    grid-template-columns: 42px minmax(0, 1fr) 42px 52px;
+    width: min(100%, 444px);
   }
 
   body[data-view-mode="ceo"][data-active-view="worklog-overview"]:not(.physical-phone-device) .overview-date-nav button {
@@ -12910,11 +12915,12 @@ body[data-view-mode="ceo"] .control-kpi-grid {
 }
 
 .overview-date-nav {
+  position: relative;
   display: grid;
-  grid-template-columns: 38px minmax(0, 1fr) 38px auto;
+  grid-template-columns: 38px minmax(0, 1fr) 38px auto 52px;
   gap: 6px;
   align-items: center;
-  min-width: min(420px, 48vw);
+  min-width: min(486px, 54vw);
 }
 
 .overview-date-nav button {
@@ -12949,7 +12955,30 @@ body[data-view-mode="ceo"] .control-kpi-grid {
 }
 
 .overview-date-nav #worklogOverviewTodayButton.is-current-date {
-  opacity: 0.48;
+  display: none;
+}
+
+.overview-date-nav:has(#worklogOverviewTodayButton.is-current-date) {
+  grid-template-columns: 38px minmax(0, 1fr) 38px 52px;
+}
+
+.overview-date-nav #settingsGearButton {
+  width: 52px;
+  min-width: 52px;
+  min-height: 42px;
+  border-color: rgba(255, 254, 250, 0.36);
+  border-radius: 16px;
+  background: rgba(255, 254, 250, 0.94);
+  color: #10261f;
+  padding: 0;
+  box-shadow:
+    0 10px 24px rgba(0, 0, 0, 0.12),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.58);
+}
+
+.overview-date-nav .main-menu-popover {
+  top: calc(100% + 8px);
+  right: 0;
 }
 
 .worklog-overview-modebar {
@@ -12985,6 +13014,47 @@ body[data-view-mode="ceo"] .control-kpi-grid {
   background: var(--fitness-green);
   color: var(--nordic-sheet);
   box-shadow: 0 8px 20px rgba(15, 59, 46, 0.12);
+}
+
+.worklog-overview-modebar button[data-overview-scope="bangju"].is-active,
+.worklog-overview-site[data-overview-site="bangju"].is-active-site .overview-site-header {
+  background: #0f3b2e;
+  color: #fffefa;
+}
+
+.worklog-overview-modebar button[data-overview-scope="beyond"].is-active,
+.worklog-overview-site[data-overview-site="beyond"].is-active-site .overview-site-header {
+  background: #285e71;
+  color: #fffefa;
+}
+
+.worklog-overview-modebar button[data-overview-scope="fitness"].is-active,
+.worklog-overview-site[data-overview-site="fitness"].is-active-site .overview-site-header {
+  background: #0f5340;
+  color: #fffefa;
+}
+
+.worklog-overview-site.is-active-site {
+  border-color: color-mix(in srgb, var(--overview-site-accent) 46%, rgba(255, 254, 250, 0.2));
+  box-shadow:
+    0 15px 32px rgba(15, 59, 46, 0.13),
+    inset 0 0 0 1px color-mix(in srgb, var(--overview-site-accent) 20%, transparent);
+}
+
+.worklog-overview-site.is-active-site .overview-site-header {
+  border-left-color: rgba(255, 254, 250, 0.72);
+  box-shadow: inset 0 0 0 1px rgba(255, 254, 250, 0.15);
+}
+
+.worklog-overview-site.is-active-site .overview-site-header span,
+.worklog-overview-site.is-active-site .overview-site-header h3,
+.worklog-overview-site.is-active-site .overview-site-header p {
+  color: #fffefa;
+}
+
+.worklog-overview-site.is-active-site .overview-site-header span,
+.worklog-overview-site.is-active-site .overview-site-header p {
+  opacity: 0.82;
 }
 
 .worklog-overview-grid {
@@ -13572,10 +13642,14 @@ body[data-view-mode="ceo"] .control-kpi-grid {
   }
 
   .overview-date-nav {
-    grid-template-columns: 38px minmax(0, 1fr) 38px 46px;
+    grid-template-columns: 38px minmax(0, 1fr) 38px 46px 48px;
     gap: 5px;
     min-width: 0;
     width: 100%;
+  }
+
+  .overview-date-nav:has(#worklogOverviewTodayButton.is-current-date) {
+    grid-template-columns: 38px minmax(0, 1fr) 38px 48px;
   }
 
   .overview-date-nav #overviewDateTitle {
@@ -14747,9 +14821,13 @@ body[data-layout-mode="phone"][data-active-view="worklog-overview"] .worklog-ove
 }
 
 body[data-layout-mode="phone"][data-active-view="worklog-overview"] .overview-date-nav {
-  grid-template-columns: 38px minmax(0, 1fr) 38px 46px;
+  grid-template-columns: 38px minmax(0, 1fr) 38px 46px 48px;
   gap: 4px;
   width: 100%;
+}
+
+body[data-layout-mode="phone"][data-active-view="worklog-overview"] .overview-date-nav:has(#worklogOverviewTodayButton.is-current-date) {
+  grid-template-columns: 38px minmax(0, 1fr) 38px 48px;
 }
 
 body[data-layout-mode="phone"][data-active-view="worklog-overview"] .overview-date-nav button {
