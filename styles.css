@@ -15578,6 +15578,172 @@ body.physical-phone-device #view-fitness-log .fitness-log-pager strong {
   font-size: clamp(14px, 3.8vw, 16px) !important;
 }
 
+/* Fitness top command stack: polished compact controls for phone/iPad focus mode. */
+body[data-layout-mode="phone"] #view-fitness-log,
+body.physical-phone-device #view-fitness-log {
+  gap: 7px !important;
+  padding-top: 58px !important;
+}
+
+body[data-layout-mode="phone"] #view-fitness-log .fitness-coaching-row,
+body[data-layout-mode="phone"] #view-fitness-log .fitness-log-title,
+body[data-layout-mode="phone"] #view-fitness-log .fitness-log-pager,
+body.physical-phone-device #view-fitness-log .fitness-coaching-row,
+body.physical-phone-device #view-fitness-log .fitness-log-title,
+body.physical-phone-device #view-fitness-log .fitness-log-pager {
+  width: calc(100% - 8px);
+  justify-self: center;
+}
+
+body[data-layout-mode="phone"] #view-fitness-log .fitness-coaching-row,
+body.physical-phone-device #view-fitness-log .fitness-coaching-row {
+  grid-template-columns: minmax(0, 1fr) !important;
+}
+
+body[data-layout-mode="phone"] #view-fitness-log .fitness-coaching-row .layout-mode-toggle,
+body.physical-phone-device #view-fitness-log .fitness-coaching-row .layout-mode-toggle {
+  display: none !important;
+}
+
+body[data-layout-mode="phone"] #view-fitness-log .fitness-coaching-ticker,
+body.physical-phone-device #view-fitness-log .fitness-coaching-ticker {
+  min-height: 38px !important;
+  border: 0 !important;
+  border-radius: 19px !important;
+  background:
+    linear-gradient(90deg, rgba(9, 45, 35, 0.98), rgba(17, 77, 58, 0.96));
+  box-shadow:
+    0 12px 28px rgba(15, 59, 46, 0.13),
+    inset 0 1px 0 rgba(255, 255, 255, 0.13);
+}
+
+body[data-layout-mode="phone"] #view-fitness-log .fitness-coaching-ticker b,
+body.physical-phone-device #view-fitness-log .fitness-coaching-ticker b {
+  min-width: 88px;
+  border-right: 0;
+  border-radius: 19px;
+  background: rgba(255, 254, 250, 0.08);
+  font-size: 14px;
+}
+
+body[data-layout-mode="phone"] #view-fitness-log .fitness-coaching-ticker span::before,
+body.physical-phone-device #view-fitness-log .fitness-coaching-ticker span::before {
+  padding-block: 10px;
+  font-size: 14px;
+  font-weight: 900;
+}
+
+body[data-layout-mode="phone"] #view-fitness-log .fitness-log-title,
+body.physical-phone-device #view-fitness-log .fitness-log-title {
+  grid-template-columns: minmax(0, 1fr) 52px !important;
+  gap: 7px !important;
+  padding: 7px !important;
+  border: 0 !important;
+  border-radius: 24px !important;
+  background:
+    linear-gradient(180deg, rgba(255, 254, 250, 0.98), rgba(243, 248, 244, 0.94));
+  box-shadow:
+    0 16px 34px rgba(15, 59, 46, 0.08),
+    inset 0 0 0 1px rgba(15, 59, 46, 0.055);
+}
+
+body[data-layout-mode="phone"] #view-fitness-log .fitness-date-nav,
+body.physical-phone-device #view-fitness-log .fitness-date-nav {
+  grid-template-columns: 42px minmax(0, 1fr) 42px !important;
+  gap: 6px !important;
+}
+
+body[data-layout-mode="phone"] #view-fitness-log #fitnessPrevDateButton,
+body[data-layout-mode="phone"] #view-fitness-log #fitnessNextDateButton,
+body.physical-phone-device #view-fitness-log #fitnessPrevDateButton,
+body.physical-phone-device #view-fitness-log #fitnessNextDateButton {
+  width: 42px !important;
+  min-width: 42px !important;
+  min-height: 48px !important;
+  border: 0 !important;
+  border-radius: 18px !important;
+  background:
+    linear-gradient(180deg, rgba(255, 254, 250, 0.98), rgba(236, 243, 238, 0.96));
+  color: var(--fitness-green);
+  font-size: 26px !important;
+  box-shadow:
+    0 8px 20px rgba(15, 59, 46, 0.09),
+    inset 0 0 0 1px rgba(15, 59, 46, 0.08);
+}
+
+body[data-layout-mode="phone"] #view-fitness-log #fitnessDateButton,
+body.physical-phone-device #view-fitness-log #fitnessDateButton {
+  min-height: 48px !important;
+  padding-inline: 0 !important;
+  border: 0 !important;
+  border-radius: 19px !important;
+  background: rgba(255, 254, 250, 0.78);
+  box-shadow: inset 0 0 0 1px rgba(15, 59, 46, 0.055);
+}
+
+body[data-layout-mode="phone"] #view-fitness-log #fitnessWorklogDate,
+body.physical-phone-device #view-fitness-log #fitnessWorklogDate {
+  font-size: clamp(18px, 4.9vw, 21px) !important;
+  font-weight: 950 !important;
+}
+
+body[data-layout-mode="phone"] #view-fitness-log #fitnessTodayButton,
+body.physical-phone-device #view-fitness-log #fitnessTodayButton {
+  width: 52px !important;
+  min-width: 52px !important;
+  min-height: 48px !important;
+  border-radius: 19px !important;
+  font-size: 13px !important;
+}
+
+body[data-layout-mode="phone"] #view-fitness-log .fitness-log-pager,
+body.physical-phone-device #view-fitness-log .fitness-log-pager {
+  grid-template-columns: minmax(84px, 0.82fr) minmax(0, 1.18fr) minmax(84px, 0.82fr) !important;
+  gap: 7px !important;
+  min-height: 46px !important;
+  margin-bottom: 2px !important;
+}
+
+body[data-layout-mode="phone"] #view-fitness-log .fitness-log-pager button,
+body[data-layout-mode="phone"] #view-fitness-log .fitness-log-pager div,
+body.physical-phone-device #view-fitness-log .fitness-log-pager button,
+body.physical-phone-device #view-fitness-log .fitness-log-pager div {
+  min-height: 46px !important;
+  border: 0 !important;
+  border-radius: 19px !important;
+  background: rgba(255, 254, 250, 0.86) !important;
+  box-shadow:
+    0 12px 25px rgba(15, 59, 46, 0.07),
+    inset 0 0 0 1px rgba(15, 59, 46, 0.075) !important;
+}
+
+body[data-layout-mode="phone"] #view-fitness-log .fitness-log-pager div,
+body.physical-phone-device #view-fitness-log .fitness-log-pager div {
+  background:
+    linear-gradient(180deg, rgba(255, 254, 250, 0.98), rgba(240, 247, 242, 0.94)) !important;
+}
+
+body[data-layout-mode="phone"] #view-fitness-log #fitnessLogPrevPageButton,
+body[data-layout-mode="phone"] #view-fitness-log #fitnessLogNextPageButton,
+body.physical-phone-device #view-fitness-log #fitnessLogPrevPageButton,
+body.physical-phone-device #view-fitness-log #fitnessLogNextPageButton {
+  padding-inline: 12px !important;
+  clip-path: none !important;
+  font-size: 12px !important;
+}
+
+body[data-layout-mode="phone"] #view-fitness-log #fitnessLogPrevPageButton::before,
+body[data-layout-mode="phone"] #view-fitness-log #fitnessLogNextPageButton::after,
+body.physical-phone-device #view-fitness-log #fitnessLogPrevPageButton::before,
+body.physical-phone-device #view-fitness-log #fitnessLogNextPageButton::after {
+  display: inline-grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 999px;
+  background: rgba(15, 59, 46, 0.07);
+}
+
 body[data-layout-mode="phone"] #view-fitness-log .fitness-ops-section,
 body.physical-phone-device #view-fitness-log .fitness-ops-section {
   order: 4 !important;
