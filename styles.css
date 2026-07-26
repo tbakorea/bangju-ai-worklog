@@ -15844,6 +15844,51 @@ body.physical-phone-device #controlTowerMenuButton {
   font-size: 12px !important;
 }
 
+/* Representative dashboards: keep Menu pinned to the far right even when
+   the Today button is hidden, so the date controls stay visually balanced. */
+.executive-hero-actions #executiveMenuButton,
+.control-tower-hero-actions #controlTowerMenuButton {
+  margin-left: auto;
+  justify-self: end;
+}
+
+body[data-layout-mode="phone"] #executivePrevDateButton,
+body[data-layout-mode="phone"] #controlTowerPrevDateButton,
+body.physical-phone-device #executivePrevDateButton,
+body.physical-phone-device #controlTowerPrevDateButton {
+  grid-column: 1;
+}
+
+body[data-layout-mode="phone"] .executive-hero-actions .dashboard-date-button,
+body[data-layout-mode="phone"] .control-tower-hero-actions .dashboard-date-button,
+body.physical-phone-device .executive-hero-actions .dashboard-date-button,
+body.physical-phone-device .control-tower-hero-actions .dashboard-date-button {
+  grid-column: 2;
+}
+
+body[data-layout-mode="phone"] #executiveNextDateButton,
+body[data-layout-mode="phone"] #controlTowerNextDateButton,
+body.physical-phone-device #executiveNextDateButton,
+body.physical-phone-device #controlTowerNextDateButton {
+  grid-column: 3;
+}
+
+body[data-layout-mode="phone"] .executive-hero-actions .dashboard-today-button,
+body[data-layout-mode="phone"] .control-tower-hero-actions .dashboard-today-button,
+body.physical-phone-device .executive-hero-actions .dashboard-today-button,
+body.physical-phone-device .control-tower-hero-actions .dashboard-today-button {
+  grid-column: 4;
+}
+
+body[data-layout-mode="phone"] #executiveMenuButton,
+body[data-layout-mode="phone"] #controlTowerMenuButton,
+body.physical-phone-device #executiveMenuButton,
+body.physical-phone-device #controlTowerMenuButton {
+  grid-column: 5;
+  margin-left: 0;
+  justify-self: end;
+}
+
 /* Keep this at the absolute end so page-specific display rules never stack
    inactive sections under the active view. */
 .worklog-shell > .worklog-view:not(.is-active) {
