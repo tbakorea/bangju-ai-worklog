@@ -761,6 +761,37 @@
           </button>
         </div>
 
+        <article class="report-archive-card">
+          <header>
+            <div>
+              <p>Report Vault</p>
+              <h3>날짜별 보고서 보관함</h3>
+              <span>사업장 운영보고와 직원 업무보고를 기준일별로 확인합니다.</span>
+            </div>
+            <strong id="reportArchiveCount">0건</strong>
+          </header>
+          <div class="report-archive-controls" aria-label="보고서 보관함 필터">
+            <label>기준일
+              <input id="reportArchiveDate" type="date" />
+            </label>
+            <label>사업장
+              <select id="reportArchiveSite"></select>
+            </label>
+            <label>보고서
+              <select id="reportArchiveType">
+                <option value="all">전체</option>
+                <option value="site">사업장 운영보고</option>
+                <option value="employee">직원 업무보고</option>
+                <option value="fitness">피트니스 보고</option>
+              </select>
+            </label>
+          </div>
+          <div class="report-archive-layout">
+            <div class="report-archive-list" id="reportArchiveList" aria-label="보고서 목록"></div>
+            <pre class="report-archive-preview" id="reportArchivePreview">보고서를 선택하면 미리보기가 표시됩니다.</pre>
+          </div>
+        </article>
+
         <div class="report-backup-grid">
           <article class="report-draft-card">
             <header>

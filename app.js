@@ -573,6 +573,12 @@ function createState() {
     employeePermissions: {},
     laborPayroll: {},
     reportTone: "executive",
+    reportArchive: {
+      dateKey: todayKey,
+      site: "all",
+      type: "all",
+      selectedId: "",
+    },
     backupSettings: {
       recipientEmail: "j3010@ymail.com",
       cadence: "daily",
@@ -643,6 +649,13 @@ function normalizeState() {
     cadence: "daily",
     lastPreparedAt: "",
     ...(state.backupSettings || {}),
+  };
+  state.reportArchive = {
+    dateKey: todayKey,
+    site: "all",
+    type: "all",
+    selectedId: "",
+    ...(state.reportArchive || {}),
   };
   const shouldApplyFitnessHourDefault = !state.fitnessScheduleUnitDefaultApplied;
   state.employeeLogs ||= {};
@@ -8059,8 +8072,224 @@ function renderReport() {
     "7. 메모",
     log.memo || "-",
   ].join("\n");
+  renderReportArchive();
   renderBackupCenter();
   renderInnovationLab();
+}
+
+function getReportArchiveSettings() {
+  state.reportArchive = {
+    dateKey: todayKey,
+    site: "all",
+    type: "all",
+    selectedId: "",
+    ...(state.reportArchive || {}),
+  };
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(String(state.reportArchive.dateKey || ""))) {
+    state.reportArchive.dateKey = getActiveDateKey();
+  }
+  return state.reportArchive;
+}
+
+function getReportArchiveSiteOptions() {
+  return [
+    { id: "all", label: "전 사업장", reportTitle: "전 사업장 운영보고" },
+    { id: "bangju", label: "(주)방주", reportTitle: "(주)방주 운영보고" },
+    { id: "beyond", label: "(주)비욘드컴퍼니", reportTitle: "(주)비욘드컴퍼니 운영보고" },
+    { id: "fitness", label: "비욘드 피트니스", reportTitle: "비욘드 피트니스 센터운영 보고서" },
+    { id: "construction", label: "(주)비제이종합건설", reportTitle: "비제이종합건설 현장보고" },
+  ];
+}
+
+function getReportArchiveSiteId(employee = {}) {
+  const source = `${employee.org || ""} ${employee.workplace || ""} ${employee.primaryWork || ""}`;
+  if (/피트니스|fitness/i.test(source)) return "fitness";
+  if (/비제이|종합건설|건설/i.test(source)) return "construction";
+  if (/비욘드컴퍼니|공유사업부|TBA|studio|스튜디오/i.test(source)) return "beyond";
+  if (/방주/i.test(source)) return "bangju";
+  return "other";
+}
+
+function getReportArchiveEmployees(siteId = "all") {
+  const roster = employees.filter(isAssignedWorklogEmployee);
+  const profileEmployee = getProfileEmployee();
+  const shouldIncludeProfile = !isRepresentativeProfile()
+    && !getMappedProfileEmployeeId()
+    && isAssignedWorklogEmployee(profileEmployee)
+    && String(profileEmployee.name || "").trim();
+  const list = shouldIncludeProfile ? [profileEmployee, ...roster] : roster;
+  return list.filter((employee) => siteId === "all" || getReportArchiveSiteId(employee) === siteId);
+}
+
+function getReportArchiveEmployeeLog(employee, dateKey) {
+  const stored = state.employeeLogs?.[dateKey]?.[employee.id];
+  const log = stored ? { ...stored } : createEmployeeLog(employee);
+  log.tasks = Array.isArray(log.tasks) ? log.tasks : [];
+  log.schedule = Array.isArray(log.schedule) ? log.schedule : [];
+  log.fitnessOps = { ...createFitnessOps(), ...(log.fitnessOps || {}) };
+  return log;
+}
+
+function getReportArchiveTaskText(task = {}) {
+  return String(task.text || "").trim();
+}
+
+function getReportArchiveTasks(log) {
+  return (log.tasks || []).filter((task) => getReportArchiveTaskText(task));
+}
+
+function getReportArchiveScheduleEntries(log) {
+  return (log.schedule || []).filter((entry) => getScheduleEntryText(entry));
+}
+
+function getReportArchiveFitnessSummary(logs = []) {
+  return logs.reduce((summary, log) => {
+    const ops = { ...createFitnessOps(), ...(log.fitnessOps || {}) };
+    summary.paidPt += numberValue(ops.ptRegular) + numberValue(ops.ptOther);
+    summary.freePt += numberValue(ops.ptFree);
+    summary.consultation += numberValue(ops.consultation);
+    summary.contract += numberValue(ops.customerNew) + numberValue(ops.customerRenewal) + numberValue(ops.dayPass);
+    summary.marketing += numberValue(ops.outbound) + numberValue(ops.outsideSales);
+    if (String(ops.specialReport || "").trim()) summary.specialReports.push(ops.specialReport.trim());
+    return summary;
+  }, { paidPt: 0, freePt: 0, consultation: 0, contract: 0, marketing: 0, specialReports: [] });
+}
+
+function buildEmployeeArchiveReport(employee, dateKey) {
+  const log = getReportArchiveEmployeeLog(employee, dateKey);
+  const tasks = getReportArchiveTasks(log);
+  const entries = getReportArchiveScheduleEntries(log);
+  const completed = tasks.filter((task) => task.done || task.status === "완료");
+  const reportText = String(log.report || log.record || "").trim();
+  const isFitness = getReportArchiveSiteId(employee) === "fitness";
+  const fitnessLines = isFitness ? formatFitnessOpsReport(log.fitnessOps) : [];
+  const title = isFitness ? `${getEmployeeAdminLabel(employee)} 직원 업무일지 보고서` : `${getEmployeeAdminLabel(employee)} 개인 업무보고서`;
+  return {
+    id: `employee:${employee.id}`,
+    kind: "employee",
+    title,
+    eyebrow: `${formatKoreanDate(dateKey)} · ${employee.org || "소속 미정"}`,
+    meta: `${employee.role || "직원"} · ${employee.name || ""}`,
+    countLabel: `${tasks.length}/${entries.length}`,
+    empty: !tasks.length && !entries.length && !reportText,
+    text: [
+      `< ${title} >`,
+      `기준일: ${formatFormalKoreanDate(dateKey)}`,
+      `담당: ${getEmployeeAdminLabel(employee)}`,
+      `소속: ${employee.org || "-"}`,
+      `출퇴근: ${log.clockIn || "미기록"} ~ ${log.clockOut || "미기록"}`,
+      "",
+      `1. 업무보고`,
+      reportText || "오늘 보고 내용이 아직 없습니다.",
+      "",
+      `2. 주요업무 (${completed.length}/${tasks.length})`,
+      ...(tasks.length ? tasks.map((task) => `- ${task.priority || "?"} ${task.text} (${task.status || "예정"}${task.done ? ", 완료" : ""})`) : ["- 입력 대기"]),
+      "",
+      `3. 시간별 일정 (${entries.length}건)`,
+      ...(entries.length ? entries.map((entry) => `- ${entry.time || "--:--"} ${getScheduleEntryText(entry)}`) : ["- 입력 대기"]),
+      ...(isFitness ? ["", "4. 피트니스 업무요약", ...fitnessLines] : []),
+      "",
+      "5. 메모",
+      log.memo || "-",
+    ].join("\n"),
+  };
+}
+
+function buildSiteArchiveReport(site, dateKey) {
+  const employeesForSite = getReportArchiveEmployees(site.id);
+  const logs = employeesForSite.map((employee) => getReportArchiveEmployeeLog(employee, dateKey));
+  const taskTotal = logs.reduce((sum, log) => sum + getReportArchiveTasks(log).length, 0);
+  const scheduleTotal = logs.reduce((sum, log) => sum + getReportArchiveScheduleEntries(log).length, 0);
+  const reports = logs.filter((log) => String(log.report || log.record || log.memo || "").trim()).length;
+  const attendance = state.attendance?.[dateKey] || [];
+  const attendanceCount = employeesForSite.filter((employee) => attendance.some((row) => row.employeeId === employee.id)).length;
+  const fitness = site.id === "fitness" ? getReportArchiveFitnessSummary(logs) : null;
+  const title = site.reportTitle;
+  const reportLines = employeesForSite.map((employee, index) => {
+    const employeeReport = buildEmployeeArchiveReport(employee, dateKey);
+    return `${index + 1}. ${getEmployeeAdminLabel(employee)} · 업무 ${employeeReport.countLabel} · ${employeeReport.empty ? "보고 대기" : "기록 있음"}`;
+  });
+  return {
+    id: `site:${site.id}`,
+    kind: "site",
+    title,
+    eyebrow: `${formatKoreanDate(dateKey)} · ${site.label}`,
+    meta: `${employeesForSite.length}명 · 보고 ${reports}건`,
+    countLabel: `${taskTotal}/${scheduleTotal}`,
+    empty: !employeesForSite.length,
+    text: [
+      `< ${title} >`,
+      `기준일: ${formatFormalKoreanDate(dateKey)}`,
+      `사업장: ${site.label}`,
+      `직원: ${employeesForSite.length}명`,
+      "",
+      "1. 운영 집계",
+      `- 업무보고 작성: ${reports}건`,
+      `- 출결 기록: ${attendanceCount}/${employeesForSite.length}명`,
+      `- 주요업무: ${taskTotal}건`,
+      `- 시간별 일정: ${scheduleTotal}건`,
+      ...(fitness ? [
+        `- 유료 PT: ${fitness.paidPt}건`,
+        `- 무료 PT: ${fitness.freePt}건`,
+        `- 상담/계약: ${fitness.consultation + fitness.contract}건`,
+      ] : []),
+      "",
+      "2. 직원별 보고 상태",
+      ...(reportLines.length ? reportLines : ["- 배정된 직원이 없습니다."]),
+      "",
+      "3. 운영 신호",
+      reports < employeesForSite.length ? "- 미작성 업무보고가 있어 확인이 필요합니다." : "- 업무보고가 정상적으로 취합되었습니다.",
+      attendanceCount < employeesForSite.length ? "- 출결 기록 공백이 있습니다." : "- 출결 기록이 확인되었습니다.",
+      ...(fitness?.specialReports?.length ? ["", "4. 피트니스 특이사항", ...fitness.specialReports.map((item) => `- ${item}`)] : []),
+    ].join("\n"),
+  };
+}
+
+function buildReportArchiveItems(settings = getReportArchiveSettings()) {
+  const sites = getReportArchiveSiteOptions().filter((site) => settings.site === "all" ? site.id !== "all" : site.id === settings.site);
+  const items = [];
+  if (settings.type === "all" || settings.type === "site" || settings.type === "fitness") {
+    sites
+      .filter((site) => settings.type !== "fitness" || site.id === "fitness")
+      .forEach((site) => items.push(buildSiteArchiveReport(site, settings.dateKey)));
+  }
+  if (settings.type === "all" || settings.type === "employee" || settings.type === "fitness") {
+    const employeesForArchive = getReportArchiveEmployees(settings.type === "fitness" ? "fitness" : settings.site);
+    employeesForArchive.forEach((employee) => items.push(buildEmployeeArchiveReport(employee, settings.dateKey)));
+  }
+  return items;
+}
+
+function renderReportArchive() {
+  const dateInput = document.getElementById("reportArchiveDate");
+  const siteSelect = document.getElementById("reportArchiveSite");
+  const typeSelect = document.getElementById("reportArchiveType");
+  const listNode = document.getElementById("reportArchiveList");
+  const previewNode = document.getElementById("reportArchivePreview");
+  if (!dateInput || !siteSelect || !typeSelect || !listNode || !previewNode) return;
+
+  const settings = getReportArchiveSettings();
+  dateInput.value = settings.dateKey;
+  const siteOptions = getReportArchiveSiteOptions();
+  siteSelect.innerHTML = siteOptions.map((site) => `<option value="${site.id}" ${site.id === settings.site ? "selected" : ""}>${escapeHtml(site.label)}</option>`).join("");
+  typeSelect.value = settings.type;
+
+  const items = buildReportArchiveItems(settings);
+  if (!items.some((item) => item.id === settings.selectedId)) {
+    settings.selectedId = items[0]?.id || "";
+  }
+  const selected = items.find((item) => item.id === settings.selectedId);
+  document.getElementById("reportArchiveCount").textContent = `${items.length}건`;
+  listNode.innerHTML = items.length
+    ? items.map((item) => `
+      <button type="button" class="${item.id === settings.selectedId ? "is-active" : ""}" data-report-archive-id="${escapeHtml(item.id)}">
+        <span>${escapeHtml(item.eyebrow)}</span>
+        <strong>${escapeHtml(item.title)}</strong>
+        <em>${escapeHtml(item.meta)} · 업무/일정 ${escapeHtml(item.countLabel)}</em>
+      </button>
+    `).join("")
+    : `<div class="report-archive-empty">해당 조건의 보고서가 없습니다.</div>`;
+  previewNode.textContent = selected?.text || "보고서를 선택하면 미리보기가 표시됩니다.";
 }
 
 function getBackupSettings() {
@@ -9679,6 +9908,34 @@ document.getElementById("executiveMenuButton")?.addEventListener("click", (event
 document.getElementById("controlTowerMenuButton")?.addEventListener("click", (event) => {
   event.stopPropagation();
   toggleMainMenuPopover();
+});
+document.getElementById("reportArchiveDate")?.addEventListener("change", (event) => {
+  const settings = getReportArchiveSettings();
+  settings.dateKey = event.target.value || todayKey;
+  settings.selectedId = "";
+  saveState({ fastSave: true });
+  renderReportArchive();
+});
+document.getElementById("reportArchiveSite")?.addEventListener("change", (event) => {
+  const settings = getReportArchiveSettings();
+  settings.site = event.target.value || "all";
+  settings.selectedId = "";
+  saveState();
+  renderReportArchive();
+});
+document.getElementById("reportArchiveType")?.addEventListener("change", (event) => {
+  const settings = getReportArchiveSettings();
+  settings.type = event.target.value || "all";
+  settings.selectedId = "";
+  saveState();
+  renderReportArchive();
+});
+document.getElementById("reportArchiveList")?.addEventListener("click", (event) => {
+  const button = event.target.closest("[data-report-archive-id]");
+  if (!button) return;
+  getReportArchiveSettings().selectedId = button.dataset.reportArchiveId || "";
+  saveState({ fastSave: true });
+  renderReportArchive();
 });
 document.getElementById("reportTone").onchange = (event) => {
   state.reportTone = event.target.value;

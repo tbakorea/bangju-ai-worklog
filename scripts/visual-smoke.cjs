@@ -700,6 +700,81 @@ async function checkSectionChromeReleasePolish(browser) {
   await page.close();
 }
 
+async function checkReportArchiveVault(browser) {
+  const { page, errors } = await openPage(browser, { width: 390, height: 844 });
+  await page.addInitScript(() => {
+    localStorage.setItem("beyond-worklog-state-v1", JSON.stringify({
+      selectedDateKey: "2026-07-24",
+      selectedEmployeeId: "beyond-fitness-manager",
+      profile: {
+        email: "j3010@ymail.com",
+        role: "대표",
+        name: "정찬훈",
+        nickname: "베니",
+        approvalStatus: "approved",
+      },
+      employeeLogs: {
+        "2026-07-24": {
+          "beyond-fitness-manager": {
+            employeeId: "beyond-fitness-manager",
+            org: "(주)방주 / 비욘드 피트니스 지사",
+            role: "센터장",
+            clockIn: "06:00",
+            clockOut: "17:00",
+            tasks: [{ priority: "A", text: "센터 운영점검", status: "완료", done: true }],
+            schedule: [{ time: "08:00", items: [{ type: "P/T", text: "김영수" }], status: "예정" }],
+            scheduleUnit: "60",
+            report: "센터 운영 정상",
+            memo: "",
+            fitnessOps: { ptRegular: "1", ptFree: "", ptOther: "", customerNew: "", customerRenewal: "", dayPass: "", consultation: "1", outbound: "", outsideSales: "", shiftNote: "", specialReport: "락커 점검 필요" },
+          },
+        },
+      },
+    }));
+    localStorage.setItem("beyond-worklog-global-view-mode", "ceo");
+  });
+  await page.reload({ waitUntil: "domcontentloaded" });
+  await page.evaluate(() => {
+    document.body.classList.add("physical-phone-device");
+    document.body.dataset.layoutMode = "phone";
+    document.body.dataset.viewMode = "ceo";
+    window.switchView?.("report");
+  });
+  await page.waitForTimeout(300);
+  await page.fill("#reportArchiveDate", "2026-07-24");
+  await page.selectOption("#reportArchiveSite", "fitness");
+  await page.selectOption("#reportArchiveType", "fitness");
+  await page.waitForTimeout(180);
+  const metrics = await page.evaluate(() => {
+    const card = document.querySelector(".report-archive-card");
+    const preview = document.querySelector("#reportArchivePreview");
+    const listItems = [...document.querySelectorAll("#reportArchiveList button")].map((button) => button.textContent.trim());
+    const rect = card?.getBoundingClientRect();
+    return {
+      activeView: document.body.dataset.activeView,
+      cardVisible: Boolean(rect && rect.width > 0 && rect.height > 0),
+      horizontalOverflow: document.documentElement.scrollWidth - window.innerWidth,
+      listCount: listItems.length,
+      listText: listItems.join(" | "),
+      previewText: preview?.textContent || "",
+      dateValue: document.querySelector("#reportArchiveDate")?.value || "",
+      siteValue: document.querySelector("#reportArchiveSite")?.value || "",
+      typeValue: document.querySelector("#reportArchiveType")?.value || "",
+    };
+  });
+  if (metrics.activeView !== "report") fail("report archive active view mismatch", metrics.activeView);
+  if (!metrics.cardVisible) fail("report archive card should be visible");
+  if (metrics.horizontalOverflow > 2) fail("report archive has horizontal overflow", `${metrics.horizontalOverflow}px`);
+  if (metrics.dateValue !== "2026-07-24" || metrics.siteValue !== "fitness" || metrics.typeValue !== "fitness") {
+    fail("report archive filters did not settle", JSON.stringify(metrics));
+  }
+  if (metrics.listCount < 2 || !metrics.listText.includes("피트니스") || !metrics.previewText.includes("비욘드 피트니스")) {
+    fail("report archive should expose fitness center and employee reports", JSON.stringify(metrics));
+  }
+  if (errors.length) fail("report archive errors", errors.join(" | "));
+  await page.close();
+}
+
 async function checkRealDeviceRegressionLayouts(browser) {
   const cases = [
     { view: "attendance", label: "labor" },
@@ -1000,6 +1075,7 @@ async function checkFitnessNewEmployeeRegistrationFlow(browser) {
     await checkPremiumOperatingSystem(browser);
     await checkSectionAiWorklogActions(browser);
     await checkSectionChromeReleasePolish(browser);
+    await checkReportArchiveVault(browser);
     await checkRealDeviceRegressionLayouts(browser);
     await checkFitnessNewEmployeeRegistrationFlow(browser);
     await checkRepresentativeProfileSeparation(browser);
