@@ -15882,6 +15882,141 @@ body.physical-phone-device #controlTowerMenuButton {
   justify-self: end;
 }
 
+/* Unified section menu chrome: one visual language across every section. */
+:root {
+  --section-menu-button-size: 52px;
+  --section-menu-phone-size: 48px;
+  --section-menu-radius: 18px;
+  --section-menu-surface: rgba(255, 254, 250, 0.96);
+  --section-menu-border: rgba(12, 52, 40, 0.14);
+  --section-menu-shadow:
+    0 13px 28px rgba(15, 59, 46, 0.1),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.72);
+}
+
+.section-menu-dock {
+  top: max(12px, env(safe-area-inset-top)) !important;
+  right: max(14px, env(safe-area-inset-right)) !important;
+  gap: 7px !important;
+  align-items: center !important;
+  justify-content: flex-end !important;
+}
+
+.section-menu-dock #settingsGearButton,
+.section-menu-dock .global-view-mode-button,
+.section-menu-dock .global-attendance-button,
+.section-menu-dock .approval-alert-button,
+#executiveMenuButton,
+#controlTowerMenuButton {
+  display: inline-grid !important;
+  place-items: center !important;
+  min-width: var(--section-menu-button-size) !important;
+  min-height: var(--section-menu-button-size) !important;
+  max-width: none !important;
+  border: 1px solid var(--section-menu-border) !important;
+  border-radius: var(--section-menu-radius) !important;
+  background: var(--section-menu-surface) !important;
+  color: #10261f !important;
+  box-shadow: var(--section-menu-shadow) !important;
+  padding: 0 13px !important;
+  font-size: 13px !important;
+  font-weight: 950 !important;
+  letter-spacing: 0 !important;
+  line-height: 1 !important;
+  text-align: center !important;
+  white-space: nowrap !important;
+}
+
+.section-menu-dock #settingsGearButton,
+#executiveMenuButton,
+#controlTowerMenuButton {
+  width: var(--section-menu-button-size) !important;
+  padding-inline: 0 !important;
+}
+
+.section-menu-dock .global-attendance-button {
+  border-color: rgba(11, 67, 51, 0.24) !important;
+  background: var(--fitness-green) !important;
+  color: var(--nordic-sheet) !important;
+}
+
+.section-menu-dock .global-view-mode-button {
+  min-width: 58px !important;
+}
+
+.section-menu-dock .approval-alert-button {
+  min-width: 64px !important;
+}
+
+.executive-hero-actions #executiveMenuButton,
+.control-tower-hero-actions #controlTowerMenuButton {
+  width: 48px !important;
+  min-width: 48px !important;
+  min-height: 48px !important;
+  flex: 0 0 48px !important;
+  margin-left: auto !important;
+  justify-self: end !important;
+}
+
+body[data-active-view="executive"] .executive-hero-actions,
+body[data-active-view="control"] .control-tower-hero-actions {
+  align-items: center !important;
+}
+
+body[data-active-view="executive"] .executive-hero-actions .main-menu-popover,
+body[data-active-view="control"] .control-tower-hero-actions .main-menu-popover,
+.section-menu-dock .main-menu-popover {
+  min-width: min(252px, calc(100vw - 28px)) !important;
+  max-width: calc(100vw - 28px) !important;
+  border-radius: 16px !important;
+  box-shadow:
+    0 18px 44px rgba(14, 48, 38, 0.18),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.7) !important;
+}
+
+body[data-layout-mode="phone"] .section-menu-dock,
+body.physical-phone-device .section-menu-dock {
+  top: max(8px, env(safe-area-inset-top)) !important;
+  right: max(8px, env(safe-area-inset-right)) !important;
+  gap: 5px !important;
+}
+
+body[data-layout-mode="phone"] .section-menu-dock #settingsGearButton,
+body[data-layout-mode="phone"] .section-menu-dock .global-view-mode-button,
+body[data-layout-mode="phone"] .section-menu-dock .global-attendance-button,
+body[data-layout-mode="phone"] .section-menu-dock .approval-alert-button,
+body[data-layout-mode="phone"] #executiveMenuButton,
+body[data-layout-mode="phone"] #controlTowerMenuButton,
+body.physical-phone-device .section-menu-dock #settingsGearButton,
+body.physical-phone-device .section-menu-dock .global-view-mode-button,
+body.physical-phone-device .section-menu-dock .global-attendance-button,
+body.physical-phone-device .section-menu-dock .approval-alert-button,
+body.physical-phone-device #executiveMenuButton,
+body.physical-phone-device #controlTowerMenuButton {
+  min-width: var(--section-menu-phone-size) !important;
+  min-height: var(--section-menu-phone-size) !important;
+  border-radius: 17px !important;
+  padding-inline: 8px !important;
+  font-size: 12px !important;
+}
+
+body[data-layout-mode="phone"] .section-menu-dock #settingsGearButton,
+body[data-layout-mode="phone"] #executiveMenuButton,
+body[data-layout-mode="phone"] #controlTowerMenuButton,
+body.physical-phone-device .section-menu-dock #settingsGearButton,
+body.physical-phone-device #executiveMenuButton,
+body.physical-phone-device #controlTowerMenuButton {
+  width: var(--section-menu-phone-size) !important;
+  padding-inline: 0 !important;
+}
+
+body[data-layout-mode="phone"] .executive-hero-actions,
+body[data-layout-mode="phone"] .control-tower-hero-actions,
+body.physical-phone-device .executive-hero-actions,
+body.physical-phone-device .control-tower-hero-actions {
+  grid-template-columns: 38px minmax(0, 1fr) 38px 46px var(--section-menu-phone-size) !important;
+}
+
 /* Keep this at the absolute end so page-specific display rules never stack
    inactive sections under the active view. */
 .worklog-shell > .worklog-view:not(.is-active) {

@@ -393,6 +393,8 @@ async function checkExecutiveManagementPage(browser) {
     const hero = document.querySelector(".executive-hero");
     const title = document.querySelector(".executive-hero h2");
     const dateButton = document.querySelector("#executiveDateButton");
+    const menuButton = document.querySelector("#executiveMenuButton");
+    const menuRect = menuButton?.getBoundingClientRect();
     const firstClosed = document.querySelector('[data-executive-section="score"]');
     return {
       activeView: document.body.dataset.activeView,
@@ -403,7 +405,11 @@ async function checkExecutiveManagementPage(browser) {
       todayText: dateButton?.textContent?.trim() || "",
       todayFits: dateButton ? dateButton.scrollWidth <= dateButton.clientWidth + 2 : false,
       kpiButtonCount: document.querySelectorAll("#executiveKpiGrid button[data-executive-jump]").length,
-      menuVisible: Boolean(document.querySelector("#executiveMenuButton")?.offsetWidth),
+      menuVisible: Boolean(menuButton?.offsetWidth),
+      menuLabel: menuButton?.textContent?.trim() || "",
+      menuWidth: menuRect?.width || 0,
+      menuHeight: menuRect?.height || 0,
+      menuInViewport: Boolean(menuRect && menuRect.left >= 0 && menuRect.right <= window.innerWidth && menuRect.top >= 0),
       closedContentHidden: firstClosed ? getComputedStyle(firstClosed.querySelector(".executive-site-priorities")).display === "none" : false,
     };
   });
@@ -416,6 +422,11 @@ async function checkExecutiveManagementPage(browser) {
   if (!metrics.todayFits) fail("executive date button is clipped", metrics.todayText);
   if (metrics.kpiButtonCount !== 6) fail("executive KPI buttons should be six navigators", String(metrics.kpiButtonCount));
   if (!metrics.menuVisible) fail("executive menu button should be docked inside the active section");
+  if (!metrics.menuInViewport) fail("executive menu button should stay in viewport", JSON.stringify(metrics));
+  if (metrics.menuLabel !== "메뉴") fail("executive menu label should be consistent", metrics.menuLabel);
+  if (metrics.menuWidth < 44 || metrics.menuWidth > 64 || metrics.menuHeight < 44 || metrics.menuHeight > 64) {
+    fail("executive menu size should match section chrome", `${metrics.menuWidth}x${metrics.menuHeight}`);
+  }
   if (!metrics.closedContentHidden) fail("executive detail sections should start summarized");
   await page.click("#executiveMenuButton");
   await page.waitForTimeout(120);
@@ -650,12 +661,19 @@ async function checkSectionChromeReleasePolish(browser) {
         dockVisible: Boolean(dockRect && dockRect.width > 0 && dockRect.height > 0),
         menuVisible: Boolean(buttonRect && buttonRect.width > 0 && buttonRect.height > 0),
         menuInViewport: Boolean(buttonRect && buttonRect.left >= 0 && buttonRect.right <= window.innerWidth && buttonRect.top >= 0),
+        menuLabel: menuButton?.textContent?.trim() || "",
+        menuWidth: buttonRect?.width || 0,
+        menuHeight: buttonRect?.height || 0,
       };
     });
     if (metrics.activeViews.length !== 1) fail("only one active section should be visible", `${view}: ${metrics.activeViews.join(",")}`);
     if (metrics.horizontalOverflow > 2) fail("section has horizontal overflow", `${view}: ${metrics.horizontalOverflow}px`);
     if (!metrics.dockVisible || !metrics.menuVisible || !metrics.menuInViewport) {
       fail("section menu dock is not release-ready", `${view}: ${JSON.stringify(metrics)}`);
+    }
+    if (metrics.menuLabel !== "메뉴") fail("section menu label should be consistent", `${view}: ${metrics.menuLabel}`);
+    if (metrics.menuWidth < 44 || metrics.menuWidth > 64 || metrics.menuHeight < 44 || metrics.menuHeight > 64) {
+      fail("section menu size should be consistent", `${view}: ${metrics.menuWidth}x${metrics.menuHeight}`);
     }
     await page.click(".worklog-view.is-active .section-menu-dock #settingsGearButton");
     await page.waitForTimeout(120);
