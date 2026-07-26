@@ -683,11 +683,15 @@ async function checkSectionChromeReleasePolish(browser) {
       return {
         hidden: popover?.hidden ?? true,
         hasItems: document.querySelectorAll("#mainMenuPopover button:not([hidden])").length,
+        position: popover ? getComputedStyle(popover).position : "",
         inViewport: Boolean(rect && rect.width > 0 && rect.height > 0 && rect.left >= 0 && rect.right <= window.innerWidth && rect.bottom <= window.innerHeight),
       };
     });
     if (menuState.hidden || !menuState.hasItems || !menuState.inViewport) {
       fail("section menu popover is clipped or empty", `${view}: ${JSON.stringify(menuState)}`);
+    }
+    if (menuState.position !== "fixed") {
+      fail("phone section menu popover should escape rounded section containers", `${view}: ${menuState.position}`);
     }
     await page.keyboard.press("Escape");
     await page.evaluate(() => window.closeMainMenuPopover?.());
