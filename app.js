@@ -478,7 +478,7 @@ const beyondModules = [
   ["직원관리", "직원 기본정보, 미션, 목표, 교육, 역량학습", "운영"],
   ["노무", "월별 노무명세, 출퇴근, 유료수업 정산", "운영"],
   ["업무일지", "우선업무, 시간별 일정, 보고, AI 요약", "운영"],
-  ["사업장 운영관리", "청결, 시설, 공실, 회원, 방문객, 운영점수", "설계"],
+  ["통합관제 사업장 신호", "청결, 시설, 공실, 회원, 방문객, 운영점수를 통합관제에서 추적", "설계"],
   ["마케팅관리", "SNS, 광고, 블로그, 리뷰, 이벤트 감지", "설계"],
   ["매출·매입관리", "POS, 카드매출, 매입, 원가, 영업이익", "설계"],
   ["재무관리", "현금흐름, 세금, 미수금, 대출, 위험 분석", "설계"],
@@ -3296,7 +3296,6 @@ function getGlobalHeaderTitle(view = activeView, personLabel = "") {
   if (view === "bangju-log" || view === "today") return `방주 업무일지 · ${personLabel}`;
   if (view === "fitness") return "비욘드 피트니스 OS";
   if (view === "attendance") return "노무";
-  if (view === "management") return "사업장 운영관리";
   if (view === "staff") return "직원";
   if (view === "organization") return "조직";
   if (view === "premium") return "AI 운영총괄";
@@ -4302,7 +4301,7 @@ function renderMainMenuAuthButton() {
 }
 
 function renderMainMenuVisibility() {
-  const generalMenuViews = new Set(["management", "worklog", "attendance", "ai", "report", "settings", "auth"]);
+  const generalMenuViews = new Set(["worklog", "attendance", "ai", "report", "settings", "auth"]);
   const showFullMenu = canAccessWorklogOverview();
   document.querySelectorAll("#mainMenuPopover [data-menu-view]").forEach((item) => {
     const view = item.dataset.menuView;
@@ -7653,28 +7652,6 @@ function addAttendance() {
   renderTodayContext();
 }
 
-function renderManagement() {
-  const node = document.getElementById("managementGrid");
-  const logs = Object.values(state.employeeLogs?.[getActiveDateKey()] || {});
-  const entries = logs.flatMap((log) => [...(log.tasks || []), ...(log.schedule || [])]);
-  const attendance = state.attendance?.[getActiveDateKey()] || [];
-  const assetRows = getAssetRows();
-  const staffCount = bangjuOrganization.reduce((sum, company) => sum + company.staff + company.units.reduce((unitSum, unit) => unitSum + unit.staff, 0), 0);
-  const companies = bangjuOrganization.length;
-  const operatingSites = assetRows.filter((row) => ["운영", "무인운영", "임대"].includes(row.status)).length;
-  const openIssues = entries.filter((entry) => entry.status === "보류" || entry.status === "지원필요").length;
-  node.innerHTML = [
-    ["법인", `${companies}개`],
-    ["운영 사업장", `${operatingSites}개`],
-    ["공간/호실", `${assetRows.reduce((sum, row) => sum + row.rooms.length, 0)}개`],
-    ["관리 인원", `${staffCount}명+`],
-    ["오늘 근태", `${attendance.length}건`],
-    ["경영 이슈", `${openIssues}건`],
-    ["운영점수", `${calculateOperatingScore()}점`],
-    ["AI 점검", openIssues ? "지원 필요 항목 우선" : "공간·매출 데이터 보강"],
-  ].map(([label, value]) => `<article><span>${label}</span><strong>${value}</strong></article>`).join("");
-}
-
 function getEmployeeMasterRows() {
   const siteLookup = new Map(getWorklogSiteGroups().flatMap((group) => group.employeeIds.map((id) => [id, group])));
   const todayLogs = state.employeeLogs?.[getActiveDateKey()] || {};
@@ -9006,6 +8983,7 @@ async function shareFitnessReport() {
 
 function switchView(view) {
   const requestedView = view;
+  if (view === "management") view = "control";
   if (isExplicitlySignedOut() && view !== "auth") {
     view = "auth";
     renderAuthStatus("로그아웃되었습니다. 다시 사용하려면 로그인 또는 직원등록을 진행해주세요.");
@@ -9044,7 +9022,6 @@ function switchView(view) {
   renderFitnessDashboard();
   renderStaffMaster();
   renderAttendance();
-  renderManagement();
   renderOrganization();
   updateGlobalAttendanceVisibility(view);
   dockGlobalHeaderActions(panelView);
@@ -9138,7 +9115,6 @@ function renderAll() {
   renderProfileForm();
   renderEntries();
   renderAttendance();
-  renderManagement();
   renderOrganization();
   renderReport();
   applyCurrentWorklogPermissionState();

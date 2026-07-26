@@ -631,7 +631,7 @@ async function checkSectionChromeReleasePolish(browser) {
     document.body.dataset.viewMode = "ceo";
   });
 
-  const views = ["attendance", "report", "settings", "auth", "staff", "ai", "management"];
+  const views = ["attendance", "report", "settings", "auth", "staff", "ai"];
   for (const view of views) {
     await page.evaluate((targetView) => window.switchView?.(targetView), view);
     await page.waitForTimeout(220);

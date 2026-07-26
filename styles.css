@@ -2105,32 +2105,28 @@ body[data-device-mode="narrow"] .os-mode-switch span[data-device-mode="narrow"] 
   font-weight: 720;
 }
 
-.worklog-context-grid,
-.management-grid {
+.worklog-context-grid {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 8px;
   margin-bottom: 14px;
 }
 
-.worklog-context-grid span,
-.management-grid article {
+.worklog-context-grid span {
   border: 1px solid rgba(222, 216, 202, 0.82);
   border-radius: 14px;
   background: rgba(247, 245, 239, 0.62);
   padding: 10px;
 }
 
-.worklog-context-grid b,
-.management-grid span {
+.worklog-context-grid b {
   display: block;
   color: var(--muted);
   font-size: 11px;
   font-weight: 850;
 }
 
-.worklog-context-grid strong,
-.management-grid strong {
+.worklog-context-grid strong {
   display: block;
   margin-top: 3px;
   color: var(--ink);
@@ -4824,8 +4820,7 @@ body[data-device-mode="narrow"] .os-mode-switch span[data-device-mode="narrow"] 
     grid-template-columns: 72px minmax(0, 1fr);
   }
 
-  .worklog-context-grid,
-  .management-grid {
+  .worklog-context-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
@@ -5793,7 +5788,6 @@ textarea:focus-visible {
 .organization-company,
 .organization-company section,
 .worklog-context-grid span,
-.management-grid article,
 .login-card {
   border-radius: 0;
   border-color: var(--hardline);
@@ -14796,7 +14790,6 @@ body[data-active-view="executive"] .worklog-header {
   padding-right: clamp(76px, 14vw, 116px);
 }
 
-#view-management > h2,
 #view-attendance .worklog-title-row,
 #view-projects > h2,
 #view-organization > h2 {
