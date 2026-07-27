@@ -14939,11 +14939,26 @@ body[data-layout-mode="phone"][data-active-view="worklog-overview"] .overview-da
 }
 
 /* Explicit focus controls: worklog panels expand only from the title button. */
+#view-today .mobile-focus-open,
 body[data-layout-mode="phone"] .mobile-focus-open,
 body[data-view-mode="ceo"] .mobile-focus-open {
   display: inline-flex;
   align-items: center;
   justify-content: center;
+}
+
+#view-today .mobile-focus-open {
+  min-width: 28px !important;
+  min-height: 28px !important;
+  padding-inline: 0 !important;
+  border-radius: 999px !important;
+  font-size: 0 !important;
+}
+
+#view-today .mobile-focus-open::after {
+  content: "↗";
+  font-size: 15px;
+  line-height: 1;
 }
 
 .worklog-main.is-focus-tasks .mobile-focus-open,
@@ -16767,6 +16782,8 @@ body.physical-phone-device #view-attendance .work-history-hero-meta {
 
 /* Worklog focus gate: phone/CEO mode keeps the two panels scannable, then
    expands one panel cleanly before editing. */
+#view-today .worklog-main.is-focus-tasks[data-today-page="daily"] .worklog-daily-page,
+#view-today .worklog-main.is-focus-schedule[data-today-page="daily"] .worklog-daily-page,
 body[data-layout-mode="phone"] #view-today .worklog-main.is-focus-tasks[data-today-page="daily"] .worklog-daily-page,
 body[data-layout-mode="phone"] #view-today .worklog-main.is-focus-schedule[data-today-page="daily"] .worklog-daily-page,
 body.physical-phone-device #view-today .worklog-main.is-focus-tasks[data-today-page="daily"] .worklog-daily-page,
@@ -16776,6 +16793,8 @@ body[data-view-mode="ceo"] #view-today .worklog-main.is-focus-schedule[data-toda
   grid-template-columns: minmax(0, 1fr) !important;
 }
 
+#view-today .worklog-main.is-focus-tasks .day-schedule-panel,
+#view-today .worklog-main.is-focus-schedule .day-task-panel,
 body[data-layout-mode="phone"] #view-today .worklog-main.is-focus-tasks .day-schedule-panel,
 body.physical-phone-device #view-today .worklog-main.is-focus-tasks .day-schedule-panel,
 body[data-view-mode="ceo"] #view-today .worklog-main.is-focus-tasks .day-schedule-panel,
@@ -16785,6 +16804,8 @@ body[data-view-mode="ceo"] #view-today .worklog-main.is-focus-schedule .day-task
   display: none !important;
 }
 
+#view-today .worklog-main.is-focus-tasks .mobile-focus-done,
+#view-today .worklog-main.is-focus-schedule .mobile-focus-done,
 body[data-layout-mode="phone"] #view-today .worklog-main.is-focus-tasks .mobile-focus-done,
 body[data-layout-mode="phone"] #view-today .worklog-main.is-focus-schedule .mobile-focus-done,
 body.physical-phone-device #view-today .worklog-main.is-focus-tasks .mobile-focus-done,
@@ -16796,6 +16817,8 @@ body[data-view-mode="ceo"] #view-today .worklog-main.is-focus-schedule .mobile-f
   justify-content: center !important;
 }
 
+#view-today .worklog-main.is-focus-tasks .mobile-focus-open,
+#view-today .worklog-main.is-focus-schedule .mobile-focus-open,
 body[data-layout-mode="phone"] #view-today .worklog-main.is-focus-tasks .mobile-focus-open,
 body[data-layout-mode="phone"] #view-today .worklog-main.is-focus-schedule .mobile-focus-open,
 body.physical-phone-device #view-today .worklog-main.is-focus-tasks .mobile-focus-open,
@@ -16805,6 +16828,8 @@ body[data-view-mode="ceo"] #view-today .worklog-main.is-focus-schedule .mobile-f
   display: none !important;
 }
 
+#view-today .worklog-main.is-focus-tasks .worklog-panel,
+#view-today .worklog-main.is-focus-schedule .worklog-panel,
 body[data-layout-mode="phone"] #view-today .worklog-main.is-focus-tasks .worklog-panel,
 body[data-layout-mode="phone"] #view-today .worklog-main.is-focus-schedule .worklog-panel,
 body.physical-phone-device #view-today .worklog-main.is-focus-tasks .worklog-panel,
@@ -16816,12 +16841,15 @@ body[data-view-mode="ceo"] #view-today .worklog-main.is-focus-schedule .worklog-
   overflow-x: hidden !important;
 }
 
+#view-today .worklog-main.is-focus-tasks .task-row,
 body[data-layout-mode="phone"] #view-today .worklog-main.is-focus-tasks .task-row,
 body.physical-phone-device #view-today .worklog-main.is-focus-tasks .task-row,
 body[data-view-mode="ceo"] #view-today .worklog-main.is-focus-tasks .task-row {
   grid-template-columns: 28px minmax(26px, auto) minmax(0, 1fr) 28px !important;
 }
 
+#view-today .worklog-main.is-focus-tasks .task-text-input,
+#view-today .worklog-main.is-focus-schedule .appointment-row input[type="text"],
 body[data-layout-mode="phone"] #view-today .worklog-main.is-focus-tasks .task-text-input,
 body.physical-phone-device #view-today .worklog-main.is-focus-tasks .task-text-input,
 body[data-view-mode="ceo"] #view-today .worklog-main.is-focus-tasks .task-text-input,
@@ -16833,12 +16861,14 @@ body[data-view-mode="ceo"] #view-today .worklog-main.is-focus-schedule .appointm
   font-size: clamp(17px, 4.8vw, 22px) !important;
 }
 
+#view-today .worklog-main.is-focus-schedule .appointment-row,
 body[data-layout-mode="phone"] #view-today .worklog-main.is-focus-schedule .appointment-row,
 body.physical-phone-device #view-today .worklog-main.is-focus-schedule .appointment-row,
 body[data-view-mode="ceo"] #view-today .worklog-main.is-focus-schedule .appointment-row {
   grid-template-columns: 64px minmax(0, 1fr) 28px !important;
 }
 
+#view-today .worklog-main.is-focus-schedule .appointment-time,
 body[data-layout-mode="phone"] #view-today .worklog-main.is-focus-schedule .appointment-time,
 body.physical-phone-device #view-today .worklog-main.is-focus-schedule .appointment-time,
 body[data-view-mode="ceo"] #view-today .worklog-main.is-focus-schedule .appointment-time {

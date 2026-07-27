@@ -137,6 +137,60 @@ async function checkPhoneWorklog(browser) {
   await page.close();
 }
 
+async function checkExplicitWorklogExpandOutsidePhoneMode(browser) {
+  const { page, errors } = await openPage(browser, { width: 430, height: 900 });
+  await page.evaluate(() => {
+    window.switchView?.("bangju-log");
+    document.body.classList.remove("physical-phone-device", "smartphone-device");
+    document.body.dataset.layoutMode = "classic";
+    document.body.dataset.viewMode = "classic";
+    window.setTodayPageMode?.("daily");
+  });
+  await page.waitForTimeout(250);
+
+  await page.click(".day-task-panel [data-mobile-focus-open='tasks']");
+  await page.waitForTimeout(120);
+  const taskFocus = await page.evaluate(() => {
+    const main = document.querySelector("#worklogMain");
+    const taskPanel = document.querySelector(".day-task-panel");
+    const schedulePanel = document.querySelector(".day-schedule-panel");
+    return {
+      focused: main?.classList.contains("is-focus-tasks"),
+      taskVisible: taskPanel ? getComputedStyle(taskPanel).display !== "none" : false,
+      scheduleHidden: schedulePanel ? getComputedStyle(schedulePanel).display === "none" : false,
+    };
+  });
+  if (!taskFocus.focused || !taskFocus.taskVisible || !taskFocus.scheduleHidden) {
+    fail("explicit worklog task expand should work outside phone mode", JSON.stringify(taskFocus));
+  }
+
+  await page.click(".day-task-panel [data-mobile-focus-close]");
+  await page.waitForTimeout(150);
+  await page.click(".day-schedule-panel [data-mobile-focus-open='schedule']");
+  await page.waitForTimeout(120);
+  const scheduleFocus = await page.evaluate(() => {
+    const main = document.querySelector("#worklogMain");
+    const taskPanel = document.querySelector(".day-task-panel");
+    const schedulePanel = document.querySelector(".day-schedule-panel");
+    return {
+      focused: main?.classList.contains("is-focus-schedule"),
+      taskHidden: taskPanel ? getComputedStyle(taskPanel).display === "none" : false,
+      scheduleVisible: schedulePanel ? getComputedStyle(schedulePanel).display !== "none" : false,
+    };
+  });
+  if (!scheduleFocus.focused || !scheduleFocus.taskHidden || !scheduleFocus.scheduleVisible) {
+    fail("explicit worklog schedule expand should work outside phone mode", JSON.stringify(scheduleFocus));
+  }
+
+  await page.click(".day-schedule-panel [data-mobile-focus-close]");
+  await page.waitForTimeout(150);
+  const restored = await page.evaluate(() => !document.querySelector("#worklogMain")?.classList.contains("is-mobile-focus-active"));
+  if (!restored) fail("explicit worklog expand close should restore split mode");
+
+  if (errors.length) fail("explicit worklog expand errors", errors.join(" | "));
+  await page.close();
+}
+
 async function checkOverviewCommandBoard(browser) {
   const page = await browser.newPage({ viewport: { width: 390, height: 844 } });
   const errors = [];
@@ -1348,6 +1402,7 @@ async function checkFitnessNewEmployeeRegistrationFlow(browser) {
   try {
     await checkDesktopEmployeeWorklog(browser);
     await checkPhoneWorklog(browser);
+    await checkExplicitWorklogExpandOutsidePhoneMode(browser);
     await checkOverviewCommandBoard(browser);
     await checkControlTower(browser);
     await checkExecutiveManagementPage(browser);

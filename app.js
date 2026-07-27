@@ -5086,18 +5086,14 @@ function setupMobileFocusCloseButtons() {
   });
   window.addEventListener("resize", () => {
     applyGlobalViewMode();
-    if (!isMobilePhoneFocusLayout()) {
-      resetMobileDayFocusToSplit({ blur: false });
-      resetFitnessMobileFocusToSplit({ blur: false });
-    } else {
-      applyMobileDayFocusMode();
-      applyFitnessMobileFocusMode();
-    }
+    applyMobileDayFocusMode();
+    if (!isMobilePhoneFocusLayout()) resetFitnessMobileFocusToSplit({ blur: false });
+    else applyFitnessMobileFocusMode();
   });
 }
 
 function setMobileDayFocusMode(mode) {
-  mobileDayFocusMode = isMobilePhoneFocusLayout() ? mode : "split";
+  mobileDayFocusMode = mode || "split";
   if (mobileDayFocusMode === "tasks" || mobileDayFocusMode === "schedule") {
     todayPageMode = "daily";
     applyTodayPageMode();
@@ -5107,7 +5103,7 @@ function setMobileDayFocusMode(mode) {
 
 function applyMobileDayFocusMode() {
   const main = document.getElementById("worklogMain");
-  const mode = isMobilePhoneFocusLayout() ? mobileDayFocusMode : "split";
+  const mode = mobileDayFocusMode;
   if (!main) return;
   main.classList.toggle("is-focus-tasks", mode === "tasks");
   main.classList.toggle("is-focus-schedule", mode === "schedule");
