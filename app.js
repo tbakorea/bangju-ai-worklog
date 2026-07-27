@@ -529,6 +529,7 @@ let calendarPickerMode = "worklog";
 let calendarPostponeTask = null;
 let calendarTriggerButtonId = "selectedDateButton";
 let mobileDayFocusMode = "split";
+let fitnessMobileFocusMode = "split";
 let mobileFocusGateSuppressClick = false;
 let fitnessScheduleEditorState = null;
 const dailyEditingState = {
@@ -613,12 +614,13 @@ function createEmployeeLog(employee = employees[0], profile = defaultProfile) {
 }
 
 function normalizeState() {
-  state.selectedEmployeeId ||= "beyond-fitness-manager";
   state.profile = { ...defaultProfile, ...(state.profile || {}) };
   state.profile.nickname ||= "";
   state.profile.weeklyWorkHours = { ...(state.profile.weeklyWorkHours || {}) };
   state.profile.permissions = { ...(state.profile.permissions || {}) };
   state.profile.accessPreset ||= getRecommendedPermissionPresetForProfile(state.profile);
+  const mappedProfileEmployeeId = getMappedProfileEmployeeId();
+  state.selectedEmployeeId ||= mappedProfileEmployeeId || "profile-user";
   state.employeePermissions = normalizeEmployeePermissionState(state.employeePermissions || {});
   state.laborPayroll = { ...(state.laborPayroll || {}) };
   state.profile.manualSettings = {
@@ -638,15 +640,22 @@ function normalizeState() {
     "fitness-front-2": "fitness-sunday-info",
   };
   if (retiredFitnessIds[state.selectedEmployeeId]) state.selectedEmployeeId = retiredFitnessIds[state.selectedEmployeeId];
-  if (state.selectedEmployeeId === "profile-user" && state.profile.name === defaultProfile.name) {
-    state.selectedEmployeeId = "beyond-fitness-manager";
+  if (
+    !isRepresentativeProfile()
+    && state.selectedEmployeeId === "beyond-fitness-manager"
+    && !isEmployeeLinkedToProfile("beyond-fitness-manager")
+  ) {
+    state.selectedEmployeeId = getMappedProfileEmployeeId() || "profile-user";
   }
   state.selectedDateKey ||= todayKey;
   state.fitnessLogPage = Number.isFinite(Number(state.fitnessLogPage)) ? Number(state.fitnessLogPage) : 1;
   if (!/^\d{4}-\d{2}$/.test(String(state.fitnessCenterMonth || ""))) {
     state.fitnessCenterMonth = getActiveDateKey().slice(0, 7);
   }
-  state.fitnessWritableEmployeeId ||= "beyond-fitness-manager";
+  const mappedFitnessEmployeeId = getMappedProfileEmployeeId();
+  const isMappedFitnessEmployee = mappedFitnessEmployeeId && fitnessEmployeeIds.includes(mappedFitnessEmployeeId);
+  state.fitnessWritableEmployeeId ||= isMappedFitnessEmployee ? mappedFitnessEmployeeId : "beyond-fitness-manager";
+  if (!isRepresentativeProfile() && isMappedFitnessEmployee) state.fitnessWritableEmployeeId = mappedFitnessEmployeeId;
   state.fitnessGoals = { ...createFitnessGoals(), ...(state.fitnessGoals || {}) };
   state.dagymOps = { ...createDagymOps(), ...(state.dagymOps || {}) };
   state.backupSettings = {
@@ -819,6 +828,28 @@ function getEmployeeAdminLabel(employee = getSelectedEmployee()) {
   return `${employee.role || "직원"} ${employee.name || ""}`.trim();
 }
 
+function getWorklogCompanyLabel(employee = getSelectedEmployee()) {
+  const source = `${employee?.org || ""} ${employee?.workplace || ""} ${state.profile?.org || ""} ${state.profile?.workplace || ""}`;
+  if (/비제이|종합건설|건설|bj/i.test(source)) return "(주)비제이종합건설";
+  if (/비욘드\s*컴퍼니|beyond\s*company/i.test(source)) return "(주)비욘드컴퍼니";
+  if (/방주|bangju/i.test(source)) return "(주)방주";
+  return employee?.org || state.profile?.org || "(주)방주";
+}
+
+function getWorklogPersonLabel(employee = getSelectedEmployee()) {
+  const isProfile = employee?.id === "profile-user" || isEmployeeLinkedToProfile(employee?.id);
+  const nickname = String(isProfile ? (state.profile?.nickname || employee?.nickname || "") : (employee?.nickname || "")).trim();
+  const name = String(isProfile ? (state.profile?.name || employee?.name || "") : (employee?.name || "")).trim();
+  const role = String(isProfile ? (state.profile?.role || employee?.role || "") : (employee?.role || "")).trim();
+  const person = nickname || name || "직원";
+  if (!role || role === person || role === name) return person;
+  return `${person} · ${role}`;
+}
+
+function getWorklogIdentityText(employee = getSelectedEmployee()) {
+  return `${getWorklogCompanyLabel(employee)} · ${getWorklogPersonLabel(employee)}`;
+}
+
 function getEmployeeOwnLabel(employee = getSelectedEmployee()) {
   if (employee.id === state.fitnessWritableEmployeeId && isEmployeeLinkedToProfile(employee.id)) {
     return state.profile?.nickname || employee.nickname || employee.name || "내 업무일지";
@@ -893,6 +924,12 @@ function getCurrentFitnessLogPage() {
   return getFitnessLogPages()[clampFitnessLogPage()] || getFitnessLogPages()[1];
 }
 
+function getFitnessIdentityEmployee() {
+  const page = getCurrentFitnessLogPage();
+  if (page?.type === "employee" && page.employee) return page.employee;
+  return employees.find((item) => item.id === state.fitnessWritableEmployeeId) || getSelectedEmployee();
+}
+
 function isCurrentFitnessLogEditable() {
   const page = getCurrentFitnessLogPage();
   return page?.type === "employee" && isOwnFitnessEmployeeId(page.id);
@@ -936,12 +973,16 @@ function getCurrentWorklogEmployeeId(view = activeView) {
 
 function getOwnEditableEmployeeIdForView(view = activeView) {
   if (view === "fitness-log") return state.fitnessWritableEmployeeId;
-  if (["bangju-log", "beyond-log", "today"].includes(view)) return getProfileMappedEmployeeId() || "profile-user";
+  if (["bangju-log", "beyond-log", "today"].includes(view)) {
+    if (!authState.user) return "profile-user";
+    return getProfileMappedEmployeeId() || "profile-user";
+  }
   return "";
 }
 
 function canEditEmployeeSlot(employeeId = "") {
   if (!employeeId) return false;
+  if (isExplicitlySignedOut()) return false;
   if (employeeId === "profile-user") return true;
   if (!authState.user) return false;
   if (isRepresentativeProfile()) return false;
@@ -1618,6 +1659,7 @@ function renderResponsiveMode() {
     button.classList.toggle("is-active", button.dataset.layoutModeChoice === layoutMode);
   });
   applyMobileDayFocusMode();
+  applyFitnessMobileFocusMode();
 }
 
 function isPhysicalPhoneLayout() {
@@ -3345,6 +3387,17 @@ function renderEmployeeTitle() {
   document.getElementById("todayTitle").textContent = `${employee.org} ${title}. ${getEmployeeAdminLabel(employee)}`;
 }
 
+function renderWorklogIdentityBadges() {
+  const generalBadge = document.getElementById("worklogIdentityBadge");
+  if (generalBadge) {
+    generalBadge.textContent = getWorklogIdentityText(getSelectedEmployee());
+  }
+  const fitnessBadge = document.getElementById("fitnessIdentityBadge");
+  if (fitnessBadge) {
+    fitnessBadge.textContent = getWorklogIdentityText(getFitnessIdentityEmployee());
+  }
+}
+
 function renderGlobalEmployeeIdentity() {
   const employee = activeView === "fitness-log"
     ? employees.find((item) => item.id === state.fitnessWritableEmployeeId) || getSelectedEmployee()
@@ -3357,6 +3410,7 @@ function renderGlobalEmployeeIdentity() {
   if (identity) identity.textContent = "";
   const title = document.getElementById("globalHeaderTitle");
   if (title) title.textContent = getGlobalHeaderTitle(activeView, personLabel);
+  renderWorklogIdentityBadges();
   renderGlobalAttendanceSummary(employee);
   updateGlobalAttendanceVisibility();
 }
@@ -3372,7 +3426,7 @@ function getGeneralWorklogTitle(view = activeView) {
 function getRecommendedPermissionPresetForProfile(profile = {}) {
   const email = String(authState.user?.email || profile.email || "").trim().toLowerCase();
   const roleText = `${profile.role || ""} ${profile.primaryWork || ""} ${profile.nickname || ""}`;
-  if (controlTowerEmails.has(email) || /대표|owner|ceo|회장/i.test(roleText)) return "owner";
+  if (controlTowerEmails.has(email)) return "owner";
   if (/임원|총괄/i.test(roleText)) return "executive_delegate";
   if (/실장|관리자|센터장|manager/i.test(roleText)) return "site_manager";
   if (/프리랜서|트레이너/i.test(`${roleText} ${profile.employmentType || ""}`)) return "freelance";
@@ -3400,10 +3454,14 @@ function buildPermissionSet(presetKey = "employee", overrides = {}) {
 }
 
 function getProfilePermissionSet(profile = state.profile || {}) {
+  const email = String(authState.user?.email || profile.email || "").trim().toLowerCase();
   const recommended = getRecommendedPermissionPresetForProfile(profile);
-  const presetKey = normalizePermissionPresetKey(profile.accessPreset || recommended);
+  let presetKey = normalizePermissionPresetKey(profile.accessPreset || recommended);
+  if (presetKey === "owner" && !controlTowerEmails.has(email)) {
+    presetKey = profile.permissions?.executiveRoom === true ? "executive_delegate" : "employee";
+  }
   const set = buildPermissionSet(presetKey, profile.permissions || {});
-  if (recommended === "owner") {
+  if (recommended === "owner" && controlTowerEmails.has(email)) {
     return buildPermissionSet("owner", set.permissions);
   }
   return set;
@@ -3430,21 +3488,20 @@ function isRepresentativeProfile() {
   if (isExplicitlySignedOut()) return false;
   const profile = state.profile || {};
   const email = String(authState.user?.email || profile.email || "").trim().toLowerCase();
-  const roleText = `${profile.role || ""} ${profile.primaryWork || ""} ${profile.nickname || ""}`;
-  if (hasProfilePermission("executiveRoom", profile)) return true;
   if (controlTowerEmails.has(email)) return true;
   if (authState.user && (profile.approvalStatus || "pending") !== "approved") return false;
-  return /대표|owner|ceo|회장|임원|총괄/i.test(roleText);
+  const presetKey = normalizePermissionPresetKey(profile.accessPreset || "employee");
+  if (presetKey === "executive_delegate") return true;
+  return profile.permissions?.executiveRoom === true;
 }
 
 function hasApprovalAuthority(profile = state.profile || {}) {
   if (isExplicitlySignedOut()) return false;
   const email = String(authState.user?.email || profile.email || "").trim().toLowerCase();
-  const roleText = `${profile.role || ""} ${profile.primaryWork || ""} ${profile.nickname || ""}`;
   if (hasProfilePermission("staffApproval", profile) || hasProfilePermission("staffManage", profile)) return true;
   if (controlTowerEmails.has(email)) return true;
   if (authState.user && (profile.approvalStatus || "pending") !== "approved") return false;
-  return /대표|관리자|센터장|총괄|임원|admin|owner|manager/i.test(roleText);
+  return false;
 }
 
 function canShowApprovalMenu() {
@@ -3492,21 +3549,26 @@ function getInitialLandingView() {
 }
 
 function getWorklogEmployeeIdsForView(view) {
-  if (view === "fitness-log") return getAssignedWorklogEmployeeIds(fitnessEmployeeIds);
-  if (view === "beyond-log") return getAssignedWorklogEmployeeIds(beyondWorklogEmployeeIds);
-  if (view === "bangju-log" || view === "today") return getAssignedWorklogEmployeeIds(bangjuWorklogEmployeeIds);
+  const includeOwnProfile = !isRepresentativeProfile() && (!authState.user || !getProfileMappedEmployeeId());
+  const withOwnProfile = (ids) => (includeOwnProfile ? ["profile-user", ...ids] : ids);
+  if (view === "fitness-log") return withOwnProfile(getAssignedWorklogEmployeeIds(fitnessEmployeeIds));
+  if (view === "beyond-log") return withOwnProfile(getAssignedWorklogEmployeeIds(beyondWorklogEmployeeIds));
+  if (view === "bangju-log" || view === "today") return withOwnProfile(getAssignedWorklogEmployeeIds(bangjuWorklogEmployeeIds));
   return [];
 }
 
 function ensureSelectedEmployeeForWorklogView(view) {
   const ids = getWorklogEmployeeIdsForView(view);
-  if (!ids.length || ids.includes(state.selectedEmployeeId)) return;
   const ownEmployeeId = getOwnEditableEmployeeIdForView(view);
-  if (!isRepresentativeProfile() && ids.includes(ownEmployeeId)) {
-    state.selectedEmployeeId = ownEmployeeId;
+  if (!ids.length) return;
+  if (!isRepresentativeProfile() && !canAccessWorklogOverview()) {
+    const fallbackOwnEmployeeId = ids.includes(ownEmployeeId) ? ownEmployeeId : ids.includes("profile-user") ? "profile-user" : ids[0];
+    state.selectedEmployeeId = fallbackOwnEmployeeId;
     return;
   }
-  state.selectedEmployeeId = ids[0];
+  if (ids.includes(state.selectedEmployeeId)) return;
+  if (!isRepresentativeProfile() && ids.includes(ownEmployeeId)) state.selectedEmployeeId = ownEmployeeId;
+  else state.selectedEmployeeId = ids[0];
 }
 
 function getGlobalHeaderTitle(view = activeView, personLabel = "") {
@@ -4931,13 +4993,27 @@ function isEditingDailyField() {
 }
 
 function isEditableDayControl(target) {
-  return Boolean(target?.closest?.(".day-task-panel input, .day-task-panel textarea, .day-task-panel select, .day-schedule-panel input, .day-schedule-panel textarea, .day-schedule-panel select"));
+  return Boolean(target?.closest?.(`
+    .day-task-panel input,
+    .day-task-panel textarea,
+    .day-task-panel select,
+    .day-schedule-panel input,
+    .day-schedule-panel textarea,
+    .day-schedule-panel select,
+    .fitness-log-task-panel input,
+    .fitness-log-task-panel textarea,
+    .fitness-log-task-panel select,
+    .fitness-log-schedule-panel input,
+    .fitness-log-schedule-panel textarea,
+    .fitness-log-schedule-panel select
+  `));
 }
 
 function setupMobileDayFocus() {
   setupMobileFocusOpenButtons();
   setupMobileFocusCloseButtons();
   applyMobileDayFocusMode();
+  applyFitnessMobileFocusMode();
 }
 
 function setupMobileFocusOpenButtons() {
@@ -4945,15 +5021,16 @@ function setupMobileFocusOpenButtons() {
     button.onclick = (event) => {
       event.preventDefault();
       event.stopPropagation();
+      if (button.closest("#view-fitness-log")) return;
       setMobileDayFocusMode(button.dataset.mobileFocusOpen || "split");
     };
   });
 }
 
-function setupSplitEditGate(node, mode) {
+function setupSplitEditGate(node, mode, setMode = setMobileDayFocusMode, getMode = () => mobileDayFocusMode) {
   if (!node) return;
   node.addEventListener("pointerdown", (event) => {
-    if (!isMobilePhoneFocusLayout() || mobileDayFocusMode !== "split") return;
+    if (!isMobilePhoneFocusLayout() || getMode() !== "split") return;
     const shouldFocus = shouldOpenMobileDayPanelFocus(event.target, node);
     if (!shouldFocus) return;
     event.preventDefault();
@@ -4962,7 +5039,7 @@ function setupSplitEditGate(node, mode) {
     window.setTimeout(() => {
       mobileFocusGateSuppressClick = false;
     }, 260);
-    setMobileDayFocusMode(mode);
+    setMode(mode);
   }, true);
   node.addEventListener("click", (event) => {
     if (!mobileFocusGateSuppressClick) return;
@@ -4978,7 +5055,7 @@ function shouldOpenMobileDayPanelFocus(target, panel) {
   if (!target || !panel?.contains?.(target)) return false;
   if (target.closest("[data-mobile-focus-close]")) return false;
   if (target.closest("[data-mobile-focus-open]")) return true;
-  if (target.closest(".ai-section-button, .schedule-unit-button")) return true;
+  if (target.closest(".ai-section-button, .schedule-unit-button")) return false;
   if (target.closest("input, textarea, select, button")) return true;
   return Boolean(target.closest(".task-row, .appointment-row, .task-board, .appointment-list, h3"));
 }
@@ -4987,7 +5064,8 @@ function setupMobileFocusCloseButtons() {
   document.querySelectorAll("[data-mobile-focus-close]").forEach((button) => {
     button.onclick = (event) => {
       event.stopPropagation();
-      resetMobileDayFocusToSplit({ blur: true });
+      if (button.closest("#view-fitness-log")) resetFitnessMobileFocusToSplit({ blur: true });
+      else resetMobileDayFocusToSplit({ blur: true });
     };
   });
   document.addEventListener("compositionstart", (event) => {
@@ -5008,8 +5086,13 @@ function setupMobileFocusCloseButtons() {
   });
   window.addEventListener("resize", () => {
     applyGlobalViewMode();
-    if (!isMobilePhoneFocusLayout()) resetMobileDayFocusToSplit({ blur: false });
-    else applyMobileDayFocusMode();
+    if (!isMobilePhoneFocusLayout()) {
+      resetMobileDayFocusToSplit({ blur: false });
+      resetFitnessMobileFocusToSplit({ blur: false });
+    } else {
+      applyMobileDayFocusMode();
+      applyFitnessMobileFocusMode();
+    }
   });
 }
 
@@ -5049,6 +5132,33 @@ function setMobileWorklogFocus(panel) {
   setMobileDayFocusMode(panel || "split");
 }
 
+function setFitnessMobileFocusMode(mode) {
+  fitnessMobileFocusMode = isMobilePhoneFocusLayout() ? mode : "split";
+  applyFitnessMobileFocusMode();
+}
+
+function applyFitnessMobileFocusMode() {
+  const view = document.getElementById("view-fitness-log");
+  const mode = isMobilePhoneFocusLayout() ? fitnessMobileFocusMode : "split";
+  if (!view) return;
+  view.classList.toggle("is-focus-tasks", mode === "tasks");
+  view.classList.toggle("is-focus-schedule", mode === "schedule");
+  view.classList.toggle("is-mobile-focus-active", mode !== "split");
+}
+
+function resetFitnessMobileFocusToSplit({ blur = true } = {}) {
+  const view = document.getElementById("view-fitness-log");
+  if (blur && document.activeElement && isEditableDayControl(document.activeElement)) {
+    document.activeElement.blur();
+  }
+  fitnessMobileFocusMode = "split";
+  if (view) {
+    view.classList.add("is-focus-restoring");
+    window.setTimeout(() => view.classList.remove("is-focus-restoring"), 230);
+  }
+  applyFitnessMobileFocusMode();
+}
+
 function renderEmployeeSelect() {
   const select = document.getElementById("employeeSelect");
   select.innerHTML = getEmployeeOptions().map((employee) => `
@@ -5067,6 +5177,7 @@ function renderEntries() {
   renderEmployeeDetailFields();
   renderClockPanel();
   renderEmployeeTitle();
+  renderWorklogIdentityBadges();
   renderDateNav();
   renderTodayContext();
   renderReport();
@@ -5083,8 +5194,8 @@ function renderWorklogToday(log = getSelectedLog()) {
 function renderFitnessWorklog(log = getSelectedLog()) {
   const page = getCurrentFitnessLogPage();
   if (page?.type === "employee" && page.id !== state.selectedEmployeeId) {
-    state.selectedEmployeeId = page.id;
-    log = getSelectedLog();
+    if (activeView === "fitness-log") state.selectedEmployeeId = page.id;
+    log = getEmployeeLogForDate(page.id, getActiveDateKey());
   }
   syncFitnessOpsFromSchedule(log);
   const title = document.getElementById("fitnessWorklogDate");
@@ -5104,6 +5215,7 @@ function renderFitnessWorklog(log = getSelectedLog()) {
   renderFitnessLogPager();
   renderFitnessCenterDaily();
   renderFitnessCoaching();
+  renderWorklogIdentityBadges();
   renderWorklogEditLockBanner("fitness");
   const isCenter = page?.type === "center";
   document.getElementById("fitnessCenterDailyPanel").hidden = !isCenter;
@@ -9534,6 +9646,7 @@ function switchView(view) {
   renderAiCoach();
   renderPremiumOperatingSystem();
   renderFitnessDashboard();
+  renderEntries();
   renderStaffMaster();
   renderAttendance();
   renderOrganization();

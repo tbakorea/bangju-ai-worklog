@@ -332,6 +332,7 @@
           </div>
         </div>
         <div class="worklog-context-grid" id="todayContext" hidden></div>
+        <div class="worklog-person-chip" id="worklogIdentityBadge" aria-live="polite"></div>
         <section class="worklog-today">
           <header class="worklog-today-title">
             <div class="worklog-summary-date" id="worklogDateSwipeArea">
@@ -400,6 +401,7 @@
       </section>
 
       <section class="worklog-view fitness-log-view" id="view-fitness-log">
+        <div class="worklog-person-chip fitness-person-chip" id="fitnessIdentityBadge" aria-live="polite"></div>
         <div class="fitness-coaching-row">
           <button type="button" class="fitness-coaching-ticker" id="fitnessCoachingTicker" aria-label="AI 코칭 자세히 보기">
             <b>AI 코칭</b>
@@ -527,15 +529,19 @@
         <article class="worklog-panel fitness-log-task-panel">
           <h3>
             <span>오늘의 우선업무</span>
+            <button type="button" class="mobile-focus-open" data-mobile-focus-open="tasks">확대</button>
             <button type="button" class="ai-section-button" data-section-ai="fitness-tasks">AI</button>
+            <button type="button" class="mobile-focus-done" data-mobile-focus-close>확인</button>
           </h3>
           <div id="fitnessTaskBoard" class="worklog-task-board task-board"></div>
         </article>
         <article class="worklog-panel fitness-log-schedule-panel">
           <h3>
             <span>시간별일정</span>
+            <button type="button" class="mobile-focus-open" data-mobile-focus-open="schedule">확대</button>
             <button type="button" class="schedule-unit-button" id="fitnessScheduleUnitButton">30분</button>
             <button type="button" class="ai-section-button" data-section-ai="fitness-schedule">AI</button>
+            <button type="button" class="mobile-focus-done" data-mobile-focus-close>확인</button>
           </h3>
           <div id="fitnessAppointmentList" class="worklog-appointment-list appointment-list"></div>
         </article>

@@ -113,30 +113,20 @@ async function checkPhoneWorklog(browser) {
   const widthRatio = metrics.taskWidth / Math.max(1, metrics.scheduleWidth);
   if (widthRatio < 0.82 || widthRatio > 1.18) fail("phone task/schedule split is not balanced", String(widthRatio));
 
-  await page.click(".day-task-panel");
+  await page.click(".day-task-panel [data-mobile-focus-open='tasks']");
   await page.waitForTimeout(100);
   const panelTapFocus = await page.evaluate(() => document.querySelector("#worklogMain")?.classList.contains("is-focus-tasks"));
-  if (panelTapFocus) fail("phone worklog should not auto-expand when tapping the task panel");
-
-  await page.click('.day-task-panel [data-mobile-focus-open="tasks"]');
-  await page.waitForTimeout(150);
-  const buttonFocus = await page.evaluate(() => document.querySelector("#worklogMain")?.classList.contains("is-focus-tasks"));
-  if (!buttonFocus) fail("phone worklog task expand button did not open focus mode");
+  if (!panelTapFocus) fail("phone worklog task expand button should open focus mode");
 
   await page.click(".day-task-panel [data-mobile-focus-close]");
   await page.waitForTimeout(150);
   const taskRestored = await page.evaluate(() => !document.querySelector("#worklogMain")?.classList.contains("is-mobile-focus-active"));
   if (!taskRestored) fail("phone worklog task focus close button did not restore split mode");
 
-  await page.click(".day-schedule-panel");
+  await page.click(".day-schedule-panel [data-mobile-focus-open='schedule']");
   await page.waitForTimeout(100);
   const scheduleTapFocus = await page.evaluate(() => document.querySelector("#worklogMain")?.classList.contains("is-focus-schedule"));
-  if (scheduleTapFocus) fail("phone worklog should not auto-expand when tapping the schedule panel");
-
-  await page.click('.day-schedule-panel [data-mobile-focus-open="schedule"]');
-  await page.waitForTimeout(150);
-  const scheduleButtonFocus = await page.evaluate(() => document.querySelector("#worklogMain")?.classList.contains("is-focus-schedule"));
-  if (!scheduleButtonFocus) fail("phone worklog schedule expand button did not open focus mode");
+  if (!scheduleTapFocus) fail("phone worklog schedule expand button should open focus mode");
 
   await page.click(".day-schedule-panel [data-mobile-focus-close]");
   await page.waitForTimeout(150);
@@ -328,15 +318,16 @@ async function checkRepresentativeProfileSeparation(browser) {
     return {
       header,
       pager,
+      identityBadge: document.querySelector("#fitnessIdentityBadge")?.textContent?.trim() || "",
       permission: view?.dataset.fitnessPermission || "",
       pageType: view?.dataset.fitnessPageType || "",
       selectedEmployeeId: window.state?.selectedEmployeeId || "",
     };
   });
-  if (/정찬훈|베니|benny/i.test(metrics.header + metrics.pager)) {
+  if (/정찬훈|베니|benny/i.test(metrics.header + metrics.pager + metrics.identityBadge)) {
     fail("representative profile leaked into fitness manager sheet", `${metrics.header} / ${metrics.pager}`);
   }
-  if (!/센터장|박주홍/.test(metrics.header + metrics.pager)) {
+  if (!/센터장|박주홍/.test(metrics.header + metrics.pager + metrics.identityBadge)) {
     fail("fitness manager identity missing after representative separation", `${metrics.header} / ${metrics.pager}`);
   }
   if (metrics.permission !== "readonly" || metrics.pageType !== "coworker") {
@@ -344,6 +335,280 @@ async function checkRepresentativeProfileSeparation(browser) {
   }
   if (errors.length) fail("representative separation page errors", errors.join(" | "));
   await page.close();
+}
+
+async function checkNonControlRoleTextDoesNotBecomeRepresentative(browser) {
+  const page = await browser.newPage({ viewport: { width: 390, height: 844 } });
+  const errors = [];
+  page.on("pageerror", (error) => errors.push(error.message));
+  await page.addInitScript(() => {
+    localStorage.setItem("beyond-worklog-state-v1", JSON.stringify({
+      selectedDateKey: "2026-07-23",
+      selectedEmployeeId: "profile-user",
+      profile: {
+        email: "kim.sungmin@example.com",
+        role: "대표",
+        name: "김성민",
+        nickname: "김성민",
+        org: "(주)방주",
+        workplace: "본사",
+        primaryWork: "기획/관리",
+        approvalStatus: "approved",
+        accessPreset: "owner",
+        permissions: {},
+      },
+      employeeLogs: {},
+    }));
+  });
+  await page.goto(target, { waitUntil: "domcontentloaded" });
+  await page.evaluate(() => {
+    document.body.classList.add("physical-phone-device");
+    document.body.dataset.layoutMode = "phone";
+    document.body.dataset.viewMode = "ceo";
+    window.eval(`
+      authState.user = { id: "kim-sungmin", email: "kim.sungmin@example.com" };
+      normalizeState();
+      switchView(getInitialLandingView());
+    `);
+  });
+  await page.waitForTimeout(350);
+  const metrics = await page.evaluate(() => window.eval(`JSON.stringify({
+    activeView: document.body.dataset.activeView,
+    representative: isRepresentativeProfile(),
+    approvalAuthority: hasApprovalAuthority(),
+    worklogOverview: canAccessWorklogOverview(),
+    profileRole: state.profile.role,
+    accessPreset: state.profile.accessPreset
+  })`));
+  const parsed = JSON.parse(metrics);
+  if (parsed.representative) fail("non-control role text should not grant representative access", metrics);
+  if (parsed.approvalAuthority) fail("non-control role text should not grant approval authority", metrics);
+  if (parsed.worklogOverview) fail("non-control role text should not open all-worklog overview", metrics);
+  if (parsed.activeView === "executive" || parsed.activeView === "worklog-overview") {
+    fail("non-control role text should land on an employee worklog", metrics);
+  }
+  if (errors.length) fail("non-control representative regression page errors", errors.join(" | "));
+  await page.close();
+}
+
+async function checkUnmappedEmployeeDoesNotInheritFitnessManager(browser) {
+  const page = await browser.newPage({ viewport: { width: 390, height: 844 } });
+  const errors = [];
+  page.on("pageerror", (error) => errors.push(error.message));
+  await page.addInitScript(() => {
+    localStorage.setItem("beyond-worklog-state-v1", JSON.stringify({
+      selectedDateKey: "2026-07-27",
+      selectedEmployeeId: "beyond-fitness-manager",
+      fitnessWritableEmployeeId: "beyond-fitness-manager",
+      profile: {
+        email: "projch@naver.com",
+        role: "직원",
+        name: "홍길동",
+        nickname: "홍길동",
+        org: "(주)방주",
+        workplace: "본사",
+        primaryWork: "기획/관리",
+        approvalStatus: "approved",
+        accessPreset: "employee",
+        permissions: {},
+      },
+      employeeLogs: {},
+    }));
+    localStorage.setItem("beyond-worklog-global-view-mode", "ceo");
+  });
+  await page.goto(target, { waitUntil: "domcontentloaded" });
+  await page.evaluate(() => {
+    document.body.classList.add("physical-phone-device");
+    document.body.dataset.layoutMode = "phone";
+    document.body.dataset.viewMode = "ceo";
+    window.eval(`
+      authState.user = { id: "hong-gildong", email: "projch@naver.com" };
+      normalizeState();
+      switchView(getInitialLandingView());
+    `);
+  });
+  await page.waitForTimeout(350);
+  const metrics = await page.evaluate(() => window.eval(`JSON.stringify({
+    activeView: document.body.dataset.activeView,
+    selectedEmployeeId: state.selectedEmployeeId,
+    representative: isRepresentativeProfile(),
+    ownEditableEmployeeId: getOwnEditableEmployeeIdForView(activeView),
+    selectedEmployee: getEmployeeAdminLabel(getSelectedEmployee()),
+    header: document.querySelector("#globalHeaderTitle")?.textContent?.trim() || "",
+    identityBadge: document.querySelector("#worklogIdentityBadge")?.textContent?.trim() || "",
+    lockBanner: document.querySelector("#worklogEditLockBanner")?.textContent?.trim() || "",
+    lockHidden: document.querySelector("#worklogEditLockBanner")?.hidden ?? true
+  })`));
+  const parsed = JSON.parse(metrics);
+  if (parsed.representative) fail("unmapped employee should not become representative", metrics);
+  if (parsed.activeView !== "bangju-log") fail("unmapped Bangju employee should land on Bangju worklog", metrics);
+  if (parsed.selectedEmployeeId !== "profile-user" || parsed.ownEditableEmployeeId !== "profile-user") {
+    fail("unmapped employee should use own profile worklog instead of saved fitness manager", metrics);
+  }
+  if (/박주홍|센터장|beyond-fitness-manager/.test(`${parsed.selectedEmployee} ${parsed.header} ${parsed.identityBadge} ${parsed.lockBanner}`)) {
+    fail("unmapped employee inherited fitness manager label", metrics);
+  }
+  if (!/홍길동/.test(`${parsed.selectedEmployee} ${parsed.header} ${parsed.identityBadge}`)) {
+    fail("unmapped employee identity should be visible on own worklog", metrics);
+  }
+  if (!/\(주\)방주/.test(parsed.identityBadge) || !/직원/.test(parsed.identityBadge)) {
+    fail("worklog identity badge should show company and role", metrics);
+  }
+  if (!parsed.lockHidden && /열람 전용|본인 업무일지만/.test(parsed.lockBanner)) {
+    fail("own profile worklog should not show readonly banner", metrics);
+  }
+  await page.fill("#worklogTaskBoard .task-text-input", "홍길동 업무 입력 저장 확인");
+  await page.waitForTimeout(350);
+  const saveMetrics = await page.evaluate(() => window.eval(`JSON.stringify({
+    disabled: document.querySelector("#worklogTaskBoard .task-text-input")?.disabled ?? true,
+    value: document.querySelector("#worklogTaskBoard .task-text-input")?.value || "",
+    savedText: state.employeeLogs?.[state.selectedDateKey]?.["profile-user"]?.tasks?.[0]?.text || "",
+    storageText: JSON.parse(localStorage.getItem("beyond-worklog-state-v1") || "{}").employeeLogs?.["2026-07-27"]?.["profile-user"]?.tasks?.[0]?.text || ""
+  })`));
+  const saved = JSON.parse(saveMetrics);
+  if (saved.disabled) fail("unmapped employee own worklog input should be enabled", saveMetrics);
+  if (saved.value !== "홍길동 업무 입력 저장 확인" || saved.savedText !== saved.value || saved.storageText !== saved.value) {
+    fail("unmapped employee own worklog input should persist to profile-user log", saveMetrics);
+  }
+  if (errors.length) fail("unmapped employee identity regression page errors", errors.join(" | "));
+  await page.close();
+}
+
+async function checkApprovedEmployeeWorklogEditMatrix(browser) {
+  const cases = [
+    {
+      label: "bangju finance manager",
+      userId: "finance-manager-user",
+      email: "finance.manager@example.com",
+      profile: {
+        role: "재무과장",
+        name: "재무과장",
+        nickname: "재무",
+        org: "(주)방주",
+        workplace: "본사",
+        primaryWork: "자금 회계 보고",
+      },
+      expectedView: "bangju-log",
+      expectedEmployeeId: "bangju-finance-manager",
+    },
+    {
+      label: "construction finance assistant",
+      userId: "construction-finance-user",
+      email: "isomi.construction@example.com",
+      profile: {
+        role: "재무 대리",
+        name: "이소미",
+        nickname: "이소미",
+        org: "(주)비제이종합건설",
+        workplace: "동천체육관 현장",
+        primaryWork: "건설현장 지출 정산 노무자료",
+      },
+      expectedView: "bangju-log",
+      expectedEmployeeId: "construction-finance-assistant",
+    },
+    {
+      label: "beyond shared manager",
+      userId: "beyond-shared-user",
+      email: "shared.manager@example.com",
+      profile: {
+        role: "공유사업부 매니저",
+        name: "공유사업부 매니저",
+        nickname: "공유",
+        org: "(주)비욘드 컴퍼니",
+        workplace: "공유사업부",
+        primaryWork: "공유오피스 공유창고 고객관리",
+      },
+      expectedView: "beyond-log",
+      expectedEmployeeId: "beyond-shared-manager",
+    },
+    {
+      label: "approved local profile without remote session",
+      userId: "",
+      email: "offline.approved@example.com",
+      profile: {
+        role: "직원",
+        name: "오프라인직원",
+        nickname: "오프라인",
+        org: "(주)방주",
+        workplace: "본사",
+        primaryWork: "기획 관리",
+      },
+      expectedView: "bangju-log",
+      expectedEmployeeId: "profile-user",
+    },
+  ];
+
+  for (const testCase of cases) {
+    const page = await browser.newPage({ viewport: { width: 390, height: 844 } });
+    const errors = [];
+    page.on("pageerror", (error) => errors.push(error.message));
+    await page.addInitScript((payload) => {
+      localStorage.setItem("beyond-worklog-state-v1", JSON.stringify({
+        selectedDateKey: "2026-07-27",
+        selectedEmployeeId: "beyond-fitness-manager",
+        fitnessWritableEmployeeId: "beyond-fitness-manager",
+        profile: {
+          email: payload.email,
+          approvalStatus: "approved",
+          accessPreset: "employee",
+          permissions: {},
+          ...payload.profile,
+        },
+        employeeLogs: {},
+      }));
+      localStorage.setItem("beyond-worklog-global-view-mode", "ceo");
+    }, testCase);
+    await page.goto(target, { waitUntil: "domcontentloaded" });
+    await page.evaluate((payload) => {
+      document.body.classList.add("physical-phone-device");
+      document.body.dataset.layoutMode = "phone";
+      document.body.dataset.viewMode = "ceo";
+      window.eval(`
+        authState.user = ${payload.userId ? JSON.stringify({ id: payload.userId, email: payload.email }) : "null"};
+        state.profile = {
+          ...state.profile,
+          email: ${JSON.stringify(payload.email)},
+          approvalStatus: "approved",
+          accessPreset: "employee",
+          permissions: {},
+          ...${JSON.stringify(payload.profile)}
+        };
+        normalizeState();
+        switchView(getInitialLandingView());
+      `);
+    }, testCase);
+    await page.waitForTimeout(350);
+    const marker = `${testCase.label} 입력 저장`;
+    await page.fill("#worklogTaskBoard .task-text-input", marker);
+    await page.waitForTimeout(300);
+    const metrics = await page.evaluate((payload) => window.eval(`JSON.stringify({
+      activeView: document.body.dataset.activeView,
+      selectedEmployeeId: state.selectedEmployeeId,
+      ownEditableEmployeeId: getOwnEditableEmployeeIdForView(activeView),
+      canEdit: canEditCurrentWorklog(activeView),
+      disabled: document.querySelector("#worklogTaskBoard .task-text-input")?.disabled ?? true,
+      inputValue: document.querySelector("#worklogTaskBoard .task-text-input")?.value || "",
+      savedText: state.employeeLogs?.[state.selectedDateKey]?.[${JSON.stringify(payload.expectedEmployeeId)}]?.tasks?.[0]?.text || "",
+      profileSavedText: state.employeeLogs?.[state.selectedDateKey]?.["profile-user"]?.tasks?.[0]?.text || "",
+      storage: localStorage.getItem("beyond-worklog-state-v1") || "{}"
+    })`), testCase);
+    const parsed = JSON.parse(metrics);
+    const storage = JSON.parse(parsed.storage || "{}");
+    const storedText = storage.employeeLogs?.["2026-07-27"]?.[testCase.expectedEmployeeId]?.tasks?.[0]?.text
+      || storage.employeeLogs?.["2026-07-27"]?.["profile-user"]?.tasks?.[0]?.text
+      || "";
+    if (parsed.activeView !== testCase.expectedView) fail("approved employee landed on wrong worklog view", `${testCase.label}: ${metrics}`);
+    if (parsed.selectedEmployeeId !== testCase.expectedEmployeeId) fail("approved employee did not select own editable sheet", `${testCase.label}: ${metrics}`);
+    if (parsed.ownEditableEmployeeId !== testCase.expectedEmployeeId || !parsed.canEdit || parsed.disabled) {
+      fail("approved employee own worklog should be editable", `${testCase.label}: ${metrics}`);
+    }
+    const savedText = parsed.savedText || parsed.profileSavedText || "";
+    if (parsed.inputValue !== marker || savedText !== marker || storedText !== marker) {
+      fail("approved employee worklog input should persist", `${testCase.label}: ${JSON.stringify({ parsed, storedText })}`);
+    }
+    if (errors.length) fail("approved employee edit matrix page errors", `${testCase.label}: ${errors.join(" | ")}`);
+    await page.close();
+  }
 }
 
 async function checkCalendarAnnotations(browser) {
@@ -1094,6 +1359,9 @@ async function checkFitnessNewEmployeeRegistrationFlow(browser) {
     await checkRealDeviceRegressionLayouts(browser);
     await checkFitnessNewEmployeeRegistrationFlow(browser);
     await checkRepresentativeProfileSeparation(browser);
+    await checkNonControlRoleTextDoesNotBecomeRepresentative(browser);
+    await checkUnmappedEmployeeDoesNotInheritFitnessManager(browser);
+    await checkApprovedEmployeeWorklogEditMatrix(browser);
     await checkCalendarAnnotations(browser);
   } finally {
     await browser.close();

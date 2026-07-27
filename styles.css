@@ -15931,22 +15931,58 @@ body.physical-phone-device #view-fitness-log {
 
 body[data-layout-mode="phone"] #view-fitness-log::before,
 body.physical-phone-device #view-fitness-log::before {
-  content: "beyond fitness";
+  content: none !important;
+  display: none !important;
+}
+
+.worklog-person-chip {
+  display: inline-flex;
+  align-items: center;
+  min-width: 0;
+  max-width: 100%;
+  min-height: 34px;
+  padding: 7px 13px;
+  overflow: hidden;
+  border: 1px solid rgba(15, 59, 46, 0.1);
+  border-radius: 999px;
+  background:
+    linear-gradient(180deg, rgba(255, 254, 250, 0.96), rgba(242, 248, 244, 0.88));
+  box-shadow:
+    0 12px 28px rgba(15, 59, 46, 0.07),
+    inset 0 1px 0 rgba(255, 255, 255, 0.78);
+  color: rgba(14, 47, 37, 0.92);
+  font-size: clamp(13px, 2.4vw, 15px);
+  font-weight: 920;
+  letter-spacing: 0;
+  line-height: 1.15;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+#view-today .worklog-person-chip,
+#view-fitness-log .fitness-person-chip {
+  justify-self: start;
+  width: fit-content;
+}
+
+body[data-layout-mode="phone"] #view-today .worklog-person-chip,
+body.physical-phone-device #view-today .worklog-person-chip,
+body[data-layout-mode="phone"] #view-fitness-log .fitness-person-chip,
+body.physical-phone-device #view-fitness-log .fitness-person-chip {
   position: absolute;
   top: max(17px, calc(env(safe-area-inset-top) + 9px));
   left: max(18px, env(safe-area-inset-left));
   z-index: 125;
-  display: inline-flex;
-  align-items: center;
-  min-height: 34px;
+  width: calc(100% - 158px);
   max-width: calc(100% - 158px);
-  overflow: hidden;
+  min-height: 34px;
+  padding-inline: 0;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
   color: rgba(14, 47, 37, 0.9);
   font-size: 17px;
   font-weight: 950;
-  letter-spacing: 0;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
 body[data-layout-mode="phone"] #view-fitness-log .fitness-coaching-row,
@@ -16806,6 +16842,86 @@ body[data-view-mode="ceo"] #view-today .worklog-main.is-focus-schedule .appointm
 body[data-layout-mode="phone"] #view-today .worklog-main.is-focus-schedule .appointment-time,
 body.physical-phone-device #view-today .worklog-main.is-focus-schedule .appointment-time,
 body[data-view-mode="ceo"] #view-today .worklog-main.is-focus-schedule .appointment-time {
+  white-space: nowrap !important;
+}
+
+body[data-layout-mode="phone"] #view-fitness-log.is-focus-tasks .fitness-log-schedule-panel,
+body.physical-phone-device #view-fitness-log.is-focus-tasks .fitness-log-schedule-panel,
+body[data-view-mode="ceo"] #view-fitness-log.is-focus-tasks .fitness-log-schedule-panel,
+body[data-layout-mode="phone"] #view-fitness-log.is-focus-schedule .fitness-log-task-panel,
+body.physical-phone-device #view-fitness-log.is-focus-schedule .fitness-log-task-panel,
+body[data-view-mode="ceo"] #view-fitness-log.is-focus-schedule .fitness-log-task-panel,
+body[data-layout-mode="phone"] #view-fitness-log.is-mobile-focus-active .fitness-ops-section,
+body.physical-phone-device #view-fitness-log.is-mobile-focus-active .fitness-ops-section,
+body[data-view-mode="ceo"] #view-fitness-log.is-mobile-focus-active .fitness-ops-section,
+body[data-layout-mode="phone"] #view-fitness-log.is-mobile-focus-active .fitness-center-daily-panel,
+body.physical-phone-device #view-fitness-log.is-mobile-focus-active .fitness-center-daily-panel,
+body[data-view-mode="ceo"] #view-fitness-log.is-mobile-focus-active .fitness-center-daily-panel,
+body[data-layout-mode="phone"] #view-fitness-log.is-mobile-focus-active .fitness-report-menu-button,
+body.physical-phone-device #view-fitness-log.is-mobile-focus-active .fitness-report-menu-button,
+body[data-view-mode="ceo"] #view-fitness-log.is-mobile-focus-active .fitness-report-menu-button {
+  display: none !important;
+}
+
+body[data-layout-mode="phone"] #view-fitness-log.is-focus-tasks .mobile-focus-done,
+body[data-layout-mode="phone"] #view-fitness-log.is-focus-schedule .mobile-focus-done,
+body.physical-phone-device #view-fitness-log.is-focus-tasks .mobile-focus-done,
+body.physical-phone-device #view-fitness-log.is-focus-schedule .mobile-focus-done,
+body[data-view-mode="ceo"] #view-fitness-log.is-focus-tasks .mobile-focus-done,
+body[data-view-mode="ceo"] #view-fitness-log.is-focus-schedule .mobile-focus-done {
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+}
+
+body[data-layout-mode="phone"] #view-fitness-log.is-focus-tasks .mobile-focus-open,
+body[data-layout-mode="phone"] #view-fitness-log.is-focus-schedule .mobile-focus-open,
+body.physical-phone-device #view-fitness-log.is-focus-tasks .mobile-focus-open,
+body.physical-phone-device #view-fitness-log.is-focus-schedule .mobile-focus-open,
+body[data-view-mode="ceo"] #view-fitness-log.is-focus-tasks .mobile-focus-open,
+body[data-view-mode="ceo"] #view-fitness-log.is-focus-schedule .mobile-focus-open {
+  display: none !important;
+}
+
+body[data-layout-mode="phone"] #view-fitness-log.is-mobile-focus-active .fitness-log-task-panel,
+body[data-layout-mode="phone"] #view-fitness-log.is-mobile-focus-active .fitness-log-schedule-panel,
+body.physical-phone-device #view-fitness-log.is-mobile-focus-active .fitness-log-task-panel,
+body.physical-phone-device #view-fitness-log.is-mobile-focus-active .fitness-log-schedule-panel,
+body[data-view-mode="ceo"] #view-fitness-log.is-mobile-focus-active .fitness-log-task-panel,
+body[data-view-mode="ceo"] #view-fitness-log.is-mobile-focus-active .fitness-log-schedule-panel {
+  width: 100% !important;
+  max-width: 100% !important;
+  overflow-x: hidden !important;
+}
+
+body[data-layout-mode="phone"] #view-fitness-log.is-focus-tasks .task-row,
+body.physical-phone-device #view-fitness-log.is-focus-tasks .task-row,
+body[data-view-mode="ceo"] #view-fitness-log.is-focus-tasks .task-row {
+  grid-template-columns: 28px minmax(26px, auto) minmax(0, 1fr) 28px !important;
+  min-height: 44px !important;
+}
+
+body[data-layout-mode="phone"] #view-fitness-log.is-focus-tasks .task-text-input,
+body.physical-phone-device #view-fitness-log.is-focus-tasks .task-text-input,
+body[data-view-mode="ceo"] #view-fitness-log.is-focus-tasks .task-text-input,
+body[data-layout-mode="phone"] #view-fitness-log.is-focus-schedule .appointment-row input[type="text"],
+body.physical-phone-device #view-fitness-log.is-focus-schedule .appointment-row input[type="text"],
+body[data-view-mode="ceo"] #view-fitness-log.is-focus-schedule .appointment-row input[type="text"] {
+  min-width: 0 !important;
+  max-width: 100% !important;
+  font-size: clamp(17px, 4.8vw, 22px) !important;
+}
+
+body[data-layout-mode="phone"] #view-fitness-log.is-focus-schedule .fitness-appointment-row,
+body.physical-phone-device #view-fitness-log.is-focus-schedule .fitness-appointment-row,
+body[data-view-mode="ceo"] #view-fitness-log.is-focus-schedule .fitness-appointment-row {
+  grid-template-columns: 64px minmax(0, 1fr) 30px !important;
+  min-height: 46px !important;
+}
+
+body[data-layout-mode="phone"] #view-fitness-log.is-focus-schedule .appointment-time,
+body.physical-phone-device #view-fitness-log.is-focus-schedule .appointment-time,
+body[data-view-mode="ceo"] #view-fitness-log.is-focus-schedule .appointment-time {
   white-space: nowrap !important;
 }
 
