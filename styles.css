@@ -16685,6 +16685,57 @@ body.physical-phone-device #view-today .mobile-focus-open::after {
   line-height: 1;
 }
 
+/* Unified zoom controls: magnifier plus for expand, magnifier minus for collapse. */
+.mobile-focus-open,
+.mobile-focus-done {
+  position: relative !important;
+  min-width: 32px !important;
+  width: 32px !important;
+  min-height: 32px !important;
+  padding: 0 !important;
+  border-radius: 999px !important;
+  font-size: 0 !important;
+  line-height: 0 !important;
+}
+
+.mobile-focus-open::before,
+.mobile-focus-done::before {
+  content: "+" !important;
+  position: absolute;
+  left: 5px;
+  top: 4px;
+  display: grid;
+  width: 18px;
+  height: 18px;
+  place-items: center;
+  border: 2px solid currentColor;
+  border-radius: 50%;
+  color: currentColor;
+  font-size: 15px;
+  font-weight: 950;
+  line-height: 1;
+}
+
+.mobile-focus-done::before {
+  content: "-" !important;
+  font-size: 18px;
+  line-height: 0.8;
+}
+
+.mobile-focus-open::after,
+.mobile-focus-done::after {
+  content: "" !important;
+  position: absolute;
+  right: 5px;
+  bottom: 6px;
+  width: 7px;
+  height: 3px;
+  border-radius: 999px;
+  background: currentColor;
+  transform: rotate(45deg);
+  transform-origin: center;
+}
+
 body[data-layout-mode="phone"] #view-today .schedule-unit-button,
 body[data-layout-mode="phone"] #view-today .ai-section-button,
 body.physical-phone-device #view-today .schedule-unit-button,

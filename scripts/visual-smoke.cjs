@@ -113,10 +113,32 @@ async function checkPhoneWorklog(browser) {
   const widthRatio = metrics.taskWidth / Math.max(1, metrics.scheduleWidth);
   if (widthRatio < 0.82 || widthRatio > 1.18) fail("phone task/schedule split is not balanced", String(widthRatio));
 
+  const expandIcon = await page.evaluate(() => {
+    const button = document.querySelector(".day-task-panel [data-mobile-focus-open='tasks']");
+    return {
+      lens: getComputedStyle(button, "::before").content,
+      handle: getComputedStyle(button, "::after").content,
+    };
+  });
+  if (!expandIcon.lens.includes("+") || expandIcon.handle !== '""') {
+    fail("phone worklog expand icon should be a plus magnifier", JSON.stringify(expandIcon));
+  }
+
   await page.click(".day-task-panel [data-mobile-focus-open='tasks']");
   await page.waitForTimeout(100);
   const panelTapFocus = await page.evaluate(() => document.querySelector("#worklogMain")?.classList.contains("is-focus-tasks"));
   if (!panelTapFocus) fail("phone worklog task expand button should open focus mode");
+
+  const collapseIcon = await page.evaluate(() => {
+    const button = document.querySelector(".day-task-panel [data-mobile-focus-close]");
+    return {
+      lens: getComputedStyle(button, "::before").content,
+      handle: getComputedStyle(button, "::after").content,
+    };
+  });
+  if (!collapseIcon.lens.includes("-") || collapseIcon.handle !== '""') {
+    fail("phone worklog collapse icon should be a minus magnifier", JSON.stringify(collapseIcon));
+  }
 
   await page.click(".day-task-panel [data-mobile-focus-close]");
   await page.waitForTimeout(150);
