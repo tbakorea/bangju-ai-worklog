@@ -5935,7 +5935,8 @@ function renderWorklogTaskRow(ref, currentLog) {
   const { task, index, log, isPostponedFromOtherDate, sourceDateKey } = ref;
   const row = document.createElement("div");
   const marker = getWorklogTaskMarker(task);
-  row.className = `worklog-task-row task-row priority-${String(task.priority || "?").toLowerCase()} marker-${marker} ${task.done ? "done" : ""} ${isPostponedFromOtherDate ? "is-postponed-in" : ""}`;
+  const statusClass = getWorklogTaskStatusClass(task);
+  row.className = `worklog-task-row task-row priority-${String(task.priority || "?").toLowerCase()} marker-${marker} ${statusClass} ${task.done ? "done" : ""} ${isPostponedFromOtherDate ? "is-postponed-in" : ""}`;
   row.innerHTML = `
     <button class="task-cycle" type="button" aria-label="상태 변경">${getWorklogTaskMarkerLabel(task)}</button>
     <div class="task-status-cell">${renderTaskMetaControl(task)}</div>
@@ -5977,6 +5978,13 @@ function renderWorklogTaskRow(ref, currentLog) {
     renderEntries();
   };
   return row;
+}
+
+function getWorklogTaskStatusClass(task) {
+  if (task.done || task.status === "완료") return "status-complete";
+  if (task.status === "연기") return "status-postpone";
+  if (task.status === "취소") return "status-cancel";
+  return "";
 }
 
 function renderTaskMetaControl(task) {
