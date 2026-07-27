@@ -8906,6 +8906,50 @@ body[data-layout-mode="phone"] .fitness-log-schedule-panel .fitness-appointment-
   transform: translate(-50%, 0);
 }
 
+.undo-toast {
+  position: fixed;
+  right: max(16px, env(safe-area-inset-right));
+  bottom: max(18px, calc(env(safe-area-inset-bottom) + 14px));
+  left: max(16px, env(safe-area-inset-left));
+  z-index: 160;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  max-width: 520px;
+  margin: 0 auto;
+  padding: 10px 10px 10px 15px;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 999px;
+  background: rgba(11, 38, 31, 0.94);
+  color: #fffefa;
+  box-shadow: 0 18px 44px rgba(10, 23, 18, 0.24);
+  font-size: 14px;
+  font-weight: 900;
+  letter-spacing: 0;
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(12px);
+  transition: opacity 180ms ease, transform 180ms ease;
+}
+
+.undo-toast.is-visible {
+  opacity: 1;
+  pointer-events: auto;
+  transform: translateY(0);
+}
+
+.undo-toast button {
+  min-width: 84px;
+  min-height: 34px;
+  border: 1px solid rgba(255, 255, 255, 0.52);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.94);
+  color: #0e3f32;
+  font-size: 13px;
+  font-weight: 950;
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
@@ -14678,6 +14722,12 @@ body[data-layout-mode="phone"] #view-fitness-log .fitness-log-pager {
   font-weight: 950;
 }
 
+#view-today .common-week-header small {
+  color: rgba(38, 50, 56, 0.62);
+  font-size: 12px;
+  font-weight: 850;
+}
+
 #view-today .common-week-header button {
   min-height: 38px;
   border: 1px solid rgba(15, 59, 46, 0.12);
@@ -14732,6 +14782,129 @@ body[data-layout-mode="phone"] #view-fitness-log .fitness-log-pager {
   font-size: 12px;
   font-weight: 760;
   line-height: 1.45;
+}
+
+#view-today .company-common-days {
+  align-items: stretch;
+}
+
+#view-today .company-common-day {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  gap: 8px;
+  min-height: 188px;
+  border: 1px solid rgba(15, 59, 46, 0.1);
+  border-radius: 14px;
+  background: rgba(255, 254, 250, 0.78);
+  padding: 10px;
+}
+
+#view-today .company-common-day header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+#view-today .company-common-day header b {
+  color: var(--fitness-green);
+  font-size: 14px;
+  font-weight: 950;
+}
+
+#view-today .company-common-day header span {
+  color: rgba(15, 59, 46, 0.58);
+  font-size: 11px;
+  font-weight: 950;
+}
+
+#view-today .company-common-list {
+  display: grid;
+  align-content: start;
+  gap: 5px;
+  min-width: 0;
+}
+
+#view-today .company-common-row {
+  display: grid;
+  grid-template-columns: 22px minmax(0, 1fr) auto auto;
+  gap: 5px;
+  align-items: center;
+  min-width: 0;
+  min-height: 30px;
+  border-bottom: 1px solid rgba(15, 59, 46, 0.08);
+}
+
+#view-today .company-common-row label {
+  display: grid;
+  width: 20px;
+  height: 20px;
+  place-items: center;
+}
+
+#view-today .company-common-row input[type="checkbox"] {
+  width: 17px;
+  height: 17px;
+  margin: 0;
+  accent-color: var(--fitness-green);
+}
+
+#view-today .company-common-row input[type="text"] {
+  min-width: 0;
+  border: 0;
+  background: transparent;
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 820;
+}
+
+#view-today .company-common-row input[type="text"]:disabled {
+  color: rgba(38, 50, 56, 0.72);
+  opacity: 1;
+}
+
+#view-today .company-common-row.is-done input[type="text"] {
+  color: rgba(38, 50, 56, 0.45);
+  text-decoration: line-through;
+  text-decoration-color: rgba(199, 55, 55, 0.72);
+  text-decoration-thickness: 2px;
+}
+
+#view-today .company-common-row em {
+  border-radius: 999px;
+  background: rgba(15, 59, 46, 0.08);
+  color: rgba(15, 59, 46, 0.72);
+  padding: 2px 5px;
+  font-size: 10px;
+  font-style: normal;
+  font-weight: 950;
+}
+
+#view-today .company-common-row button {
+  width: 22px;
+  height: 22px;
+  border: 0;
+  background: transparent;
+  color: rgba(199, 55, 55, 0.42);
+  font-size: 16px;
+  font-weight: 950;
+}
+
+#view-today .company-common-add {
+  min-height: 30px;
+  border: 1px dashed rgba(15, 59, 46, 0.22);
+  border-radius: 999px;
+  background: rgba(255, 254, 250, 0.82);
+  color: var(--fitness-green);
+  font-size: 12px;
+  font-weight: 950;
+}
+
+#view-today .company-common-empty {
+  margin: 4px 0;
+  color: rgba(38, 50, 56, 0.46);
+  font-size: 12px;
+  font-weight: 820;
 }
 
 #view-today .common-week-brief {
@@ -14805,6 +14978,10 @@ body[data-layout-mode="phone"] #view-fitness-log .fitness-log-pager {
 
   #view-today .common-week-day {
     min-height: 118px;
+  }
+
+  #view-today .company-common-day {
+    min-height: 130px;
   }
 }
 

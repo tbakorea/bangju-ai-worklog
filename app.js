@@ -576,6 +576,7 @@ function createState() {
     fitnessWritableEmployeeId: "beyond-fitness-manager",
     employeePermissions: {},
     employeeDirectoryOverrides: {},
+    companyCommonWeeks: {},
     laborPayroll: {},
     reportTone: "executive",
     reportArchive: {
@@ -625,6 +626,7 @@ function normalizeState() {
   state.selectedEmployeeId ||= mappedProfileEmployeeId || "profile-user";
   state.employeePermissions = normalizeEmployeePermissionState(state.employeePermissions || {});
   state.employeeDirectoryOverrides = { ...(state.employeeDirectoryOverrides || {}) };
+  state.companyCommonWeeks = { ...(state.companyCommonWeeks || {}) };
   state.laborPayroll = { ...(state.laborPayroll || {}) };
   state.profile.manualSettings = {
     ...defaultProfile.manualSettings,
@@ -1136,6 +1138,40 @@ function showAppToast(message = "") {
   void toast.offsetWidth;
   toast.classList.add("is-visible");
   window.setTimeout(() => toast.classList.remove("is-visible"), 1400);
+}
+
+let undoToastTimer = null;
+
+function showUndoToast(message = "", onUndo = null) {
+  const shell = document.querySelector(".worklog-shell") || document.body;
+  if (!shell || !message) return;
+  let toast = document.getElementById("undoToast");
+  if (!toast) {
+    toast = document.createElement("div");
+    toast.id = "undoToast";
+    toast.className = "undo-toast";
+    shell.appendChild(toast);
+  }
+  toast.innerHTML = `
+    <span>${escapeHtml(message)}</span>
+    <button type="button">되돌리기</button>
+  `;
+  const button = toast.querySelector("button");
+  button.onclick = () => {
+    if (typeof onUndo === "function") onUndo();
+    toast.classList.remove("is-visible");
+  };
+  window.clearTimeout(undoToastTimer);
+  toast.classList.remove("is-visible");
+  void toast.offsetWidth;
+  toast.classList.add("is-visible");
+  undoToastTimer = window.setTimeout(() => toast.classList.remove("is-visible"), 6000);
+}
+
+function restoreObjectSnapshot(target, snapshot) {
+  if (!target || !snapshot) return;
+  Object.keys(target).forEach((key) => delete target[key]);
+  Object.assign(target, cloneWorklogLogForAudit(snapshot));
 }
 
 function hasAttendanceRecord(log = getSelectedLog()) {
@@ -4850,6 +4886,7 @@ function buildRemoteSnapshot() {
     profile: state.profile,
     employeeLogs: { [key]: state.employeeLogs?.[key] || {} },
     attendance: { [key]: state.attendance?.[key] || [] },
+    companyCommonWeeks: state.companyCommonWeeks || {},
     reportTone: state.reportTone,
     backupSettings: state.backupSettings,
   };
@@ -4893,6 +4930,7 @@ async function loadRemoteWorklogForActiveDate() {
   state.profile = { ...state.profile, ...(data.state.profile || {}) };
   state.employeeLogs = { ...(state.employeeLogs || {}), ...(data.state.employeeLogs || {}) };
   state.attendance = { ...(state.attendance || {}), ...(data.state.attendance || {}) };
+  state.companyCommonWeeks = { ...(state.companyCommonWeeks || {}), ...(data.state.companyCommonWeeks || {}) };
   state.reportTone = data.state.reportTone || state.reportTone;
   state.backupSettings = { ...(state.backupSettings || {}), ...(data.state.backupSettings || {}) };
   normalizeState();
@@ -5779,48 +5817,80 @@ function renderSharedWorklogPanels(log = getSelectedLog()) {
   const selectedEmployee = getSelectedEmployee();
   const commonWeekKey = getActiveWeekKey(dateKey);
   const weekRange = getWeekDateKeys(dateKey);
-  const weekStart = parseDateKey(commonWeekKey);
-  const weekEnd = parseDateKey(commonWeekKey);
-  weekEnd.setDate(weekStart.getDate() + 6);
-  const weeklyReview = weekRange.map((key) => {
-    const dayLog = state.employeeLogs?.[key]?.[selectedEmployee.id];
-    const tasks = (dayLog?.tasks || []).filter(isActiveTask).slice(0, 4);
-    const scheduleCount = (dayLog?.schedule || []).filter((item) => getScheduleEntryText(item)).length;
-    const done = tasks.filter((task) => task.done || task.status === "완료").length;
-    return { key, tasks, scheduleCount, done };
-  });
+  const companyKey = getCompanyCommonKey(selectedEmployee);
+  const companyLabel = getCompanyCommonLabel(companyKey);
+  const { week, changed: commonChanged } = ensureCompanyCommonWeek(companyKey, commonWeekKey);
+  const commonProgress = getCommonWeekProgress(week);
+  const canEditCommon = canEditCompanyCommonSchedule(selectedEmployee);
   common.innerHTML = `
     <section class="common-week-header">
       <div>
-        <span>Beyond Work Weekly</span>
-        <strong>주간 계획 (${escapeHtml(formatCommonWeekRange(commonWeekKey))})</strong>
+        <span>Company Common Schedule</span>
+        <strong>${escapeHtml(companyLabel)} 공통일정</strong>
+        <small>${escapeHtml(formatCommonWeekRange(commonWeekKey))} · 완료 ${commonProgress.done}/${commonProgress.total} · 미완료 ${commonProgress.pending}</small>
       </div>
-      <button type="button" id="commonWeekTodayButton">오늘 업무일지</button>
+      <button type="button" id="commonWeekTodayButton">업무일지</button>
     </section>
-    <section class="common-week-days" aria-label="주간 업무 요약">
-      ${weeklyReview.map((day) => `
-        <button type="button" class="common-week-day ${day.key === dateKey ? "is-selected" : ""}" data-common-week-date="${escapeAttr(day.key)}">
-          <strong>${escapeHtml(formatKoreanDate(day.key).replace(/^\d{4}\./, ""))}</strong>
-          <span>${day.done}/${day.tasks.length || 0} 완료 · 일정 ${day.scheduleCount}</span>
-          <small>${day.tasks.length ? day.tasks.map((task) => `${escapeHtml(task.priority || "?")}. ${escapeHtml(task.text || "")}`).join("<br>") : "일간 페이지에 업무를 입력하세요."}</small>
-        </button>
-      `).join("")}
+    <section class="common-week-days company-common-days ${canEditCommon ? "is-editable" : "is-readonly"}" aria-label="회사 공통일정">
+      ${weekRange.map((key) => renderCompanyCommonWeekDay(key, week.days?.[key] || [], canEditCommon)).join("")}
     </section>
     <section class="common-week-brief">
-      <b>주간 운영 메모</b>
+      <b>운영 규칙</b>
       <div>
-        <p>이 페이지는 Beyond Work의 주간섹션처럼 日~土 업무 흐름을 한 화면에서 확인하는 용도입니다.</p>
-        <p>각 요일을 누르면 해당 날짜의 방주/비욘드 업무일지로 이동합니다.</p>
+        <p>공통일정은 개인 업무기록이 아니라 소속회사에서 함께 확인해야 하는 요일별 업무입니다.</p>
+        <p>이번 주에 완료하지 않은 항목은 다음 주 같은 요일로 자동 이월됩니다. 중요도는 사용하지 않고 체크 여부로만 관리합니다.</p>
       </div>
     </section>
   `;
   common.querySelector("#commonWeekTodayButton")?.addEventListener("click", () => setTodayPageMode("daily"));
-  common.querySelectorAll("[data-common-week-date]").forEach((button) => {
+  common.querySelectorAll("[data-common-add]").forEach((button) => {
     button.addEventListener("click", () => {
-      setSelectedDateKey(button.dataset.commonWeekDate);
-      setTodayPageMode("daily");
+      if (!guardCompanyCommonEdit(selectedEmployee)) return;
+      const dayKey = button.dataset.commonAdd;
+      week.days[dayKey] ||= [];
+      week.days[dayKey].push(createCommonScheduleItem(""));
+      saveState();
+      renderSharedWorklogPanels();
     });
   });
+  common.querySelectorAll("[data-common-check]").forEach((checkbox) => {
+    checkbox.addEventListener("change", () => {
+      if (!guardCompanyCommonEdit(selectedEmployee)) return;
+      const item = Object.values(week.days || {}).flat().find((row) => row.id === checkbox.dataset.commonCheck);
+      if (!item) return;
+      item.done = checkbox.checked;
+      item.completedAt = item.done ? new Date().toISOString() : "";
+      saveState({ fastSave: true });
+      renderSharedWorklogPanels();
+    });
+  });
+  common.querySelectorAll("[data-common-text]").forEach((field) => {
+    field.addEventListener("input", () => {
+      if (!guardCompanyCommonEdit(selectedEmployee)) return;
+      const item = Object.values(week.days || {}).flat().find((row) => row.id === field.dataset.commonText);
+      if (!item) return;
+      item.text = field.value;
+      saveState({ fastSave: true });
+    });
+    field.addEventListener("blur", () => renderSharedWorklogPanels());
+  });
+  common.querySelectorAll("[data-common-delete]").forEach((button) => {
+    button.addEventListener("click", () => {
+      if (!guardCompanyCommonEdit(selectedEmployee)) return;
+      const beforeWeek = cloneWorklogLogForAudit(week);
+      Object.keys(week.days || {}).forEach((dayKey) => {
+        week.days[dayKey] = (week.days[dayKey] || []).filter((item) => item.id !== button.dataset.commonDelete);
+      });
+      saveState();
+      renderSharedWorklogPanels();
+      showUndoToast("공통일정을 삭제했습니다", () => {
+        restoreObjectSnapshot(week, beforeWeek);
+        saveState();
+        renderSharedWorklogPanels();
+      });
+    });
+  });
+  if (commonChanged) saveState({ fastSave: true });
 
   const siteKey = selectedEmployee.org?.split(" / ").at(-1) || selectedEmployee.org || "";
   const coworkerRows = getEmployeeOptions()
@@ -5862,6 +5932,126 @@ function getWeekDateKeys(dateKey) {
 function formatWeekdayShort(dateKey) {
   const date = parseDateKey(dateKey);
   return `${date.getMonth() + 1}/${date.getDate()} ${hanjaWeekdays[date.getDay()]}`;
+}
+
+function getCompanyCommonKey(employee = getSelectedEmployee()) {
+  const source = `${employee?.org || ""} ${employee?.workplace || ""}`.trim();
+  if (/피트니스|fitness/i.test(source)) return "beyond-fitness";
+  if (/비욘드\s*컴퍼니|비욘드컴퍼니|beyond company/i.test(source)) return "beyond-company";
+  if (/비제이|종합건설|건설|bj/i.test(source)) return "bj-construction";
+  if (/방주|bangju/i.test(source)) return "bangju";
+  return source || "bangju";
+}
+
+function getCompanyCommonLabel(companyKey = getCompanyCommonKey()) {
+  return {
+    bangju: "(주)방주",
+    "beyond-company": "(주)비욘드컴퍼니",
+    "beyond-fitness": "비욘드 피트니스",
+    "bj-construction": "(주)비제이종합건설",
+  }[companyKey] || companyKey || "(주)방주";
+}
+
+function createCommonScheduleItem(text = "", source = null) {
+  const id = crypto.randomUUID?.() || `common-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+  return {
+    id,
+    text,
+    done: false,
+    createdAt: new Date().toISOString(),
+    carryFrom: source?.carryFrom || source?.id || "",
+    sourceWeekKey: source?.sourceWeekKey || "",
+  };
+}
+
+function getPreviousWeekKey(weekKey = getActiveWeekKey()) {
+  const date = parseDateKey(weekKey);
+  date.setDate(date.getDate() - 7);
+  return formatDateKey(date);
+}
+
+function ensureCompanyCommonWeek(companyKey = getCompanyCommonKey(), weekKey = getActiveWeekKey()) {
+  state.companyCommonWeeks ||= {};
+  state.companyCommonWeeks[companyKey] ||= {};
+  const weeks = state.companyCommonWeeks[companyKey];
+  weeks[weekKey] ||= { weekKey, days: {} };
+  const week = weeks[weekKey];
+  week.days ||= {};
+  getWeekDateKeys(weekKey).forEach((dateKey) => {
+    week.days[dateKey] = Array.isArray(week.days[dateKey]) ? week.days[dateKey] : [];
+  });
+
+  let changed = false;
+  const previousWeek = weeks[getPreviousWeekKey(weekKey)];
+  if (previousWeek?.days) {
+    getWeekDateKeys(weekKey).forEach((dateKey, index) => {
+      const previousDateKey = getWeekDateKeys(previousWeek.weekKey || getPreviousWeekKey(weekKey))[index];
+      const previousItems = previousWeek.days?.[previousDateKey] || [];
+      const currentItems = week.days[dateKey] || [];
+      previousItems
+        .filter((item) => item.text?.trim() && !item.done)
+        .forEach((item) => {
+          const carryKey = item.carryFrom || item.id;
+          const exists = currentItems.some((current) => (current.carryFrom || current.id) === carryKey);
+          if (exists) return;
+          currentItems.push(createCommonScheduleItem(item.text, {
+            ...item,
+            carryFrom: carryKey,
+            sourceWeekKey: previousWeek.weekKey || getPreviousWeekKey(weekKey),
+          }));
+          changed = true;
+        });
+      week.days[dateKey] = currentItems;
+    });
+  }
+  return { week, changed };
+}
+
+function canEditCompanyCommonSchedule(employee = getSelectedEmployee()) {
+  if (isExplicitlySignedOut()) return false;
+  if (isRepresentativeProfile() || hasProfilePermission("worklogAll") || hasProfilePermission("worklogSite")) return true;
+  const ownEmployeeId = getProfileMappedEmployeeId() || "profile-user";
+  const ownEmployee = getEmployeeOptions().find((item) => item.id === ownEmployeeId) || getProfileEmployee();
+  return getCompanyCommonKey(employee) === getCompanyCommonKey(ownEmployee);
+}
+
+function guardCompanyCommonEdit(employee = getSelectedEmployee()) {
+  if (canEditCompanyCommonSchedule(employee)) return true;
+  showAppToast("소속회사 공통일정만 수정할 수 있습니다");
+  return false;
+}
+
+function getCommonWeekProgress(week) {
+  const items = Object.values(week?.days || {}).flat().filter((item) => item.text?.trim());
+  const done = items.filter((item) => item.done).length;
+  return { total: items.length, done, pending: Math.max(0, items.length - done) };
+}
+
+function renderCompanyCommonWeekDay(dateKey, items = [], editable = false) {
+  const filledItems = items.filter((item) => item.text?.trim() || item.done);
+  const body = filledItems.length
+    ? filledItems.map((item) => `
+      <div class="company-common-row ${item.done ? "is-done" : ""} ${item.carryFrom ? "is-carried" : ""}" data-common-item="${escapeAttr(item.id)}">
+        <label>
+          <input type="checkbox" data-common-check="${escapeAttr(item.id)}" ${item.done ? "checked" : ""} ${editable ? "" : "disabled"} />
+          <span></span>
+        </label>
+        <input type="text" data-common-text="${escapeAttr(item.id)}" value="${escapeAttr(item.text || "")}" placeholder="공통업무" ${editable ? "" : "disabled"} />
+        ${item.carryFrom ? `<em>이월</em>` : ""}
+        ${editable ? `<button type="button" data-common-delete="${escapeAttr(item.id)}" aria-label="공통업무 삭제">×</button>` : ""}
+      </div>
+    `).join("")
+    : `<p class="company-common-empty">공통업무 없음</p>`;
+  return `
+    <article class="company-common-day">
+      <header>
+        <b>${escapeHtml(formatWeekdayShort(dateKey))}</b>
+        <span>${filledItems.filter((item) => item.done).length}/${filledItems.length}</span>
+      </header>
+      <div class="company-common-list">${body}</div>
+      ${editable ? `<button type="button" class="company-common-add" data-common-add="${escapeAttr(dateKey)}">공통업무 추가</button>` : ""}
+    </article>
+  `;
 }
 
 function renderWorklogTaskBoard(log) {
@@ -5998,10 +6188,16 @@ function renderWorklogTaskRow(ref, currentLog) {
   };
   row.querySelector(".task-delete").onclick = () => {
     if (!guardWorklogEdit()) return;
+    const beforeLog = cloneWorklogLogForAudit(log);
     removeLinkedSchedule(task, log);
     log.tasks.splice(index, 1);
     saveState();
     renderEntries();
+    showUndoToast("업무 행을 삭제했습니다", () => {
+      restoreObjectSnapshot(log, beforeLog);
+      saveState();
+      renderEntries();
+    });
   };
   return row;
 }
@@ -6300,6 +6496,7 @@ function renderAppointmentRow(entry, log, scope = "worklog") {
     };
     remove.onclick = () => {
       if (!guardWorklogEdit()) return;
+      const beforeLog = cloneWorklogLogForAudit(log);
       items.splice(itemIndex, 1);
       if (!items.length) items.push(createScheduleItem());
       syncScheduleEntryText(entry);
@@ -6307,6 +6504,13 @@ function renderAppointmentRow(entry, log, scope = "worklog") {
       renderWorklogAppointments(log);
       renderFitnessAppointments(log);
       renderReport();
+      showUndoToast("시간별 일정을 삭제했습니다", () => {
+        restoreObjectSnapshot(log, beforeLog);
+        saveState();
+        renderWorklogAppointments(log);
+        renderFitnessAppointments(log);
+        renderReport();
+      });
     };
   });
   row.querySelector(".appointment-merge-button").onclick = () => {
@@ -6419,13 +6623,21 @@ function renderFitnessScheduleEditor() {
 
   existing.querySelectorAll("[data-remove-schedule-item]").forEach((button) => {
     button.onclick = () => {
+      const editorLog = fitnessScheduleEditorState.log;
+      const beforeLog = cloneWorklogLogForAudit(editorLog);
       const index = Number(button.dataset.removeScheduleItem);
       items.splice(index, 1);
       if (!items.length) items.push(createScheduleItem());
       syncScheduleEntryText(entry);
       saveState();
-      rerenderScheduleAfterFitnessEdit(fitnessScheduleEditorState.log);
+      rerenderScheduleAfterFitnessEdit(editorLog);
       renderFitnessScheduleEditor();
+      showUndoToast("시간별 일정을 삭제했습니다", () => {
+        restoreObjectSnapshot(editorLog, beforeLog);
+        saveState();
+        rerenderScheduleAfterFitnessEdit(editorLog);
+        if (fitnessScheduleEditorState?.log === editorLog) renderFitnessScheduleEditor();
+      });
     };
   });
 

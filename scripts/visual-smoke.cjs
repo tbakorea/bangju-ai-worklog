@@ -86,6 +86,26 @@ async function checkDesktopEmployeeWorklog(browser) {
   const nextSwipeDate = await page.evaluate(() => JSON.parse(localStorage.getItem("beyond-worklog-state-v1") || "{}").selectedDateKey);
   if (nextSwipeDate !== "2026-07-23") fail("vertical push-up should move to next date", nextSwipeDate);
 
+  await page.evaluate(() => {
+    window.setTodayPageMode?.("common");
+    window.scrollTo(0, 0);
+  });
+  await page.waitForTimeout(150);
+  const commonSchedule = await page.evaluate(() => {
+    const board = document.querySelector("#commonScheduleBoard");
+    return {
+      title: board?.querySelector(".common-week-header strong")?.textContent?.trim() || "",
+      dayCount: board?.querySelectorAll(".company-common-day").length || 0,
+      hasPriorityControl: Boolean(board?.querySelector(".priority-select, .task-status-cell, .overview-priority-box")),
+      hasCheckbox: Boolean(board?.querySelector('[data-common-check]')),
+      hasLegacyWeeklyCopy: /Beyond Work Weekly|일간 페이지에 업무를 입력하세요/.test(board?.textContent || ""),
+    };
+  });
+  if (!commonSchedule.title.includes("공통일정")) fail("common page should be company common schedule", JSON.stringify(commonSchedule));
+  if (commonSchedule.dayCount !== 7) fail("common page should render seven weekdays", JSON.stringify(commonSchedule));
+  if (commonSchedule.hasPriorityControl) fail("common schedule should not expose priority controls", JSON.stringify(commonSchedule));
+  if (commonSchedule.hasLegacyWeeklyCopy) fail("legacy weekly summary copy leaked into common schedule", JSON.stringify(commonSchedule));
+
   if (errors.length) fail("desktop page errors", errors.join(" | "));
   await page.close();
 }
@@ -154,6 +174,22 @@ async function checkPhoneWorklog(browser) {
   await page.waitForTimeout(150);
   const restored = await page.evaluate(() => !document.querySelector("#worklogMain")?.classList.contains("is-mobile-focus-active"));
   if (!restored) fail("phone worklog schedule focus close button did not restore split mode");
+
+  const undoDelete = await page.evaluate(() => {
+    const rowsBefore = document.querySelectorAll("#worklogTaskBoard .worklog-task-row").length;
+    document.querySelector("#worklogTaskBoard .task-delete")?.click();
+    const toast = document.querySelector("#undoToast");
+    toast?.querySelector("button")?.click();
+    const rowsAfter = document.querySelectorAll("#worklogTaskBoard .worklog-task-row").length;
+    return {
+      rowsBefore,
+      rowsAfter,
+      hasUndo: Boolean(toast?.textContent?.includes("되돌리기")),
+    };
+  });
+  if (!undoDelete.hasUndo || undoDelete.rowsAfter !== undoDelete.rowsBefore) {
+    fail("worklog delete undo should restore task rows", JSON.stringify(undoDelete));
+  }
 
   if (errors.length) fail("phone page errors", errors.join(" | "));
   await page.close();
