@@ -546,19 +546,19 @@ async function checkApprovedEmployeeWorklogEditMatrix(browser) {
       expectedEmployeeId: "bangju-finance-manager",
     },
     {
-      label: "construction finance assistant",
+      label: "construction finance profile",
       userId: "construction-finance-user",
-      email: "isomi.construction@example.com",
+      email: "construction.finance@example.com",
       profile: {
         role: "재무 대리",
-        name: "이소미",
-        nickname: "이소미",
+        name: "김성민",
+        nickname: "김성민",
         org: "(주)비제이종합건설",
         workplace: "동천체육관 현장",
         primaryWork: "건설현장 지출 정산 노무자료",
       },
       expectedView: "bangju-log",
-      expectedEmployeeId: "construction-finance-assistant",
+      expectedEmployeeId: "profile-user",
     },
     {
       label: "beyond shared manager",
@@ -663,6 +663,134 @@ async function checkApprovedEmployeeWorklogEditMatrix(browser) {
     if (errors.length) fail("approved employee edit matrix page errors", `${testCase.label}: ${errors.join(" | ")}`);
     await page.close();
   }
+}
+
+async function checkStaffDirectoryListAndDetail(browser) {
+  const { page, errors } = await openPage(browser, { width: 390, height: 844 });
+  await page.evaluate(() => {
+    window.eval(`
+      authState.user = { id: "owner-user", email: "j3010@ymail.com" };
+      authState.approvalRows = [
+        {
+          id: "hong-profile",
+          email: "projch@naver.com",
+          name: "홍길동",
+          org: "(주)방주",
+          role: "직원",
+          workplace: "본사",
+          primary_work: "기획관리",
+          work_hours: "09:00-18:00",
+          employment_type: "직원",
+          approval_status: "approved",
+          updated_at: "2026-07-27T09:00:00.000Z"
+        },
+        {
+          id: "isomi-profile",
+          email: "isomi@example.com",
+          name: "이소미",
+          org: "(주)방주",
+          role: "재무 대리",
+          workplace: "본사",
+          primary_work: "지출 정산 문서",
+          work_hours: "08:00-18:00",
+          employment_type: "직원",
+          approval_status: "approved",
+          updated_at: "2026-07-27T09:00:00.000Z"
+        },
+        {
+          id: "beyond-kim-profile",
+          email: "ksm@example.com",
+          name: "김성민",
+          org: "(주)비욘드컴퍼니",
+          role: "실장",
+          workplace: "TBA studio",
+          primary_work: "TBA studio 운영 인월바스 시공",
+          work_hours: "08:00-18:00",
+          employment_type: "직원",
+          approval_status: "approved",
+          updated_at: "2026-07-27T09:00:00.000Z"
+        },
+        {
+          id: "beyond-choo-profile",
+          email: "choo@example.com",
+          name: "추소영",
+          org: "(주)비욘드컴퍼니",
+          role: "공유사업부 매니저",
+          workplace: "공유사업부",
+          primary_work: "공유오피스 공유창고 운영관리",
+          work_hours: "09:00-18:00",
+          employment_type: "직원",
+          approval_status: "approved",
+          updated_at: "2026-07-27T09:00:00.000Z"
+        }
+      ];
+      authState.approvalRowsLoaded = true;
+      state.profile = {
+        ...state.profile,
+        email: "j3010@ymail.com",
+        name: "정찬훈",
+        nickname: "베니",
+        role: "대표",
+        org: "(주)방주",
+        approvalStatus: "approved"
+      };
+      switchView("staff");
+      renderStaffMaster();
+    `);
+  });
+  await page.waitForTimeout(250);
+  const metrics = await page.evaluate(() => {
+    const rows = [...document.querySelectorAll(".staff-master-table tbody tr")].map((row) => row.textContent.replace(/\s+/g, " ").trim());
+    return {
+      activeView: document.body.dataset.activeView,
+      rows,
+      isomiCount: rows.filter((text) => text.includes("이소미")).length,
+      hasHong: rows.some((text) => text.includes("홍길동") && text.includes("projch@naver.com")),
+      hasKim: rows.some((text) => text.includes("김성민") && text.includes("(주)비욘드컴퍼니")),
+      hasChoo: rows.some((text) => text.includes("추소영") && text.includes("(주)비욘드컴퍼니")),
+      hasGenericBeyondLeader: rows.some((text) => text.includes("비욘드 실장") && !text.includes("김성민")),
+      hasGenericSharedManager: rows.some((text) => text.includes("공유사업부 매니저") && !text.includes("추소영")),
+      firstPanelTitle: document.querySelector(".staff-master-panel h3")?.textContent.trim() || "",
+    };
+  });
+  if (metrics.activeView !== "staff") fail("staff directory active view mismatch", metrics.activeView);
+  if (metrics.firstPanelTitle !== "전체 직원 명부") fail("staff directory should show master list first", metrics.firstPanelTitle);
+  if (metrics.isomiCount !== 1) fail("staff directory should not duplicate Isomi", JSON.stringify(metrics.rows));
+  if (!metrics.hasHong) fail("staff directory should include approved Hong profile", JSON.stringify(metrics.rows));
+  if (!metrics.hasKim || !metrics.hasChoo) fail("staff directory should include approved Beyond Company employees", JSON.stringify(metrics.rows));
+  if (metrics.hasGenericBeyondLeader || metrics.hasGenericSharedManager) fail("staff directory should replace generic Beyond slots with approved people", JSON.stringify(metrics.rows));
+
+  await page.click(".staff-master-table tbody tr[data-staff-detail-id]");
+  await page.waitForTimeout(150);
+  const detail = await page.evaluate(() => ({
+    visible: Boolean(document.querySelector("#staffDetailOverlay .staff-detail-card")),
+    text: document.querySelector("#staffDetailOverlay")?.textContent || "",
+    overflow: document.documentElement.scrollWidth - window.innerWidth,
+  }));
+  if (!detail.visible || !detail.text.includes("직원") || detail.overflow > 2) {
+    fail("staff detail modal should open without horizontal overflow", JSON.stringify(detail));
+  }
+  await page.evaluate(() => window.closeStaffDetail?.());
+  await page.click('tr[data-staff-detail-id="bangju-finance-manager"] button[data-staff-detail-id="bangju-finance-manager"]');
+  await page.waitForTimeout(120);
+  await page.fill('[data-staff-edit-field="name"]', "재무총괄");
+  await page.fill('[data-staff-edit-field="role"]', "재무총괄");
+  await page.click('[data-staff-profile-save="bangju-finance-manager"]');
+  await page.waitForTimeout(180);
+  const editMetrics = await page.evaluate(() => {
+    const rows = [...document.querySelectorAll(".staff-master-table tbody tr")].map((row) => row.textContent.replace(/\s+/g, " ").trim());
+    const override = JSON.parse(localStorage.getItem("beyond-worklog-state-v1") || "{}").employeeDirectoryOverrides || {};
+    return {
+      hasEditedName: rows.some((text) => text.includes("재무총괄")),
+      statusText: document.querySelector("#staffDetailSaveStatus")?.textContent || "",
+      overrideName: override["bangju-finance-manager"]?.name || "",
+    };
+  });
+  if (!editMetrics.hasEditedName || editMetrics.overrideName !== "재무총괄") {
+    fail("staff detail editor should save manager edits", JSON.stringify(editMetrics));
+  }
+  if (errors.length) fail("staff directory page errors", errors.join(" | "));
+  await page.close();
 }
 
 async function checkCalendarAnnotations(browser) {
@@ -1417,6 +1545,7 @@ async function checkFitnessNewEmployeeRegistrationFlow(browser) {
     await checkNonControlRoleTextDoesNotBecomeRepresentative(browser);
     await checkUnmappedEmployeeDoesNotInheritFitnessManager(browser);
     await checkApprovedEmployeeWorklogEditMatrix(browser);
+    await checkStaffDirectoryListAndDetail(browser);
     await checkCalendarAnnotations(browser);
   } finally {
     await browser.close();

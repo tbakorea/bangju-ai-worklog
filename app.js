@@ -367,7 +367,7 @@ const fitnessManualTemplates = {
 const employees = [
   { id: "bangju-finance-manager", name: "재무과장", org: "(주)방주", role: "재무과장", primaryWork: "자금, 회계, 보고" },
   { id: "bangju-finance-assistant", name: "이소미", org: "(주)방주", role: "재무 대리", primaryWork: "지출, 정산, 문서" },
-  { id: "construction-finance-assistant", name: "이소미", org: "(주)비제이종합건설", role: "재무 대리", primaryWork: "건설현장 지출, 정산, 노무자료" },
+  { id: "construction-finance-assistant", name: "비제이 재무 예비", org: "(주)비제이종합건설", role: "예비", primaryWork: "건설현장 지출, 정산, 노무자료" },
   { id: "bangju-spare-1", name: "방주 예비", org: "(주)방주", role: "예비", primaryWork: "공통 지원" },
   { id: "beyond-fitness-manager", name: "박주홍", nickname: "센터장", org: "(주)방주 / 비욘드 피트니스 지사", role: "센터장", workHours: "06:00-24:00", primaryWork: "운영총괄, PT 수업" },
   { id: "fitness-trainer-1", name: "홍현규", nickname: "홍트", org: "(주)방주 / 비욘드 피트니스 지사", role: "트레이너", workHours: "06:00-24:00", primaryWork: "PT 수업", employmentType: "프리랜서" },
@@ -512,6 +512,7 @@ const authState = {
   pendingApprovalCount: 0,
   pendingPasswordResetCount: 0,
   approvalRows: [],
+  approvalRowsLoaded: false,
   passwordResetRows: [],
   selectedApprovalId: "",
   approvalTimer: null,
@@ -574,6 +575,7 @@ function createState() {
     fitnessCenterMonth: todayKey.slice(0, 7),
     fitnessWritableEmployeeId: "beyond-fitness-manager",
     employeePermissions: {},
+    employeeDirectoryOverrides: {},
     laborPayroll: {},
     reportTone: "executive",
     reportArchive: {
@@ -622,6 +624,7 @@ function normalizeState() {
   const mappedProfileEmployeeId = getMappedProfileEmployeeId();
   state.selectedEmployeeId ||= mappedProfileEmployeeId || "profile-user";
   state.employeePermissions = normalizeEmployeePermissionState(state.employeePermissions || {});
+  state.employeeDirectoryOverrides = { ...(state.employeeDirectoryOverrides || {}) };
   state.laborPayroll = { ...(state.laborPayroll || {}) };
   state.profile.manualSettings = {
     ...defaultProfile.manualSettings,
@@ -781,7 +784,15 @@ function getProfileEmployee() {
     org: profile.org || "(주)방주",
     role: profile.role || "직원",
     primaryWork: profile.primaryWork || "",
+    secondaryWork: profile.secondaryWork || "",
+    workplace: profile.workplace || "",
+    email: profile.email || authState.user?.email || "",
+    phone: profile.phone || "",
     employmentType: profile.employmentType || "직원",
+    laborId: profile.laborId || "",
+    address: profile.address || "",
+    hourlyWage: profile.hourlyWage || "",
+    dailyWage: profile.dailyWage || "",
     workHours: profile.workHours || defaultProfile.workHours,
   };
 }
@@ -940,13 +951,11 @@ function isOwnFitnessEmployeeId(employeeId) {
 }
 
 function getProfileMappedEmployeeId(profile = state.profile || {}) {
-  const email = String(authState.user?.email || profile.email || "").trim().toLowerCase();
+  const profileEmail = String(profile.email || "").trim().toLowerCase();
+  const email = profileEmail || String(authState.user?.email || "").trim().toLowerCase();
   const source = `${profile.org || ""} ${profile.workplace || ""} ${profile.role || ""} ${profile.name || ""} ${profile.nickname || ""} ${profile.primaryWork || ""}`.toLowerCase();
   if (controlTowerEmails.has(email) || /대표|owner|ceo/.test(source)) return "";
-  if (/비제이|종합건설|건설|bj|construction/.test(source) && (/이소미/.test(source) || /재무\s*대리|finance\s*assistant|재무/.test(source))) {
-    return "construction-finance-assistant";
-  }
-  if (/이소미/.test(source) || /재무\s*대리|finance\s*assistant/.test(source)) return "bangju-finance-assistant";
+  if (/이소미/.test(source) || (!/비제이|종합건설|건설|bj|construction/.test(source) && /재무\s*대리|finance\s*assistant/.test(source))) return "bangju-finance-assistant";
   if (/재무\s*과장|finance\s*manager/.test(source)) return "bangju-finance-manager";
   if (/박주홍/.test(source) || /센터장|피트니스.*총괄|fitness.*manager/.test(source)) return "beyond-fitness-manager";
   if (/홍현규|트레이너|trainer|pt|피티/.test(source)) return "fitness-trainer-1";
@@ -3884,8 +3893,10 @@ async function loadApprovalRequests() {
   }
   const rows = (data || []).filter((row) => row.id !== authState.user.id);
   authState.approvalRows = rows;
+  authState.approvalRowsLoaded = true;
   authState.pendingApprovalCount = rows.filter((row) => (row.approval_status || "pending") === "pending").length;
   renderApprovalNotification();
+  if (activeView === "staff") renderStaffMaster();
   if (!rows.length) {
     list.innerHTML = `
       <div class="approval-empty-state">
@@ -3899,6 +3910,21 @@ async function loadApprovalRequests() {
     authState.selectedApprovalId = rows.find((row) => (row.approval_status || "pending") === "pending")?.id || rows[0].id;
   }
   renderApprovalQueue();
+}
+
+async function refreshStaffApprovalRows() {
+  if (!supabaseClient || !authState.user || !hasApprovalAuthority()) return;
+  const { data, error } = await supabaseClient
+    .from("profiles")
+    .select("*")
+    .in("approval_status", ["pending", "approved", "rejected"])
+    .order("updated_at", { ascending: false });
+  if (error) return;
+  authState.approvalRows = (data || []).filter((row) => row.id !== authState.user.id);
+  authState.approvalRowsLoaded = true;
+  authState.pendingApprovalCount = authState.approvalRows.filter((row) => (row.approval_status || "pending") === "pending").length;
+  renderApprovalNotification();
+  if (activeView === "staff") renderStaffMaster();
 }
 
 function getApprovalStatusTone(status = "pending") {
@@ -8069,8 +8095,8 @@ function addAttendance() {
 function getEmployeeMasterRows() {
   const siteLookup = new Map(getWorklogSiteGroups().flatMap((group) => group.employeeIds.map((id) => [id, group])));
   const todayLogs = state.employeeLogs?.[getActiveDateKey()] || {};
-  return employees.map((employee) => {
-    const group = siteLookup.get(employee.id);
+  return getStaffDirectoryEmployees().map((employee) => {
+    const group = siteLookup.get(employee.id) || getStaffSiteGroupForEmployee(employee);
     const labor = buildMonthlyLaborSummary(employee.id, employee);
     const log = todayLogs[employee.id] || createEmployeeLog(employee);
     const tasks = (log.tasks || []).filter((task) => task.text?.trim());
@@ -8088,6 +8114,107 @@ function getEmployeeMasterRows() {
       completed,
     };
   });
+}
+
+function getStaffDirectoryEmployees() {
+  const merged = new Map();
+  const add = (employee, priority = 0) => {
+    if (!isAssignedWorklogEmployee(employee)) return;
+    employee = applyStaffDirectoryOverride(employee);
+    const email = String(employee.email || "").trim().toLowerCase();
+    const id = String(employee.id || "").trim();
+    const identity = email
+      ? `email:${email}`
+      : id
+        ? `id:${id}`
+        : `person:${employee.org || ""}|${employee.role || ""}|${employee.name || ""}`.toLowerCase();
+    const staticId = id && employees.some((item) => item.id === id) ? `id:${id}` : "";
+    const personKey = `person:${employee.org || ""}|${employee.role || ""}|${employee.name || ""}`.toLowerCase();
+    const keys = employee.isRemoteProfile ? [identity, personKey] : [identity, staticId].filter(Boolean);
+    const existingKey = keys.find((key) => merged.has(key));
+    if (existingKey) {
+      const current = merged.get(existingKey);
+      if ((current.priority || 0) <= priority) {
+        merged.set(existingKey, { ...current, employee: { ...current.employee, ...employee }, priority });
+      }
+      return;
+    }
+    merged.set(identity, { employee, priority });
+  };
+
+  const approvedProfileEmployees = (authState.approvalRows || [])
+    .filter((row) => (row.approval_status || "pending") === "approved")
+    .map((row) => approvalRowToStaffEmployee(row));
+  const occupiedStaticIds = new Set(approvedProfileEmployees.map((employee) => employee.mappedEmployeeId).filter(Boolean));
+  approvedProfileEmployees.forEach((employee) => add(employee, 30));
+  employees
+    .filter(isAssignedWorklogEmployee)
+    .filter((employee) => !occupiedStaticIds.has(employee.id))
+    .forEach((employee) => add(employee, 10));
+  const profileEmployee = getProfileEmployee();
+  if ((state.profile?.approvalStatus || "approved") === "approved" && String(profileEmployee.name || "").trim()) {
+    add(profileEmployee, 20);
+  }
+
+  return [...merged.values()]
+    .map((entry) => entry.employee)
+    .sort((a, b) => getStaffSortKey(a).localeCompare(getStaffSortKey(b), "ko"));
+}
+
+function applyStaffDirectoryOverride(employee = {}) {
+  const id = String(employee.id || "").trim();
+  const override = id ? state.employeeDirectoryOverrides?.[id] : null;
+  if (!override) return employee;
+  return {
+    ...employee,
+    ...override,
+    id: employee.id,
+    mappedEmployeeId: employee.mappedEmployeeId,
+    sourceProfileId: employee.sourceProfileId,
+    isRemoteProfile: employee.isRemoteProfile,
+  };
+}
+
+function approvalRowToStaffEmployee(row = {}) {
+  const profile = remoteRowToProfile(row);
+  const mappedId = getProfileMappedEmployeeId(profile);
+  const base = mappedId ? employees.find((employee) => employee.id === mappedId) : null;
+  return {
+    ...(base || {}),
+    id: `profile-${row.id || row.email || row.name || Date.now()}`,
+    mappedEmployeeId: mappedId || "",
+    sourceProfileId: row.id || "",
+    isRemoteProfile: true,
+    name: profile.name || row.email || "이름 미입력",
+    nickname: row.nickname || profile.nickname || "",
+    org: profile.org || base?.org || "(주)방주",
+    role: profile.role || base?.role || "직원",
+    primaryWork: profile.primaryWork || base?.primaryWork || "",
+    secondaryWork: profile.secondaryWork || "",
+    workplace: profile.workplace || "",
+    email: profile.email || row.email || "",
+    phone: profile.phone || "",
+    employmentType: profile.employmentType || base?.employmentType || "직원",
+    laborId: profile.laborId || "",
+    address: profile.address || "",
+    hourlyWage: profile.hourlyWage || "",
+    dailyWage: profile.dailyWage || "",
+    workHours: profile.workHours || base?.workHours || defaultProfile.workHours,
+    approvalStatus: profile.approvalStatus || row.approval_status || "approved",
+  };
+}
+
+function getStaffSiteGroupForEmployee(employee = {}) {
+  const text = `${employee.org || ""} ${employee.workplace || ""} ${employee.primaryWork || ""}`;
+  if (/피트니스|fitness/i.test(text)) return getWorklogSiteGroups().find((group) => group.id === "fitness");
+  if (/비욘드\s*컴퍼니|공유|TBA|티비에이|워크베이스|워크박스|beyond/i.test(text)) return getWorklogSiteGroups().find((group) => group.id === "beyond");
+  return getWorklogSiteGroups().find((group) => group.id === "bangju");
+}
+
+function getStaffSortKey(employee = {}) {
+  const group = getStaffSiteGroupForEmployee(employee);
+  const siteOrder = { bangju: "1", beyond: "2", fitness: "3" }[group?.id] || "9";
+  return `${siteOrder}|${employee.org || ""}|${employee.role || ""}|${employee.name || ""}|${employee.email || ""}`;
 }
 
 function getEmployeePermissionProfile(employee, group) {
@@ -8221,37 +8348,38 @@ function renderStaffMaster() {
     ["노무 기록", `${rows.filter((row) => row.labor.recordedDays).length}명`],
   ];
   grid.innerHTML = `
-    <section class="staff-master-summary">
-      ${stats.map(([label, value]) => `<article><span>${escapeHtml(label)}</span><strong>${escapeHtml(value)}</strong></article>`).join("")}
-    </section>
     <section class="staff-master-panel">
       <header>
         <div>
           <span>Master Data</span>
           <h3>전체 직원 명부</h3>
         </div>
+        <p class="staff-master-hint">직원을 선택하면 세부 정보와 권한, 온보딩 상태를 한 명씩 확인합니다.</p>
       </header>
       <div class="staff-master-table-wrap">
         <table class="staff-master-table">
           <thead>
-            <tr><th>직원 ID</th><th>소속/사업장</th><th>직함/성명</th><th>고용형태</th><th>권한</th><th>근무시간</th><th>오늘 업무</th><th>온보딩</th></tr>
+            <tr><th>직원</th><th>소속/사업장</th><th>직무</th><th>권한</th><th>근무시간</th><th>오늘 업무</th><th>온보딩</th><th>상세</th></tr>
           </thead>
           <tbody>
             ${rows.map((row) => `
-              <tr>
-                <td>${escapeHtml(row.employeeCode)}</td>
+              <tr data-staff-detail-id="${escapeAttr(row.id)}" tabindex="0">
+                <td><b>${escapeHtml(row.name || "")}</b><span>${escapeHtml(row.email || row.employeeCode)}</span></td>
                 <td><b>${escapeHtml(row.site)}</b><span>${escapeHtml(row.org || "")}</span></td>
-                <td><b>${escapeHtml(row.role || "직원")}</b><span>${escapeHtml(row.name || "")}</span></td>
-                <td>${escapeHtml(row.employmentType || "직원")}</td>
+                <td><b>${escapeHtml(row.role || "직원")}</b><span>${escapeHtml(row.primaryWork || row.employmentType || "직무 확인")}</span></td>
                 <td><b>${escapeHtml(row.access.role)}</b><span>${escapeHtml(row.access.worklog)} · ${escapeHtml(row.access.labor)}</span></td>
                 <td>${escapeHtml(row.workHours || defaultProfile.workHours)}</td>
                 <td>${escapeHtml(`${row.completed}/${row.tasks.length || 0}`)}</td>
                 <td>${escapeHtml(`${row.onboarding.done}/${row.onboarding.total}`)}</td>
+                <td><button type="button" class="staff-detail-open" data-staff-detail-id="${escapeAttr(row.id)}">열기</button></td>
               </tr>
             `).join("")}
           </tbody>
         </table>
       </div>
+    </section>
+    <section class="staff-master-summary">
+      ${stats.map(([label, value]) => `<article><span>${escapeHtml(label)}</span><strong>${escapeHtml(value)}</strong></article>`).join("")}
     </section>
     <section class="staff-master-panel">
       <header>
@@ -8310,6 +8438,218 @@ function renderStaffMaster() {
       </div>
     </section>
   `;
+}
+
+function canEditStaffProfile(row = {}) {
+  if (isExplicitlySignedOut()) return false;
+  if (isRepresentativeProfile()) return true;
+  if (hasProfilePermission("staffManage") || hasProfilePermission("staffApproval")) return true;
+  return hasApprovalAuthority();
+}
+
+function staffDetailEditField(row, key, label, type = "text") {
+  const value = key === "phone" ? formatPhoneNumber(row[key] || "") : row[key] || "";
+  return `
+    <label>${escapeHtml(label)}
+      <input type="${type}" data-staff-edit-field="${escapeAttr(key)}" value="${escapeAttr(value)}" />
+    </label>
+  `;
+}
+
+function collectStaffDetailEditFields() {
+  const card = document.querySelector("#staffDetailOverlay .staff-detail-card");
+  const fields = {};
+  card?.querySelectorAll("[data-staff-edit-field]").forEach((field) => {
+    const key = field.dataset.staffEditField;
+    const value = String(field.value || "").trim();
+    fields[key] = key === "phone" ? formatPhoneNumber(value) : value;
+    if (key === "phone") field.value = fields[key];
+  });
+  return fields;
+}
+
+function staffEditFieldsToRemotePayload(fields = {}) {
+  const hasField = (key) => Object.prototype.hasOwnProperty.call(fields, key);
+  const numericOrNull = (value) => {
+    const normalized = String(value || "").replaceAll(",", "").trim();
+    if (!normalized) return null;
+    const number = Number(normalized);
+    return Number.isFinite(number) ? number : null;
+  };
+  const payload = {
+    updated_at: new Date().toISOString(),
+  };
+  const map = {
+    org: "org",
+    role: "role",
+    name: "name",
+    phone: "phone",
+    email: "email",
+    workplace: "workplace",
+    primaryWork: "primary_work",
+    secondaryWork: "secondary_work",
+    workHours: "work_hours",
+    employmentType: "employment_type",
+  };
+  Object.entries(map).forEach(([localKey, remoteKey]) => {
+    if (hasField(localKey)) payload[remoteKey] = fields[localKey] || "";
+  });
+  if (hasField("hourlyWage")) payload.hourly_wage = numericOrNull(fields.hourlyWage);
+  if (hasField("dailyWage")) payload.daily_wage = numericOrNull(fields.dailyWage);
+  return payload;
+}
+
+function mergeStaffFieldsIntoApprovalRow(row = {}, fields = {}) {
+  return {
+    ...row,
+    org: fields.org ?? row.org,
+    role: fields.role ?? row.role,
+    name: fields.name ?? row.name,
+    phone: fields.phone ?? row.phone,
+    email: fields.email ?? row.email,
+    workplace: fields.workplace ?? row.workplace,
+    primary_work: fields.primaryWork ?? row.primary_work,
+    secondary_work: fields.secondaryWork ?? row.secondary_work,
+    work_hours: fields.workHours ?? row.work_hours,
+    employment_type: fields.employmentType ?? row.employment_type,
+    hourly_wage: fields.hourlyWage === "" ? null : (fields.hourlyWage ?? row.hourly_wage),
+    daily_wage: fields.dailyWage === "" ? null : (fields.dailyWage ?? row.daily_wage),
+    updated_at: new Date().toISOString(),
+  };
+}
+
+function setStaffDetailSaveStatus(message, tone = "idle") {
+  const node = document.querySelector("#staffDetailSaveStatus");
+  if (!node) return;
+  node.dataset.tone = tone;
+  node.textContent = message;
+}
+
+async function saveStaffProfileEdits(employeeId) {
+  const row = getEmployeeMasterRows().find((item) => item.id === employeeId);
+  if (!row || !canEditStaffProfile(row)) return;
+  const fields = collectStaffDetailEditFields();
+  if (!String(fields.name || "").trim()) {
+    setStaffDetailSaveStatus("이름은 비울 수 없습니다.", "error");
+    return;
+  }
+  if (!String(fields.org || "").trim()) {
+    setStaffDetailSaveStatus("소속은 비울 수 없습니다.", "error");
+    return;
+  }
+  setStaffDetailSaveStatus("저장 중...", "saving");
+  if (row.sourceProfileId && supabaseClient && authState.user) {
+    const payload = staffEditFieldsToRemotePayload(fields);
+    const { error } = await supabaseClient.from("profiles").update(payload).eq("id", row.sourceProfileId);
+    if (error) {
+      setStaffDetailSaveStatus(`원격 저장 실패: ${error.message}`, "error");
+      return;
+    }
+    authState.approvalRows = (authState.approvalRows || []).map((item) => (
+      item.id === row.sourceProfileId ? mergeStaffFieldsIntoApprovalRow(item, fields) : item
+    ));
+    if (row.sourceProfileId === authState.user.id) {
+      state.profile = { ...state.profile, ...fields };
+    }
+  }
+  state.employeeDirectoryOverrides ||= {};
+  state.employeeDirectoryOverrides[employeeId] = {
+    ...(state.employeeDirectoryOverrides[employeeId] || {}),
+    ...fields,
+  };
+  saveState({ fastSave: true });
+  renderStaffMaster();
+  openStaffDetail(employeeId);
+  setStaffDetailSaveStatus("저장되었습니다.", "done");
+}
+
+function renderStaffDetailModal(row) {
+  const manual = getManualTemplateForEmployee(row);
+  const permissionLabels = permissionKeys
+    .filter(([key]) => row.access.permissions[key])
+    .map(([, label]) => label);
+  const canEdit = canEditStaffProfile(row);
+  return `
+    <div class="staff-detail-backdrop" data-staff-detail-close>
+      <article class="staff-detail-card" role="dialog" aria-modal="true" aria-label="직원 상세">
+        <button type="button" class="staff-detail-close" data-staff-detail-close aria-label="닫기">×</button>
+        <header>
+          <span>${escapeHtml(row.site || row.org || "직원")}</span>
+          <h3>${escapeHtml(row.role || "직원")} ${escapeHtml(row.name || "")}</h3>
+          <p>${escapeHtml(row.email || row.employeeCode || "")}</p>
+        </header>
+        <div class="staff-detail-kpis">
+          <article><span>오늘 업무</span><strong>${escapeHtml(`${row.completed}/${row.tasks.length || 0}`)}</strong></article>
+          <article><span>온보딩</span><strong>${escapeHtml(`${row.onboarding.done}/${row.onboarding.total}`)}</strong></article>
+          <article><span>노무 기록</span><strong>${escapeHtml(`${row.labor.recordedDays || 0}일`)}</strong></article>
+          <article><span>유료 PT</span><strong>${escapeHtml(`${row.labor.settlementPtCount || 0}건`)}</strong></article>
+        </div>
+        <dl class="staff-detail-list">
+          <div><dt>소속</dt><dd>${escapeHtml(row.org || "-")}</dd></div>
+          <div><dt>근무지</dt><dd>${escapeHtml(row.workplace || row.site || "-")}</dd></div>
+          <div><dt>고용형태</dt><dd>${escapeHtml(row.employmentType || "직원")}</dd></div>
+          <div><dt>근무시간</dt><dd>${escapeHtml(row.workHours || defaultProfile.workHours)}</dd></div>
+          <div><dt>주업무</dt><dd>${escapeHtml(row.primaryWork || "-")}</dd></div>
+          <div><dt>부업무</dt><dd>${escapeHtml(row.secondaryWork || "-")}</dd></div>
+          <div><dt>전화</dt><dd>${escapeHtml(formatPhoneNumber(row.phone || "") || "-")}</dd></div>
+          <div><dt>권한</dt><dd>${escapeHtml(permissionLabels.join(" · ") || row.access.caption || "본인 업무 중심")}</dd></div>
+        </dl>
+        <section class="staff-detail-section">
+          <strong>역할 매뉴얼</strong>
+          <p>${escapeHtml(manual?.title || "역할 매뉴얼")} · ${escapeHtml(manual?.summary || "직무 기준을 확인합니다.")}</p>
+        </section>
+        <section class="staff-detail-section staff-detail-edit">
+          <div class="staff-detail-edit-title">
+            <strong>${canEdit ? "직원 정보 수정" : "직원 정보 검토"}</strong>
+            <span>${escapeHtml(canEdit ? "대표 또는 권한자가 소속, 직무, 근무/노무 기준을 조정합니다." : "이 직원의 정보는 읽기 전용입니다.")}</span>
+          </div>
+          ${canEdit ? `
+            <div class="staff-detail-edit-grid">
+              ${staffDetailEditField(row, "org", "소속")}
+              ${staffDetailEditField(row, "workplace", "근무지")}
+              ${staffDetailEditField(row, "role", "직함")}
+              ${staffDetailEditField(row, "name", "이름")}
+              ${staffDetailEditField(row, "phone", "전화")}
+              ${staffDetailEditField(row, "email", "이메일", "email")}
+              ${staffDetailEditField(row, "employmentType", "고용형태")}
+              ${staffDetailEditField(row, "workHours", "근무시간")}
+              ${staffDetailEditField(row, "primaryWork", "주업무")}
+              ${staffDetailEditField(row, "secondaryWork", "부업무")}
+              ${staffDetailEditField(row, "hourlyWage", "시급", "number")}
+              ${staffDetailEditField(row, "dailyWage", "일당", "number")}
+            </div>
+            <div class="staff-detail-edit-actions">
+              <button type="button" data-staff-profile-save="${escapeAttr(row.id)}">수정 저장</button>
+              <span id="staffDetailSaveStatus" aria-live="polite"></span>
+            </div>
+          ` : `
+            <p>권한이 없는 직원은 타 직원 정보를 수정할 수 없습니다. 직원 원장 수정은 대표 또는 대표가 직원관리/가입승인 권한을 부여한 직원만 가능합니다.</p>
+          `}
+        </section>
+        <section class="staff-detail-section">
+          <strong>온보딩 체크</strong>
+          <div class="staff-detail-chips">
+            ${row.onboarding.checks.map(([label, ok]) => `<em class="${ok ? "is-done" : ""}">${escapeHtml(label)}</em>`).join("")}
+          </div>
+        </section>
+      </article>
+    </div>
+  `;
+}
+
+function openStaffDetail(employeeId) {
+  const row = getEmployeeMasterRows().find((item) => item.id === employeeId);
+  if (!row) return;
+  document.getElementById("staffDetailOverlay")?.remove();
+  const overlay = document.createElement("div");
+  overlay.id = "staffDetailOverlay";
+  overlay.innerHTML = renderStaffDetailModal(row);
+  document.body.appendChild(overlay);
+  overlay.querySelector(".staff-detail-card")?.focus?.();
+}
+
+function closeStaffDetail() {
+  document.getElementById("staffDetailOverlay")?.remove();
 }
 
 function numberValue(value) {
@@ -9652,6 +9992,7 @@ function switchView(view) {
   renderFitnessDashboard();
   renderEntries();
   renderStaffMaster();
+  if (view === "staff" && canAccessWorklogOverview() && !authState.approvalRowsLoaded) refreshStaffApprovalRows();
   renderAttendance();
   renderOrganization();
   updateGlobalAttendanceVisibility(view);
@@ -9947,9 +10288,34 @@ document.getElementById("staffMasterGrid")?.addEventListener("change", (event) =
   }
 });
 document.getElementById("staffMasterGrid")?.addEventListener("click", (event) => {
+  const detailButton = event.target.closest("[data-staff-detail-id]");
+  if (detailButton) {
+    openStaffDetail(detailButton.dataset.staffDetailId);
+    return;
+  }
   const resetButton = event.target.closest("[data-staff-permission-reset]");
   if (!resetButton) return;
   resetEmployeePermission(resetButton.dataset.staffPermissionReset);
+});
+document.getElementById("staffMasterGrid")?.addEventListener("keydown", (event) => {
+  if (event.key !== "Enter" && event.key !== " ") return;
+  const row = event.target.closest("[data-staff-detail-id]");
+  if (!row) return;
+  event.preventDefault();
+  openStaffDetail(row.dataset.staffDetailId);
+});
+document.addEventListener("click", (event) => {
+  const saveButton = event.target.closest("[data-staff-profile-save]");
+  if (saveButton) {
+    event.preventDefault();
+    event.stopPropagation();
+    saveStaffProfileEdits(saveButton.dataset.staffProfileSave);
+    return;
+  }
+  const closeTarget = event.target.closest("[data-staff-detail-close]");
+  if (!closeTarget) return;
+  if (closeTarget.classList.contains("staff-detail-backdrop") && event.target !== closeTarget) return;
+  closeStaffDetail();
 });
 document.getElementById("mainMenuPopover")?.addEventListener("click", (event) => event.stopPropagation());
 document.addEventListener("click", () => {
@@ -9958,6 +10324,7 @@ document.addEventListener("click", () => {
 });
 document.addEventListener("keydown", (event) => {
   if (event.key === "Escape") closeMainMenuPopover();
+  if (event.key === "Escape") closeStaffDetail();
 });
 document.getElementById("closeAuthButton").onclick = () => switchView("worklog");
 document.querySelectorAll("[data-auth-tab]").forEach((button) => {
