@@ -367,6 +367,7 @@ const fitnessManualTemplates = {
 const employees = [
   { id: "bangju-finance-manager", name: "재무과장", org: "(주)방주", role: "재무과장", primaryWork: "자금, 회계, 보고" },
   { id: "bangju-finance-assistant", name: "이소미", org: "(주)방주", role: "재무 대리", primaryWork: "지출, 정산, 문서" },
+  { id: "construction-finance-assistant", name: "이소미", org: "(주)비제이종합건설", role: "재무 대리", primaryWork: "건설현장 지출, 정산, 노무자료" },
   { id: "bangju-spare-1", name: "방주 예비", org: "(주)방주", role: "예비", primaryWork: "공통 지원" },
   { id: "beyond-fitness-manager", name: "박주홍", nickname: "센터장", org: "(주)방주 / 비욘드 피트니스 지사", role: "센터장", workHours: "06:00-24:00", primaryWork: "운영총괄, PT 수업" },
   { id: "fitness-trainer-1", name: "홍현규", nickname: "홍트", org: "(주)방주 / 비욘드 피트니스 지사", role: "트레이너", workHours: "06:00-24:00", primaryWork: "PT 수업", employmentType: "프리랜서" },
@@ -379,7 +380,7 @@ const employees = [
   { id: "beyond-spare-1", name: "비욘드 예비", org: "(주)비욘드컴퍼니", role: "예비", primaryWork: "공통 지원" },
 ];
 const fitnessEmployeeIds = ["beyond-fitness-manager", "fitness-trainer-1", "fitness-weekday-info", "fitness-saturday-info", "fitness-sunday-info", "fitness-spare-1"];
-const bangjuWorklogEmployeeIds = ["bangju-finance-manager", "bangju-finance-assistant", "bangju-spare-1"];
+const bangjuWorklogEmployeeIds = ["bangju-finance-manager", "bangju-finance-assistant", "construction-finance-assistant", "bangju-spare-1"];
 const beyondWorklogEmployeeIds = ["beyond-company-leader", "beyond-shared-manager", "beyond-spare-1"];
 
 function isAssignedWorklogEmployee(employee) {
@@ -528,6 +529,7 @@ let calendarPickerMode = "worklog";
 let calendarPostponeTask = null;
 let calendarTriggerButtonId = "selectedDateButton";
 let mobileDayFocusMode = "split";
+let mobileFocusGateSuppressClick = false;
 let fitnessScheduleEditorState = null;
 const dailyEditingState = {
   focused: false,
@@ -584,6 +586,9 @@ function createState() {
       cadence: "daily",
       lastPreparedAt: "",
     },
+    worklogCorrectionRequests: [],
+    worklogCorrectionGrants: {},
+    worklogCorrectionAudit: [],
   };
 }
 
@@ -650,6 +655,13 @@ function normalizeState() {
     lastPreparedAt: "",
     ...(state.backupSettings || {}),
   };
+  state.worklogCorrectionRequests = Array.isArray(state.worklogCorrectionRequests)
+    ? state.worklogCorrectionRequests
+    : [];
+  state.worklogCorrectionGrants = { ...(state.worklogCorrectionGrants || {}) };
+  state.worklogCorrectionAudit = Array.isArray(state.worklogCorrectionAudit)
+    ? state.worklogCorrectionAudit.slice(-240)
+    : [];
   state.reportArchive = {
     dateKey: todayKey,
     site: "all",
@@ -738,6 +750,7 @@ function normalizeEmployeeLogRows(log) {
 }
 
 function saveState(options = {}) {
+  recordActiveCorrectionAudits();
   localStorage.setItem(storageKey, JSON.stringify(state));
   scheduleRemoteSave(options.fastSave ? 500 : 700);
 }
@@ -833,7 +846,7 @@ function syncFitnessWritableEmployeeFromProfile() {
   const profile = state.profile || {};
   if (isRepresentativeProfile()) return;
   const source = `${profile.org || ""} ${profile.workplace || ""} ${profile.primaryWork || ""}`.toLowerCase();
-  if (!/피트니스|fitness|beyond/.test(source)) return;
+  if (!/피트니스|fitness/.test(source)) return;
   const role = `${profile.role || ""} ${profile.primaryWork || ""} ${profile.nickname || ""}`;
   let id = "beyond-fitness-manager";
   if (/홍현규|트레이너|trainer|pt|피티/.test(role)) id = "fitness-trainer-1";
@@ -893,6 +906,9 @@ function getProfileMappedEmployeeId(profile = state.profile || {}) {
   const email = String(authState.user?.email || profile.email || "").trim().toLowerCase();
   const source = `${profile.org || ""} ${profile.workplace || ""} ${profile.role || ""} ${profile.name || ""} ${profile.nickname || ""} ${profile.primaryWork || ""}`.toLowerCase();
   if (controlTowerEmails.has(email) || /대표|owner|ceo/.test(source)) return "";
+  if (/비제이|종합건설|건설|bj|construction/.test(source) && (/이소미/.test(source) || /재무\s*대리|finance\s*assistant|재무/.test(source))) {
+    return "construction-finance-assistant";
+  }
   if (/이소미/.test(source) || /재무\s*대리|finance\s*assistant/.test(source)) return "bangju-finance-assistant";
   if (/재무\s*과장|finance\s*manager/.test(source)) return "bangju-finance-manager";
   if (/박주홍/.test(source) || /센터장|피트니스.*총괄|fitness.*manager/.test(source)) return "beyond-fitness-manager";
@@ -932,21 +948,64 @@ function canEditEmployeeSlot(employeeId = "") {
   return getProfileMappedEmployeeId() === employeeId;
 }
 
+function canApproveWorklogCorrections() {
+  return isRepresentativeProfile() || hasProfilePermission("worklogAll") || hasProfilePermission("staffManage") || hasApprovalAuthority();
+}
+
+function getPreviousDateKey(dateKey = todayKey) {
+  const date = parseDateKey(dateKey);
+  date.setDate(date.getDate() - 1);
+  return formatDateKey(date);
+}
+
+function isWithinWorklogEditWindow(dateKey = getActiveDateKey(), now = new Date()) {
+  if (!dateKey) return false;
+  const currentKey = formatDateKey(now);
+  if (dateKey === currentKey) return true;
+  if (dateKey === getPreviousDateKey(currentKey)) {
+    const limit = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 10, 0, 0, 0);
+    return now < limit;
+  }
+  return false;
+}
+
+function getWorklogCorrectionKey(employeeId = "", dateKey = getActiveDateKey()) {
+  return `${dateKey}::${employeeId || "unknown"}`;
+}
+
+function getWorklogCorrectionGrant(employeeId = "", dateKey = getActiveDateKey()) {
+  return state.worklogCorrectionGrants?.[getWorklogCorrectionKey(employeeId, dateKey)] || null;
+}
+
+function isWorklogCorrectionGrantActive(employeeId = "", dateKey = getActiveDateKey()) {
+  const grant = getWorklogCorrectionGrant(employeeId, dateKey);
+  return Boolean(grant?.status === "active" && grant.expiresAt && new Date(grant.expiresAt).getTime() > Date.now());
+}
+
+function canEditWorklogDate(employeeId = "", dateKey = getActiveDateKey()) {
+  if (!employeeId) return false;
+  if (isWithinWorklogEditWindow(dateKey)) return true;
+  if (isWorklogCorrectionGrantActive(employeeId, dateKey)) return true;
+  return false;
+}
+
 function canEditCurrentWorklog(view = activeView) {
   if (!isWorklogEditView(view)) return false;
   if (isRepresentativeProfile()) return false;
+  const currentEmployeeId = getCurrentWorklogEmployeeId(view);
+  if (!canEditWorklogDate(currentEmployeeId, getActiveDateKey())) return false;
   if (view === "fitness-log") {
-    const currentEmployeeId = getCurrentWorklogEmployeeId(view);
     return isCurrentFitnessLogEditable() && canEditEmployeeSlot(currentEmployeeId);
   }
-  const currentEmployeeId = getCurrentWorklogEmployeeId(view);
   const ownEmployeeId = getOwnEditableEmployeeIdForView(view);
   return Boolean(currentEmployeeId && ownEmployeeId && currentEmployeeId === ownEmployeeId && canEditEmployeeSlot(currentEmployeeId));
 }
 
 function guardWorklogEdit() {
   if (canEditCurrentWorklog()) return true;
-  showAppToast("열람 전용 업무일지입니다");
+  const employeeId = getCurrentWorklogEmployeeId();
+  const lock = getWorklogEditLockInfo(employeeId);
+  showAppToast(lock.lockedByDate ? "수정 가능 시간이 지나 정정 요청이 필요합니다" : "열람 전용 업무일지입니다");
   applyCurrentWorklogPermissionState();
   return false;
 }
@@ -1083,6 +1142,152 @@ function getEmployeeLogForDate(employeeId, key = getActiveDateKey()) {
     ? state.employeeLogs[key][employee.id].attendanceBreaks
     : [];
   return state.employeeLogs[key][employee.id];
+}
+
+function getWorklogEditLockInfo(employeeId = getCurrentWorklogEmployeeId(), dateKey = getActiveDateKey()) {
+  if (!employeeId) {
+    return { locked: true, lockedByDate: false, label: "열람 전용", detail: "선택된 직원 업무일지가 없습니다." };
+  }
+  if (canEditEmployeeSlot(employeeId) && isWithinWorklogEditWindow(dateKey)) {
+    return { locked: false, label: "수정 가능", detail: "오늘과 전날 오전 10시 전까지 수정할 수 있습니다." };
+  }
+  const grant = getWorklogCorrectionGrant(employeeId, dateKey);
+  if (isWorklogCorrectionGrantActive(employeeId, dateKey)) {
+    return {
+      locked: false,
+      label: "정정 승인",
+      detail: `승인된 정정 가능 시간입니다. ${formatCorrectionTime(grant.expiresAt)}까지 수정할 수 있습니다.`,
+      grant,
+    };
+  }
+  if (canEditEmployeeSlot(employeeId) && !isWithinWorklogEditWindow(dateKey)) {
+    return {
+      locked: true,
+      lockedByDate: true,
+      label: "자동 잠금",
+      detail: "근무일 당일과 다음날 오전 10시 이후에는 기록이 잠깁니다.",
+      grant,
+    };
+  }
+  return { locked: true, lockedByDate: false, label: "열람 전용", detail: "본인 업무일지만 수정할 수 있습니다." };
+}
+
+function formatCorrectionTime(value = "") {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+  return `${String(date.getHours()).padStart(2, "0")}:${String(date.getMinutes()).padStart(2, "0")}`;
+}
+
+function getPendingCorrectionRequest(employeeId = getCurrentWorklogEmployeeId(), dateKey = getActiveDateKey()) {
+  return (state.worklogCorrectionRequests || []).find((request) => (
+    request.employeeId === employeeId
+    && request.dateKey === dateKey
+    && request.status === "pending"
+  )) || null;
+}
+
+function requestWorklogCorrection(viewName = activeView) {
+  const employeeId = getCurrentWorklogEmployeeId(viewName);
+  const dateKey = getActiveDateKey();
+  if (!employeeId || !canEditEmployeeSlot(employeeId)) {
+    showAppToast("본인 업무일지만 정정 요청할 수 있습니다");
+    return;
+  }
+  if (isWithinWorklogEditWindow(dateKey)) {
+    showAppToast("현재 날짜는 바로 수정할 수 있습니다");
+    return;
+  }
+  const existing = getPendingCorrectionRequest(employeeId, dateKey);
+  if (existing) {
+    showAppToast("이미 정정 요청이 접수되어 있습니다");
+    return;
+  }
+  const reason = prompt("정정 사유를 입력해주세요.");
+  if (!String(reason || "").trim()) return;
+  const employee = getEmployeeOptions().find((item) => item.id === employeeId) || getProfileEmployee();
+  state.worklogCorrectionRequests ||= [];
+  state.worklogCorrectionRequests.unshift({
+    id: `correction-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+    employeeId,
+    employeeLabel: getEmployeeAdminLabel(employee),
+    dateKey,
+    reason: String(reason).trim(),
+    status: "pending",
+    requestedBy: authState.user?.email || state.profile?.email || "",
+    requestedAt: new Date().toISOString(),
+  });
+  saveState();
+  renderAll();
+  showAppToast("정정 요청을 보냈습니다");
+}
+
+function approveWorklogCorrection(requestId = "") {
+  if (!canApproveWorklogCorrections()) {
+    showAppToast("정정 승인 권한이 없습니다");
+    return;
+  }
+  const request = (state.worklogCorrectionRequests || []).find((item) => item.id === requestId);
+  if (!request || request.status !== "pending") return;
+  const now = new Date();
+  const expiresAt = new Date(now.getTime() + 2 * 60 * 60 * 1000);
+  const key = getWorklogCorrectionKey(request.employeeId, request.dateKey);
+  request.status = "approved";
+  request.approvedBy = authState.user?.email || state.profile?.email || "";
+  request.approvedAt = now.toISOString();
+  request.expiresAt = expiresAt.toISOString();
+  state.worklogCorrectionGrants ||= {};
+  state.worklogCorrectionGrants[key] = {
+    requestId: request.id,
+    employeeId: request.employeeId,
+    dateKey: request.dateKey,
+    reason: request.reason,
+    status: "active",
+    approvedBy: request.approvedBy,
+    approvedAt: request.approvedAt,
+    expiresAt: request.expiresAt,
+    baseline: cloneWorklogLogForAudit(getEmployeeLogForDate(request.employeeId, request.dateKey)),
+    lastSnapshot: "",
+  };
+  saveState();
+  renderAll();
+  showAppToast("2시간 정정 권한을 승인했습니다");
+}
+
+function cloneWorklogLogForAudit(log) {
+  return JSON.parse(JSON.stringify(log || {}));
+}
+
+function recordActiveCorrectionAudits() {
+  if (!state?.worklogCorrectionGrants || !state.employeeLogs) return;
+  const now = new Date();
+  Object.entries(state.worklogCorrectionGrants).forEach(([key, grant]) => {
+    if (!grant || grant.status !== "active") return;
+    if (!grant.expiresAt || new Date(grant.expiresAt).getTime() <= now.getTime()) {
+      grant.status = "expired";
+      grant.expiredAt ||= now.toISOString();
+      return;
+    }
+    const log = state.employeeLogs?.[grant.dateKey]?.[grant.employeeId];
+    if (!log) return;
+    const before = JSON.stringify(grant.baseline || {});
+    const after = JSON.stringify(log || {});
+    if (before === after || grant.lastSnapshot === after) return;
+    state.worklogCorrectionAudit ||= [];
+    state.worklogCorrectionAudit.push({
+      id: `audit-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+      employeeId: grant.employeeId,
+      dateKey: grant.dateKey,
+      reason: grant.reason || "",
+      before: grant.baseline || {},
+      after: cloneWorklogLogForAudit(log),
+      changedBy: authState.user?.email || state.profile?.email || "",
+      approvedBy: grant.approvedBy || "",
+      changedAt: now.toISOString(),
+    });
+    grant.baseline = cloneWorklogLogForAudit(log);
+    grant.lastSnapshot = after;
+  });
+  state.worklogCorrectionAudit = (state.worklogCorrectionAudit || []).slice(-240);
 }
 
 function formatDateKey(date) {
@@ -3158,6 +3363,9 @@ function renderGlobalEmployeeIdentity() {
 
 function getGeneralWorklogTitle(view = activeView) {
   if (view === "beyond-log") return "비욘드 업무일지";
+  const employee = getSelectedEmployee();
+  const source = `${employee?.org || ""} ${state.profile?.org || ""} ${state.profile?.workplace || ""}`;
+  if (/비제이|종합건설|건설/.test(source)) return "비제이종건 업무일지";
   return "방주 업무일지";
 }
 
@@ -3307,7 +3515,7 @@ function getGlobalHeaderTitle(view = activeView, personLabel = "") {
   if (view === "executive") return "대표 경영페이지";
   if (view === "control") return "Beyond Control Tower";
   if (view === "beyond-log") return `비욘드 업무일지 · ${personLabel}`;
-  if (view === "bangju-log" || view === "today") return `방주 업무일지 · ${personLabel}`;
+  if (view === "bangju-log" || view === "today") return `${getGeneralWorklogTitle(view)} · ${personLabel}`;
   if (view === "fitness") return "비욘드 피트니스 OS";
   if (view === "attendance") return "노무";
   if (view === "staff") return "직원";
@@ -4086,11 +4294,11 @@ function saveSettingsProfileFromForm() {
 
 function saveProfileChanges({ stayInSettings = false } = {}) {
   if (authState.user && (!state.profile.approvalStatus || state.profile.approvalStatus === "draft")) state.profile.approvalStatus = "pending";
-  const profileSource = `${state.profile.org || ""} ${state.profile.workplace || ""} ${state.profile.primaryWork || ""}`;
-  if (/피트니스|fitness|beyond/i.test(profileSource)) {
+  const nextWorklogView = getUserWorklogView();
+  if (nextWorklogView === "fitness-log") {
     syncFitnessWritableEmployeeFromProfile();
   } else {
-    state.selectedEmployeeId = "profile-user";
+    state.selectedEmployeeId = getProfileMappedEmployeeId() || "profile-user";
   }
   normalizeState();
   normalizeEmployeeLogRows(getSelectedLog());
@@ -4103,7 +4311,7 @@ function saveProfileChanges({ stayInSettings = false } = {}) {
     renderAuthStatus("직원등록 정보가 저장되었습니다. 대표 승인 후 업무일지를 사용할 수 있습니다.");
     return;
   }
-  switchView(stayInSettings ? "settings" : state.selectedEmployeeId === "profile-user" ? "today" : "fitness-log");
+  switchView(stayInSettings ? "settings" : nextWorklogView);
 }
 
 function renderAuthStatus(message) {
@@ -4729,6 +4937,8 @@ function isEditableDayControl(target) {
 function setupMobileDayFocus() {
   setupMobileFocusOpenButtons();
   setupMobileFocusCloseButtons();
+  setupSplitEditGate(document.querySelector(".day-task-panel"), "tasks");
+  setupSplitEditGate(document.querySelector(".day-schedule-panel"), "schedule");
   applyMobileDayFocusMode();
 }
 
@@ -4743,20 +4953,36 @@ function setupMobileFocusOpenButtons() {
 }
 
 function setupSplitEditGate(node, mode) {
+  if (!node) return;
   node.addEventListener("pointerdown", (event) => {
     if (!isMobilePhoneFocusLayout() || mobileDayFocusMode !== "split") return;
-    const shouldFocus = Boolean(event.target.closest("[data-mobile-focus-open]"));
-    if (!shouldFocus) return;
-    event.preventDefault();
-    setMobileDayFocusMode(mode);
-  }, true);
-  node.addEventListener("click", (event) => {
-    if (!isMobilePhoneFocusLayout() || mobileDayFocusMode !== "split") return;
-    const shouldFocus = Boolean(event.target.closest("[data-mobile-focus-open]"));
+    const shouldFocus = shouldOpenMobileDayPanelFocus(event.target, node);
     if (!shouldFocus) return;
     event.preventDefault();
     event.stopPropagation();
+    mobileFocusGateSuppressClick = true;
+    window.setTimeout(() => {
+      mobileFocusGateSuppressClick = false;
+    }, 260);
+    setMobileDayFocusMode(mode);
   }, true);
+  node.addEventListener("click", (event) => {
+    if (!mobileFocusGateSuppressClick) return;
+    if (!isMobilePhoneFocusLayout()) return;
+    if (!node.contains(event.target)) return;
+    if (event.target.closest("[data-mobile-focus-close]")) return;
+    event.preventDefault();
+    event.stopPropagation();
+  }, true);
+}
+
+function shouldOpenMobileDayPanelFocus(target, panel) {
+  if (!target || !panel?.contains?.(target)) return false;
+  if (target.closest("[data-mobile-focus-close]")) return false;
+  if (target.closest("[data-mobile-focus-open]")) return true;
+  if (target.closest(".ai-section-button, .schedule-unit-button")) return true;
+  if (target.closest("input, textarea, select, button")) return true;
+  return Boolean(target.closest(".task-row, .appointment-row, .task-board, .appointment-list, h3"));
 }
 
 function setupMobileFocusCloseButtons() {
@@ -4791,6 +5017,10 @@ function setupMobileFocusCloseButtons() {
 
 function setMobileDayFocusMode(mode) {
   mobileDayFocusMode = isMobilePhoneFocusLayout() ? mode : "split";
+  if (mobileDayFocusMode === "tasks" || mobileDayFocusMode === "schedule") {
+    todayPageMode = "daily";
+    applyTodayPageMode();
+  }
   applyMobileDayFocusMode();
 }
 
@@ -4876,6 +5106,7 @@ function renderFitnessWorklog(log = getSelectedLog()) {
   renderFitnessLogPager();
   renderFitnessCenterDaily();
   renderFitnessCoaching();
+  renderWorklogEditLockBanner("fitness");
   const isCenter = page?.type === "center";
   document.getElementById("fitnessCenterDailyPanel").hidden = !isCenter;
   document.querySelector(".fitness-log-task-panel")?.toggleAttribute("hidden", isCenter);
@@ -4926,7 +5157,7 @@ function applyFitnessLogPermissionState() {
   const view = document.getElementById("view-fitness-log");
   if (!view) return;
   const page = getCurrentFitnessLogPage();
-  const readOnly = !isCurrentFitnessLogEditable();
+  const readOnly = !canEditCurrentWorklog("fitness-log");
   const isCenter = page?.type === "center";
   const isCoworker = page?.type === "employee" && !isOwnFitnessEmployeeId(page.id);
   view.classList.toggle("is-readonly", readOnly);
@@ -5337,7 +5568,53 @@ function renderWorklogSummary(log) {
   }
   const unitButton = document.getElementById("scheduleUnitButton");
   if (unitButton) unitButton.textContent = log.scheduleUnit === "60" ? "1시간" : "30분";
+  renderWorklogEditLockBanner("worklog");
   applyTodayPageMode();
+}
+
+function renderWorklogEditLockBanner(scope = "worklog") {
+  const viewName = scope === "fitness" ? "fitness-log" : activeView;
+  const banner = document.getElementById(scope === "fitness" ? "fitnessEditLockBanner" : "worklogEditLockBanner");
+  if (!banner) return;
+  if (scope === "worklog" && !["today", "bangju-log", "beyond-log"].includes(viewName)) {
+    banner.hidden = true;
+    banner.innerHTML = "";
+    return;
+  }
+  const employeeId = getCurrentWorklogEmployeeId(viewName);
+  const isEmployeePage = Boolean(employeeId);
+  const lock = getWorklogEditLockInfo(employeeId, getActiveDateKey());
+  const pending = isEmployeePage ? getPendingCorrectionRequest(employeeId, getActiveDateKey()) : null;
+  const showPendingApproval = Boolean(pending && canApproveWorklogCorrections());
+  const showOwnRequest = Boolean(isEmployeePage && lock.lockedByDate && canEditEmployeeSlot(employeeId) && !pending);
+  const showGrant = Boolean(lock.grant && !lock.locked);
+  if (!isEmployeePage || (!lock.locked && !showGrant && !showPendingApproval)) {
+    banner.hidden = true;
+    banner.innerHTML = "";
+    return;
+  }
+  banner.hidden = false;
+  banner.classList.toggle("is-locked", lock.locked);
+  banner.classList.toggle("is-approved", showGrant);
+  const employee = getEmployeeOptions().find((item) => item.id === employeeId) || getProfileEmployee();
+  const action = showPendingApproval
+    ? `<button type="button" data-correction-approve="${escapeAttr(pending.id)}">정정 승인</button>`
+    : showOwnRequest
+      ? `<button type="button" data-correction-request="${escapeAttr(scope)}">정정 요청</button>`
+      : pending
+        ? `<span class="worklog-lock-pill">승인 대기</span>`
+        : "";
+  banner.innerHTML = `
+    <div>
+      <strong>${escapeHtml(lock.label)}</strong>
+      <span>${escapeHtml(formatShortDate(getActiveDateKey()))} · ${escapeHtml(getEmployeeAdminLabel(employee))} · ${escapeHtml(lock.detail)}</span>
+    </div>
+    ${action}
+  `;
+  banner.querySelector("[data-correction-request]")?.addEventListener("click", () => requestWorklogCorrection(viewName));
+  banner.querySelector("[data-correction-approve]")?.addEventListener("click", (event) => {
+    approveWorklogCorrection(event.currentTarget.dataset.correctionApprove || "");
+  });
 }
 
 function setTodayPageMode(mode) {
@@ -5959,7 +6236,10 @@ function getOrCreateFitnessScheduleEditor() {
 }
 
 function openFitnessScheduleEditor(entry, log) {
-  if (!isCurrentFitnessLogEditable()) return;
+  if (!canEditCurrentWorklog("fitness-log")) {
+    guardWorklogEdit();
+    return;
+  }
   normalizeScheduleEntryItems(entry);
   fitnessScheduleEditorState = {
     entry,
@@ -6027,7 +6307,10 @@ function renderFitnessScheduleEditor() {
 }
 
 function addFitnessScheduleEditorItem({ close = false } = {}) {
-  if (!isCurrentFitnessLogEditable()) return;
+  if (!canEditCurrentWorklog("fitness-log")) {
+    guardWorklogEdit();
+    return;
+  }
   if (!fitnessScheduleEditorState) return;
   const { editor } = getOrCreateFitnessScheduleEditor();
   const { entry, log } = fitnessScheduleEditorState;
@@ -7269,10 +7552,13 @@ function renderWorkHistorySummary() {
   ];
   node.innerHTML = `
     <article class="work-history-hero">
-      <div>
-        <span>${escapeHtml(getEmployeeAdminLabel(employee))}</span>
-        <strong>${escapeHtml(formatKoreanDate(getActiveDateKey()))} 노무</strong>
-        <p>${escapeHtml(formatAttendanceSummary(log) || "아직 출결 시간이 기록되지 않았습니다.")}</p>
+      <div class="work-history-hero-copy">
+        <span class="work-history-eyebrow">Labor Control · ${escapeHtml(getEmployeeAdminLabel(employee))}</span>
+        <strong>${escapeHtml(formatFormalKoreanDate(getActiveDateKey()))}</strong>
+        <div class="work-history-hero-meta">
+          <b>노무</b>
+          <em>${escapeHtml(formatAttendanceSummary(log) || "출결 시간 미기록")}</em>
+        </div>
       </div>
     </article>
     ${renderLaborOperationsConsole(labor, employee, payroll)}
@@ -9829,7 +10115,10 @@ document.getElementById("employeeMemo").oninput = (event) => {
 };
 document.querySelectorAll("[data-fitness-field]").forEach((field) => {
   field.oninput = (event) => {
-    if (!isCurrentFitnessLogEditable()) return;
+    if (!canEditCurrentWorklog("fitness-log")) {
+      guardWorklogEdit();
+      return;
+    }
     const log = getSelectedLog();
     log.fitnessOps = { ...createFitnessOps(), ...(log.fitnessOps || {}) };
     log.fitnessOpsManual = { ...createFitnessOpsManual(), ...(log.fitnessOpsManual || {}) };

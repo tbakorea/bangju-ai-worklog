@@ -7166,6 +7166,72 @@ textarea:focus-visible {
   background: rgba(252, 252, 247, 0.72);
 }
 
+.worklog-edit-lock-banner {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: center;
+  min-height: 42px;
+  padding: 8px 10px;
+  border: 1px solid rgba(139, 90, 54, 0.18);
+  border-radius: 14px;
+  background: linear-gradient(135deg, rgba(255, 247, 237, 0.9), rgba(252, 252, 247, 0.86));
+  color: #25352f;
+  box-shadow: 0 10px 22px rgba(29, 42, 35, 0.05);
+}
+
+.worklog-edit-lock-banner[hidden] {
+  display: none;
+}
+
+.worklog-edit-lock-banner.is-approved {
+  border-color: rgba(10, 76, 55, 0.18);
+  background: linear-gradient(135deg, rgba(233, 248, 241, 0.92), rgba(252, 252, 247, 0.9));
+}
+
+.worklog-edit-lock-banner div {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.worklog-edit-lock-banner strong {
+  color: var(--fitness-green);
+  font-size: 12px;
+  font-weight: 950;
+  letter-spacing: 0;
+}
+
+.worklog-edit-lock-banner span {
+  overflow: hidden;
+  color: rgba(45, 55, 50, 0.78);
+  font-size: 12px;
+  font-weight: 800;
+  line-height: 1.35;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.worklog-edit-lock-banner button,
+.worklog-lock-pill {
+  min-height: 30px;
+  padding: 0 12px;
+  border: 1px solid rgba(10, 76, 55, 0.16);
+  border-radius: 999px;
+  background: var(--fitness-green);
+  color: #fffefa;
+  font-size: 12px;
+  font-weight: 950;
+  white-space: nowrap;
+}
+
+.worklog-lock-pill {
+  display: inline-grid;
+  place-items: center;
+  background: rgba(10, 76, 55, 0.1);
+  color: var(--fitness-green);
+}
+
 .fitness-log-view.is-coworker-page .fitness-log-task-panel,
 .fitness-log-view.is-coworker-page .fitness-log-schedule-panel,
 .fitness-log-view.is-coworker-page .fitness-ops-section {
@@ -7987,7 +8053,7 @@ textarea:focus-visible {
 
 @media (max-width: 760px) {
   .fitness-appointment-row {
-    grid-template-columns: 48px minmax(0, 1fr) 22px;
+    grid-template-columns: 56px minmax(0, 1fr) 22px;
   }
 
   .fitness-appointment-summary {
@@ -8741,6 +8807,33 @@ body[data-layout-mode="phone"] .fitness-log-schedule-panel .fitness-appointment-
   color: var(--muted);
   font-size: inherit;
   font-weight: 850;
+}
+
+.fitness-log-schedule-panel .fitness-appointment-row .appointment-time,
+.fitness-log-schedule-panel .fitness-appointment-row.is-current .appointment-time {
+  display: block;
+  min-width: 0;
+  overflow: visible;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 850;
+  line-height: 1;
+  white-space: nowrap;
+  word-break: keep-all;
+}
+
+body[data-layout-mode="phone"] #view-fitness-log .fitness-log-schedule-panel .fitness-appointment-row,
+body.physical-phone-device #view-fitness-log .fitness-log-schedule-panel .fitness-appointment-row {
+  grid-template-columns: 56px minmax(0, 1fr) 24px !important;
+}
+
+body[data-layout-mode="phone"] #view-fitness-log .fitness-log-schedule-panel .fitness-appointment-row .appointment-time,
+body[data-layout-mode="phone"] #view-fitness-log .fitness-log-schedule-panel .fitness-appointment-row.is-current .appointment-time,
+body.physical-phone-device #view-fitness-log .fitness-log-schedule-panel .fitness-appointment-row .appointment-time,
+body.physical-phone-device #view-fitness-log .fitness-log-schedule-panel .fitness-appointment-row.is-current .appointment-time {
+  font-size: 13px !important;
+  line-height: 1 !important;
+  white-space: nowrap !important;
 }
 
 .fitness-ops-section {
@@ -9734,12 +9827,14 @@ body[data-layout-mode="phone"] .fitness-log-schedule-panel .appointment-merge-bu
 .fitness-paper-top strong {
   display: block;
   overflow: hidden;
-  color: #fffdf3;
+  color: #fff6bf;
   font-size: 22px;
   line-height: 1.08;
   font-weight: 980;
   letter-spacing: 0;
-  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.42);
+  text-shadow:
+    0 1px 0 rgba(0, 0, 0, 0.7),
+    0 0 10px rgba(255, 246, 191, 0.22);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -9747,9 +9842,10 @@ body[data-layout-mode="phone"] .fitness-log-schedule-panel .appointment-merge-bu
 .fitness-paper-top span {
   margin-top: 4px;
   overflow: hidden;
-  color: rgba(255, 253, 243, 0.9);
+  color: rgba(255, 253, 243, 0.96);
   font-size: 11.5px;
-  font-weight: 900;
+  font-weight: 930;
+  text-shadow: 0 1px 0 rgba(0, 0, 0, 0.42);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -16472,6 +16568,267 @@ body[data-layout-mode="phone"] .control-tower-hero-actions,
 body.physical-phone-device .executive-hero-actions,
 body.physical-phone-device .control-tower-hero-actions {
   grid-template-columns: 38px minmax(0, 1fr) 38px 46px var(--section-menu-phone-size) !important;
+}
+
+/* Calendar and labor hero refinement pass. Keep the calendar above command
+   panels, and make the year selector feel like one centered control. */
+.worklog-calendar-backdrop {
+  z-index: 700 !important;
+}
+
+.worklog-calendar-popover {
+  z-index: 720 !important;
+}
+
+.calendar-header {
+  position: relative !important;
+  grid-template-columns: 42px minmax(0, 1fr) 42px !important;
+}
+
+.calendar-year-control {
+  display: grid !important;
+  place-items: center !important;
+  min-width: 0 !important;
+}
+
+#calendarMonthTitle {
+  width: min(178px, 100%) !important;
+  justify-self: center !important;
+  text-align: center !important;
+}
+
+.calendar-year-wheel {
+  right: auto !important;
+  left: 50% !important;
+  width: min(178px, calc(100vw - 104px)) !important;
+  transform: translateX(-50%) !important;
+  text-align: center !important;
+}
+
+.calendar-year-control.is-wheel-open #calendarMonthTitle {
+  opacity: 0 !important;
+}
+
+#view-attendance .worklog-title-row {
+  display: none !important;
+}
+
+#view-attendance .work-history-summary {
+  margin-bottom: 10px !important;
+}
+
+#view-attendance .work-history-hero {
+  display: grid !important;
+  align-items: end !important;
+  min-height: 150px !important;
+  padding: 22px 108px 20px 22px !important;
+  border: 0 !important;
+  border-radius: 28px !important;
+  overflow: hidden !important;
+  background:
+    radial-gradient(circle at 86% 8%, rgba(250, 255, 229, 0.16), transparent 34%),
+    linear-gradient(135deg, rgba(7, 43, 32, 0.98), rgba(17, 87, 63, 0.92)) !important;
+  box-shadow:
+    0 18px 44px rgba(11, 50, 38, 0.16),
+    inset 0 1px 0 rgba(255, 255, 255, 0.16) !important;
+}
+
+#view-attendance .work-history-hero-copy {
+  display: grid;
+  gap: 7px;
+  min-width: 0;
+}
+
+#view-attendance .work-history-eyebrow {
+  overflow: hidden;
+  max-width: 100%;
+  color: rgba(255, 254, 250, 0.68);
+  font-size: 12px;
+  font-weight: 950;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+#view-attendance .work-history-hero strong {
+  margin: 0 !important;
+  max-width: 100%;
+  color: #fff8d7 !important;
+  font-size: clamp(26px, 5.6vw, 38px) !important;
+  line-height: 1.02 !important;
+  letter-spacing: 0 !important;
+  text-shadow: 0 2px 14px rgba(0, 0, 0, 0.18);
+}
+
+#view-attendance .work-history-hero-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 8px;
+  align-items: center;
+  min-width: 0;
+}
+
+#view-attendance .work-history-hero-meta b {
+  display: inline-grid;
+  place-items: center;
+  min-height: 30px;
+  padding: 0 12px;
+  border: 1px solid rgba(255, 254, 250, 0.18);
+  border-radius: 999px;
+  background: rgba(255, 254, 250, 0.13);
+  color: #fff8d7;
+  font-size: 13px;
+  font-weight: 950;
+}
+
+#view-attendance .work-history-hero-meta em {
+  overflow: hidden;
+  color: rgba(255, 254, 250, 0.76);
+  font-style: normal;
+  font-size: 13px;
+  font-weight: 850;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+#view-attendance .work-history-hero .section-menu-dock {
+  top: 14px !important;
+  right: 14px !important;
+}
+
+body[data-layout-mode="phone"] .worklog-calendar-popover,
+body.physical-phone-device .worklog-calendar-popover {
+  inset: max(104px, calc(env(safe-area-inset-top) + 82px)) 10px auto 10px !important;
+  width: auto !important;
+  max-height: calc(100dvh - max(104px, calc(env(safe-area-inset-top) + 82px)) - 12px) !important;
+  border-radius: 20px !important;
+  padding: 10px !important;
+}
+
+body[data-layout-mode="phone"] .calendar-header,
+body.physical-phone-device .calendar-header {
+  grid-template-columns: 42px minmax(0, 1fr) 42px !important;
+}
+
+body[data-layout-mode="phone"] #view-attendance .work-history-hero,
+body.physical-phone-device #view-attendance .work-history-hero {
+  min-height: 138px !important;
+  padding: 20px 78px 18px 18px !important;
+  border-radius: 24px !important;
+}
+
+body[data-layout-mode="phone"] #view-attendance .work-history-hero strong,
+body.physical-phone-device #view-attendance .work-history-hero strong {
+  font-size: clamp(24px, 7vw, 32px) !important;
+}
+
+body[data-layout-mode="phone"] #view-attendance .work-history-hero-meta,
+body.physical-phone-device #view-attendance .work-history-hero-meta {
+  display: grid;
+  gap: 5px;
+}
+
+/* Worklog focus gate: phone/CEO mode keeps the two panels scannable, then
+   expands one panel cleanly before editing. */
+body[data-layout-mode="phone"] #view-today .worklog-main.is-focus-tasks[data-today-page="daily"] .worklog-daily-page,
+body[data-layout-mode="phone"] #view-today .worklog-main.is-focus-schedule[data-today-page="daily"] .worklog-daily-page,
+body.physical-phone-device #view-today .worklog-main.is-focus-tasks[data-today-page="daily"] .worklog-daily-page,
+body.physical-phone-device #view-today .worklog-main.is-focus-schedule[data-today-page="daily"] .worklog-daily-page,
+body[data-view-mode="ceo"] #view-today .worklog-main.is-focus-tasks[data-today-page="daily"] .worklog-daily-page,
+body[data-view-mode="ceo"] #view-today .worklog-main.is-focus-schedule[data-today-page="daily"] .worklog-daily-page {
+  grid-template-columns: minmax(0, 1fr) !important;
+}
+
+body[data-layout-mode="phone"] #view-today .worklog-main.is-focus-tasks .day-schedule-panel,
+body.physical-phone-device #view-today .worklog-main.is-focus-tasks .day-schedule-panel,
+body[data-view-mode="ceo"] #view-today .worklog-main.is-focus-tasks .day-schedule-panel,
+body[data-layout-mode="phone"] #view-today .worklog-main.is-focus-schedule .day-task-panel,
+body.physical-phone-device #view-today .worklog-main.is-focus-schedule .day-task-panel,
+body[data-view-mode="ceo"] #view-today .worklog-main.is-focus-schedule .day-task-panel {
+  display: none !important;
+}
+
+body[data-layout-mode="phone"] #view-today .worklog-main.is-focus-tasks .mobile-focus-done,
+body[data-layout-mode="phone"] #view-today .worklog-main.is-focus-schedule .mobile-focus-done,
+body.physical-phone-device #view-today .worklog-main.is-focus-tasks .mobile-focus-done,
+body.physical-phone-device #view-today .worklog-main.is-focus-schedule .mobile-focus-done,
+body[data-view-mode="ceo"] #view-today .worklog-main.is-focus-tasks .mobile-focus-done,
+body[data-view-mode="ceo"] #view-today .worklog-main.is-focus-schedule .mobile-focus-done {
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+}
+
+body[data-layout-mode="phone"] #view-today .worklog-main.is-focus-tasks .mobile-focus-open,
+body[data-layout-mode="phone"] #view-today .worklog-main.is-focus-schedule .mobile-focus-open,
+body.physical-phone-device #view-today .worklog-main.is-focus-tasks .mobile-focus-open,
+body.physical-phone-device #view-today .worklog-main.is-focus-schedule .mobile-focus-open,
+body[data-view-mode="ceo"] #view-today .worklog-main.is-focus-tasks .mobile-focus-open,
+body[data-view-mode="ceo"] #view-today .worklog-main.is-focus-schedule .mobile-focus-open {
+  display: none !important;
+}
+
+body[data-layout-mode="phone"] #view-today .worklog-main.is-focus-tasks .worklog-panel,
+body[data-layout-mode="phone"] #view-today .worklog-main.is-focus-schedule .worklog-panel,
+body.physical-phone-device #view-today .worklog-main.is-focus-tasks .worklog-panel,
+body.physical-phone-device #view-today .worklog-main.is-focus-schedule .worklog-panel,
+body[data-view-mode="ceo"] #view-today .worklog-main.is-focus-tasks .worklog-panel,
+body[data-view-mode="ceo"] #view-today .worklog-main.is-focus-schedule .worklog-panel {
+  width: 100% !important;
+  max-width: 100% !important;
+  overflow-x: hidden !important;
+}
+
+body[data-layout-mode="phone"] #view-today .worklog-main.is-focus-tasks .task-row,
+body.physical-phone-device #view-today .worklog-main.is-focus-tasks .task-row,
+body[data-view-mode="ceo"] #view-today .worklog-main.is-focus-tasks .task-row {
+  grid-template-columns: 28px minmax(26px, auto) minmax(0, 1fr) 28px !important;
+}
+
+body[data-layout-mode="phone"] #view-today .worklog-main.is-focus-tasks .task-text-input,
+body.physical-phone-device #view-today .worklog-main.is-focus-tasks .task-text-input,
+body[data-view-mode="ceo"] #view-today .worklog-main.is-focus-tasks .task-text-input,
+body[data-layout-mode="phone"] #view-today .worklog-main.is-focus-schedule .appointment-row input[type="text"],
+body.physical-phone-device #view-today .worklog-main.is-focus-schedule .appointment-row input[type="text"],
+body[data-view-mode="ceo"] #view-today .worklog-main.is-focus-schedule .appointment-row input[type="text"] {
+  min-width: 0 !important;
+  max-width: 100% !important;
+  font-size: clamp(17px, 4.8vw, 22px) !important;
+}
+
+body[data-layout-mode="phone"] #view-today .worklog-main.is-focus-schedule .appointment-row,
+body.physical-phone-device #view-today .worklog-main.is-focus-schedule .appointment-row,
+body[data-view-mode="ceo"] #view-today .worklog-main.is-focus-schedule .appointment-row {
+  grid-template-columns: 64px minmax(0, 1fr) 28px !important;
+}
+
+body[data-layout-mode="phone"] #view-today .worklog-main.is-focus-schedule .appointment-time,
+body.physical-phone-device #view-today .worklog-main.is-focus-schedule .appointment-time,
+body[data-view-mode="ceo"] #view-today .worklog-main.is-focus-schedule .appointment-time {
+  white-space: nowrap !important;
+}
+
+body[data-layout-mode="phone"] #view-fitness-log .fitness-log-schedule-panel .fitness-appointment-row,
+body.physical-phone-device #view-fitness-log .fitness-log-schedule-panel .fitness-appointment-row {
+  grid-template-columns: 58px minmax(0, 1fr) 28px !important;
+}
+
+body[data-layout-mode="phone"] #view-fitness-log .fitness-log-schedule-panel .appointment-time,
+body[data-layout-mode="phone"] #view-fitness-log .fitness-log-schedule-panel .fitness-appointment-row.is-current .appointment-time,
+body.physical-phone-device #view-fitness-log .fitness-log-schedule-panel .appointment-time,
+body.physical-phone-device #view-fitness-log .fitness-log-schedule-panel .fitness-appointment-row.is-current .appointment-time {
+  width: 58px !important;
+  min-width: 58px !important;
+  max-width: 58px !important;
+  overflow: visible !important;
+  color: #5f6762 !important;
+  font-size: 16px !important;
+  font-weight: 850 !important;
+  letter-spacing: 0 !important;
+  line-height: 1 !important;
+  text-align: left !important;
+  white-space: nowrap !important;
 }
 
 /* Keep this at the absolute end so page-specific display rules never stack
