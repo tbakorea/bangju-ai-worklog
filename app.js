@@ -4937,8 +4937,6 @@ function isEditableDayControl(target) {
 function setupMobileDayFocus() {
   setupMobileFocusOpenButtons();
   setupMobileFocusCloseButtons();
-  setupSplitEditGate(document.querySelector(".day-task-panel"), "tasks");
-  setupSplitEditGate(document.querySelector(".day-schedule-panel"), "schedule");
   applyMobileDayFocusMode();
 }
 

@@ -116,7 +116,12 @@ async function checkPhoneWorklog(browser) {
   await page.click(".day-task-panel");
   await page.waitForTimeout(100);
   const panelTapFocus = await page.evaluate(() => document.querySelector("#worklogMain")?.classList.contains("is-focus-tasks"));
-  if (!panelTapFocus) fail("phone worklog task panel tap should open focus mode");
+  if (panelTapFocus) fail("phone worklog should not auto-expand when tapping the task panel");
+
+  await page.click('.day-task-panel [data-mobile-focus-open="tasks"]');
+  await page.waitForTimeout(150);
+  const buttonFocus = await page.evaluate(() => document.querySelector("#worklogMain")?.classList.contains("is-focus-tasks"));
+  if (!buttonFocus) fail("phone worklog task expand button did not open focus mode");
 
   await page.click(".day-task-panel [data-mobile-focus-close]");
   await page.waitForTimeout(150);
@@ -126,7 +131,12 @@ async function checkPhoneWorklog(browser) {
   await page.click(".day-schedule-panel");
   await page.waitForTimeout(100);
   const scheduleTapFocus = await page.evaluate(() => document.querySelector("#worklogMain")?.classList.contains("is-focus-schedule"));
-  if (!scheduleTapFocus) fail("phone worklog schedule panel tap should open focus mode");
+  if (scheduleTapFocus) fail("phone worklog should not auto-expand when tapping the schedule panel");
+
+  await page.click('.day-schedule-panel [data-mobile-focus-open="schedule"]');
+  await page.waitForTimeout(150);
+  const scheduleButtonFocus = await page.evaluate(() => document.querySelector("#worklogMain")?.classList.contains("is-focus-schedule"));
+  if (!scheduleButtonFocus) fail("phone worklog schedule expand button did not open focus mode");
 
   await page.click(".day-schedule-panel [data-mobile-focus-close]");
   await page.waitForTimeout(150);
@@ -602,13 +612,7 @@ async function checkSectionAiWorklogActions(browser) {
   });
   await page.waitForTimeout(250);
   await page.click('.worklog-task-panel [data-section-ai="tasks"]');
-  await page.waitForTimeout(320);
-  await page.click('.worklog-task-panel [data-section-ai="tasks"]');
   await page.waitForTimeout(250);
-  await page.click(".worklog-task-panel [data-mobile-focus-close]");
-  await page.waitForTimeout(250);
-  await page.click('.worklog-schedule-panel [data-section-ai="schedule"]');
-  await page.waitForTimeout(320);
   await page.click('.worklog-schedule-panel [data-section-ai="schedule"]');
   await page.waitForTimeout(250);
   const metrics = await page.evaluate(() => {
