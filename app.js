@@ -3723,6 +3723,7 @@ function isProfileApproved() {
 }
 
 function getApprovalStatusLabel(status = state.profile?.approvalStatus) {
+  status = normalizeApprovalStatus(status || "pending");
   if (status === "approved") return "승인 완료";
   if (status === "rejected") return "반려";
   if (status === "pending") return "승인 대기";
@@ -3996,11 +3997,31 @@ function hasPendingProfileChanges(raw = state.profile?.pendingProfileChanges) {
   return Object.keys(normalizePendingProfileChangeRequest(raw).fields).length > 0;
 }
 
-function countApprovalActionItems(rows = []) {
-  return rows.filter((row) => (
-    (row.approval_status || "pending") === "pending"
+function isCurrentUserProfileRow(row = {}) {
+  const currentId = String(authState.user?.id || "");
+  const currentEmail = String(authState.user?.email || state.profile?.email || "").trim().toLowerCase();
+  const rowId = String(row.id || "");
+  const rowEmail = String(row.email || "").trim().toLowerCase();
+  return Boolean((currentId && rowId === currentId) || (currentEmail && rowEmail === currentEmail));
+}
+
+function getVisibleApprovalRows(rows = []) {
+  return (rows || []).filter((row) => !isCurrentUserProfileRow(row));
+}
+
+function normalizeApprovalStatus(status = "pending") {
+  return ["pending", "approved", "rejected"].includes(status) ? status : "pending";
+}
+
+function isApprovalActionItem(row = {}) {
+  return (
+    normalizeApprovalStatus(row.approval_status || "pending") === "pending"
     || hasPendingProfileChanges(row.pending_profile_changes)
-  )).length;
+  );
+}
+
+function countApprovalActionItems(rows = []) {
+  return getVisibleApprovalRows(rows).filter(isApprovalActionItem).length;
 }
 
 function updateSettingsProfileSaveButton() {
@@ -4217,8 +4238,13 @@ function startApprovalNotificationPolling() {
 
 function openApprovalManagement() {
   switchView("settings");
-  switchSettingsTab("approval");
   renderApprovalAccess();
+  switchSettingsTab("approval");
+  setTimeout(() => {
+    if (activeView !== "settings" || !canShowApprovalMenu()) return;
+    loadApprovalRequests();
+    loadPasswordResetRequests();
+  }, 0);
 }
 
 async function loadApprovalRequests() {
@@ -4232,13 +4258,12 @@ async function loadApprovalRequests() {
   const { data, error } = await supabaseClient
     .from("profiles")
     .select("*")
-    .in("approval_status", ["pending", "approved", "rejected"])
     .order("updated_at", { ascending: false });
   if (error) {
     list.innerHTML = `<p class="empty-note">직원등록 신청을 불러오지 못했습니다. 승인 데이터 구조를 적용했는지 확인해주세요.<br>${escapeHtml(error.message)}</p>`;
     return;
   }
-  const rows = (data || []).filter((row) => row.id !== authState.user.id);
+  const rows = getVisibleApprovalRows(data || []);
   authState.approvalRows = rows;
   authState.approvalRowsLoaded = true;
   authState.pendingApprovalCount = countApprovalActionItems(rows);
@@ -4254,7 +4279,7 @@ async function loadApprovalRequests() {
     return;
   }
   if (!rows.some((row) => row.id === authState.selectedApprovalId)) {
-    authState.selectedApprovalId = rows.find((row) => (row.approval_status || "pending") === "pending" || hasPendingProfileChanges(row.pending_profile_changes))?.id || rows[0].id;
+    authState.selectedApprovalId = rows.find((row) => normalizeApprovalStatus(row.approval_status || "pending") === "pending" || hasPendingProfileChanges(row.pending_profile_changes))?.id || rows[0].id;
   }
   renderApprovalQueue();
 }
@@ -4264,10 +4289,9 @@ async function refreshStaffApprovalRows() {
   const { data, error } = await supabaseClient
     .from("profiles")
     .select("*")
-    .in("approval_status", ["pending", "approved", "rejected"])
     .order("updated_at", { ascending: false });
   if (error) return;
-  authState.approvalRows = (data || []).filter((row) => row.id !== authState.user.id);
+  authState.approvalRows = getVisibleApprovalRows(data || []);
   authState.approvalRowsLoaded = true;
   authState.pendingApprovalCount = countApprovalActionItems(authState.approvalRows);
   renderApprovalNotification();
@@ -4275,6 +4299,7 @@ async function refreshStaffApprovalRows() {
 }
 
 function getApprovalStatusTone(status = "pending") {
+  status = normalizeApprovalStatus(status);
   if (status === "approved") return "approved";
   if (status === "rejected") return "rejected";
   return "pending";
@@ -4300,7 +4325,7 @@ function renderApprovalQueue() {
             <em>등록/변경요청</em>
           </article>
           ${groups.map(([status, label, caption]) => {
-            const count = rows.filter((row) => (row.approval_status || "pending") === status).length;
+            const count = rows.filter((row) => normalizeApprovalStatus(row.approval_status || "pending") === status).length;
             return `
               <article data-status="${escapeAttr(status)}">
                 <span>${escapeHtml(label)}</span>
@@ -4321,7 +4346,7 @@ function renderApprovalQueue() {
 
 function renderApprovalQueueGroup(status, label, rows, selectedId) {
   const items = rows
-    .filter((row) => (row.approval_status || "pending") === status)
+    .filter((row) => normalizeApprovalStatus(row.approval_status || "pending") === status)
     .sort((a, b) => Number(hasPendingProfileChanges(b.pending_profile_changes)) - Number(hasPendingProfileChanges(a.pending_profile_changes)));
   return `
     <section class="approval-queue-group" data-status="${escapeAttr(status)}">
@@ -4337,7 +4362,7 @@ function renderApprovalQueueGroup(status, label, rows, selectedId) {
 }
 
 function renderApprovalQueueButton(row, selectedId) {
-  const status = row.approval_status || "pending";
+  const status = normalizeApprovalStatus(row.approval_status || "pending");
   const meta = [row.role, row.org, row.workplace].filter(Boolean).join(" · ") || "소속/직함 확인 필요";
   const hasChangeRequest = hasPendingProfileChanges(row.pending_profile_changes);
   const changeBadge = hasChangeRequest ? " · 변경요청" : "";
@@ -4403,7 +4428,7 @@ function renderPendingProfileChangeBox(row = {}) {
 }
 
 function renderApprovalRequestCard(row) {
-  const status = row.approval_status || "pending";
+  const status = normalizeApprovalStatus(row.approval_status || "pending");
   const field = (name, label, value = "", type = "text") => `
     <label>${escapeHtml(label)}
       <input type="${type}" data-approval-id="${escapeAttr(row.id)}" data-approval-field="${escapeAttr(name)}" value="${escapeAttr(name === "phone" ? formatPhoneNumber(value) : value || "")}" />
