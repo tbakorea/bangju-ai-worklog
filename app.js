@@ -4571,8 +4571,16 @@ function renderPendingProfileChangeBox(row = {}) {
           return `
             <article>
               <b>${escapeHtml(label)}</b>
-              <span>${escapeHtml(formatPendingProfileValue(key, currentValue))}</span>
-              <strong>${escapeHtml(formatPendingProfileValue(key, nextValue))}</strong>
+              <div>
+                <span>
+                  <small>기존</small>
+                  <em>${escapeHtml(formatPendingProfileValue(key, currentValue))}</em>
+                </span>
+                <strong>
+                  <small>요청</small>
+                  <em>${escapeHtml(formatPendingProfileValue(key, nextValue))}</em>
+                </strong>
+              </div>
             </article>
           `;
         }).join("")}
@@ -4613,6 +4621,7 @@ function renderApprovalRequestCard(row) {
       </div>
       ${renderPendingProfileChangeBox(row)}
       <div class="approval-edit-grid">
+        ${hasChangeRequest ? `<div class="approval-edit-grid-note">아래 항목은 현재 확정 정보입니다. 직접 보정이 필요하면 수정 후 저장하거나, 위 변경요청을 승인/반려하세요.</div>` : ""}
         ${field("org", "소속", row.org)}
         ${field("role", "직급", row.role)}
         ${field("name", "이름", row.name)}
