@@ -15096,6 +15096,35 @@ body[data-layout-mode="phone"] #view-fitness-log .fitness-log-pager {
   font-weight: 950;
 }
 
+#view-today .common-week-guidance {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+#view-today .common-week-guidance article {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+  border: 1px solid rgba(15, 59, 46, 0.08);
+  border-radius: 12px;
+  background: rgba(244, 248, 243, 0.72);
+  padding: 10px;
+}
+
+#view-today .common-week-guidance b {
+  color: var(--fitness-green);
+  font-size: 13px;
+  font-weight: 950;
+}
+
+#view-today .common-week-guidance span {
+  color: rgba(38, 50, 56, 0.68);
+  font-size: 11px;
+  font-weight: 780;
+  line-height: 1.35;
+}
+
 #view-today .common-week-days {
   display: grid;
   grid-template-columns: repeat(7, minmax(0, 1fr));
@@ -15333,12 +15362,21 @@ body[data-layout-mode="phone"] #view-fitness-log .fitness-log-pager {
     grid-template-columns: minmax(0, 1fr);
   }
 
+  #view-today .common-week-guidance {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 6px;
+  }
+
+  #view-today .common-week-guidance article {
+    padding: 8px 10px;
+  }
+
   #view-today .common-week-day {
     min-height: 118px;
   }
 
   #view-today .company-common-day {
-    min-height: 130px;
+    min-height: 118px;
   }
 }
 

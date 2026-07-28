@@ -6604,17 +6604,37 @@ function renderSharedWorklogPanels(log = getSelectedLog()) {
   const weekRange = getWeekDateKeys(dateKey);
   const companyKey = getCompanyCommonKey(selectedEmployee);
   const companyLabel = getCompanyCommonLabel(companyKey);
-  const { week, changed: commonChanged } = ensureCompanyCommonWeek(companyKey, commonWeekKey);
+  const commonWeekResult = ensureCompanyCommonWeek(companyKey, commonWeekKey);
+  const week = commonWeekResult.week;
+  let commonChanged = commonWeekResult.changed;
   const commonProgress = getCommonWeekProgress(week);
   const canEditCommon = canEditCompanyCommonSchedule(selectedEmployee);
+  if (canEditCommon) {
+    weekRange.forEach((dayKey) => {
+      week.days[dayKey] ||= [];
+      if (!week.days[dayKey].length) {
+        week.days[dayKey].push(createCommonScheduleItem(""));
+        commonChanged = true;
+      }
+    });
+  }
+  const commonGuidance = getCompanyCommonGuidance(companyKey);
   common.innerHTML = `
     <section class="common-week-header">
       <div>
-        <span>Company Common Schedule</span>
-        <strong>${escapeHtml(companyLabel)} 공통일정</strong>
-        <small>${escapeHtml(formatCommonWeekRange(commonWeekKey))} · 완료 ${commonProgress.done}/${commonProgress.total} · 미완료 ${commonProgress.pending}</small>
+        <span>Weekly Operating Board</span>
+        <strong>${escapeHtml(companyLabel)} 공통일정 · 주간 공통업무</strong>
+        <small>${escapeHtml(formatCommonWeekRange(commonWeekKey))} · 완료 ${commonProgress.done}/${commonProgress.total} · 이월 후보 ${commonProgress.pending}</small>
       </div>
-      <button type="button" id="commonWeekTodayButton">업무일지</button>
+      <button type="button" id="commonWeekTodayButton">개인 업무일지</button>
+    </section>
+    <section class="common-week-guidance" aria-label="주간 공통업무 운영 기준">
+      ${commonGuidance.map((item) => `
+        <article>
+          <b>${escapeHtml(item.title)}</b>
+          <span>${escapeHtml(item.text)}</span>
+        </article>
+      `).join("")}
     </section>
     <section class="common-week-days company-common-days ${canEditCommon ? "is-editable" : "is-readonly"}" aria-label="회사 공통일정">
       ${weekRange.map((key) => renderCompanyCommonWeekDay(key, week.days?.[key] || [], canEditCommon)).join("")}
@@ -6622,8 +6642,8 @@ function renderSharedWorklogPanels(log = getSelectedLog()) {
     <section class="common-week-brief">
       <b>운영 규칙</b>
       <div>
-        <p>공통일정은 개인 업무기록이 아니라 소속회사에서 함께 확인해야 하는 요일별 업무입니다.</p>
-        <p>이번 주에 완료하지 않은 항목은 다음 주 같은 요일로 자동 이월됩니다. 중요도는 사용하지 않고 체크 여부로만 관리합니다.</p>
+        <p>공통업무는 개인 업무기록이 아니라 같은 소속이 함께 확인하는 주간 실행 항목입니다.</p>
+        <p>중요도 표시는 쓰지 않고 체크 여부만 남깁니다. 미완료 항목은 다음 주 같은 요일로 자동 이월됩니다.</p>
       </div>
     </section>
   `;
@@ -6633,9 +6653,13 @@ function renderSharedWorklogPanels(log = getSelectedLog()) {
       if (!guardCompanyCommonEdit(selectedEmployee)) return;
       const dayKey = button.dataset.commonAdd;
       week.days[dayKey] ||= [];
-      week.days[dayKey].push(createCommonScheduleItem(""));
+      const item = createCommonScheduleItem("");
+      week.days[dayKey].push(item);
       saveState();
       renderSharedWorklogPanels();
+      requestAnimationFrame(() => {
+        document.querySelector(`[data-common-text="${CSS.escape(item.id)}"]`)?.focus();
+      });
     });
   });
   common.querySelectorAll("[data-common-check]").forEach((checkbox) => {
@@ -6737,6 +6761,31 @@ function getCompanyCommonLabel(companyKey = getCompanyCommonKey()) {
   }[companyKey] || companyKey || "(주)방주";
 }
 
+function getCompanyCommonGuidance(companyKey = getCompanyCommonKey()) {
+  const guides = {
+    bangju: [
+      { title: "재무 마감", text: "입출금, 세금, 대출, 임대료, 미수금 등 날짜가 있는 공통 확인사항을 둡니다." },
+      { title: "계약/자산", text: "계약만료, 등기, 임대, 공실, 자산관리 이슈를 요일별로 배치합니다." },
+      { title: "대표 보고", text: "대표 확인이 필요한 숫자와 리스크는 주간 공통업무로 남깁니다." },
+    ],
+    "beyond-company": [
+      { title: "공유사업", text: "입주, 문의, 공실, 우편, 회의실, 창고 운영 이슈를 함께 추적합니다." },
+      { title: "TBA/프로젝트", text: "시공, 발주, 쇼룸, 특허, 콘텐츠 등 부서 공통 일정을 배치합니다." },
+      { title: "고객 후속", text: "상담 후속, 견적, 재방문, 클레임 처리를 놓치지 않게 둡니다." },
+    ],
+    "bj-construction": [
+      { title: "공정/안전", text: "현장 공정, 안전점검, 품질 확인, 자재 입고 일정을 한 주 단위로 정리합니다." },
+      { title: "협력업체", text: "하도급, 인력, 장비, 검측 요청 등 외부 일정은 요일별로 배치합니다." },
+      { title: "문서/사진", text: "일보, 사진, 도면, 공문, 검측자료 제출 상태를 함께 확인합니다." },
+    ],
+  };
+  return guides[companyKey] || [
+    { title: "공통 목표", text: "이번 주 같은 소속이 반드시 확인해야 할 업무를 요일별로 배치합니다." },
+    { title: "실행 확인", text: "완료 여부만 체크해 주간 진행률과 이월 항목을 명확히 남깁니다." },
+    { title: "다음 주 연결", text: "미완료 항목은 다음 주 같은 요일로 자동 이월됩니다." },
+  ];
+}
+
 function createCommonScheduleItem(text = "", source = null) {
   const id = crypto.randomUUID?.() || `common-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
   return {
@@ -6813,9 +6862,10 @@ function getCommonWeekProgress(week) {
 }
 
 function renderCompanyCommonWeekDay(dateKey, items = [], editable = false) {
-  const filledItems = items.filter((item) => item.text?.trim() || item.done);
-  const body = filledItems.length
-    ? filledItems.map((item) => `
+  const visibleItems = editable ? items : items.filter((item) => item.text?.trim() || item.done);
+  const countItems = items.filter((item) => item.text?.trim() || item.done);
+  const body = visibleItems.length
+    ? visibleItems.map((item) => `
       <div class="company-common-row ${item.done ? "is-done" : ""} ${item.carryFrom ? "is-carried" : ""}" data-common-item="${escapeAttr(item.id)}">
         <label>
           <input type="checkbox" data-common-check="${escapeAttr(item.id)}" ${item.done ? "checked" : ""} ${editable ? "" : "disabled"} />
@@ -6831,7 +6881,7 @@ function renderCompanyCommonWeekDay(dateKey, items = [], editable = false) {
     <article class="company-common-day">
       <header>
         <b>${escapeHtml(formatWeekdayShort(dateKey))}</b>
-        <span>${filledItems.filter((item) => item.done).length}/${filledItems.length}</span>
+        <span>${countItems.filter((item) => item.done).length}/${countItems.length}</span>
       </header>
       <div class="company-common-list">${body}</div>
       ${editable ? `<button type="button" class="company-common-add" data-common-add="${escapeAttr(dateKey)}">공통업무 추가</button>` : ""}
