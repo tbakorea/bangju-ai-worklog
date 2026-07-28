@@ -226,6 +226,12 @@ const organizationPlacementOptions = {
       "기타": ["이사", "부장", "과장", "본부장", "팀장"],
     },
   },
+  "기타": {
+    workplaces: ["기타"],
+    rolesByWorkplace: {
+      "기타": ["대표", "이사", "부장", "과장", "대리", "직원", "기타"],
+    },
+  },
 };
 const registrationWorkplaceOptions = Object.fromEntries(
   Object.entries(organizationPlacementOptions).map(([org, config]) => [org, config.workplaces])
@@ -3915,7 +3921,9 @@ function getPlacementRoleOptions(org = "", workplace = "") {
 function fillPlacementSelect(select, options, placeholder, currentValue = "") {
   if (!select) return;
   const uniqueOptions = [...new Set(options.filter(Boolean))];
-  const isOrgSelect = Object.prototype.hasOwnProperty.call(select.dataset, "registrationOrgSelect") || select.dataset.settingsProfileField === "org";
+  const isOrgSelect = Object.prototype.hasOwnProperty.call(select.dataset, "registrationOrgSelect")
+    || select.dataset.settingsProfileField === "org"
+    || select.dataset.approvalPlacement === "org";
   const normalizedCurrent = isOrgSelect
     ? normalizePlacementOrg(currentValue)
     : String(currentValue || "");
@@ -3926,6 +3934,24 @@ function fillPlacementSelect(select, options, placeholder, currentValue = "") {
     ...renderOptions.map((item) => `<option value="${escapeAttr(item)}">${escapeHtml(item)}</option>`),
   ].join("");
   select.value = normalizedCurrent && renderOptions.includes(normalizedCurrent) ? normalizedCurrent : "";
+}
+
+function renderPlacementSelectField(name, label, options, placeholder, currentValue = "", extraAttrs = "") {
+  const uniqueOptions = [...new Set(options.filter(Boolean))];
+  const normalizedCurrent = name === "org" ? normalizePlacementOrg(currentValue) : String(currentValue || "");
+  const renderOptions = [...uniqueOptions];
+  if (normalizedCurrent && !renderOptions.includes(normalizedCurrent)) renderOptions.push(normalizedCurrent);
+  const optionsHtml = [
+    `<option value="">${escapeHtml(placeholder)}</option>`,
+    ...renderOptions.map((item) => `<option value="${escapeAttr(item)}" ${item === normalizedCurrent ? "selected" : ""}>${escapeHtml(item)}</option>`),
+  ].join("");
+  return `
+    <label>${escapeHtml(label)}
+      <select data-approval-field="${escapeAttr(name)}" data-approval-placement="${escapeAttr(name)}" ${extraAttrs}>
+        ${optionsHtml}
+      </select>
+    </label>
+  `;
 }
 
 function updateRegistrationWorkplaceOptions({ preserve = true } = {}) {
@@ -3958,6 +3984,20 @@ function updateSettingsPlacementOptions({ preserve = true, resetWorkplace = fals
   const workplaceCurrent = resetWorkplace ? "" : workplaceSelect.value || state.profile?.workplace || "";
   fillPlacementSelect(workplaceSelect, getPlacementWorkplaceOptions(org), "사업장/부서 선택", workplaceCurrent);
   const roleCurrent = resetRole ? "" : roleSelect.value || state.profile?.role || "";
+  fillPlacementSelect(roleSelect, getPlacementRoleOptions(org, workplaceSelect.value), "직급 선택", roleCurrent);
+}
+
+function updateApprovalPlacementOptions(card, { resetWorkplace = false, resetRole = false } = {}) {
+  if (!card) return;
+  const orgSelect = card.querySelector('[data-approval-placement="org"]');
+  const workplaceSelect = card.querySelector('[data-approval-placement="workplace"]');
+  const roleSelect = card.querySelector('[data-approval-placement="role"]');
+  if (!orgSelect || !workplaceSelect || !roleSelect) return;
+  fillPlacementSelect(orgSelect, getPlacementOrgOptions(), "소속 선택", orgSelect.value);
+  const org = normalizePlacementOrg(orgSelect.value);
+  const workplaceCurrent = resetWorkplace ? "" : workplaceSelect.value;
+  fillPlacementSelect(workplaceSelect, getPlacementWorkplaceOptions(org), "사업장/부서 선택", workplaceCurrent);
+  const roleCurrent = resetRole ? "" : roleSelect.value;
   fillPlacementSelect(roleSelect, getPlacementRoleOptions(org, workplaceSelect.value), "직급 선택", roleCurrent);
 }
 
@@ -4593,6 +4633,8 @@ function renderApprovalRequestCard(row) {
   const status = normalizeApprovalStatus(row.approval_status || "pending");
   const hasChangeRequest = hasPendingProfileChanges(row.pending_profile_changes);
   const displayStatus = hasChangeRequest ? "change" : status;
+  const approvalOrg = normalizePlacementOrg(row.org || "");
+  const approvalWorkplace = row.workplace || "";
   const field = (name, label, value = "", type = "text") => `
     <label>${escapeHtml(label)}
       <input type="${type}" data-approval-id="${escapeAttr(row.id)}" data-approval-field="${escapeAttr(name)}" value="${escapeAttr(name === "phone" ? formatPhoneNumber(value) : value || "")}" />
@@ -4622,12 +4664,12 @@ function renderApprovalRequestCard(row) {
       ${renderPendingProfileChangeBox(row)}
       <div class="approval-edit-grid">
         ${hasChangeRequest ? `<div class="approval-edit-grid-note">아래 항목은 현재 확정 정보입니다. 직접 보정이 필요하면 수정 후 저장하거나, 위 변경요청을 승인/반려하세요.</div>` : ""}
-        ${field("org", "소속", row.org)}
-        ${field("role", "직급", row.role)}
+        ${renderPlacementSelectField("org", "소속", getPlacementOrgOptions(), "소속 선택", approvalOrg)}
+        ${renderPlacementSelectField("workplace", "근무지", getPlacementWorkplaceOptions(approvalOrg), "사업장/부서 선택", approvalWorkplace)}
+        ${renderPlacementSelectField("role", "직급", getPlacementRoleOptions(approvalOrg, approvalWorkplace), "직급 선택", row.role)}
         ${field("name", "이름", row.name)}
         ${field("phone", "전화", row.phone)}
         ${field("email", "이메일", row.email, "email")}
-        ${field("workplace", "근무지", row.workplace)}
         ${field("primary_work", "주업무", row.primary_work)}
         ${field("secondary_work", "부업무", row.secondary_work)}
         ${field("work_hours", "근무시간", row.work_hours)}
@@ -11556,6 +11598,17 @@ document.getElementById("approvalRequestList")?.addEventListener("click", (event
   const button = event.target.closest("[data-approval-action]");
   if (!button) return;
   updateApprovalRequest(button.dataset.approvalId, button.dataset.approvalAction);
+});
+document.getElementById("approvalRequestList")?.addEventListener("change", (event) => {
+  const select = event.target.closest("[data-approval-placement]");
+  if (!select) return;
+  const card = select.closest("[data-approval-card]");
+  if (!card) return;
+  if (select.dataset.approvalPlacement === "org") {
+    updateApprovalPlacementOptions(card, { resetWorkplace: true, resetRole: true });
+  } else if (select.dataset.approvalPlacement === "workplace") {
+    updateApprovalPlacementOptions(card, { resetRole: true });
+  }
 });
 document.getElementById("passwordResetRequestList")?.addEventListener("click", (event) => {
   const button = event.target.closest("[data-password-reset-action]");
