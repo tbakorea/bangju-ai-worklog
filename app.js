@@ -3970,6 +3970,7 @@ function renderSettingsForm() {
   renderManualSettings();
   renderApprovalAccess();
   renderSettingsProfileChangeNotice();
+  updateSettingsProfileSaveButton();
 }
 
 function normalizePendingProfileChangeRequest(raw) {
@@ -3993,6 +3994,22 @@ function parseJsonSafely(value, fallback = null) {
 
 function hasPendingProfileChanges(raw = state.profile?.pendingProfileChanges) {
   return Object.keys(normalizePendingProfileChangeRequest(raw).fields).length > 0;
+}
+
+function countApprovalActionItems(rows = []) {
+  return rows.filter((row) => (
+    (row.approval_status || "pending") === "pending"
+    || hasPendingProfileChanges(row.pending_profile_changes)
+  )).length;
+}
+
+function updateSettingsProfileSaveButton() {
+  const button = document.getElementById("saveSettingsProfileButton");
+  if (!button) return;
+  const requiresApproval = Boolean(authState.user && isProfileApproved() && !hasApprovalAuthority());
+  const hasPending = hasPendingProfileChanges();
+  button.textContent = requiresApproval ? (hasPending ? "승인요청 수정" : "변경 승인요청") : "저장하고 적용";
+  button.dataset.mode = requiresApproval ? "request" : "apply";
 }
 
 function renderSettingsProfileChangeNotice() {
@@ -4175,11 +4192,10 @@ async function refreshApprovalNotification() {
     renderApprovalNotification();
     return;
   }
-  const { count, error } = await supabaseClient
+  const { data, error } = await supabaseClient
     .from("profiles")
-    .select("id", { count: "exact", head: true })
-    .eq("approval_status", "pending");
-  if (!error) authState.pendingApprovalCount = Math.max(0, Number(count || 0));
+    .select("id, approval_status, pending_profile_changes");
+  if (!error) authState.pendingApprovalCount = countApprovalActionItems(data || []);
   const { count: resetCount, error: resetError } = await supabaseClient
     .from("password_reset_requests")
     .select("id", { count: "exact", head: true })
@@ -4225,7 +4241,7 @@ async function loadApprovalRequests() {
   const rows = (data || []).filter((row) => row.id !== authState.user.id);
   authState.approvalRows = rows;
   authState.approvalRowsLoaded = true;
-  authState.pendingApprovalCount = rows.filter((row) => (row.approval_status || "pending") === "pending" || hasPendingProfileChanges(row.pending_profile_changes)).length;
+  authState.pendingApprovalCount = countApprovalActionItems(rows);
   renderApprovalNotification();
   if (activeView === "staff") renderStaffMaster();
   if (!rows.length) {
@@ -4238,7 +4254,7 @@ async function loadApprovalRequests() {
     return;
   }
   if (!rows.some((row) => row.id === authState.selectedApprovalId)) {
-    authState.selectedApprovalId = rows.find((row) => (row.approval_status || "pending") === "pending")?.id || rows[0].id;
+    authState.selectedApprovalId = rows.find((row) => (row.approval_status || "pending") === "pending" || hasPendingProfileChanges(row.pending_profile_changes))?.id || rows[0].id;
   }
   renderApprovalQueue();
 }
@@ -4253,7 +4269,7 @@ async function refreshStaffApprovalRows() {
   if (error) return;
   authState.approvalRows = (data || []).filter((row) => row.id !== authState.user.id);
   authState.approvalRowsLoaded = true;
-  authState.pendingApprovalCount = authState.approvalRows.filter((row) => (row.approval_status || "pending") === "pending" || hasPendingProfileChanges(row.pending_profile_changes)).length;
+  authState.pendingApprovalCount = countApprovalActionItems(authState.approvalRows);
   renderApprovalNotification();
   if (activeView === "staff") renderStaffMaster();
 }
@@ -4276,8 +4292,13 @@ function renderApprovalQueue() {
   ];
   list.innerHTML = `
     <div class="approval-queue-layout">
-      <aside class="approval-queue-sidebar" aria-label="가입승인 상태별 목록">
+      <aside class="approval-queue-sidebar" aria-label="승인요청 상태별 목록">
         <div class="approval-queue-summary">
+          <article data-status="pending">
+            <span>처리필요</span>
+            <strong>${escapeHtml(String(countApprovalActionItems(rows)))}</strong>
+            <em>등록/변경요청</em>
+          </article>
           ${groups.map(([status, label, caption]) => {
             const count = rows.filter((row) => (row.approval_status || "pending") === status).length;
             return `
@@ -4299,7 +4320,9 @@ function renderApprovalQueue() {
 }
 
 function renderApprovalQueueGroup(status, label, rows, selectedId) {
-  const items = rows.filter((row) => (row.approval_status || "pending") === status);
+  const items = rows
+    .filter((row) => (row.approval_status || "pending") === status)
+    .sort((a, b) => Number(hasPendingProfileChanges(b.pending_profile_changes)) - Number(hasPendingProfileChanges(a.pending_profile_changes)));
   return `
     <section class="approval-queue-group" data-status="${escapeAttr(status)}">
       <header>
@@ -4316,13 +4339,14 @@ function renderApprovalQueueGroup(status, label, rows, selectedId) {
 function renderApprovalQueueButton(row, selectedId) {
   const status = row.approval_status || "pending";
   const meta = [row.role, row.org, row.workplace].filter(Boolean).join(" · ") || "소속/직함 확인 필요";
-  const changeBadge = hasPendingProfileChanges(row.pending_profile_changes) ? " · 변경요청" : "";
+  const hasChangeRequest = hasPendingProfileChanges(row.pending_profile_changes);
+  const changeBadge = hasChangeRequest ? " · 변경요청" : "";
   return `
     <button type="button" data-approval-select="${escapeAttr(row.id)}" class="${row.id === selectedId ? "is-selected" : ""}">
       <span>${escapeHtml(row.name || row.nickname || "이름 미입력")}</span>
       <small>${escapeHtml(row.email || "이메일 없음")}</small>
       <em>${escapeHtml(`${meta}${changeBadge}`)}</em>
-      <b data-status="${escapeAttr(status)}">${escapeHtml(getApprovalStatusLabel(status))}</b>
+      <b data-status="${escapeAttr(hasChangeRequest ? "pending" : status)}">${escapeHtml(hasChangeRequest ? "변경요청" : getApprovalStatusLabel(status))}</b>
     </button>
   `;
 }
@@ -4523,7 +4547,7 @@ async function updateApprovalRequest(id, action) {
   }
   const { error } = await supabaseClient.from("profiles").update(payload).eq("id", id);
   if (error) {
-    alert(`가입승인 처리 실패: ${error.message}`);
+    alert(`승인요청 처리 실패: ${error.message}`);
     return;
   }
   authState.selectedApprovalId = id;
@@ -4794,7 +4818,7 @@ function saveSettingsProfileFromForm() {
     state.profile.profileChangeRequestedAt = requestedAt;
     saveManualSettingsFromForm();
     saveProfileChanges({ stayInSettings: true });
-    showAppToast("직원정보 변경요청을 대표 확인 대기로 보냈습니다.");
+    showAppToast("직원정보 변경 승인요청을 보냈습니다. 대표 승인요청 알림에 표시됩니다.");
     return;
   }
   state.profile = { ...state.profile, ...draft };
