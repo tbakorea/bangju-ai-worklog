@@ -67,7 +67,7 @@ const priorityOptions = [
   ["?", "?"],
 ];
 const taskPriorityOptions = ["?", "A", "B", "C", "취소", "연기"];
-const scheduleTypeOptions = ["업무", "PT", "무료PT", "고객/상담", "영업/홍보", "시설/청결", "행정/정산", "오픈/마감", "휴게"];
+const scheduleTypeOptions = ["업무", "유료PT", "무료PT", "고객/상담", "영업/홍보", "시설/청결", "행정/정산", "오픈/마감", "휴게"];
 const taskStatusCycle = ["미완료", "완료", "진행중", "위임", "연기"];
 const taskStatusGuideLabels = {
   "완료": "완료",
@@ -200,12 +200,36 @@ const lunarDateFormatter = new Intl.DateTimeFormat("ko-u-ca-chinese", { month: "
 const koreanHolidayCache = new Map();
 const attendanceActions = ["출근", "퇴근", "조퇴", "외출"];
 let attendancePopoverAction = "출근";
-const registrationWorkplaceOptions = {
-  "(주)방주": ["본사", "분양사무실", "외근", "기타"],
-  "(주)비욘드 컴퍼니": ["공유사업부", "TBA studio", "비욘드 피트니스", "기타"],
-  "(주)비제이종합건설": ["옥동 헤이븐빌 신축현장", "동천체육관 현장", "기타"],
-  "기타": ["기타"],
+const organizationPlacementOptions = {
+  "(주)방주": {
+    workplaces: ["재무", "기타"],
+    rolesByWorkplace: {
+      "재무": ["부장", "과장", "대리"],
+      "기타": ["이사"],
+    },
+  },
+  "(주)비제이종합건설": {
+    workplaces: ["동천체육관 현장", "옥동 더헤이븐빌 신축현장", "기타"],
+    rolesByWorkplace: {
+      "동천체육관 현장": ["소장", "이사", "부장", "과장", "반장"],
+      "옥동 더헤이븐빌 신축현장": ["소장", "이사", "부장", "과장", "반장"],
+      "기타": [],
+    },
+  },
+  "(주)비욘드컴퍼니": {
+    workplaces: ["비욘드 피트니스", "공유사업부 : 워크베이스", "공유사업부 : 워크박스", "TBA studio", "기타"],
+    rolesByWorkplace: {
+      "비욘드 피트니스": ["센터장", "트레이너", "인포"],
+      "공유사업부 : 워크베이스": ["매니저"],
+      "공유사업부 : 워크박스": ["매니저"],
+      "TBA studio": ["실장"],
+      "기타": ["이사", "부장", "과장", "본부장", "팀장"],
+    },
+  },
 };
+const registrationWorkplaceOptions = Object.fromEntries(
+  Object.entries(organizationPlacementOptions).map(([org, config]) => [org, config.workplaces])
+);
 const defaultProfile = {
   org: "(주)방주",
   role: "직원",
@@ -238,9 +262,32 @@ const defaultProfile = {
   approvalNote: "",
   approvedBy: "",
   approvedAt: "",
+  pendingProfileChanges: {},
+  profileChangeRequestedAt: "",
+  authUserId: "",
   accessPreset: "employee",
   permissions: {},
 };
+
+const profileApprovalFieldMeta = [
+  ["org", "소속", "org", "text"],
+  ["workplace", "근무지", "workplace", "text"],
+  ["role", "직급", "role", "text"],
+  ["name", "이름", "name", "text"],
+  ["phone", "전화", "phone", "phone"],
+  ["email", "이메일", "email", "text"],
+  ["primaryWork", "주업무", "primary_work", "text"],
+  ["secondaryWork", "부업무", "secondary_work", "text"],
+  ["employmentType", "고용형태", "employment_type", "text"],
+  ["workHours", "기본 근무시간", "work_hours", "text"],
+  ["weeklyWorkHours", "요일별 근무시간", "weekly_work_hours", "json"],
+  ["laborId", "주민번호/식별번호", "labor_id", "text"],
+  ["address", "주소", "address", "text"],
+  ["dailyWage", "일당", "daily_wage", "number"],
+  ["hourlyWage", "시급", "hourly_wage", "number"],
+];
+const profileApprovalFieldKeys = new Set(profileApprovalFieldMeta.map(([key]) => key));
+const profileApprovalFieldByKey = Object.fromEntries(profileApprovalFieldMeta.map((meta) => [meta[0], meta]));
 const fitnessManualTemplates = {
   manager: {
     title: "센터장 운영총괄 매뉴얼",
@@ -571,6 +618,8 @@ function createState() {
     },
     fitnessGoals: createFitnessGoals(),
     dagymOps: createDagymOps(),
+    fitnessCenterReports: {},
+    worklogReportSubmissions: {},
     fitnessLogPage: 1,
     fitnessCenterMonth: todayKey.slice(0, 7),
     fitnessWritableEmployeeId: "beyond-fitness-manager",
@@ -663,6 +712,8 @@ function normalizeState() {
   if (!isRepresentativeProfile() && isMappedFitnessEmployee) state.fitnessWritableEmployeeId = mappedFitnessEmployeeId;
   state.fitnessGoals = { ...createFitnessGoals(), ...(state.fitnessGoals || {}) };
   state.dagymOps = { ...createDagymOps(), ...(state.dagymOps || {}) };
+  state.fitnessCenterReports = { ...(state.fitnessCenterReports || {}) };
+  state.worklogReportSubmissions = { ...(state.worklogReportSubmissions || {}) };
   state.backupSettings = {
     recipientEmail: "j3010@ymail.com",
     cadence: "daily",
@@ -952,6 +1003,109 @@ function isOwnFitnessEmployeeId(employeeId) {
   return Boolean(employeeId && employeeId === state.fitnessWritableEmployeeId && isEmployeeLinkedToProfile(employeeId));
 }
 
+function getFitnessCenterReportRecord(dateKey = getActiveDateKey()) {
+  state.fitnessCenterReports ||= {};
+  return state.fitnessCenterReports[dateKey] || null;
+}
+
+function isFitnessCenterManagerEmployee(employee = {}) {
+  const source = `${employee.id || ""} ${employee.role || ""} ${employee.name || ""} ${employee.primaryWork || ""}`.toLowerCase();
+  return employee.id === "beyond-fitness-manager" || /센터장|운영총괄|manager/.test(source);
+}
+
+function hasFitnessWorkedOnDate(employeeId = "", dateKey = getActiveDateKey()) {
+  if (!employeeId || !fitnessEmployeeIds.includes(employeeId)) return false;
+  const log = getEmployeeLogForDate(employeeId, dateKey);
+  const ops = { ...createFitnessOps(), ...(log.fitnessOps || {}) };
+  const hasAttendance = Boolean(
+    log.clockIn
+    || log.clockOut
+    || log.attendanceStatus
+    || (log.attendanceBreaks || []).some((record) => record.start || record.end)
+  );
+  const hasWorkRecord = Boolean(
+    String(log.report || log.memo || log.record || "").trim()
+    || getWorklogTaskRefs(log).some(({ task }) => isActiveTask(task))
+    || (log.schedule || []).some((entry) => String(getScheduleEntryText(entry) || "").trim())
+    || Object.entries(ops).some(([key, value]) => !["shiftNote", "specialReport"].includes(key) && numberValue(value))
+    || String(ops.shiftNote || ops.specialReport || "").trim()
+  );
+  return hasAttendance || hasWorkRecord;
+}
+
+function getCurrentFitnessActorEmployee() {
+  const mappedId = getProfileMappedEmployeeId();
+  const mappedEmployee = getFitnessEmployees().find((employee) => employee.id === mappedId);
+  if (mappedEmployee && isEmployeeLinkedToProfile(mappedEmployee.id)) return mappedEmployee;
+  const writableEmployee = getFitnessEmployees().find((employee) => employee.id === state.fitnessWritableEmployeeId);
+  if (writableEmployee && isOwnFitnessEmployeeId(writableEmployee.id)) return writableEmployee;
+  return null;
+}
+
+function canConfirmFitnessCenterReport(dateKey = getActiveDateKey()) {
+  if (!authState.user || isExplicitlySignedOut()) return false;
+  const actor = getCurrentFitnessActorEmployee();
+  if (!actor) return false;
+  return isFitnessCenterManagerEmployee(actor) || hasFitnessWorkedOnDate(actor.id, dateKey);
+}
+
+function formatFitnessCenterConfirmationTime(value = "") {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+  return `${String(date.getMonth() + 1).padStart(2, "0")}.${String(date.getDate()).padStart(2, "0")} ${String(date.getHours()).padStart(2, "0")}:${String(date.getMinutes()).padStart(2, "0")}`;
+}
+
+function getFitnessCenterReportStatusText(dateKey = getActiveDateKey()) {
+  const record = getFitnessCenterReportRecord(dateKey);
+  if (!record?.confirmedAt) return "미확정";
+  const time = formatFitnessCenterConfirmationTime(record.confirmedAt);
+  return `확정 · ${record.confirmedBy || "근무자"}${time ? ` · ${time}` : ""}`;
+}
+
+function toggleFitnessCenterReportConfirmation(dateKey = getActiveDateKey()) {
+  const actor = getCurrentFitnessActorEmployee();
+  const existing = getFitnessCenterReportRecord(dateKey);
+  if (!canConfirmFitnessCenterReport(dateKey) || !actor) {
+    showAppToast("센터장 또는 해당일 근무 직원만 센터 업무보고서를 확정할 수 있습니다");
+    return;
+  }
+  state.fitnessCenterReports ||= {};
+  if (existing?.confirmedAt) {
+    const isSameConfirmer = existing.confirmedById === actor.id;
+    if (!isSameConfirmer && !isFitnessCenterManagerEmployee(actor)) {
+      showAppToast("확정자 또는 센터장만 확정을 취소할 수 있습니다");
+      return;
+    }
+    state.fitnessCenterReports[dateKey] = {
+      ...existing,
+      status: "reopened",
+      reopenedBy: getEmployeeAdminLabel(actor),
+      reopenedById: actor.id,
+      reopenedAt: new Date().toISOString(),
+      confirmedAt: "",
+    };
+    showAppToast("센터 업무보고서 확정을 취소했습니다");
+  } else {
+    state.fitnessCenterReports[dateKey] = {
+      status: "confirmed",
+      dateKey,
+      confirmedBy: getEmployeeAdminLabel(actor),
+      confirmedById: actor.id,
+      confirmedAt: new Date().toISOString(),
+      scope: "beyond-fitness-center",
+    };
+    showAppToast("센터 업무보고서를 확정했습니다");
+  }
+  saveState();
+  if (dateKey === getActiveDateKey()) renderFitnessCenterDaily();
+  updateFitnessReportConfirmButton(buildFitnessReportModel());
+  const preview = document.getElementById("fitnessReportPreview");
+  if (preview && !document.getElementById("fitnessReportSheet")?.hidden) {
+    preview.innerHTML = renderFitnessReportTemplate(buildFitnessReportModel());
+    fitFitnessReportPreview();
+  }
+}
+
 function getProfileMappedEmployeeId(profile = state.profile || {}) {
   const profileEmail = String(profile.email || "").trim().toLowerCase();
   const email = profileEmail || String(authState.user?.email || "").trim().toLowerCase();
@@ -964,6 +1118,7 @@ function getProfileMappedEmployeeId(profile = state.profile || {}) {
   if (/토요|토요일/.test(source)) return "fitness-saturday-info";
   if (/일요|일요일/.test(source)) return "fitness-sunday-info";
   if (/인포|데스크|front|프론트|주중/.test(source)) return "fitness-weekday-info";
+  if (/피트니스|fitness/.test(source)) return "fitness-weekday-info";
   if (/비욘드/.test(source) && /공유|워크베이스|워크박스|창고|오피스|shared|workbase|workbox/.test(source)) return "beyond-shared-manager";
   if (/비욘드/.test(source) && /실장|tba|티비에이|인월|욕실|바스|bath/.test(source)) return "beyond-company-leader";
   return "";
@@ -1053,12 +1208,13 @@ function canEditCurrentWorklog(view = activeView) {
   return Boolean(currentEmployeeId && ownEmployeeId && currentEmployeeId === ownEmployeeId && canEditEmployeeSlot(currentEmployeeId));
 }
 
-function guardWorklogEdit() {
-  if (canEditCurrentWorklog()) return true;
-  const employeeId = getCurrentWorklogEmployeeId();
+function guardWorklogEdit(view = activeView) {
+  if (canEditCurrentWorklog(view)) return true;
+  const employeeId = getCurrentWorklogEmployeeId(view);
   const lock = getWorklogEditLockInfo(employeeId);
   showAppToast(lock.lockedByDate ? "수정 가능 시간이 지나 정정 요청이 필요합니다" : "열람 전용 업무일지입니다");
-  applyCurrentWorklogPermissionState();
+  if (view === "fitness-log") applyFitnessLogPermissionState();
+  else applyCurrentWorklogPermissionState(view);
   return false;
 }
 
@@ -3500,16 +3656,21 @@ function buildPermissionSet(presetKey = "employee", overrides = {}) {
 
 function getProfilePermissionSet(profile = state.profile || {}) {
   const email = String(authState.user?.email || profile.email || "").trim().toLowerCase();
-  const recommended = getRecommendedPermissionPresetForProfile(profile);
-  let presetKey = normalizePermissionPresetKey(profile.accessPreset || recommended);
-  if (presetKey === "owner" && !controlTowerEmails.has(email)) {
-    presetKey = profile.permissions?.executiveRoom === true ? "executive_delegate" : "employee";
+  if (controlTowerEmails.has(email)) return buildPermissionSet("owner");
+
+  let presetKey = normalizePermissionPresetKey(profile.accessPreset || getRecommendedPermissionPresetForProfile(profile));
+  let permissions = { ...(profile.permissions || {}) };
+  if (presetKey === "owner") {
+    presetKey = "employee";
+    permissions = {};
   }
-  const set = buildPermissionSet(presetKey, profile.permissions || {});
-  if (recommended === "owner" && controlTowerEmails.has(email)) {
-    return buildPermissionSet("owner", set.permissions);
+
+  if (["employee", "freelance", "readonly"].includes(presetKey)) {
+    permissions = {};
+  } else if (presetKey !== "executive_delegate") {
+    permissions.executiveRoom = false;
   }
-  return set;
+  return buildPermissionSet(presetKey, permissions);
 }
 
 function hasProfilePermission(key, profile = state.profile || {}) {
@@ -3535,18 +3696,16 @@ function isRepresentativeProfile() {
   const email = String(authState.user?.email || profile.email || "").trim().toLowerCase();
   if (controlTowerEmails.has(email)) return true;
   if (authState.user && (profile.approvalStatus || "pending") !== "approved") return false;
-  const presetKey = normalizePermissionPresetKey(profile.accessPreset || "employee");
-  if (presetKey === "executive_delegate") return true;
-  return profile.permissions?.executiveRoom === true;
+  const set = getProfilePermissionSet(profile);
+  return set.presetKey === "executive_delegate" && set.permissions.executiveRoom === true;
 }
 
 function hasApprovalAuthority(profile = state.profile || {}) {
   if (isExplicitlySignedOut()) return false;
   const email = String(authState.user?.email || profile.email || "").trim().toLowerCase();
-  if (hasProfilePermission("staffApproval", profile) || hasProfilePermission("staffManage", profile)) return true;
   if (controlTowerEmails.has(email)) return true;
   if (authState.user && (profile.approvalStatus || "pending") !== "approved") return false;
-  return false;
+  return hasProfilePermission("staffApproval", profile) || hasProfilePermission("staffManage", profile);
 }
 
 function canShowApprovalMenu() {
@@ -3722,17 +3881,52 @@ function renderProfileWeeklyWorkHoursFields() {
   });
 }
 
+function normalizePlacementOrg(value = "") {
+  const compact = String(value || "").replace(/\s+/g, "");
+  if (compact.includes("비제이종합건설")) return "(주)비제이종합건설";
+  if (compact.includes("비욘드컴퍼니")) return "(주)비욘드컴퍼니";
+  if (compact.includes("방주")) return "(주)방주";
+  return String(value || "");
+}
+
+function getPlacementOrgOptions() {
+  return Object.keys(organizationPlacementOptions);
+}
+
+function getPlacementWorkplaceOptions(org = "") {
+  return organizationPlacementOptions[normalizePlacementOrg(org)]?.workplaces || [];
+}
+
+function getPlacementRoleOptions(org = "", workplace = "") {
+  return organizationPlacementOptions[normalizePlacementOrg(org)]?.rolesByWorkplace?.[workplace] || [];
+}
+
+function fillPlacementSelect(select, options, placeholder, currentValue = "") {
+  if (!select) return;
+  const uniqueOptions = [...new Set(options.filter(Boolean))];
+  const isOrgSelect = Object.prototype.hasOwnProperty.call(select.dataset, "registrationOrgSelect") || select.dataset.settingsProfileField === "org";
+  const normalizedCurrent = isOrgSelect
+    ? normalizePlacementOrg(currentValue)
+    : String(currentValue || "");
+  const renderOptions = [...uniqueOptions];
+  if (normalizedCurrent && !renderOptions.includes(normalizedCurrent)) renderOptions.push(normalizedCurrent);
+  select.innerHTML = [
+    `<option value="">${escapeHtml(placeholder)}</option>`,
+    ...renderOptions.map((item) => `<option value="${escapeAttr(item)}">${escapeHtml(item)}</option>`),
+  ].join("");
+  select.value = normalizedCurrent && renderOptions.includes(normalizedCurrent) ? normalizedCurrent : "";
+}
+
 function updateRegistrationWorkplaceOptions({ preserve = true } = {}) {
   const orgSelect = document.querySelector("[data-registration-org-select]");
   const workplaceSelect = document.querySelector("[data-registration-workplace-select]");
   if (!orgSelect || !workplaceSelect) return;
-  const selectedOrg = orgSelect.value || "";
+  const orgCurrent = preserve ? orgSelect.value || state.profile?.org || "" : orgSelect.value || "";
+  fillPlacementSelect(orgSelect, getPlacementOrgOptions(), "소속 선택", orgCurrent);
+  const selectedOrg = normalizePlacementOrg(orgSelect.value || "");
   const current = preserve ? workplaceSelect.value : "";
   const options = registrationWorkplaceOptions[selectedOrg] || [];
-  workplaceSelect.innerHTML = [
-    `<option value="">근무지 선택</option>`,
-    ...options.map((item) => `<option value="${escapeAttr(item)}">${escapeHtml(item)}</option>`),
-  ].join("");
+  fillPlacementSelect(workplaceSelect, options, "근무지 선택", current || (preserve ? state.profile?.workplace : ""));
   if (current && options.includes(current)) {
     workplaceSelect.value = current;
   } else if (preserve && state.profile?.workplace && options.includes(state.profile.workplace)) {
@@ -3740,6 +3934,20 @@ function updateRegistrationWorkplaceOptions({ preserve = true } = {}) {
   } else {
     workplaceSelect.value = "";
   }
+}
+
+function updateSettingsPlacementOptions({ preserve = true, resetWorkplace = false, resetRole = false } = {}) {
+  const orgSelect = document.querySelector('[data-settings-profile-field="org"]');
+  const workplaceSelect = document.querySelector('[data-settings-profile-field="workplace"]');
+  const roleSelect = document.querySelector('[data-settings-profile-field="role"]');
+  if (!orgSelect || !workplaceSelect || !roleSelect) return;
+  const orgCurrent = preserve ? orgSelect.value || state.profile?.org || "" : "";
+  fillPlacementSelect(orgSelect, getPlacementOrgOptions(), "소속 선택", orgCurrent);
+  const org = normalizePlacementOrg(orgSelect.value);
+  const workplaceCurrent = resetWorkplace ? "" : workplaceSelect.value || state.profile?.workplace || "";
+  fillPlacementSelect(workplaceSelect, getPlacementWorkplaceOptions(org), "사업장/부서 선택", workplaceCurrent);
+  const roleCurrent = resetRole ? "" : roleSelect.value || state.profile?.role || "";
+  fillPlacementSelect(roleSelect, getPlacementRoleOptions(org, workplaceSelect.value), "직급 선택", roleCurrent);
 }
 
 function renderSignupSheetStatus() {
@@ -3755,11 +3963,98 @@ function renderSettingsForm() {
     const value = state.profile?.[field.dataset.settingsProfileField] || "";
     field.value = isPhoneField(field) ? formatPhoneNumber(value) : value;
   });
+  updateSettingsPlacementOptions({ preserve: true });
   document.querySelectorAll("[data-settings-work-hours-day]").forEach((field) => {
     field.value = state.profile?.weeklyWorkHours?.[field.dataset.settingsWorkHoursDay] || "";
   });
   renderManualSettings();
   renderApprovalAccess();
+  renderSettingsProfileChangeNotice();
+}
+
+function normalizePendingProfileChangeRequest(raw) {
+  if (!raw) return { fields: {}, requestedAt: "", status: "" };
+  const source = typeof raw === "string" ? parseJsonSafely(raw, {}) : raw;
+  const fields = source?.fields && typeof source.fields === "object" ? source.fields : source || {};
+  return {
+    fields: Object.fromEntries(Object.entries(fields).filter(([key]) => profileApprovalFieldKeys.has(key))),
+    requestedAt: source?.requestedAt || source?.requested_at || "",
+    status: source?.status || "",
+  };
+}
+
+function parseJsonSafely(value, fallback = null) {
+  try {
+    return JSON.parse(value);
+  } catch (_error) {
+    return fallback;
+  }
+}
+
+function hasPendingProfileChanges(raw = state.profile?.pendingProfileChanges) {
+  return Object.keys(normalizePendingProfileChangeRequest(raw).fields).length > 0;
+}
+
+function renderSettingsProfileChangeNotice() {
+  const note = document.getElementById("settingsProfilePendingNote");
+  if (!note) return;
+  const pending = normalizePendingProfileChangeRequest(state.profile?.pendingProfileChanges);
+  const labels = Object.keys(pending.fields).map((key) => profileApprovalFieldByKey[key]?.[1] || key);
+  note.hidden = !labels.length;
+  note.textContent = labels.length
+    ? `대표 확인 대기 중: ${labels.join(", ")}. 승인 전까지 기존 확정 정보가 업무일지와 노무에 적용됩니다.`
+    : "";
+}
+
+function collectSettingsProfileDraft() {
+  const draft = { ...state.profile };
+  document.querySelectorAll("[data-settings-profile-field]").forEach((field) => {
+    const key = field.dataset.settingsProfileField;
+    const value = field.value.trim();
+    draft[key] = key === "org" ? normalizePlacementOrg(value) : isPhoneField(field) ? formatPhoneNumber(value) : value;
+    if (isPhoneField(field)) field.value = draft[key];
+  });
+  draft.weeklyWorkHours = {};
+  document.querySelectorAll("[data-settings-work-hours-day]").forEach((field) => {
+    const key = field.dataset.settingsWorkHoursDay;
+    const value = field.value.trim();
+    if (value) draft.weeklyWorkHours[key] = value;
+  });
+  return draft;
+}
+
+function normalizeProfileApprovalValue(key, value) {
+  if (key === "org") return normalizePlacementOrg(value);
+  if (key === "phone") return formatPhoneNumber(value || "");
+  if (key === "weeklyWorkHours") return JSON.stringify(value || {});
+  return String(value ?? "");
+}
+
+function collectProfileChangeRequest(draft = {}) {
+  return profileApprovalFieldMeta.reduce((changes, [key]) => {
+    const before = normalizeProfileApprovalValue(key, state.profile?.[key]);
+    const after = normalizeProfileApprovalValue(key, draft[key]);
+    if (before !== after) changes[key] = draft[key];
+    return changes;
+  }, {});
+}
+
+function applyImmediateSettingsProfileFields(draft = {}) {
+  ["nickname", "extra", "strengths", "weaknesses", "developmentGoals"].forEach((key) => {
+    if (Object.prototype.hasOwnProperty.call(draft, key)) state.profile[key] = draft[key] || "";
+  });
+}
+
+function formatPendingProfileValue(key, value) {
+  if (key === "weeklyWorkHours") {
+    const order = [["sun", "日"], ["mon", "月"], ["tue", "火"], ["wed", "水"], ["thu", "木"], ["fri", "金"], ["sat", "土"]];
+    return order
+      .map(([day, label]) => value?.[day] ? `${label} ${value[day]}` : "")
+      .filter(Boolean)
+      .join(" · ") || "요일별 설정 없음";
+  }
+  if (key === "phone") return formatPhoneNumber(value || "");
+  return String(value ?? "") || "-";
 }
 
 function getManualSettings() {
@@ -3930,7 +4225,7 @@ async function loadApprovalRequests() {
   const rows = (data || []).filter((row) => row.id !== authState.user.id);
   authState.approvalRows = rows;
   authState.approvalRowsLoaded = true;
-  authState.pendingApprovalCount = rows.filter((row) => (row.approval_status || "pending") === "pending").length;
+  authState.pendingApprovalCount = rows.filter((row) => (row.approval_status || "pending") === "pending" || hasPendingProfileChanges(row.pending_profile_changes)).length;
   renderApprovalNotification();
   if (activeView === "staff") renderStaffMaster();
   if (!rows.length) {
@@ -3958,7 +4253,7 @@ async function refreshStaffApprovalRows() {
   if (error) return;
   authState.approvalRows = (data || []).filter((row) => row.id !== authState.user.id);
   authState.approvalRowsLoaded = true;
-  authState.pendingApprovalCount = authState.approvalRows.filter((row) => (row.approval_status || "pending") === "pending").length;
+  authState.pendingApprovalCount = authState.approvalRows.filter((row) => (row.approval_status || "pending") === "pending" || hasPendingProfileChanges(row.pending_profile_changes)).length;
   renderApprovalNotification();
   if (activeView === "staff") renderStaffMaster();
 }
@@ -4021,11 +4316,12 @@ function renderApprovalQueueGroup(status, label, rows, selectedId) {
 function renderApprovalQueueButton(row, selectedId) {
   const status = row.approval_status || "pending";
   const meta = [row.role, row.org, row.workplace].filter(Boolean).join(" · ") || "소속/직함 확인 필요";
+  const changeBadge = hasPendingProfileChanges(row.pending_profile_changes) ? " · 변경요청" : "";
   return `
     <button type="button" data-approval-select="${escapeAttr(row.id)}" class="${row.id === selectedId ? "is-selected" : ""}">
       <span>${escapeHtml(row.name || row.nickname || "이름 미입력")}</span>
       <small>${escapeHtml(row.email || "이메일 없음")}</small>
-      <em>${escapeHtml(meta)}</em>
+      <em>${escapeHtml(`${meta}${changeBadge}`)}</em>
       <b data-status="${escapeAttr(status)}">${escapeHtml(getApprovalStatusLabel(status))}</b>
     </button>
   `;
@@ -4049,6 +4345,37 @@ function mergeApprovalAccessNote(note = "", presetKey = "employee") {
   const cleaned = String(note || "").replace(/\s*\[권한:[a-z_]+\]\s*[^|\n]*(\s*\|\s*)?/g, "").trim();
   const accessLine = `[권한:${normalizePermissionPresetKey(presetKey)}] ${preset.label} - ${preset.caption}`;
   return cleaned ? `${accessLine}\n${cleaned}` : accessLine;
+}
+
+function renderPendingProfileChangeBox(row = {}) {
+  const pending = normalizePendingProfileChangeRequest(row.pending_profile_changes);
+  const entries = Object.entries(pending.fields);
+  if (!entries.length) return "";
+  return `
+    <section class="approval-change-request">
+      <header>
+        <div>
+          <strong>직원정보 변경요청</strong>
+          <span>${escapeHtml(pending.requestedAt ? new Date(pending.requestedAt).toLocaleString("ko-KR", { dateStyle: "medium", timeStyle: "short" }) : "요청 시간 확인 필요")}</span>
+        </div>
+        <em>대표 확인 필요</em>
+      </header>
+      <div class="approval-change-grid">
+        ${entries.map(([key, nextValue]) => {
+          const label = profileApprovalFieldByKey[key]?.[1] || key;
+          const currentRemoteKey = profileApprovalFieldByKey[key]?.[2] || key;
+          const currentValue = row[currentRemoteKey];
+          return `
+            <article>
+              <b>${escapeHtml(label)}</b>
+              <span>${escapeHtml(formatPendingProfileValue(key, currentValue))}</span>
+              <strong>${escapeHtml(formatPendingProfileValue(key, nextValue))}</strong>
+            </article>
+          `;
+        }).join("")}
+      </div>
+    </section>
+  `;
 }
 
 function renderApprovalRequestCard(row) {
@@ -4077,6 +4404,7 @@ function renderApprovalRequestCard(row) {
             ? `이 직원은 앱 사용이 가능합니다.${approvedLabel ? ` 승인일: ${approvedLabel}` : ""}`
             : "보완 후 다시 승인할 수 있습니다. 반려 사유를 승인 메모에 남겨주세요.")}</p>
       </div>
+      ${renderPendingProfileChangeBox(row)}
       <div class="approval-edit-grid">
         ${field("org", "소속", row.org)}
         ${field("role", "직급", row.role)}
@@ -4102,6 +4430,10 @@ function renderApprovalRequestCard(row) {
         <textarea rows="2" data-approval-id="${escapeAttr(row.id)}" data-approval-field="approval_note">${escapeHtml(row.approval_note || "")}</textarea>
       </label>
       <div class="approval-request-actions">
+        ${hasPendingProfileChanges(row.pending_profile_changes) ? `
+          <button type="button" data-approval-action="applyProfileChange" data-approval-id="${escapeAttr(row.id)}">변경요청 적용</button>
+          <button type="button" data-approval-action="rejectProfileChange" data-approval-id="${escapeAttr(row.id)}">변경요청 반려</button>
+        ` : ""}
         <button type="button" data-approval-action="save" data-approval-id="${escapeAttr(row.id)}">수정 저장</button>
         ${status !== "approved" ? `<button type="button" data-approval-action="approve" data-approval-id="${escapeAttr(row.id)}">승인</button>` : ""}
         ${status !== "rejected" ? `<button type="button" data-approval-action="reject" data-approval-id="${escapeAttr(row.id)}">반려</button>` : ""}
@@ -4132,8 +4464,51 @@ function collectApprovalCardPayload(id) {
   return payload;
 }
 
+function pendingProfileChangesToRemotePayload(raw = {}) {
+  const pending = normalizePendingProfileChangeRequest(raw);
+  const numericOrNull = (value) => {
+    const normalized = String(value ?? "").replaceAll(",", "").trim();
+    if (!normalized) return null;
+    const number = Number(normalized);
+    return Number.isFinite(number) ? number : null;
+  };
+  return Object.entries(pending.fields).reduce((payload, [key, value]) => {
+    const [, , remoteKey, type] = profileApprovalFieldByKey[key] || [];
+    if (!remoteKey) return payload;
+    if (type === "number") payload[remoteKey] = numericOrNull(value);
+    else if (type === "phone") payload[remoteKey] = formatPhoneNumber(value || "");
+    else if (type === "json") payload[remoteKey] = value && typeof value === "object" ? value : {};
+    else payload[remoteKey] = key === "org" ? normalizePlacementOrg(value) : String(value ?? "");
+    return payload;
+  }, {});
+}
+
 async function updateApprovalRequest(id, action) {
   if (!supabaseClient || !authState.user) return;
+  const row = (authState.approvalRows || []).find((item) => String(item.id) === String(id));
+  if (action === "applyProfileChange" || action === "rejectProfileChange") {
+    if (!row) return;
+    const payload = {
+      updated_at: new Date().toISOString(),
+      pending_profile_changes: {},
+      profile_change_requested_at: null,
+    };
+    if (action === "applyProfileChange") {
+      Object.assign(payload, pendingProfileChangesToRemotePayload(row.pending_profile_changes));
+      payload.approval_note = `${String(row.approval_note || "").trim()}${row.approval_note ? "\n" : ""}[직원정보 변경요청 승인] ${new Date().toLocaleString("ko-KR")}`.trim();
+    } else {
+      payload.approval_note = `${String(row.approval_note || "").trim()}${row.approval_note ? "\n" : ""}[직원정보 변경요청 반려] ${new Date().toLocaleString("ko-KR")}`.trim();
+    }
+    const { error } = await supabaseClient.from("profiles").update(payload).eq("id", id);
+    if (error) {
+      alert(`직원정보 변경요청 처리 실패: ${error.message}`);
+      return;
+    }
+    authState.selectedApprovalId = id;
+    await loadApprovalRequests();
+    await refreshApprovalNotification();
+    return;
+  }
   const payload = collectApprovalCardPayload(id);
   if (!payload) return;
   if (action === "approve") {
@@ -4310,8 +4685,9 @@ async function updatePasswordResetRequest(id, action) {
 function applyProfileFields(selector, datasetKey) {
   state.profile = { ...defaultProfile, ...(state.profile || {}) };
   document.querySelectorAll(selector).forEach((field) => {
+    const key = field.dataset[datasetKey];
     const value = field.value.trim();
-    state.profile[field.dataset[datasetKey]] = isPhoneField(field) ? formatPhoneNumber(value) : value;
+    state.profile[key] = key === "org" ? normalizePlacementOrg(value) : isPhoneField(field) ? formatPhoneNumber(value) : value;
     if (isPhoneField(field)) field.value = state.profile[field.dataset[datasetKey]];
   });
 }
@@ -4404,14 +4780,28 @@ function saveProfileFromForm() {
 }
 
 function saveSettingsProfileFromForm() {
-  applyProfileFields("[data-settings-profile-field]", "settingsProfileField");
-  state.profile.weeklyWorkHours = { ...(state.profile.weeklyWorkHours || {}) };
-  document.querySelectorAll("[data-settings-work-hours-day]").forEach((field) => {
-    const key = field.dataset.settingsWorkHoursDay;
-    const value = field.value.trim();
-    if (value) state.profile.weeklyWorkHours[key] = value;
-    else delete state.profile.weeklyWorkHours[key];
-  });
+  const draft = collectSettingsProfileDraft();
+  const changes = collectProfileChangeRequest(draft);
+  const requiresApproval = authState.user && isProfileApproved() && !hasApprovalAuthority();
+  if (requiresApproval && Object.keys(changes).length) {
+    applyImmediateSettingsProfileFields(draft);
+    const requestedAt = new Date().toISOString();
+    state.profile.pendingProfileChanges = {
+      status: "pending",
+      requestedAt,
+      fields: changes,
+    };
+    state.profile.profileChangeRequestedAt = requestedAt;
+    saveManualSettingsFromForm();
+    saveProfileChanges({ stayInSettings: true });
+    showAppToast("직원정보 변경요청을 대표 확인 대기로 보냈습니다.");
+    return;
+  }
+  state.profile = { ...state.profile, ...draft };
+  if (!requiresApproval) {
+    state.profile.pendingProfileChanges = {};
+    state.profile.profileChangeRequestedAt = "";
+  }
   saveManualSettingsFromForm();
   saveProfileChanges();
 }
@@ -4678,6 +5068,59 @@ function clearAuthRuntimeState() {
   authState.approvalTimer = null;
 }
 
+function isSameAuthProfile(user = authState.user, profile = state.profile || {}) {
+  if (!user) return false;
+  const userId = String(user.id || "");
+  const userEmail = String(user.email || "").trim().toLowerCase();
+  const profileUserId = String(profile.authUserId || "");
+  const profileEmail = String(profile.email || "").trim().toLowerCase();
+  return Boolean((userId && profileUserId === userId) || (userEmail && profileEmail === userEmail));
+}
+
+function resetProfileForAuthUser(user = authState.user) {
+  const email = String(user?.email || "").trim().toLowerCase();
+  state.profile = {
+    ...defaultProfile,
+    email,
+    authUserId: user?.id || "",
+    accessPreset: controlTowerEmails.has(email) ? "owner" : "employee",
+    permissions: {},
+  };
+  state.selectedEmployeeId = getProfileMappedEmployeeId(state.profile) || "profile-user";
+  if (!controlTowerEmails.has(email)) state.fitnessWritableEmployeeId = getProfileMappedEmployeeId(state.profile) || "";
+}
+
+function hasUnsafeRepresentativeResidue(user = authState.user, profile = state.profile || {}) {
+  const email = String(user?.email || profile.email || "").trim().toLowerCase();
+  if (!email || controlTowerEmails.has(email)) return false;
+  const presetKey = normalizePermissionPresetKey(profile.accessPreset || "employee");
+  const permissions = profile.permissions || {};
+  return presetKey === "owner" || ["executiveRoom", "controlTower", "worklogAll", "laborAll", "staffApproval", "staffManage"]
+    .some((key) => permissions[key] === true);
+}
+
+function enforceAuthProfileBoundary(user = authState.user) {
+  if (!user) return;
+  const email = String(user.email || state.profile?.email || "").trim().toLowerCase();
+  state.profile.email = email;
+  state.profile.authUserId = user.id || state.profile.authUserId || "";
+  if (controlTowerEmails.has(email)) {
+    state.profile.accessPreset = "owner";
+    state.profile.permissions = {};
+    return;
+  }
+  let presetKey = normalizePermissionPresetKey(state.profile.accessPreset || getRecommendedPermissionPresetForProfile(state.profile));
+  if (presetKey === "owner") presetKey = "employee";
+  state.profile.accessPreset = presetKey;
+  if (["employee", "freelance", "readonly"].includes(presetKey)) {
+    state.profile.permissions = {};
+  } else if (presetKey !== "executive_delegate") {
+    state.profile.permissions = { ...(state.profile.permissions || {}), executiveRoom: false };
+  } else {
+    state.profile.permissions = { ...(state.profile.permissions || {}) };
+  }
+}
+
 function getAuthCredentials({ registration = false } = {}) {
   const useRegistrationFields = registration || isAuthRegistrationVisible();
   const email = document.getElementById(useRegistrationFields ? "registrationEmail" : "authEmail")?.value.trim() || "";
@@ -4845,8 +5288,11 @@ async function applySession(session) {
   }
   localStorage.removeItem(localAuthSignedOutKey);
   document.getElementById("authEmail").value = authState.user.email || "";
+  if (!isSameAuthProfile(authState.user) || hasUnsafeRepresentativeResidue(authState.user)) resetProfileForAuthUser(authState.user);
+  state.profile.authUserId = authState.user.id || state.profile.authUserId || "";
   state.profile.email = authState.user.email || state.profile.email || "";
   await loadRemoteProfile();
+  enforceAuthProfileBoundary();
   if (hasApprovalAuthority()) {
     state.profile.approvalStatus = "approved";
     state.profile.approvedBy ||= authState.user.id;
@@ -4887,6 +5333,8 @@ function buildRemoteSnapshot() {
     employeeLogs: { [key]: state.employeeLogs?.[key] || {} },
     attendance: { [key]: state.attendance?.[key] || [] },
     companyCommonWeeks: state.companyCommonWeeks || {},
+    fitnessCenterReports: state.fitnessCenterReports || {},
+    worklogReportSubmissions: state.worklogReportSubmissions || {},
     reportTone: state.reportTone,
     backupSettings: state.backupSettings,
   };
@@ -4928,9 +5376,12 @@ async function loadRemoteWorklogForActiveDate() {
   authState.applyingRemote = true;
   state.selectedEmployeeId = data.state.selectedEmployeeId || state.selectedEmployeeId;
   state.profile = { ...state.profile, ...(data.state.profile || {}) };
+  enforceAuthProfileBoundary();
   state.employeeLogs = { ...(state.employeeLogs || {}), ...(data.state.employeeLogs || {}) };
   state.attendance = { ...(state.attendance || {}), ...(data.state.attendance || {}) };
   state.companyCommonWeeks = { ...(state.companyCommonWeeks || {}), ...(data.state.companyCommonWeeks || {}) };
+  state.fitnessCenterReports = { ...(state.fitnessCenterReports || {}), ...(data.state.fitnessCenterReports || {}) };
+  state.worklogReportSubmissions = { ...(state.worklogReportSubmissions || {}), ...(data.state.worklogReportSubmissions || {}) };
   state.reportTone = data.state.reportTone || state.reportTone;
   state.backupSettings = { ...(state.backupSettings || {}), ...(data.state.backupSettings || {}) };
   normalizeState();
@@ -4966,6 +5417,8 @@ function profileToRemoteRow() {
     approval_note: state.profile.approvalNote || "",
     approved_by: state.profile.approvedBy || null,
     approved_at: state.profile.approvedAt || null,
+    pending_profile_changes: state.profile.pendingProfileChanges || {},
+    profile_change_requested_at: state.profile.profileChangeRequestedAt || null,
     updated_at: new Date().toISOString(),
   };
 }
@@ -4995,24 +5448,64 @@ function remoteRowToProfile(row) {
     approvalNote: row.approval_note || "",
     approvedBy: row.approved_by || "",
     approvedAt: row.approved_at || "",
+    pendingProfileChanges: row.pending_profile_changes || {},
+    profileChangeRequestedAt: row.profile_change_requested_at || "",
   };
 }
 
 async function saveRemoteProfile() {
   if (!supabaseClient || !authState.user) return;
-  const { error } = await supabaseClient.from("profiles").upsert(profileToRemoteRow());
-  if (error) renderAuthStatus(`프로필 원격 저장 대기: ${error.message}`);
+  const row = profileToRemoteRow();
+  const { error } = await supabaseClient.from("profiles").upsert(row);
+  if (!error) return;
+  if (/pending_profile_changes|profile_change_requested_at/i.test(error.message || "")) {
+    const fallbackRow = { ...row };
+    delete fallbackRow.pending_profile_changes;
+    delete fallbackRow.profile_change_requested_at;
+    const { error: fallbackError } = await supabaseClient.from("profiles").upsert(fallbackRow);
+    renderAuthStatus(fallbackError
+      ? `프로필 원격 저장 대기: ${fallbackError.message}`
+      : "프로필은 저장되었습니다. 직원정보 변경 승인 기능은 최신 SQL 적용 후 원격 반영됩니다.");
+    return;
+  }
+  renderAuthStatus(`프로필 원격 저장 대기: ${error.message}`);
 }
 
 async function loadRemoteProfile() {
   if (!supabaseClient || !authState.user) return;
+  const sameUser = isSameAuthProfile(authState.user);
+  const localProfile = sameUser ? { ...(state.profile || {}) } : {};
   const { data, error } = await supabaseClient.from("profiles").select("*").eq("id", authState.user.id).maybeSingle();
   if (error) {
     renderAuthStatus(`프로필 불러오기 대기: ${error.message}`);
     return;
   }
   if (!data) return;
-  state.profile = { ...defaultProfile, ...state.profile, ...remoteRowToProfile(data) };
+  const email = String(authState.user.email || data.email || "").trim().toLowerCase();
+  const localOnly = sameUser
+    ? {
+      nickname: localProfile.nickname || "",
+      manualSettings: localProfile.manualSettings,
+      accessPreset: localProfile.accessPreset,
+      permissions: { ...(localProfile.permissions || {}) },
+    }
+    : {};
+  state.profile = {
+    ...defaultProfile,
+    ...localOnly,
+    ...remoteRowToProfile(data),
+    email,
+    authUserId: authState.user.id || "",
+  };
+  if (controlTowerEmails.has(email)) {
+    state.profile.accessPreset = "owner";
+    state.profile.permissions = {};
+  } else if (!sameUser || normalizePermissionPresetKey(state.profile.accessPreset) === "owner") {
+    state.profile.accessPreset = getRecommendedPermissionPresetForProfile(state.profile);
+    if (state.profile.accessPreset === "owner") state.profile.accessPreset = "employee";
+    state.profile.permissions = {};
+  }
+  enforceAuthProfileBoundary();
   if (state.profile.workHours === "12:00-19:00") state.profile.workHours = defaultProfile.workHours;
   localStorage.setItem(storageKey, JSON.stringify(state));
   renderProfileForm();
@@ -5477,7 +5970,27 @@ function renderFitnessCenterDaily() {
     const notes = rows.flatMap((row) => row.notes);
     record.textContent = notes.length ? notes.slice(0, 12).join(" / ") : "선택 월에 등록된 특이사항이 없습니다.";
   }
+  renderFitnessCenterConfirmPanel();
   renderFitnessCenterCoaching(total, rows);
+}
+
+function renderFitnessCenterConfirmPanel() {
+  const panel = document.getElementById("fitnessCenterConfirmPanel");
+  if (!panel) return;
+  const dateKey = getActiveDateKey();
+  const record = getFitnessCenterReportRecord(dateKey);
+  const confirmed = Boolean(record?.confirmedAt);
+  const canConfirm = canConfirmFitnessCenterReport(dateKey);
+  panel.classList.toggle("is-confirmed", confirmed);
+  panel.innerHTML = `
+    <div>
+      <b>${confirmed ? "센터 업무보고서 확정" : "센터 업무보고서 미확정"}</b>
+      <span>${escapeHtml(confirmed ? getFitnessCenterReportStatusText(dateKey) : "센터장 또는 해당일 근무자가 최종 확인합니다.")}</span>
+    </div>
+    <button type="button" data-fitness-center-report-confirm ${canConfirm ? "" : "disabled"}>
+      ${confirmed ? "확정 취소" : "확정"}
+    </button>
+  `;
 }
 
 function getFitnessCenterMonth() {
@@ -6087,7 +6600,7 @@ function renderFitnessTaskBoard(log) {
   const visibleCount = Math.min(refs.length, Math.max(3, activeCount + 1));
   const visibleRefs = refs.slice(0, visibleCount);
   visibleRefs.forEach((ref) => {
-    list.appendChild(renderWorklogTaskRow(ref, log));
+    list.appendChild(renderWorklogTaskRow(ref, log, { view: "fitness-log" }));
   });
   board.appendChild(list);
 }
@@ -6102,7 +6615,7 @@ function ensureFitnessTaskRowsVisible(log) {
   const targetCount = Math.min(refs.length, Math.max(3, activeCount + 1));
   if (targetCount <= currentCount) return;
   refs.slice(currentCount, targetCount).forEach((ref) => {
-    list.appendChild(renderWorklogTaskRow(ref, log));
+    list.appendChild(renderWorklogTaskRow(ref, log, { view: "fitness-log" }));
   });
 }
 
@@ -6147,8 +6660,9 @@ function getPrioritySortValue(priority = "?") {
   return { A: 1, B: 2, C: 3, "?": 4, 연기: 5, 취소: 6 }[priority] || 7;
 }
 
-function renderWorklogTaskRow(ref, currentLog) {
+function renderWorklogTaskRow(ref, currentLog, options = {}) {
   const { task, index, log, isPostponedFromOtherDate, sourceDateKey } = ref;
+  const viewName = options.view || activeView;
   const row = document.createElement("div");
   const marker = getWorklogTaskMarker(task);
   const statusClass = getWorklogTaskStatusClass(task);
@@ -6164,16 +6678,16 @@ function renderWorklogTaskRow(ref, currentLog) {
     <button class="task-delete" type="button" aria-label="업무 삭제">×</button>
   `;
   row.querySelector(".task-cycle").onclick = () => {
-    if (!guardWorklogEdit()) return;
+    if (!guardWorklogEdit(viewName)) return;
     cycleWorklogTaskStatus(task);
     syncWorklogTaskTimeHintToSchedule(task, log);
     saveState();
     renderEntries();
     showTaskStatusGuide(taskStatusGuideLabels[task.status] || task.status || "미완료");
   };
-  bindTaskMetaControl(row, task, log);
+  bindTaskMetaControl(row, task, log, viewName);
   row.querySelector(".task-text-input").oninput = (event) => {
-    if (!guardWorklogEdit()) return;
+    if (!guardWorklogEdit(viewName)) return;
     task.text = event.target.value;
     promptAttendanceBeforeWorklogInput(log, task.text);
     syncWorklogTaskTimeHintToSchedule(task, log);
@@ -6187,7 +6701,7 @@ function renderWorklogTaskRow(ref, currentLog) {
     renderReport();
   };
   row.querySelector(".task-delete").onclick = () => {
-    if (!guardWorklogEdit()) return;
+    if (!guardWorklogEdit(viewName)) return;
     const beforeLog = cloneWorklogLogForAudit(log);
     removeLinkedSchedule(task, log);
     log.tasks.splice(index, 1);
@@ -6224,11 +6738,11 @@ function renderTaskMetaControl(task) {
   `;
 }
 
-function bindTaskMetaControl(row, task, log) {
+function bindTaskMetaControl(row, task, log, viewName = activeView) {
   const delegateInput = row.querySelector(".delegate-input");
   if (delegateInput) {
     delegateInput.oninput = () => {
-      if (!guardWorklogEdit()) return;
+      if (!guardWorklogEdit(viewName)) return;
       task.delegate = delegateInput.value;
       saveState({ fastSave: true });
     };
@@ -6238,7 +6752,7 @@ function bindTaskMetaControl(row, task, log) {
   if (postponeButton) {
     postponeButton.onclick = (event) => {
       event.stopPropagation();
-      if (!guardWorklogEdit()) return;
+      if (!guardWorklogEdit(viewName)) return;
       openPostponeCalendar(task);
     };
     return;
@@ -6246,7 +6760,7 @@ function bindTaskMetaControl(row, task, log) {
   const prioritySelect = row.querySelector(".priority-select");
   if (prioritySelect) {
     prioritySelect.onchange = (event) => {
-      if (!guardWorklogEdit()) return;
+      if (!guardWorklogEdit(viewName)) return;
       updateWorklogTaskPriority(task, event.target.value);
       syncWorklogTaskTimeHintToSchedule(task, log);
       saveState();
@@ -6340,7 +6854,7 @@ function updateTaskRowTags(row, task) {
 
 function inferScheduleType(text = "") {
   if (/무료|체험|서비스|무상/.test(text) && /pt|p\/t|피티|수업|운동지도/i.test(text)) return "무료PT";
-  if (/pt|피티|수업|운동지도/i.test(text)) return "PT";
+  if (/유료|정규|결제|pt|p\/t|피티|수업|운동지도/i.test(text)) return "유료PT";
   if (/센터관리|센타관리|기구|시설|냉난방|조명|청소|세탁|쓰레기|샤워실|탈의실|정리|위생/.test(text)) return "시설/청결";
   if (/상담|회원|고객|문의|재등록|민원/.test(text)) return "고객/상담";
   if (/영업|홍보|마케팅|아웃바운드|전화|콜|체험권|매출|결제/.test(text)) return "영업/홍보";
@@ -6353,6 +6867,16 @@ function inferScheduleType(text = "") {
 function normalizeScheduleType(type = "업무", text = "") {
   if (scheduleTypeOptions.includes(type)) return type;
   const aliases = {
+    PT: "유료PT",
+    "P/T": "유료PT",
+    pt: "유료PT",
+    피티: "유료PT",
+    유료피티: "유료PT",
+    유료PT: "유료PT",
+    "유료P/T": "유료PT",
+    무료피티: "무료PT",
+    무료PT: "무료PT",
+    "무료P/T": "무료PT",
     고객관리: "고객/상담",
     영업: "영업/홍보",
     홍보: "영업/홍보",
@@ -6405,8 +6929,8 @@ function createScheduleItem(text = "", type = "") {
 
 function formatScheduleTypeLabel(type = "업무") {
   const normalized = normalizeScheduleType(type);
-  if (normalized === "무료PT") return "무료P/T";
-  if (normalized === "PT") return "P/T";
+  if (normalized === "무료PT") return "무료PT";
+  if (normalized === "유료PT") return "유료PT";
   return normalized;
 }
 
@@ -6581,7 +7105,7 @@ function getOrCreateFitnessScheduleEditor() {
 
 function openFitnessScheduleEditor(entry, log) {
   if (!canEditCurrentWorklog("fitness-log")) {
-    guardWorklogEdit();
+    guardWorklogEdit("fitness-log");
     return;
   }
   normalizeScheduleEntryItems(entry);
@@ -6660,7 +7184,7 @@ function renderFitnessScheduleEditor() {
 
 function addFitnessScheduleEditorItem({ close = false } = {}) {
   if (!canEditCurrentWorklog("fitness-log")) {
-    guardWorklogEdit();
+    guardWorklogEdit("fitness-log");
     return;
   }
   if (!fitnessScheduleEditorState) return;
@@ -6987,7 +7511,7 @@ function applyFitnessOpsItemCount(totals, type = "업무", text = "") {
   const normalizedType = normalizeScheduleType(type, text);
   const source = `${normalizedType} ${text}`;
   const count = countFitnessScheduleUnits(text);
-  if (normalizedType === "무료PT" || normalizedType === "PT" || /pt|p\/t|피티|수업|운동지도/i.test(source)) {
+  if (normalizedType === "무료PT" || normalizedType === "유료PT" || /pt|p\/t|피티|수업|운동지도/i.test(source)) {
     if (normalizedType === "무료PT" || /무료|체험|서비스|무상/.test(source)) totals.ptFree += count;
     else if (/기타|보강|대체/.test(source)) totals.ptOther += count;
     else totals.ptRegular += count;
@@ -9108,6 +9632,63 @@ function getReportArchiveFitnessSummary(logs = []) {
   }, { paidPt: 0, freePt: 0, consultation: 0, contract: 0, marketing: 0, specialReports: [] });
 }
 
+function getWorklogReportSubmissionKey(employeeId = "", dateKey = getActiveDateKey()) {
+  return `${dateKey}:${employeeId || "unknown"}`;
+}
+
+function getWorklogReportSubmission(employeeId = "", dateKey = getActiveDateKey()) {
+  state.worklogReportSubmissions ||= {};
+  return state.worklogReportSubmissions[getWorklogReportSubmissionKey(employeeId, dateKey)] || null;
+}
+
+function hasSubmittableWorklogContent(log = {}) {
+  const ops = { ...createFitnessOps(), ...(log.fitnessOps || {}) };
+  return Boolean(
+    log.clockIn
+    || log.clockOut
+    || String(log.report || log.record || log.memo || "").trim()
+    || getWorklogTaskRefs(log).some(({ task }) => isActiveTask(task))
+    || (log.schedule || []).some((entry) => String(getScheduleEntryText(entry) || "").trim())
+    || Object.values(ops).some((value) => String(value || "").trim())
+  );
+}
+
+function canSubmitWorklogReport(employeeId = "") {
+  return canEditEmployeeSlot(employeeId);
+}
+
+function submitWorklogReport(employeeId = "", dateKey = getActiveDateKey()) {
+  const employee = getEmployeeOptions().find((item) => item.id === employeeId) || getProfileEmployee();
+  const log = getReportArchiveEmployeeLog(employee, dateKey);
+  if (!canSubmitWorklogReport(employeeId)) {
+    showAppToast("본인 업무일지만 제출할 수 있습니다");
+    return;
+  }
+  if (!hasSubmittableWorklogContent(log)) {
+    showAppToast("업무기록을 먼저 작성한 뒤 제출하세요");
+    return;
+  }
+  state.worklogReportSubmissions ||= {};
+  state.worklogReportSubmissions[getWorklogReportSubmissionKey(employeeId, dateKey)] = {
+    status: "submitted",
+    dateKey,
+    employeeId,
+    submittedBy: getEmployeeAdminLabel(employee),
+    submittedById: employeeId,
+    submittedAt: new Date().toISOString(),
+  };
+  saveState();
+  renderReportArchive();
+  showAppToast("오늘 업무일지를 제출했습니다");
+}
+
+function formatWorklogSubmissionStatus(employeeId = "", dateKey = getActiveDateKey()) {
+  const record = getWorklogReportSubmission(employeeId, dateKey);
+  if (!record?.submittedAt) return "미제출";
+  const time = formatFitnessCenterConfirmationTime(record.submittedAt);
+  return `제출 완료${time ? ` · ${time}` : ""}`;
+}
+
 function buildEmployeeArchiveReport(employee, dateKey) {
   const log = getReportArchiveEmployeeLog(employee, dateKey);
   const tasks = getReportArchiveTasks(log);
@@ -9117,14 +9698,23 @@ function buildEmployeeArchiveReport(employee, dateKey) {
   const isFitness = getReportArchiveSiteId(employee) === "fitness";
   const fitnessLines = isFitness ? formatFitnessOpsReport(log.fitnessOps) : [];
   const title = isFitness ? `${getEmployeeAdminLabel(employee)} 직원 업무일지 보고서` : `${getEmployeeAdminLabel(employee)} 개인 업무보고서`;
+  const submitted = getWorklogReportSubmission(employee.id, dateKey);
+  const html = isFitness
+    ? renderFitnessReportTemplate(buildFitnessReportModel({ employee, dateKey, isCenter: false, log }))
+    : "";
   return {
     id: `employee:${employee.id}`,
     kind: "employee",
+    employeeId: employee.id,
+    siteId: getReportArchiveSiteId(employee),
     title,
     eyebrow: `${formatKoreanDate(dateKey)} · ${employee.org || "소속 미정"}`,
     meta: `${employee.role || "직원"} · ${employee.name || ""}`,
     countLabel: `${tasks.length}/${entries.length}`,
     empty: !tasks.length && !entries.length && !reportText,
+    submitted,
+    canSubmit: canSubmitWorklogReport(employee.id),
+    html,
     text: [
       `< ${title} >`,
       `기준일: ${formatFormalKoreanDate(dateKey)}`,
@@ -9165,11 +9755,13 @@ function buildSiteArchiveReport(site, dateKey) {
   return {
     id: `site:${site.id}`,
     kind: "site",
+    siteId: site.id,
     title,
     eyebrow: `${formatKoreanDate(dateKey)} · ${site.label}`,
     meta: `${employeesForSite.length}명 · 보고 ${reports}건`,
     countLabel: `${taskTotal}/${scheduleTotal}`,
     empty: !employeesForSite.length,
+    html: site.id === "fitness" ? renderFitnessReportTemplate(buildFitnessReportModel({ dateKey, isCenter: true })) : "",
     text: [
       `< ${title} >`,
       `기준일: ${formatFormalKoreanDate(dateKey)}`,
@@ -9242,7 +9834,34 @@ function renderReportArchive() {
       </button>
     `).join("")
     : `<div class="report-archive-empty">해당 조건의 보고서가 없습니다.</div>`;
-  previewNode.textContent = selected?.text || "보고서를 선택하면 미리보기가 표시됩니다.";
+  if (!selected) {
+    previewNode.textContent = "보고서를 선택하면 미리보기가 표시됩니다.";
+    return;
+  }
+  const submissionStatus = selected.kind === "employee"
+    ? formatWorklogSubmissionStatus(selected.employeeId, settings.dateKey)
+    : "";
+  const canSubmit = selected.kind === "employee" && selected.canSubmit && !selected.submitted?.submittedAt;
+  const canConfirmCenter = selected.kind === "site" && selected.siteId === "fitness" && canConfirmFitnessCenterReport(settings.dateKey);
+  const centerRecord = selected.kind === "site" && selected.siteId === "fitness" ? getFitnessCenterReportRecord(settings.dateKey) : null;
+  const statusLabel = selected.kind === "site" && selected.siteId === "fitness"
+    ? getFitnessCenterReportStatusText(settings.dateKey)
+    : submissionStatus;
+  previewNode.innerHTML = `
+    <div class="report-archive-preview-actions">
+      <div>
+        <span>${escapeHtml(selected.eyebrow)}</span>
+        <strong>${escapeHtml(selected.title)}</strong>
+        ${statusLabel ? `<em>${escapeHtml(statusLabel)}</em>` : ""}
+      </div>
+      ${canSubmit ? `<button type="button" data-report-submit-worklog="${escapeHtml(selected.employeeId)}">업무일지 제출</button>` : ""}
+      ${selected.submitted?.submittedAt ? `<b>제출 완료</b>` : ""}
+      ${canConfirmCenter ? `<button type="button" data-report-confirm-center>${centerRecord?.confirmedAt ? "확정 취소" : "센터 보고 확정"}</button>` : ""}
+    </div>
+    <div class="report-archive-paper-wrap">
+      ${selected.html || `<pre>${escapeHtml(selected.text || "")}</pre>`}
+    </div>
+  `;
 }
 
 function getBackupSettings() {
@@ -9588,6 +10207,7 @@ function buildFitnessReportLines() {
     `작성일: ${model.dateLabel}`,
     `작성자: ${model.writer}`,
     `출퇴근: ${model.clock}`,
+    ...(model.isCenter ? [`확정: ${model.confirmation?.confirmedAt ? getFitnessCenterReportStatusText(model.dateKey) : "미확정"}`] : []),
     "",
     "[금일 주요업무]",
     ...model.topTasks.map((task) => `- ${task}`),
@@ -9606,19 +10226,34 @@ function buildFitnessReportLines() {
   ];
 }
 
-function buildFitnessReportModel() {
+function buildFitnessReportModel(options = {}) {
   const page = getCurrentFitnessLogPage();
-  const employee = page?.employee || employees.find((item) => item.id === state.fitnessWritableEmployeeId) || getSelectedEmployee();
-  const log = page?.type === "center" ? getEmployeeLogForDate(state.fitnessWritableEmployeeId) : getSelectedLog();
-  const isCenter = page?.type === "center";
-  const tasks = getWorklogTaskRefs(log).map((ref) => ref.task).filter(isActiveTask);
-  const entries = (log.schedule || []).filter((entry) => entry.time);
-  const ops = { ...createFitnessOps(), ...(log.fitnessOps || {}) };
+  const dateKey = options.dateKey || getActiveDateKey();
+  const isCenter = options.isCenter ?? page?.type === "center";
+  const employee = options.employee
+    || page?.employee
+    || employees.find((item) => item.id === state.fitnessWritableEmployeeId)
+    || getSelectedEmployee();
+  const sourceLog = options.log
+    || (isCenter ? getEmployeeLogForDate(state.fitnessWritableEmployeeId, dateKey) : getEmployeeLogForDate(employee.id, dateKey));
+  const centerLogs = isCenter ? getFitnessEmployees().map((item) => getEmployeeLogForDate(item.id, dateKey)) : [sourceLog];
+  const tasks = centerLogs.flatMap((log) => getWorklogTaskRefs(log).map((ref) => ref.task).filter(isActiveTask));
+  const entries = centerLogs.flatMap((log) => (log.schedule || []).filter((entry) => entry.time && (isCenter ? getScheduleEntryText(entry) : true)));
+  const ops = centerLogs.reduce((total, log) => {
+    const sourceOps = { ...createFitnessOps(), ...(log.fitnessOps || {}) };
+    Object.keys(createFitnessOps()).forEach((key) => {
+      if (["shiftNote", "specialReport"].includes(key)) return;
+      total[key] = String(numberValue(total[key]) + numberValue(sourceOps[key]));
+    });
+    total.shiftNote = [total.shiftNote, sourceOps.shiftNote].filter(Boolean).join(" / ");
+    total.specialReport = [total.specialReport, sourceOps.specialReport].filter(Boolean).join(" / ");
+    return total;
+  }, createFitnessOps());
   const ptTotal = ["ptRegular", "ptFree", "ptOther"].reduce((sum, key) => sum + numberValue(ops[key]), 0);
   const contractTotal = ["customerNew", "customerRenewal"].reduce((sum, key) => sum + numberValue(ops[key]), 0);
   const marketingTotal = ["outbound", "outsideSales"].reduce((sum, key) => sum + numberValue(ops[key]), 0);
   const centerAttendanceRows = getFitnessEmployees().map((item) => {
-    const rowLog = getEmployeeLogForDate(item.id);
+    const rowLog = getEmployeeLogForDate(item.id, dateKey);
     const breakSummary = (rowLog.attendanceBreaks || []).map((record) => `${record.start || "--:--"}~${record.end || "--:--"}`).join(" / ");
     return {
       role: item.role || "",
@@ -9629,14 +10264,18 @@ function buildFitnessReportModel() {
     };
   });
   const title = isCenter ? "< 비욘드 피트니스 운영일지 >" : "< 비욘드 피트니스 업무일지 >";
+  const confirmation = isCenter ? getFitnessCenterReportRecord(dateKey) : null;
   return {
     title,
+    dateKey,
     isCenter,
-    dateLabel: formatKoreanDate(getActiveDateKey()),
+    confirmation,
+    canConfirmCenterReport: isCenter && canConfirmFitnessCenterReport(dateKey),
+    dateLabel: formatKoreanDate(dateKey),
     writer: isCenter ? "센터 전체" : employee.name || getEmployeeOwnLabel(employee),
     role: isCenter ? "운영 취합" : employee.role || "직원",
     ownerLabel: isCenter ? "담당 : 센터 운영 취합" : `담당 : ${employee.role || "직원"} ${employee.name || getEmployeeOwnLabel(employee)}`,
-    clock: `${log.clockIn || "-"} ~ ${log.clockOut || "-"}`,
+    clock: isCenter ? "센터 취합" : `${sourceLog.clockIn || "-"} ~ ${sourceLog.clockOut || "-"}`,
     centerAttendanceRows,
     topTasks: Array.from({ length: 3 }, (_, index) => {
       const task = tasks[index];
@@ -9655,7 +10294,7 @@ function buildFitnessReportModel() {
       ["마케팅", `${marketingTotal}건`],
       ["일일권", `${numberValue(ops.dayPass)}건`],
     ],
-    issueRows: [ops.specialReport, ops.shiftNote, log.memo].filter(Boolean).slice(0, 3).concat(Array(3).fill("")).slice(0, 3),
+    issueRows: [ops.specialReport, ops.shiftNote, sourceLog.memo].filter(Boolean).slice(0, 3).concat(Array(3).fill("")).slice(0, 3),
     coaching: getFitnessCoachingMessages(),
   };
 }
@@ -9694,6 +10333,7 @@ function renderFitnessReportTemplate(model = buildFitnessReportModel()) {
           <dt>작성자</dt><dd>${escapeHtml(model.writer)}</dd>
           <dt>구분</dt><dd>${escapeHtml(model.role)}</dd>
           <dt>출퇴근</dt><dd>${escapeHtml(model.clock)}</dd>
+          ${model.isCenter ? `<dt>확정</dt><dd>${escapeHtml(model.confirmation?.confirmedAt ? getFitnessCenterReportStatusText(model.dateKey) : "미확정")}</dd>` : ""}
         </dl>
       </header>
 
@@ -9762,12 +10402,24 @@ function openFitnessReportSheet() {
   const model = buildFitnessReportModel();
   if (subtitle) subtitle.textContent = `${formatKoreanDate(getActiveDateKey())} 보고서`;
   preview.innerHTML = renderFitnessReportTemplate(model);
+  updateFitnessReportConfirmButton(model);
   backdrop.hidden = false;
   sheet.hidden = false;
   requestAnimationFrame(() => {
     sheet.classList.add("is-open");
     fitFitnessReportPreview();
   });
+}
+
+function updateFitnessReportConfirmButton(model = buildFitnessReportModel()) {
+  const button = document.getElementById("fitnessReportConfirmButton");
+  if (!button) return;
+  button.hidden = !model.isCenter;
+  if (!model.isCenter) return;
+  const confirmed = Boolean(model.confirmation?.confirmedAt);
+  button.textContent = confirmed ? "확정 취소" : "센터 보고 확정";
+  button.disabled = !model.canConfirmCenterReport;
+  button.title = model.canConfirmCenterReport ? "" : "센터장 또는 해당일 근무 직원만 확정할 수 있습니다";
 }
 
 function fitFitnessReportPreview() {
@@ -9842,10 +10494,18 @@ function getFitnessReportExportCss() {
       border-radius: 18px;
       background: linear-gradient(135deg, #0a3529, #176047);
       color: #fff7d5;
+      -webkit-text-fill-color: #fff7d5;
       padding: 22px 26px;
+    }
+    .fitness-paper-top > div * {
+      color: #fff7d5 !important;
+      -webkit-text-fill-color: #fff7d5 !important;
+      opacity: 1 !important;
+      mix-blend-mode: normal !important;
     }
     .fitness-paper-top strong {
       color: #fff7d5;
+      -webkit-text-fill-color: #fff7d5;
       font-size: 42px;
       line-height: 1.06;
       font-weight: 950;
@@ -9854,6 +10514,7 @@ function getFitnessReportExportCss() {
     .fitness-paper-top span {
       margin-top: 10px;
       color: #ffffff;
+      -webkit-text-fill-color: #ffffff;
       font-size: 22px;
       line-height: 1.25;
       font-weight: 900;
@@ -10264,12 +10925,23 @@ function dockGlobalHeaderActions(panelView = worklogViewAliases[activeView] || a
   if (attendancePopover) dock.appendChild(attendancePopover);
 }
 
-function toggleMainMenuPopover() {
+function dockMainMenuPopoverToTrigger(trigger = null) {
+  const popover = document.getElementById("mainMenuPopover");
+  if (!popover || !trigger) return;
+
+  const host = trigger.closest(
+    ".section-menu-dock, .executive-hero-actions, .control-tower-hero-actions, .overview-date-nav"
+  );
+  if (host && popover.parentElement !== host) host.appendChild(popover);
+}
+
+function toggleMainMenuPopover(trigger = null) {
   const popover = document.getElementById("mainMenuPopover");
   const button = document.getElementById("settingsGearButton");
   const executiveButton = document.getElementById("executiveMenuButton");
   const controlButton = document.getElementById("controlTowerMenuButton");
   if (!popover) return;
+  dockMainMenuPopoverToTrigger(trigger);
   const willOpen = popover.hidden;
   if (willOpen) renderMainMenuAuthButton();
   popover.hidden = !willOpen;
@@ -10423,7 +11095,7 @@ setupVerticalDateSwipe(document.getElementById("view-fitness-log"));
 
 document.getElementById("settingsGearButton").onclick = (event) => {
   event.stopPropagation();
-  toggleMainMenuPopover();
+  toggleMainMenuPopover(event.currentTarget);
 };
 document.getElementById("approvalAlertButton")?.addEventListener("click", openApprovalManagement);
 document.querySelectorAll("[data-menu-view]").forEach((button) => {
@@ -10470,6 +11142,22 @@ document.querySelectorAll("[data-section-shortcut]").forEach((button) => {
     }
     if (action === "report" || action === "daily-report" || action === "backup" || action === "innovation") {
       switchView("report");
+      if (action === "daily-report") {
+        const employee = getProfileMappedEmployeeId()
+          ? getEmployeeOptions().find((item) => item.id === getProfileMappedEmployeeId()) || getProfileEmployee()
+          : getSelectedEmployee();
+        const siteId = getReportArchiveSiteId(employee);
+        const settings = getReportArchiveSettings();
+        settings.dateKey = getActiveDateKey();
+        settings.site = siteId === "fitness" ? "fitness" : siteId || "all";
+        settings.type = siteId === "fitness" ? "fitness" : "employee";
+        settings.selectedId = "";
+        saveState({ fastSave: true });
+        renderReportArchive();
+        document.querySelector(".report-archive-card")?.scrollIntoView({ behavior: "smooth", block: "start" });
+      }
+      if (action === "backup") document.querySelector(".backup-center-card")?.scrollIntoView({ behavior: "smooth", block: "start" });
+      if (action === "innovation") document.querySelector(".innovation-lab-card")?.scrollIntoView({ behavior: "smooth", block: "start" });
       return;
     }
     if (action === "labor") {
@@ -10603,6 +11291,12 @@ document.getElementById("logoutButton")?.addEventListener("click", signOutWithSu
 document.querySelector("[data-registration-org-select]")?.addEventListener("change", () => {
   updateRegistrationWorkplaceOptions({ preserve: false });
 });
+document.querySelector('[data-settings-profile-field="org"]')?.addEventListener("change", () => {
+  updateSettingsPlacementOptions({ preserve: true, resetWorkplace: true, resetRole: true });
+});
+document.querySelector('[data-settings-profile-field="workplace"]')?.addEventListener("change", () => {
+  updateSettingsPlacementOptions({ preserve: true, resetRole: true });
+});
 document.getElementById("employeeSelect").onchange = (event) => {
   state.selectedEmployeeId = event.target.value;
   const fitnessIndex = getFitnessLogPages().findIndex((page) => page.id === event.target.value);
@@ -10668,7 +11362,7 @@ document.getElementById("scheduleUnitButton").onclick = () => {
   renderEntries();
 };
 document.getElementById("fitnessScheduleUnitButton")?.addEventListener("click", () => {
-  if (!guardWorklogEdit()) return;
+  if (!guardWorklogEdit("fitness-log")) return;
   const log = getSelectedLog();
   log.scheduleUnit = log.scheduleUnit === "60" ? "30" : "60";
   normalizeEmployeeLogRows(log);
@@ -10748,11 +11442,15 @@ document.getElementById("fitnessReportMenuButton")?.addEventListener("click", op
 document.getElementById("fitnessReportCloseButton")?.addEventListener("click", closeFitnessReportSheet);
 document.getElementById("fitnessReportBackdrop")?.addEventListener("click", closeFitnessReportSheet);
 document.getElementById("fitnessReportPrintButton")?.addEventListener("click", printFitnessReport);
+document.getElementById("fitnessReportConfirmButton")?.addEventListener("click", toggleFitnessCenterReportConfirmation);
 document.getElementById("fitnessReportImageButton")?.addEventListener("click", () => {
   saveFitnessReportImage().catch(() => alert("이미지 파일을 만들지 못했습니다. 출력 메뉴에서 PDF 저장을 이용해주세요."));
 });
 document.getElementById("fitnessReportShareButton")?.addEventListener("click", () => {
   shareFitnessReport().catch(() => alert("공유 기능을 사용할 수 없어 보고서 미리보기를 확인해주세요."));
+});
+document.getElementById("fitnessCenterConfirmPanel")?.addEventListener("click", (event) => {
+  if (event.target.closest("[data-fitness-center-report-confirm]")) toggleFitnessCenterReportConfirmation();
 });
 document.querySelectorAll("[data-section-ai]").forEach((button) => {
   button.onclick = () => {
@@ -10810,7 +11508,7 @@ document.getElementById("employeeMemo").oninput = (event) => {
 document.querySelectorAll("[data-fitness-field]").forEach((field) => {
   field.oninput = (event) => {
     if (!canEditCurrentWorklog("fitness-log")) {
-      guardWorklogEdit();
+      guardWorklogEdit("fitness-log");
       return;
     }
     const log = getSelectedLog();
@@ -10896,11 +11594,11 @@ document.getElementById("executiveTodayButton")?.addEventListener("click", (even
 });
 document.getElementById("executiveMenuButton")?.addEventListener("click", (event) => {
   event.stopPropagation();
-  toggleMainMenuPopover();
+  toggleMainMenuPopover(event.currentTarget);
 });
 document.getElementById("controlTowerMenuButton")?.addEventListener("click", (event) => {
   event.stopPropagation();
-  toggleMainMenuPopover();
+  toggleMainMenuPopover(event.currentTarget);
 });
 document.getElementById("reportArchiveDate")?.addEventListener("change", (event) => {
   const settings = getReportArchiveSettings();
@@ -10929,6 +11627,18 @@ document.getElementById("reportArchiveList")?.addEventListener("click", (event) 
   getReportArchiveSettings().selectedId = button.dataset.reportArchiveId || "";
   saveState({ fastSave: true });
   renderReportArchive();
+});
+document.getElementById("reportArchivePreview")?.addEventListener("click", (event) => {
+  const submitButton = event.target.closest("[data-report-submit-worklog]");
+  if (submitButton) {
+    submitWorklogReport(submitButton.dataset.reportSubmitWorklog || "", getReportArchiveSettings().dateKey);
+    return;
+  }
+  const centerButton = event.target.closest("[data-report-confirm-center]");
+  if (centerButton) {
+    toggleFitnessCenterReportConfirmation(getReportArchiveSettings().dateKey);
+    renderReportArchive();
+  }
 });
 document.getElementById("reportTone").onchange = (event) => {
   state.reportTone = event.target.value;

@@ -467,7 +467,7 @@ async function checkNonControlRoleTextDoesNotBecomeRepresentative(browser) {
         primaryWork: "기획/관리",
         approvalStatus: "approved",
         accessPreset: "owner",
-        permissions: {},
+        permissions: { executiveRoom: true, staffApproval: true, worklogAll: true },
       },
       employeeLogs: {},
     }));
@@ -574,8 +574,9 @@ async function checkUnmappedEmployeeDoesNotInheritFitnessManager(browser) {
   const saveMetrics = await page.evaluate(() => window.eval(`JSON.stringify({
     disabled: document.querySelector("#worklogTaskBoard .task-text-input")?.disabled ?? true,
     value: document.querySelector("#worklogTaskBoard .task-text-input")?.value || "",
+    selectedDateKey: state.selectedDateKey,
     savedText: state.employeeLogs?.[state.selectedDateKey]?.["profile-user"]?.tasks?.[0]?.text || "",
-    storageText: JSON.parse(localStorage.getItem("beyond-worklog-state-v1") || "{}").employeeLogs?.["2026-07-27"]?.["profile-user"]?.tasks?.[0]?.text || ""
+    storageText: JSON.parse(localStorage.getItem("beyond-worklog-state-v1") || "{}").employeeLogs?.[state.selectedDateKey]?.["profile-user"]?.tasks?.[0]?.text || ""
   })`));
   const saved = JSON.parse(saveMetrics);
   if (saved.disabled) fail("unmapped employee own worklog input should be enabled", saveMetrics);
@@ -626,7 +627,7 @@ async function checkApprovedEmployeeWorklogEditMatrix(browser) {
         role: "공유사업부 매니저",
         name: "공유사업부 매니저",
         nickname: "공유",
-        org: "(주)비욘드 컴퍼니",
+        org: "(주)비욘드컴퍼니",
         workplace: "공유사업부",
         primaryWork: "공유오피스 공유창고 고객관리",
       },
@@ -700,14 +701,15 @@ async function checkApprovedEmployeeWorklogEditMatrix(browser) {
       canEdit: canEditCurrentWorklog(activeView),
       disabled: document.querySelector("#worklogTaskBoard .task-text-input")?.disabled ?? true,
       inputValue: document.querySelector("#worklogTaskBoard .task-text-input")?.value || "",
+      selectedDateKey: state.selectedDateKey,
       savedText: state.employeeLogs?.[state.selectedDateKey]?.[${JSON.stringify(payload.expectedEmployeeId)}]?.tasks?.[0]?.text || "",
       profileSavedText: state.employeeLogs?.[state.selectedDateKey]?.["profile-user"]?.tasks?.[0]?.text || "",
       storage: localStorage.getItem("beyond-worklog-state-v1") || "{}"
     })`), testCase);
     const parsed = JSON.parse(metrics);
     const storage = JSON.parse(parsed.storage || "{}");
-    const storedText = storage.employeeLogs?.["2026-07-27"]?.[testCase.expectedEmployeeId]?.tasks?.[0]?.text
-      || storage.employeeLogs?.["2026-07-27"]?.["profile-user"]?.tasks?.[0]?.text
+    const storedText = storage.employeeLogs?.[parsed.selectedDateKey]?.[testCase.expectedEmployeeId]?.tasks?.[0]?.text
+      || storage.employeeLogs?.[parsed.selectedDateKey]?.["profile-user"]?.tasks?.[0]?.text
       || "";
     if (parsed.activeView !== testCase.expectedView) fail("approved employee landed on wrong worklog view", `${testCase.label}: ${metrics}`);
     if (parsed.selectedEmployeeId !== testCase.expectedEmployeeId) fail("approved employee did not select own editable sheet", `${testCase.label}: ${metrics}`);
@@ -1162,7 +1164,7 @@ async function checkSectionChromeReleasePolish(browser) {
     document.body.dataset.viewMode = "ceo";
   });
 
-  const views = ["attendance", "report", "settings", "auth", "staff", "ai"];
+  const views = ["bangju-log", "beyond-log", "fitness-log", "attendance", "report", "settings", "auth", "staff", "ai"];
   for (const view of views) {
     await page.evaluate((targetView) => window.switchView?.(targetView), view);
     await page.waitForTimeout(220);
@@ -1216,6 +1218,41 @@ async function checkSectionChromeReleasePolish(browser) {
     await page.keyboard.press("Escape");
     await page.evaluate(() => window.closeMainMenuPopover?.());
   }
+  await page.evaluate(() => window.switchView?.("worklog-overview"));
+  await page.waitForTimeout(220);
+  const overviewMenuMetrics = await page.evaluate(() => {
+    const nav = document.querySelector("#overviewDateSwipeArea");
+    const menuButton = nav?.querySelector("#settingsGearButton");
+    const buttonRect = menuButton?.getBoundingClientRect();
+    return {
+      activeView: document.body.dataset.activeView,
+      menuVisible: Boolean(buttonRect && buttonRect.width > 0 && buttonRect.height > 0),
+      menuInViewport: Boolean(buttonRect && buttonRect.left >= 0 && buttonRect.right <= window.innerWidth && buttonRect.top >= 0),
+      menuLabel: menuButton?.textContent?.trim() || "",
+    };
+  });
+  if (overviewMenuMetrics.activeView !== "worklog-overview") fail("overview menu test active view mismatch", JSON.stringify(overviewMenuMetrics));
+  if (!overviewMenuMetrics.menuVisible || !overviewMenuMetrics.menuInViewport || overviewMenuMetrics.menuLabel !== "메뉴") {
+    fail("overview menu button should be visible in date nav", JSON.stringify(overviewMenuMetrics));
+  }
+  await page.click("#overviewDateSwipeArea #settingsGearButton");
+  await page.waitForTimeout(120);
+  const overviewMenuState = await page.evaluate(() => {
+    const popover = document.querySelector("#mainMenuPopover");
+    const rect = popover?.getBoundingClientRect();
+    return {
+      hidden: popover?.hidden ?? true,
+      parent: popover?.parentElement?.id || popover?.parentElement?.className || "",
+      hasItems: document.querySelectorAll("#mainMenuPopover button:not([hidden])").length,
+      position: popover ? getComputedStyle(popover).position : "",
+      inViewport: Boolean(rect && rect.width > 0 && rect.height > 0 && rect.left >= 0 && rect.right <= window.innerWidth && rect.bottom <= window.innerHeight),
+    };
+  });
+  if (overviewMenuState.hidden || !overviewMenuState.hasItems || !overviewMenuState.inViewport || overviewMenuState.position !== "fixed") {
+    fail("overview menu popover should open without clipping", JSON.stringify(overviewMenuState));
+  }
+  await page.keyboard.press("Escape");
+  await page.evaluate(() => window.closeMainMenuPopover?.());
   if (errors.length) fail("section chrome polish errors", errors.join(" | "));
   await page.close();
 }
@@ -1292,6 +1329,153 @@ async function checkReportArchiveVault(browser) {
     fail("report archive should expose fitness center and employee reports", JSON.stringify(metrics));
   }
   if (errors.length) fail("report archive errors", errors.join(" | "));
+  await page.close();
+}
+
+async function checkFitnessCenterReportConfirmation(browser) {
+  const { page, errors } = await openPage(browser, { width: 390, height: 844 });
+  await page.evaluate(() => {
+    window.eval(`
+      authState.user = { id: "fitness-manager-auth", email: "fitness-manager@example.com" };
+      state.profile = {
+        ...state.profile,
+        authUserId: "fitness-manager-auth",
+        email: "fitness-manager@example.com",
+        role: "센터장",
+        name: "박주홍",
+        nickname: "센터장",
+        org: "(주)비욘드컴퍼니",
+        workplace: "비욘드 피트니스",
+        primaryWork: "피트니스 운영총괄",
+        approvalStatus: "approved",
+        workHours: "06:00-24:00"
+      };
+      state.selectedDateKey = "2026-07-24";
+      state.fitnessWritableEmployeeId = "beyond-fitness-manager";
+      state.fitnessLogPage = 0;
+      const log = getEmployeeLogForDate("beyond-fitness-manager", "2026-07-24");
+      log.clockIn = "06:00";
+      log.clockOut = "12:00";
+      log.fitnessOps = { ...createFitnessOps(), ptRegular: "2", consultation: "1" };
+      saveState({ fastSave: true });
+      document.body.classList.add("physical-phone-device");
+      document.body.dataset.layoutMode = "phone";
+      document.body.dataset.viewMode = "ceo";
+      switchView("fitness-log");
+    `);
+  });
+  await page.waitForTimeout(350);
+  const before = await page.evaluate(() => ({
+    activeView: document.body.dataset.activeView,
+    pageTitle: document.querySelector("#fitnessLogPageTitle")?.textContent?.trim() || "",
+    disabled: document.querySelector("[data-fitness-center-report-confirm]")?.disabled ?? true,
+    text: document.querySelector("#fitnessCenterConfirmPanel")?.textContent?.trim() || "",
+  }));
+  if (before.activeView !== "fitness-log" || !before.pageTitle.includes("센터")) {
+    fail("fitness center report confirmation should start on center page", JSON.stringify(before));
+  }
+  if (before.disabled) fail("fitness center manager should be able to confirm the center report", JSON.stringify(before));
+  await page.click("[data-fitness-center-report-confirm]");
+  await page.waitForTimeout(220);
+  const confirmed = await page.evaluate(() => {
+    const stored = JSON.parse(localStorage.getItem("beyond-worklog-state-v1") || "{}");
+    return {
+      statusText: document.querySelector("#fitnessCenterConfirmPanel")?.textContent?.trim() || "",
+      stored: stored.fitnessCenterReports?.["2026-07-24"] || null,
+    };
+  });
+  if (confirmed.stored?.status !== "confirmed" || !confirmed.stored?.confirmedAt || !confirmed.statusText.includes("확정")) {
+    fail("fitness center report confirmation was not persisted", JSON.stringify(confirmed));
+  }
+  await page.click("#fitnessReportMenuButton");
+  await page.waitForTimeout(250);
+  const reportState = await page.evaluate(() => ({
+    buttonHidden: document.querySelector("#fitnessReportConfirmButton")?.hidden ?? true,
+    buttonText: document.querySelector("#fitnessReportConfirmButton")?.textContent?.trim() || "",
+    previewText: document.querySelector("#fitnessReportPreview")?.textContent?.trim() || "",
+  }));
+  if (reportState.buttonHidden || reportState.buttonText !== "확정 취소" || !reportState.previewText.includes("확정")) {
+    fail("fitness report preview should expose confirmation state", JSON.stringify(reportState));
+  }
+  if (errors.length) fail("fitness center confirmation page errors", errors.join(" | "));
+  await page.close();
+}
+
+async function checkReportArchiveFitnessSubmission(browser) {
+  const { page, errors } = await openPage(browser, { width: 390, height: 844 });
+  await page.addInitScript(() => {
+    localStorage.setItem("beyond-worklog-state-v1", JSON.stringify({
+      selectedDateKey: "2026-07-24",
+      selectedEmployeeId: "beyond-fitness-manager",
+      fitnessWritableEmployeeId: "beyond-fitness-manager",
+      profile: {
+        authUserId: "fitness-manager-auth",
+        email: "fitness-manager@example.com",
+        role: "센터장",
+        name: "박주홍",
+        nickname: "센터장",
+        org: "(주)비욘드컴퍼니",
+        workplace: "비욘드 피트니스",
+        primaryWork: "피트니스 운영총괄",
+        approvalStatus: "approved",
+        workHours: "06:00-24:00",
+      },
+      employeeLogs: {
+        "2026-07-24": {
+          "beyond-fitness-manager": {
+            employeeId: "beyond-fitness-manager",
+            org: "(주)방주 / 비욘드 피트니스 지사",
+            role: "센터장",
+            clockIn: "06:00",
+            clockOut: "17:00",
+            tasks: [{ priority: "A", text: "센터 운영점검", status: "완료", done: true }],
+            schedule: [{ time: "08:00", items: [{ type: "P/T", text: "김영수" }], status: "예정" }],
+            scheduleUnit: "60",
+            report: "센터 운영 정상",
+            memo: "",
+            fitnessOps: { ptRegular: "1", ptFree: "", ptOther: "", customerNew: "", customerRenewal: "", dayPass: "", consultation: "1", outbound: "", outsideSales: "", shiftNote: "", specialReport: "" },
+          },
+        },
+      },
+    }));
+  });
+  await page.reload({ waitUntil: "domcontentloaded" });
+  await page.evaluate(() => {
+    window.eval(`
+      authState.user = { id: "fitness-manager-auth", email: "fitness-manager@example.com" };
+      document.body.classList.add("physical-phone-device");
+      document.body.dataset.layoutMode = "phone";
+      document.body.dataset.viewMode = "ceo";
+      switchView("report");
+    `);
+  });
+  await page.waitForTimeout(250);
+  await page.fill("#reportArchiveDate", "2026-07-24");
+  await page.selectOption("#reportArchiveSite", "fitness");
+  await page.selectOption("#reportArchiveType", "fitness");
+  await page.click('[data-report-archive-id="employee:beyond-fitness-manager"]');
+  await page.waitForTimeout(200);
+  const before = await page.evaluate(() => ({
+    hasPaper: Boolean(document.querySelector("#reportArchivePreview .fitness-report-page.is-personal-report")),
+    hasSubmit: Boolean(document.querySelector("[data-report-submit-worklog]")),
+    previewText: document.querySelector("#reportArchivePreview")?.textContent || "",
+  }));
+  if (!before.hasPaper || !before.hasSubmit || !before.previewText.includes("비욘드 피트니스 업무일지")) {
+    fail("fitness archive employee report should render as a submittable report form", JSON.stringify(before));
+  }
+  await page.click("[data-report-submit-worklog]");
+  await page.waitForTimeout(220);
+  const after = await page.evaluate(() => {
+    const stored = JSON.parse(localStorage.getItem("beyond-worklog-state-v1") || "{}");
+    return {
+      submission: stored.worklogReportSubmissions?.["2026-07-24:beyond-fitness-manager"] || null,
+      previewText: document.querySelector("#reportArchivePreview")?.textContent || "",
+    };
+  });
+  if (after.submission?.status !== "submitted" || !after.submission?.submittedAt || !after.previewText.includes("제출 완료")) {
+    fail("fitness archive employee report submission was not persisted", JSON.stringify(after));
+  }
+  if (errors.length) fail("fitness archive submission page errors", errors.join(" | "));
   await page.close();
 }
 
@@ -1515,7 +1699,7 @@ async function checkFitnessNewEmployeeRegistrationFlow(browser) {
     await page.fill('[data-profile-field="name"]', "비욘드신입");
     await page.fill('[data-profile-field="nickname"]', "신입");
     await page.fill('[data-profile-field="phone"]', "01012345678");
-    await page.selectOption('[data-registration-org-select]', "(주)비욘드 컴퍼니");
+    await page.selectOption('[data-registration-org-select]', "(주)비욘드컴퍼니");
     await page.waitForTimeout(80);
     const workplaceOptions = await page.evaluate(() => [...document.querySelectorAll('[data-registration-workplace-select] option')].map((option) => option.value));
     if (!workplaceOptions.includes("비욘드 피트니스") || !workplaceOptions.includes("TBA studio")) {
@@ -1563,7 +1747,7 @@ async function checkFitnessNewEmployeeRegistrationFlow(browser) {
     if (metadata.name !== "비욘드신입" || metadata.phone !== "010-1234-5678") {
       fail("signup metadata should contain normalized personal info", `${viewport.label}: ${JSON.stringify(metadata)}`);
     }
-    if (metadata.org !== "(주)비욘드 컴퍼니" || metadata.workplace !== "비욘드 피트니스" || metadata.workHours !== "16:00-20:00") {
+    if (metadata.org !== "(주)비욘드컴퍼니" || metadata.workplace !== "비욘드 피트니스" || metadata.workHours !== "16:00-20:00") {
       fail("signup metadata should contain fitness placement", `${viewport.label}: ${JSON.stringify(metadata)}`);
     }
     if (metadata.role !== "직원" || metadata.primaryWork !== "" || metadata.secondaryWork !== "" || metadata.employmentType !== "직원" || metadata.hourlyWage !== "" || metadata.dailyWage !== "") {
@@ -1597,6 +1781,8 @@ async function checkFitnessNewEmployeeRegistrationFlow(browser) {
     await checkSectionAiWorklogActions(browser);
     await checkSectionChromeReleasePolish(browser);
     await checkReportArchiveVault(browser);
+    await checkFitnessCenterReportConfirmation(browser);
+    await checkReportArchiveFitnessSubmission(browser);
     await checkRealDeviceRegressionLayouts(browser);
     await checkFitnessNewEmployeeRegistrationFlow(browser);
     await checkRepresentativeProfileSeparation(browser);

@@ -525,6 +525,7 @@
             <b>오늘의 기록</b>
             <p id="fitnessCenterTodayRecord">-</p>
           </div>
+          <div class="fitness-center-confirm" id="fitnessCenterConfirmPanel"></div>
         </article>
         <article class="worklog-panel fitness-log-task-panel">
           <h3>
@@ -574,6 +575,7 @@
         </header>
         <div class="fitness-report-preview" id="fitnessReportPreview"></div>
         <footer>
+          <button type="button" id="fitnessReportConfirmButton" hidden>센터 보고 확정</button>
           <button type="button" id="fitnessReportImageButton">이미지 저장</button>
           <button type="button" id="fitnessReportShareButton">보내기</button>
           <button type="button" id="fitnessReportPrintButton">출력</button>
@@ -796,7 +798,7 @@
           </div>
           <div class="report-archive-layout">
             <div class="report-archive-list" id="reportArchiveList" aria-label="보고서 목록"></div>
-            <pre class="report-archive-preview" id="reportArchivePreview">보고서를 선택하면 미리보기가 표시됩니다.</pre>
+            <div class="report-archive-preview" id="reportArchivePreview">보고서를 선택하면 미리보기가 표시됩니다.</div>
           </div>
         </article>
 
@@ -898,15 +900,27 @@
         </div>
         <div class="settings-panel is-active" id="settings-panel-employee">
           <div class="profile-grid">
-            <label>소속 <input data-settings-profile-field="org" type="text" placeholder="예: (주)방주 / 비욘드 피트니스 지사" /></label>
-            <label>직급 <input data-settings-profile-field="role" type="text" placeholder="예: 센터장 / 대표 / 트레이너" /></label>
+            <label>소속
+              <select data-settings-profile-field="org">
+                <option value="">소속 선택</option>
+              </select>
+            </label>
+            <label>사업장/부서
+              <select data-settings-profile-field="workplace">
+                <option value="">사업장/부서 선택</option>
+              </select>
+            </label>
+            <label>직급
+              <select data-settings-profile-field="role">
+                <option value="">직급 선택</option>
+              </select>
+            </label>
             <label>이름 <input data-settings-profile-field="name" type="text" placeholder="예: 홍길동" /></label>
             <label>닉네임 <input data-settings-profile-field="nickname" type="text" placeholder="본인 업무일지 표시명" /></label>
             <label>전화 <input data-settings-profile-field="phone" type="tel" placeholder="010-0000-0000" /></label>
             <label>이메일 <input data-settings-profile-field="email" type="email" placeholder="name@example.com" /></label>
             <label>주업무 <input data-settings-profile-field="primaryWork" type="text" placeholder="주요 담당 업무" /></label>
             <label>부업무 <input data-settings-profile-field="secondaryWork" type="text" placeholder="보조 담당 업무" /></label>
-            <label>근무지 <input data-settings-profile-field="workplace" type="text" placeholder="근무지 / 현장 / 지점" /></label>
             <label>주민번호/식별번호 <input data-settings-profile-field="laborId" type="text" placeholder="노무대장용 식별번호" /></label>
             <label>주소 <input data-settings-profile-field="address" type="text" placeholder="노무대장용 주소" /></label>
             <label>일당 <input data-settings-profile-field="dailyWage" type="number" min="0" inputmode="numeric" placeholder="예: 120000" /></label>
@@ -935,7 +949,8 @@
               <label>土 <input data-settings-work-hours-day="sat" type="text" placeholder="10:00-18:00" /></label>
             </div>
           </section>
-          <p class="profile-note">회원가입 시 입력한 직원 정보를 수정합니다. 근무시간은 업무일지의 시간별 일정 기준으로 사용됩니다.</p>
+          <p id="settingsProfilePendingNote" class="profile-note settings-pending-note" hidden></p>
+          <p class="profile-note">직원 기본정보, 소속, 근무/노무 기준 변경은 대표 확인 후 확정됩니다. 승인 전에는 기존 확정 정보가 업무일지와 노무 기준으로 유지됩니다.</p>
         </div>
         <div class="settings-panel" id="settings-panel-manual">
           <section class="manual-settings-card">
@@ -1088,9 +1103,8 @@
                   <select data-profile-field="org" data-registration-org-select>
                     <option value="">소속 선택</option>
                     <option value="(주)방주">(주)방주</option>
-                    <option value="(주)비욘드 컴퍼니">(주)비욘드 컴퍼니</option>
                     <option value="(주)비제이종합건설">(주)비제이종합건설</option>
-                    <option value="기타">기타</option>
+                    <option value="(주)비욘드컴퍼니">(주)비욘드컴퍼니</option>
                   </select>
                 </label>
                 <label>근무지

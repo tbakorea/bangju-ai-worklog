@@ -2002,9 +2002,9 @@ body[data-device-mode="narrow"] .os-mode-switch span[data-device-mode="narrow"] 
 }
 
 .appointment-row.is-current .appointment-time {
-  color: var(--fitness-green);
-  font-size: 17px;
-  font-weight: 950;
+  color: var(--muted);
+  font-size: 15px;
+  font-weight: 760;
 }
 
 .appointment-row.is-merged {
@@ -4091,6 +4091,15 @@ body[data-device-mode="narrow"] .os-mode-switch span[data-device-mode="narrow"] 
   font-weight: 760;
 }
 
+.settings-pending-note {
+  border: 1px solid rgba(214, 156, 46, 0.24);
+  border-radius: 12px;
+  background: rgba(255, 247, 226, 0.82);
+  color: #7b5615;
+  padding: 10px 12px;
+  font-weight: 900;
+}
+
 .signup-sheet {
   display: grid;
   gap: 12px;
@@ -4637,6 +4646,84 @@ body[data-device-mode="narrow"] .os-mode-switch span[data-device-mode="narrow"] 
 .approval-request-actions button[data-approval-action="reject"] {
   background: #fff7f4;
   color: #9a2a2a;
+}
+
+.approval-request-actions button[data-approval-action="rejectProfileChange"] {
+  background: #fff7f4;
+  color: #9a2a2a;
+}
+
+.approval-request-actions button[data-approval-action="applyProfileChange"] {
+  background: var(--green);
+  color: #fffdf3;
+}
+
+.approval-change-request {
+  display: grid;
+  gap: 10px;
+  border: 1px solid rgba(214, 156, 46, 0.24);
+  border-radius: 13px;
+  background: rgba(255, 248, 231, 0.78);
+  padding: 11px;
+}
+
+.approval-change-request header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.approval-change-request strong,
+.approval-change-request b {
+  color: var(--ink);
+  font-weight: 950;
+}
+
+.approval-change-request span {
+  color: rgba(38, 50, 56, 0.62);
+  font-size: 11px;
+  font-weight: 820;
+}
+
+.approval-change-request em {
+  border-radius: 999px;
+  background: rgba(14, 76, 56, 0.1);
+  color: var(--green);
+  padding: 6px 9px;
+  font-size: 11px;
+  font-style: normal;
+  font-weight: 950;
+  white-space: nowrap;
+}
+
+.approval-change-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 7px;
+}
+
+.approval-change-grid article {
+  display: grid;
+  gap: 4px;
+  border: 1px solid rgba(33, 55, 45, 0.08);
+  border-radius: 10px;
+  background: rgba(255, 253, 248, 0.92);
+  padding: 8px;
+}
+
+.approval-change-grid article span {
+  text-decoration: line-through;
+}
+
+.approval-change-grid article strong {
+  font-size: 13px;
+}
+
+@media (max-width: 640px) {
+  .approval-change-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
 }
 
 .password-reset-cards {
@@ -6014,12 +6101,12 @@ textarea:focus-visible {
 }
 
 .appointment-row.is-current {
-  border-left: 5px solid var(--swiss-red);
-  padding-left: 7px;
+  border-left: 0;
+  padding-left: 0;
 }
 
 .appointment-row.is-current .appointment-time {
-  color: var(--swiss-red);
+  color: var(--muted);
 }
 
 .appointment-row.is-merged {
@@ -7928,6 +8015,64 @@ textarea:focus-visible {
   font-size: 13px;
   font-weight: 750;
   line-height: 1.35;
+}
+
+.fitness-center-confirm {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: center;
+  border: 1px solid rgba(15, 59, 46, 0.16);
+  border-radius: 16px;
+  background: rgba(255, 254, 250, 0.92);
+  padding: 10px 12px;
+  box-shadow: 0 10px 24px rgba(17, 20, 17, 0.05);
+}
+
+.fitness-center-confirm div {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.fitness-center-confirm b {
+  color: var(--ink);
+  font-size: 14px;
+  font-weight: 950;
+}
+
+.fitness-center-confirm span {
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 850;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.fitness-center-confirm button,
+#fitnessReportConfirmButton {
+  min-height: 38px;
+  border: 1px solid rgba(15, 59, 46, 0.18);
+  border-radius: 999px;
+  background: var(--fitness-green);
+  color: var(--nordic-sheet);
+  padding: 0 14px;
+  font-size: 13px;
+  font-weight: 950;
+}
+
+.fitness-center-confirm.is-confirmed {
+  border-color: rgba(15, 59, 46, 0.28);
+  background: rgba(237, 244, 224, 0.76);
+}
+
+.fitness-center-confirm button:disabled,
+#fitnessReportConfirmButton:disabled {
+  cursor: not-allowed;
+  border-color: rgba(15, 59, 46, 0.1);
+  background: rgba(15, 59, 46, 0.08);
+  color: rgba(15, 59, 46, 0.42);
 }
 
 .fitness-date-nav {
@@ -10197,10 +10342,19 @@ body[data-layout-mode="phone"] .fitness-log-schedule-panel .appointment-merge-bu
     0 6px 14px rgba(9, 45, 35, 0.08);
 }
 
+.fitness-report-page .fitness-paper-top > div,
+.fitness-report-page .fitness-paper-top > div * {
+  color: #fffdf3 !important;
+  -webkit-text-fill-color: #fffdf3;
+  opacity: 1;
+  mix-blend-mode: normal;
+}
+
 .fitness-paper-top strong {
   display: block;
   overflow: hidden;
   color: #fff6bf;
+  -webkit-text-fill-color: #fff6bf;
   font-size: 22px;
   line-height: 1.08;
   font-weight: 980;
@@ -10216,6 +10370,7 @@ body[data-layout-mode="phone"] .fitness-log-schedule-panel .appointment-merge-bu
   margin-top: 4px;
   overflow: hidden;
   color: rgba(255, 253, 243, 0.96);
+  -webkit-text-fill-color: rgba(255, 253, 243, 0.96);
   font-size: 11.5px;
   font-weight: 930;
   text-shadow: 0 1px 0 rgba(0, 0, 0, 0.42);
@@ -11963,10 +12118,90 @@ body[data-layout-mode="phone"] #view-today .ai-section-button {
   border-radius: 14px;
   background: linear-gradient(180deg, rgba(241, 244, 238, 0.78), rgba(255, 254, 250, 0.86));
   color: #111411;
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+.report-archive-preview pre {
+  margin: 0;
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   font-size: 12.5px;
   line-height: 1.65;
   white-space: pre-wrap;
+}
+
+.report-archive-preview-actions {
+  position: sticky;
+  top: 0;
+  z-index: 3;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: center;
+  margin: -15px -15px 12px;
+  padding: 12px 14px;
+  border-bottom: 1px solid rgba(16, 75, 54, 0.1);
+  background: rgba(255, 254, 250, 0.96);
+  backdrop-filter: blur(12px);
+}
+
+.report-archive-preview-actions div {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.report-archive-preview-actions span,
+.report-archive-preview-actions em {
+  overflow: hidden;
+  color: rgba(17, 20, 17, 0.56);
+  font-size: 11px;
+  font-style: normal;
+  font-weight: 850;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.report-archive-preview-actions strong {
+  overflow: hidden;
+  color: #104b36;
+  font-size: 15px;
+  font-weight: 950;
+  line-height: 1.2;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.report-archive-preview-actions button,
+.report-archive-preview-actions b {
+  min-height: 36px;
+  border: 1px solid rgba(16, 75, 54, 0.15);
+  border-radius: 999px;
+  background: #104b36;
+  color: #fffefa;
+  padding: 0 13px;
+  font-size: 12px;
+  font-weight: 950;
+  white-space: nowrap;
+}
+
+.report-archive-preview-actions b {
+  display: inline-grid;
+  place-items: center;
+  background: rgba(16, 75, 54, 0.08);
+  color: #104b36;
+}
+
+.report-archive-paper-wrap {
+  display: grid;
+  justify-items: center;
+  min-width: 0;
+}
+
+.report-archive-paper-wrap .fitness-report-page {
+  width: min(720px, 100%);
+  min-height: auto;
+  box-shadow: 0 16px 38px rgba(17, 20, 17, 0.08);
 }
 
 #reportDraft {
@@ -17113,26 +17348,39 @@ body[data-active-view="control"] .control-tower-hero-actions {
 
 body[data-active-view="executive"] .executive-hero-actions .main-menu-popover,
 body[data-active-view="control"] .control-tower-hero-actions .main-menu-popover,
-.section-menu-dock .main-menu-popover {
+.section-menu-dock .main-menu-popover,
+.overview-date-nav .main-menu-popover {
   min-width: min(252px, calc(100vw - 28px)) !important;
   max-width: calc(100vw - 28px) !important;
   border-radius: 16px !important;
   box-shadow:
     0 18px 44px rgba(14, 48, 38, 0.18),
     inset 0 0 0 1px rgba(255, 255, 255, 0.7) !important;
-}
-
-body[data-layout-mode="phone"] .section-menu-dock .main-menu-popover,
-body.physical-phone-device .section-menu-dock .main-menu-popover,
-#view-attendance .section-menu-dock .main-menu-popover {
   position: fixed !important;
-  top: max(112px, calc(env(safe-area-inset-top) + 92px)) !important;
   right: max(14px, env(safe-area-inset-right)) !important;
   left: auto !important;
   z-index: 320 !important;
   width: min(300px, calc(100vw - 28px)) !important;
-  max-height: min(420px, calc(100dvh - 132px)) !important;
   overflow: auto !important;
+}
+
+body[data-active-view="executive"] .executive-hero-actions .main-menu-popover,
+body[data-active-view="control"] .control-tower-hero-actions .main-menu-popover {
+  top: max(116px, calc(env(safe-area-inset-top) + 96px)) !important;
+}
+
+.section-menu-dock .main-menu-popover,
+.overview-date-nav .main-menu-popover {
+  top: max(92px, calc(env(safe-area-inset-top) + 76px)) !important;
+}
+
+body[data-layout-mode="phone"] .section-menu-dock .main-menu-popover,
+body.physical-phone-device .section-menu-dock .main-menu-popover,
+#view-attendance .section-menu-dock .main-menu-popover,
+body[data-layout-mode="phone"] .overview-date-nav .main-menu-popover,
+body.physical-phone-device .overview-date-nav .main-menu-popover {
+  top: max(112px, calc(env(safe-area-inset-top) + 92px)) !important;
+  max-height: min(420px, calc(100dvh - 132px)) !important;
 }
 
 body[data-layout-mode="phone"] .section-menu-dock,
@@ -17532,6 +17780,60 @@ body.physical-phone-device #view-fitness-log .fitness-log-schedule-panel .fitnes
   line-height: 1 !important;
   text-align: left !important;
   white-space: nowrap !important;
+}
+
+/* Current-time marker is painted over the row so the time column never shifts. */
+.appointment-row.is-current,
+.fitness-log-schedule-panel .appointment-row.is-current,
+.plain-appointment-row.is-current {
+  position: relative !important;
+  border-left: 0 !important;
+  padding-left: 0 !important;
+}
+
+.appointment-row.is-current::before,
+.fitness-log-schedule-panel .appointment-row.is-current::before,
+.plain-appointment-row.is-current::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 7px;
+  bottom: 7px;
+  width: 4px;
+  border-radius: 999px;
+  background: var(--swiss-red);
+  pointer-events: none;
+  z-index: 1;
+}
+
+.appointment-row.is-current .appointment-time,
+.fitness-log-schedule-panel .appointment-row.is-current .appointment-time,
+.plain-appointment-row.is-current .appointment-time {
+  box-sizing: border-box !important;
+  min-width: 5.2ch !important;
+  max-width: none !important;
+  overflow: visible !important;
+  color: var(--muted) !important;
+  font-size: inherit !important;
+  font-variant-numeric: tabular-nums !important;
+  letter-spacing: 0 !important;
+  line-height: 1.05 !important;
+  text-align: left !important;
+  white-space: nowrap !important;
+  word-break: keep-all !important;
+  overflow-wrap: normal !important;
+}
+
+#view-fitness-log .fitness-log-schedule-panel .fitness-appointment-row,
+body[data-layout-mode="phone"] #view-fitness-log .fitness-log-schedule-panel .fitness-appointment-row,
+body.physical-phone-device #view-fitness-log .fitness-log-schedule-panel .fitness-appointment-row {
+  grid-template-columns: minmax(58px, 5.8ch) minmax(0, 1fr) 28px !important;
+}
+
+body[data-layout-mode="phone"] #view-fitness-log.is-focus-schedule .fitness-appointment-row,
+body.physical-phone-device #view-fitness-log.is-focus-schedule .fitness-appointment-row,
+body[data-view-mode="ceo"] #view-fitness-log.is-focus-schedule .fitness-appointment-row {
+  grid-template-columns: minmax(64px, 6.4ch) minmax(0, 1fr) 30px !important;
 }
 
 /* Keep this at the absolute end so page-specific display rules never stack

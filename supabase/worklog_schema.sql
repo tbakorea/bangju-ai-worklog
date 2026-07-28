@@ -23,6 +23,8 @@ create table if not exists public.profiles (
   approval_note text not null default '',
   approved_by uuid references auth.users(id),
   approved_at timestamptz,
+  pending_profile_changes jsonb not null default '{}'::jsonb,
+  profile_change_requested_at timestamptz,
   updated_at timestamptz not null default now()
 );
 
@@ -36,6 +38,8 @@ alter table public.profiles add column if not exists approval_status text not nu
 alter table public.profiles add column if not exists approval_note text not null default '';
 alter table public.profiles add column if not exists approved_by uuid references auth.users(id);
 alter table public.profiles add column if not exists approved_at timestamptz;
+alter table public.profiles add column if not exists pending_profile_changes jsonb not null default '{}'::jsonb;
+alter table public.profiles add column if not exists profile_change_requested_at timestamptz;
 
 create or replace function public.to_numeric_or_null(value text)
 returns numeric
