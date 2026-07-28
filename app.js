@@ -4034,6 +4034,33 @@ function countApprovalActionItems(rows = []) {
   return getVisibleApprovalRows(rows).filter(isApprovalActionItem).length;
 }
 
+function getApprovalQueueCollections(rows = []) {
+  const visibleRows = getVisibleApprovalRows(rows);
+  const isPendingSignup = (row) => normalizeApprovalStatus(row.approval_status || "pending") === "pending";
+  const isChangeRequest = (row) => hasPendingProfileChanges(row.pending_profile_changes);
+  const updatedTime = (row) => new Date(row.profile_change_requested_at || row.updated_at || row.created_at || 0).getTime() || 0;
+  const byLatest = (a, b) => updatedTime(b) - updatedTime(a);
+  const pendingSignups = visibleRows.filter(isPendingSignup).sort(byLatest);
+  const changeRequests = visibleRows
+    .filter((row) => !isPendingSignup(row) && isChangeRequest(row))
+    .sort(byLatest);
+  const actionRows = [...pendingSignups, ...changeRequests];
+  const approvedRows = visibleRows
+    .filter((row) => normalizeApprovalStatus(row.approval_status || "pending") === "approved" && !isChangeRequest(row))
+    .sort(byLatest);
+  const rejectedRows = visibleRows
+    .filter((row) => normalizeApprovalStatus(row.approval_status || "pending") === "rejected")
+    .sort(byLatest);
+  return {
+    visibleRows,
+    actionRows,
+    pendingSignups,
+    changeRequests,
+    approvedRows,
+    rejectedRows,
+  };
+}
+
 function updateSettingsProfileSaveButton() {
   const button = document.getElementById("saveSettingsProfileButton");
   if (!button) return;
@@ -4395,7 +4422,8 @@ async function loadApprovalRequests(options = {}) {
     return;
   }
   if (!rows.some((row) => row.id === authState.selectedApprovalId)) {
-    authState.selectedApprovalId = rows.find((row) => normalizeApprovalStatus(row.approval_status || "pending") === "pending" || hasPendingProfileChanges(row.pending_profile_changes))?.id || rows[0].id;
+    const collections = getApprovalQueueCollections(rows);
+    authState.selectedApprovalId = collections.actionRows[0]?.id || rows[0].id;
   }
   renderApprovalQueue();
 }
@@ -4426,33 +4454,45 @@ function renderApprovalQueue() {
   const list = document.getElementById("approvalRequestList");
   if (!list) return;
   const rows = authState.approvalRows || [];
-  const selected = rows.find((row) => row.id === authState.selectedApprovalId) || rows[0];
+  const collections = getApprovalQueueCollections(rows);
+  const selected = rows.find((row) => row.id === authState.selectedApprovalId) || collections.actionRows[0] || rows[0];
   const groups = [
-    ["pending", "승인대기", "대표 확인 필요"],
-    ["approved", "승인완료", "사용 가능"],
-    ["rejected", "반려", "보완 요청"],
+    ["pending", "신규승인", "직원등록 신청", collections.pendingSignups],
+    ["change", "변경요청", "직원정보 변경", collections.changeRequests],
+    ["approved", "사용가능", "승인 완료", collections.approvedRows],
+    ["rejected", "반려", "보완 요청", collections.rejectedRows],
   ];
   list.innerHTML = `
     <div class="approval-queue-layout">
       <aside class="approval-queue-sidebar" aria-label="승인요청 상태별 목록">
         <div class="approval-queue-summary">
-          <article data-status="pending">
+          <article data-status="action">
             <span>처리필요</span>
-            <strong>${escapeHtml(String(countApprovalActionItems(rows)))}</strong>
+            <strong>${escapeHtml(String(collections.actionRows.length))}</strong>
             <em>등록/변경요청</em>
           </article>
-          ${groups.map(([status, label, caption]) => {
-            const count = rows.filter((row) => normalizeApprovalStatus(row.approval_status || "pending") === status).length;
-            return `
-              <article data-status="${escapeAttr(status)}">
-                <span>${escapeHtml(label)}</span>
-                <strong>${escapeHtml(String(count))}</strong>
-                <em>${escapeHtml(caption)}</em>
-              </article>
-            `;
-          }).join("")}
+          <article data-status="pending">
+            <span>신규승인</span>
+            <strong>${escapeHtml(String(collections.pendingSignups.length))}</strong>
+            <em>직원등록 신청</em>
+          </article>
+          <article data-status="change">
+            <span>변경요청</span>
+            <strong>${escapeHtml(String(collections.changeRequests.length))}</strong>
+            <em>정보 수정 확인</em>
+          </article>
+          <article data-status="approved">
+            <span>사용가능</span>
+            <strong>${escapeHtml(String(collections.approvedRows.length))}</strong>
+            <em>승인 완료</em>
+          </article>
+          <article data-status="rejected">
+            <span>반려</span>
+            <strong>${escapeHtml(String(collections.rejectedRows.length))}</strong>
+            <em>보완 요청</em>
+          </article>
         </div>
-        ${groups.map(([status, label]) => renderApprovalQueueGroup(status, label, rows, selected?.id)).join("")}
+        ${groups.map(([status, label, caption, items]) => renderApprovalQueueGroup(status, label, caption, items, selected?.id)).join("")}
       </aside>
       <div class="approval-detail-panel">
         ${selected ? renderApprovalRequestCard(selected) : `<p class="empty-note">선택된 직원등록 신청이 없습니다.</p>`}
@@ -4461,15 +4501,12 @@ function renderApprovalQueue() {
   `;
 }
 
-function renderApprovalQueueGroup(status, label, rows, selectedId) {
-  const items = rows
-    .filter((row) => normalizeApprovalStatus(row.approval_status || "pending") === status)
-    .sort((a, b) => Number(hasPendingProfileChanges(b.pending_profile_changes)) - Number(hasPendingProfileChanges(a.pending_profile_changes)));
+function renderApprovalQueueGroup(status, label, caption, items, selectedId) {
   return `
     <section class="approval-queue-group" data-status="${escapeAttr(status)}">
       <header>
         <strong>${escapeHtml(label)}</strong>
-        <span>${escapeHtml(String(items.length))}명</span>
+        <span>${escapeHtml(String(items.length))}명 · ${escapeHtml(caption)}</span>
       </header>
       <div>
         ${items.length ? items.map((row) => renderApprovalQueueButton(row, selectedId)).join("") : `<p>해당 직원 없음</p>`}
@@ -4482,13 +4519,13 @@ function renderApprovalQueueButton(row, selectedId) {
   const status = normalizeApprovalStatus(row.approval_status || "pending");
   const meta = [row.role, row.org, row.workplace].filter(Boolean).join(" · ") || "소속/직함 확인 필요";
   const hasChangeRequest = hasPendingProfileChanges(row.pending_profile_changes);
-  const changeBadge = hasChangeRequest ? " · 변경요청" : "";
+  const changeBadge = hasChangeRequest ? " · 변경 승인 필요" : "";
   return `
     <button type="button" data-approval-select="${escapeAttr(row.id)}" class="${row.id === selectedId ? "is-selected" : ""}">
       <span>${escapeHtml(row.name || row.nickname || "이름 미입력")}</span>
       <small>${escapeHtml(row.email || "이메일 없음")}</small>
       <em>${escapeHtml(`${meta}${changeBadge}`)}</em>
-      <b data-status="${escapeAttr(hasChangeRequest ? "pending" : status)}">${escapeHtml(hasChangeRequest ? "변경요청" : getApprovalStatusLabel(status))}</b>
+      <b data-status="${escapeAttr(hasChangeRequest ? "change" : status)}">${escapeHtml(hasChangeRequest ? "변경요청" : getApprovalStatusLabel(status))}</b>
     </button>
   `;
 }
@@ -4546,12 +4583,14 @@ function renderPendingProfileChangeBox(row = {}) {
 
 function renderApprovalRequestCard(row) {
   const status = normalizeApprovalStatus(row.approval_status || "pending");
+  const hasChangeRequest = hasPendingProfileChanges(row.pending_profile_changes);
+  const displayStatus = hasChangeRequest ? "change" : status;
   const field = (name, label, value = "", type = "text") => `
     <label>${escapeHtml(label)}
       <input type="${type}" data-approval-id="${escapeAttr(row.id)}" data-approval-field="${escapeAttr(name)}" value="${escapeAttr(name === "phone" ? formatPhoneNumber(value) : value || "")}" />
     </label>
   `;
-  const statusTone = getApprovalStatusTone(status);
+  const statusTone = hasChangeRequest ? "pending" : getApprovalStatusTone(status);
   const approvedLabel = row.approved_at ? new Date(row.approved_at).toLocaleString("ko-KR", { dateStyle: "medium", timeStyle: "short" }) : "";
   return `
     <article class="approval-request-card" data-approval-card="${escapeAttr(row.id)}" data-status="${escapeAttr(statusTone)}">
@@ -4560,15 +4599,17 @@ function renderApprovalRequestCard(row) {
           <strong>${escapeHtml(row.name || "이름 미입력")}</strong>
           <span>${escapeHtml(row.email || "이메일 없음")} · ${escapeHtml(row.org || "소속 미입력")} · ${escapeHtml(row.role || "직급 미입력")}</span>
         </div>
-        <em data-status="${escapeAttr(status)}">${escapeHtml(getApprovalStatusLabel(status))}</em>
+        <em data-status="${escapeAttr(displayStatus)}">${escapeHtml(hasChangeRequest ? "변경요청" : getApprovalStatusLabel(status))}</em>
       </div>
-      <div class="approval-decision-banner" data-status="${escapeAttr(status)}">
-        <strong>${escapeHtml(status === "pending" ? "승인 전 확인" : status === "approved" ? "승인 완료" : "반려 처리됨")}</strong>
-        <p>${escapeHtml(status === "pending"
-          ? "소속, 직함, 근무지, 고용형태, 노무 기준을 확인한 뒤 승인하세요."
-          : status === "approved"
-            ? `이 직원은 앱 사용이 가능합니다.${approvedLabel ? ` 승인일: ${approvedLabel}` : ""}`
-            : "보완 후 다시 승인할 수 있습니다. 반려 사유를 승인 메모에 남겨주세요.")}</p>
+      <div class="approval-decision-banner" data-status="${escapeAttr(displayStatus)}">
+        <strong>${escapeHtml(hasChangeRequest ? "직원정보 변경 승인 필요" : status === "pending" ? "직원등록 승인 전 확인" : status === "approved" ? "승인 완료" : "반려 처리됨")}</strong>
+        <p>${escapeHtml(hasChangeRequest
+          ? "아래 변경 전/후 값을 확인한 뒤 변경 승인 또는 반려를 선택하세요. 승인 전까지 기존 확정 정보가 유지됩니다."
+          : status === "pending"
+            ? "소속, 직함, 근무지, 고용형태, 노무 기준을 확인한 뒤 승인하세요."
+            : status === "approved"
+              ? `이 직원은 앱 사용이 가능합니다.${approvedLabel ? ` 승인일: ${approvedLabel}` : ""}`
+              : "보완 후 다시 승인할 수 있습니다. 반려 사유를 승인 메모에 남겨주세요.")}</p>
       </div>
       ${renderPendingProfileChangeBox(row)}
       <div class="approval-edit-grid">
@@ -4596,9 +4637,9 @@ function renderApprovalRequestCard(row) {
         <textarea rows="2" data-approval-id="${escapeAttr(row.id)}" data-approval-field="approval_note">${escapeHtml(row.approval_note || "")}</textarea>
       </label>
       <div class="approval-request-actions">
-        ${hasPendingProfileChanges(row.pending_profile_changes) ? `
-          <button type="button" data-approval-action="applyProfileChange" data-approval-id="${escapeAttr(row.id)}">변경요청 적용</button>
-          <button type="button" data-approval-action="rejectProfileChange" data-approval-id="${escapeAttr(row.id)}">변경요청 반려</button>
+        ${hasChangeRequest ? `
+          <button type="button" data-approval-action="applyProfileChange" data-approval-id="${escapeAttr(row.id)}">변경 승인</button>
+          <button type="button" data-approval-action="rejectProfileChange" data-approval-id="${escapeAttr(row.id)}">변경 반려</button>
         ` : ""}
         <button type="button" data-approval-action="save" data-approval-id="${escapeAttr(row.id)}">수정 저장</button>
         ${status !== "approved" ? `<button type="button" data-approval-action="approve" data-approval-id="${escapeAttr(row.id)}">승인</button>` : ""}

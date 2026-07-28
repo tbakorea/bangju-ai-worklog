@@ -4376,7 +4376,7 @@ body[data-device-mode="narrow"] .os-mode-switch span[data-device-mode="narrow"] 
 
 .approval-queue-summary {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(5, minmax(0, 1fr));
   gap: 6px;
 }
 
@@ -4389,9 +4389,20 @@ body[data-device-mode="narrow"] .os-mode-switch span[data-device-mode="narrow"] 
   padding: 9px;
 }
 
+.approval-queue-summary article[data-status="action"] {
+  border-color: rgba(214, 156, 46, 0.26);
+  background: linear-gradient(145deg, rgba(255, 249, 232, 0.94), rgba(255, 253, 248, 0.8));
+  box-shadow: inset 3px 0 0 rgba(214, 156, 46, 0.78);
+}
+
 .approval-queue-summary article[data-status="pending"] {
   border-color: rgba(214, 156, 46, 0.2);
   background: rgba(255, 247, 226, 0.82);
+}
+
+.approval-queue-summary article[data-status="change"] {
+  border-color: rgba(214, 156, 46, 0.2);
+  background: rgba(255, 250, 236, 0.82);
 }
 
 .approval-queue-summary article[data-status="approved"] {
@@ -4529,6 +4540,12 @@ body[data-device-mode="narrow"] .os-mode-switch span[data-device-mode="narrow"] 
   color: #8a5f12;
 }
 
+.approval-queue-group button b[data-status="change"],
+.approval-request-title em[data-status="change"] {
+  background: rgba(214, 156, 46, 0.16);
+  color: #7e5410;
+}
+
 .approval-queue-group button b[data-status="approved"] {
   background: rgba(14, 76, 56, 0.1);
   color: var(--green);
@@ -4620,6 +4637,11 @@ body[data-device-mode="narrow"] .os-mode-switch span[data-device-mode="narrow"] 
 .approval-decision-banner[data-status="pending"] {
   border-color: rgba(214, 156, 46, 0.18);
   background: rgba(255, 247, 226, 0.76);
+}
+
+.approval-decision-banner[data-status="change"] {
+  border-color: rgba(214, 156, 46, 0.22);
+  background: rgba(255, 248, 231, 0.86);
 }
 
 .approval-decision-banner[data-status="approved"] {
@@ -4866,7 +4888,7 @@ body[data-device-mode="narrow"] .os-mode-switch span[data-device-mode="narrow"] 
   }
 
   .approval-queue-summary {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .approval-queue-summary article {
