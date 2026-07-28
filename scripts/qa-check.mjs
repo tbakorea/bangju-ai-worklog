@@ -203,10 +203,10 @@ check(
 
 check(
   "menu sections use consolidated labels",
-  html.includes('data-menu-view="ai">매뉴얼·코칭</button>')
-    && html.includes('data-menu-view="report">보고서·백업</button>')
+  html.includes('data-menu-view="ai">성장지원</button>')
+    && html.includes('data-menu-view="report">보고·커뮤니티</button>')
     && html.includes('data-settings-tab="manual">매뉴얼 편집</button>'),
-  "manual/coaching and report/backup should be named as consolidated destinations"
+  "growth support and report/community should be named as consolidated destinations"
 );
 
 check(

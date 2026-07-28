@@ -638,6 +638,7 @@ function createState() {
     employeeDirectoryOverrides: {},
     companyCommonWeeks: {},
     laborPayroll: {},
+    communications: [],
     reportTone: "executive",
     reportArchive: {
       dateKey: todayKey,
@@ -688,6 +689,7 @@ function normalizeState() {
   state.employeeDirectoryOverrides = { ...(state.employeeDirectoryOverrides || {}) };
   state.companyCommonWeeks = { ...(state.companyCommonWeeks || {}) };
   state.laborPayroll = { ...(state.laborPayroll || {}) };
+  state.communications = Array.isArray(state.communications) ? state.communications.slice(-300) : [];
   state.profile.manualSettings = {
     ...defaultProfile.manualSettings,
     ...(state.profile.manualSettings || {}),
@@ -1986,6 +1988,11 @@ function canAccessWorklogOverview() {
   return hasProfilePermission("worklogAll") || isRepresentativeProfile() || canAccessControlTower();
 }
 
+function canAccessManualCoachingAdmin() {
+  if (isExplicitlySignedOut()) return false;
+  return isRepresentativeProfile() || hasProfilePermission("staffManage") || hasProfilePermission("controlTower");
+}
+
 function getWorklogSiteGroups() {
   return [
     { id: "fitness", title: "비욘드 피트니스", view: "fitness-log", employeeIds: fitnessEmployeeIds },
@@ -2421,7 +2428,7 @@ function renderControlTower() {
     ["전사업장 업무일지", "사업장별·직원별 업무보고와 실행 현황을 그대로 투사합니다.", "현황", "worklog-overview"],
     ["직원 원장", "소속, 직함, 권한, 가입승인, 온보딩 상태를 관리합니다.", "명부", "staff"],
     ["노무 현황", "월별 근무시간, 프리랜서 유료수업, 노무비 대장을 확인합니다.", "노무", "attendance"],
-    ["매뉴얼·코칭", "역할별 매뉴얼과 직원 성장 코칭 데이터를 확인합니다.", "학습", "ai"],
+    ["성장지원", "역할별 기준과 직원 성장 데이터를 확인합니다.", "성장", "ai"],
   ].map(([title, text, tag, view]) => `
     <button type="button" data-control-jump="${escapeAttr(view)}">
       <b>${escapeHtml(title)}</b><span>${escapeHtml(text)}</span><em>${escapeHtml(tag)}</em>
@@ -3120,18 +3127,40 @@ function renderMissionProposalCards(proposals, options = {}) {
 function renderAiCoach() {
   const node = document.getElementById("aiCoachGrid");
   if (!node) return;
+  const isAdminMode = canAccessManualCoachingAdmin();
+  setText("aiSectionEyebrow", isAdminMode ? "Manual & Coaching" : "Personal Helper");
+  setText("aiSectionTitle", isAdminMode ? "매뉴얼·코칭" : "나의 성장");
+  setText(
+    "aiSectionSubtitle",
+    isAdminMode
+      ? "직원 역할별 매뉴얼, 업무 코칭, 자기개발 미션을 한 곳에서 봅니다."
+      : "내 업무 기록을 바탕으로 오늘 더 편하게 일하는 방법과 성장 포인트를 정리합니다."
+  );
+  const manualShortcut = document.getElementById("manualEditShortcut");
+  if (manualShortcut) manualShortcut.hidden = !isAdminMode;
+  const commandStrip = document.querySelector("#view-ai .section-command-strip");
+  if (commandStrip) commandStrip.hidden = !isAdminMode;
   const score = calculateOperatingScore();
   const log = getSelectedLog();
   const tasks = (log.tasks || []).filter((task) => task.text.trim());
   const growth = buildPersonalGrowthModel(getSelectedEmployee(), log);
   const personalProposals = getMissionProposalsForEmployee(getSelectedEmployee(), log);
   const queue = canAccessWorklogOverview() ? getMissionProposalQueue(6) : [];
-  const coaching = [
-    ["대표 AI 코치", `오늘 점검 우선순위는 운영점수 ${score}점 기준으로 매출, 공간 활용, 문서 연결입니다.`],
-    ["사업장 AI 코치", "Beyond Fitness는 회원 240명, 월매출 2천만원을 기준 KPI로 두고 PT 전환율과 이탈률을 먼저 추적해야 합니다."],
-    ["직원 AI 코치", tasks.length ? `오늘 우선업무 ${tasks.length}건을 기준으로 완료율과 지연 사유를 기록합니다.` : "개인 업무일지의 우선업무와 시간별 일정을 먼저 기록해야 코칭 품질이 올라갑니다."],
-    ["데이터 설계 코치", "모든 사진, 도면, 계약서, 업무일지, 매출 데이터는 반드시 사업장 ID와 호실 ID에 연결해야 합니다."],
-  ];
+  const strengths = String(state.profile?.strengths || "").trim();
+  const weaknesses = String(state.profile?.weaknesses || "").trim();
+  const developmentGoals = String(state.profile?.developmentGoals || "").trim();
+  const coaching = isAdminMode
+    ? [
+      ["대표 AI 코치", `오늘 점검 우선순위는 운영점수 ${score}점 기준으로 매출, 공간 활용, 문서 연결입니다.`],
+      ["사업장 AI 코치", "Beyond Fitness는 회원 240명, 월매출 2천만원을 기준 KPI로 두고 PT 전환율과 이탈률을 먼저 추적해야 합니다."],
+      ["직원 AI 코치", tasks.length ? `오늘 우선업무 ${tasks.length}건을 기준으로 완료율과 지연 사유를 기록합니다.` : "개인 업무일지의 우선업무와 시간별 일정을 먼저 기록해야 코칭 품질이 올라갑니다."],
+      ["데이터 설계 코치", "모든 사진, 도면, 계약서, 업무일지, 매출 데이터는 반드시 사업장 ID와 호실 ID에 연결해야 합니다."],
+    ]
+    : [
+      ["오늘을 편하게 시작하기", tasks.length ? `오늘 적어둔 업무 ${tasks.length}건 중 먼저 끝낼 일 1개만 골라 시작하세요.` : "오늘 해야 할 일을 3개만 적으면 하루 흐름이 훨씬 가벼워집니다."],
+      ["내 기록이 주는 도움", "기록은 감시가 아니라 내 업무를 잊지 않게 도와주는 개인 메모입니다. 많이 쓸수록 다음 업무 준비가 쉬워집니다."],
+      ["나의 강점 발견", "완료한 일, 자주 맡는 일, 반복해서 잘 처리하는 일을 모아 내 강점과 익숙한 업무 패턴을 보여줍니다."],
+    ];
   node.innerHTML = `
     <article class="growth-command-card">
       <div>
@@ -3168,15 +3197,25 @@ function renderAiCoach() {
       <strong>가시적 성장 기준</strong>
       <p>점수는 업무 입력량이 아니라 완료율, 시간배치, 회고 품질, 출결 기록, 역할별 핵심 행동을 함께 반영합니다. 매일 3분만 기록해도 주간 성장 변화가 보이도록 설계했습니다.</p>
     </article>
+    ${!isAdminMode ? `
+      <article class="growth-coaching-card">
+        <strong>나에게 맞는 기록 방식</strong>
+        <p>${escapeHtml([
+          strengths ? `잘 맞는 일: ${strengths}` : "잘 맞는 일은 설정에 한 줄만 적어두면 다음 업무 제안이 더 편해집니다.",
+          weaknesses ? `도움이 필요한 부분: ${weaknesses}` : "어려운 업무도 부담 없이 적어두면 반복되는 막힘을 줄이는 도움말을 받을 수 있습니다.",
+          developmentGoals ? `이번 달 목표: ${developmentGoals}` : "이번 달에 좋아지고 싶은 습관을 적으면 업무일지가 개인 성장 노트처럼 작동합니다.",
+        ].join(" "))}</p>
+      </article>
+    ` : ""}
     <article class="ai-mission-command-card">
       <header>
         <div>
-          <span>AI Mission Architect</span>
-          <strong>업무·프로젝트 제안</strong>
+          <span>${isAdminMode ? "AI Mission Architect" : "Work Helper"}</span>
+          <strong>${isAdminMode ? "업무·프로젝트 제안" : "오늘 업무 도움"}</strong>
         </div>
         <em>${personalProposals.length}건</em>
       </header>
-      <p>직원 프로필, 직무 매뉴얼, 오늘 업무일지, 시간표, 출결, 사업장 목표를 근거로 지금 맡기기 좋은 일을 제안합니다.</p>
+      <p>${isAdminMode ? "직원 프로필, 직무 매뉴얼, 오늘 업무일지, 시간표, 출결, 사업장 목표를 근거로 지금 맡기기 좋은 일을 제안합니다." : "내 업무일지와 시간표를 바탕으로 오늘 놓치기 쉬운 일과 더 편하게 처리할 방법을 제안합니다."}</p>
       ${renderMissionProposalCards(personalProposals, { allowApply: true })}
     </article>
     ${queue.length ? `
@@ -3244,7 +3283,7 @@ function buildPremiumOperatingModel() {
       title: "직원 성장 에이전트",
       metric: `${weakestGrowth[0]?.score || 0}점`,
       text: weakestGrowth.length ? `${weakestGrowth.map((item) => item.employee.nickname || item.employee.name).join(", ")}에게 오늘 성장 미션을 제안합니다.` : "업무 데이터가 쌓이면 개인별 성장 미션이 정교해집니다.",
-      action: "매뉴얼·코칭에서 개인별 미션을 업무에 반영",
+      action: "성장 지원에서 개인별 미션을 업무에 반영",
       view: "ai",
     },
     {
@@ -3258,7 +3297,7 @@ function buildPremiumOperatingModel() {
       title: "노무·보고 에이전트",
       metric: `${laborSignals}건`,
       text: laborSignals ? "출결 미기록 또는 결석 신호가 노무 확정 전 확인 대상입니다." : "노무 신호는 현재 안정적입니다.",
-      action: "노무와 보고서·백업에서 월마감 자료 검증",
+      action: "노무와 보고·커뮤니티에서 월마감 자료 검증",
       view: "attendance",
     },
   ];
@@ -3804,7 +3843,7 @@ function getGlobalHeaderTitle(view = activeView, personLabel = "") {
   if (view === "staff") return "직원";
   if (view === "organization") return "조직";
   if (view === "premium") return "AI 운영총괄";
-  if (view === "ai") return "매뉴얼·코칭";
+  if (view === "ai") return canAccessManualCoachingAdmin() ? "매뉴얼·코칭" : "나의 성장";
   if (view === "report") return "보고서";
   if (view === "projects") return "프로젝트";
   if (view === "settings") return "설정";
@@ -5299,7 +5338,7 @@ function renderMainMenuAuthButton() {
 }
 
 function renderMainMenuVisibility() {
-  const generalMenuViews = new Set(["worklog", "attendance", "ai", "report", "settings", "auth"]);
+  const generalMenuViews = new Set(["worklog", "attendance", "report", "settings", "auth"]);
   const showFullMenu = canAccessWorklogOverview();
   document.querySelectorAll("#mainMenuPopover [data-menu-view]").forEach((item) => {
     const view = item.dataset.menuView;
@@ -5307,7 +5346,14 @@ function renderMainMenuVisibility() {
       item.hidden = view !== "auth";
       return;
     }
-    item.hidden = !showFullMenu && !generalMenuViews.has(view);
+    item.hidden = (!showFullMenu && !generalMenuViews.has(view)) || (view === "ai" && !canAccessManualCoachingAdmin());
+  });
+  document.querySelectorAll('.worklog-tabs [data-view="ai"]').forEach((item) => {
+    item.hidden = !canAccessManualCoachingAdmin();
+  });
+  document.querySelectorAll('#mainMenuWheelSelect option[value="ai"]').forEach((item) => {
+    item.hidden = !canAccessManualCoachingAdmin();
+    item.disabled = !canAccessManualCoachingAdmin();
   });
   document.querySelectorAll("#mainMenuPopover [data-menu-action]").forEach((item) => {
     if (isExplicitlySignedOut() && !item.dataset.menuView) item.hidden = true;
@@ -6519,7 +6565,7 @@ function renderWorklogSummary(log) {
   document.getElementById("worklogCompletion").textContent = `${completed}/${tasks.length}`;
   const pulseText = document.getElementById("worklogPulseText");
   if (pulseText) {
-    pulseText.textContent = `AI 코칭 · 오늘 실행 ${completed}/${tasks.length} · 다음 일정 ${nextEntry ? `${nextEntry.time} ${getScheduleEntryText(nextEntry)}` : "없음"} · 미완료 ${pending} · AI 운영 신호 ${pending ? "추적" : "정상"} · 공통일정과 동료업무를 함께 확인하세요`;
+    pulseText.textContent = `업무 도움 · 오늘 실행 ${completed}/${tasks.length} · 다음 일정 ${nextEntry ? `${nextEntry.time} ${getScheduleEntryText(nextEntry)}` : "없음"} · 미완료 ${pending} · 운영 신호 ${pending ? "추적" : "정상"} · 공통일정과 동료업무를 함께 확인하세요`;
   }
   const unitButton = document.getElementById("scheduleUnitButton");
   if (unitButton) unitButton.textContent = log.scheduleUnit === "60" ? "1시간" : "30분";
@@ -6609,24 +6655,15 @@ function renderSharedWorklogPanels(log = getSelectedLog()) {
   let commonChanged = commonWeekResult.changed;
   const commonProgress = getCommonWeekProgress(week);
   const canEditCommon = canEditCompanyCommonSchedule(selectedEmployee);
-  if (canEditCommon) {
-    weekRange.forEach((dayKey) => {
-      week.days[dayKey] ||= [];
-      if (!week.days[dayKey].length) {
-        week.days[dayKey].push(createCommonScheduleItem(""));
-        commonChanged = true;
-      }
-    });
-  }
   const commonGuidance = getCompanyCommonGuidance(companyKey);
   common.innerHTML = `
     <section class="common-week-header">
       <div>
-        <span>Weekly Operating Board</span>
-        <strong>${escapeHtml(companyLabel)} 공통일정 · 주간 공통업무</strong>
-        <small>${escapeHtml(formatCommonWeekRange(commonWeekKey))} · 완료 ${commonProgress.done}/${commonProgress.total} · 이월 후보 ${commonProgress.pending}</small>
+        <span>Shared Execution Calendar</span>
+        <strong>${escapeHtml(companyLabel)} 실행일정 · 업무 이벤트</strong>
+        <small>${escapeHtml(formatCommonWeekRange(commonWeekKey))} · 완료 ${commonProgress.done}/${commonProgress.total} · 확인 ${commonProgress.pending}</small>
       </div>
-      <button type="button" id="commonWeekTodayButton">개인 업무일지</button>
+      <button type="button" id="commonWeekTodayButton" aria-label="개인 업무일지로 돌아가기">업무일지</button>
     </section>
     <section class="common-week-guidance" aria-label="주간 공통업무 운영 기준">
       ${commonGuidance.map((item) => `
@@ -6636,36 +6673,44 @@ function renderSharedWorklogPanels(log = getSelectedLog()) {
         </article>
       `).join("")}
     </section>
-    <section class="common-week-days company-common-days ${canEditCommon ? "is-editable" : "is-readonly"}" aria-label="회사 공통일정">
-      ${weekRange.map((key) => renderCompanyCommonWeekDay(key, week.days?.[key] || [], canEditCommon)).join("")}
+    <section class="company-common-board ${canEditCommon ? "is-editable" : "is-readonly"}" aria-label="회사 공통 실행일정">
+      ${renderCompanyCommonBoardSections(week, companyKey, selectedEmployee, canEditCommon)}
     </section>
     <section class="common-week-brief">
       <b>운영 규칙</b>
       <div>
-        <p>공통업무는 개인 업무기록이 아니라 같은 소속이 함께 확인하는 주간 실행 항목입니다.</p>
-        <p>중요도 표시는 쓰지 않고 체크 여부만 남깁니다. 미완료 항목은 다음 주 같은 요일로 자동 이월됩니다.</p>
+        <p>이 페이지는 개인 업무기록이 아니라 같은 소속이 함께 확인하는 월간·주간 실행 일정입니다.</p>
+        <p>목록에는 핵심만 보이고, 항목을 누르면 날짜, 반복, 확정상태, 담당자, 세부내용을 수정할 수 있습니다.</p>
       </div>
     </section>
   `;
   common.querySelector("#commonWeekTodayButton")?.addEventListener("click", () => setTodayPageMode("daily"));
-  common.querySelectorAll("[data-common-add]").forEach((button) => {
+  common.querySelectorAll(".company-common-event-check").forEach((control) => {
+    control.addEventListener("click", (event) => event.stopPropagation());
+  });
+  common.querySelectorAll("[data-common-add-section]").forEach((button) => {
     button.addEventListener("click", () => {
       if (!guardCompanyCommonEdit(selectedEmployee)) return;
-      const dayKey = button.dataset.commonAdd;
-      week.days[dayKey] ||= [];
-      const item = createCommonScheduleItem("");
-      week.days[dayKey].push(item);
+      const sectionId = button.dataset.commonAddSection;
+      week.sections ||= {};
+      week.sections[sectionId] ||= [];
+      const item = createCommonScheduleItem("", {
+        sectionId,
+        dateKey,
+        owner: getDefaultCommonOwner(sectionId, selectedEmployee),
+      });
+      week.sections[sectionId].push(item);
       saveState();
       renderSharedWorklogPanels();
       requestAnimationFrame(() => {
-        document.querySelector(`[data-common-text="${CSS.escape(item.id)}"]`)?.focus();
+        document.querySelector(`[data-common-field="text"][data-common-id="${CSS.escape(item.id)}"]`)?.focus();
       });
     });
   });
-  common.querySelectorAll("[data-common-check]").forEach((checkbox) => {
+  common.querySelectorAll("[data-common-board-check]").forEach((checkbox) => {
     checkbox.addEventListener("change", () => {
       if (!guardCompanyCommonEdit(selectedEmployee)) return;
-      const item = Object.values(week.days || {}).flat().find((row) => row.id === checkbox.dataset.commonCheck);
+      const item = findCommonScheduleItem(week, checkbox.dataset.commonBoardCheck);
       if (!item) return;
       item.done = checkbox.checked;
       item.completedAt = item.done ? new Date().toISOString() : "";
@@ -6673,22 +6718,24 @@ function renderSharedWorklogPanels(log = getSelectedLog()) {
       renderSharedWorklogPanels();
     });
   });
-  common.querySelectorAll("[data-common-text]").forEach((field) => {
-    field.addEventListener("input", () => {
+  common.querySelectorAll("[data-common-field]").forEach((field) => {
+    const update = () => {
       if (!guardCompanyCommonEdit(selectedEmployee)) return;
-      const item = Object.values(week.days || {}).flat().find((row) => row.id === field.dataset.commonText);
+      const item = findCommonScheduleItem(week, field.dataset.commonId);
       if (!item) return;
-      item.text = field.value;
+      item[field.dataset.commonField] = field.value;
       saveState({ fastSave: true });
-    });
+    };
+    field.addEventListener("input", update);
+    field.addEventListener("change", update);
     field.addEventListener("blur", () => renderSharedWorklogPanels());
   });
-  common.querySelectorAll("[data-common-delete]").forEach((button) => {
+  common.querySelectorAll("[data-common-board-delete]").forEach((button) => {
     button.addEventListener("click", () => {
       if (!guardCompanyCommonEdit(selectedEmployee)) return;
       const beforeWeek = cloneWorklogLogForAudit(week);
-      Object.keys(week.days || {}).forEach((dayKey) => {
-        week.days[dayKey] = (week.days[dayKey] || []).filter((item) => item.id !== button.dataset.commonDelete);
+      Object.keys(week.sections || {}).forEach((sectionId) => {
+        week.sections[sectionId] = (week.sections[sectionId] || []).filter((item) => item.id !== button.dataset.commonBoardDelete);
       });
       saveState();
       renderSharedWorklogPanels();
@@ -6725,6 +6772,139 @@ function renderSharedWorklogPanels(log = getSelectedLog()) {
 function renderSharedTaskList(items, emptyText) {
   if (!items.length) return `<p class="shared-empty">${escapeHtml(emptyText)}</p>`;
   return `<ul>${items.map((item) => `<li>${item.dateKey ? `<span>${escapeHtml(formatShortDate(item.dateKey))}</span>` : ""}${escapeHtml(item.text || "")}</li>`).join("")}</ul>`;
+}
+
+const commonScheduleSections = [
+  {
+    id: "departmentMonthly",
+    eyebrow: "Department Month",
+    title: "부서 월간 핵심일정",
+    description: "사업부가 함께 확인해야 할 월간 마감, 계약, 행사, 외부 일정을 기록합니다.",
+  },
+  {
+    id: "departmentWeekly",
+    eyebrow: "Department Week",
+    title: "부서 주간 실행업무",
+    description: "이번 주 공동으로 처리해야 할 운영·보고·확인 업무를 관리합니다.",
+  },
+  {
+    id: "personalMonthly",
+    eyebrow: "Personal Month",
+    title: "개인 월간 중점업무",
+    description: "개인별 월간 목표, 담당 프로젝트, 반복 확인 업무를 남깁니다.",
+  },
+  {
+    id: "personalWeekly",
+    eyebrow: "Personal Week",
+    title: "개인 주간 실행이벤트",
+    description: "개인에게 배정된 이번 주 주요 이벤트와 실행 일정을 추적합니다.",
+  },
+];
+
+function renderCompanyCommonBoardSections(week, companyKey, employee, editable) {
+  const ownerOptions = getCompanyCommonOwnerOptions(companyKey, employee);
+  return commonScheduleSections.map((section) => {
+    const items = (week.sections?.[section.id] || []).filter((item) => editable || item.text?.trim() || item.done);
+    const done = items.filter((item) => item.done).length;
+    return `
+      <article class="company-common-section" data-common-section="${escapeAttr(section.id)}">
+        <header>
+          <div>
+            <span>${escapeHtml(section.eyebrow)}</span>
+            <strong>${escapeHtml(section.title)}</strong>
+            <small>${escapeHtml(section.description)}</small>
+          </div>
+          <b>${done}/${items.length}</b>
+        </header>
+        <div class="company-common-event-list">
+          ${items.length
+            ? items.map((item) => renderCompanyCommonEvent(section, item, ownerOptions, editable)).join("")
+            : `<p class="company-common-empty">아직 기록된 일정이 없습니다.</p>`}
+        </div>
+        ${editable ? `<button type="button" class="company-common-add" data-common-add-section="${escapeAttr(section.id)}">일정 추가</button>` : ""}
+      </article>
+    `;
+  }).join("");
+}
+
+function renderCompanyCommonEvent(section, item, ownerOptions, editable) {
+  const dateLabel = item.dateKey ? formatShortDate(item.dateKey) : "날짜";
+  const status = item.eventStatus || "예정";
+  const repeat = item.repeat || "none";
+  const owner = item.owner || "담당 미정";
+  const summaryText = item.text?.trim() || `${section.title} 입력`;
+  const detailText = item.detail || "";
+  return `
+    <details class="company-common-event ${item.done ? "is-done" : ""}" ${item.expanded ? "open" : ""}>
+      <summary>
+        <label class="company-common-event-check">
+          <input type="checkbox" data-common-board-check="${escapeAttr(item.id)}" ${item.done ? "checked" : ""} ${editable ? "" : "disabled"} />
+          <span></span>
+        </label>
+        <span class="company-common-event-date">${escapeHtml(dateLabel)}</span>
+        <strong>${escapeHtml(summaryText)}</strong>
+        <em>${escapeHtml(owner)}</em>
+        <b>${escapeHtml(status)}</b>
+      </summary>
+      <div class="company-common-event-detail">
+        <label>
+          <span>내용</span>
+          <input type="text" data-common-id="${escapeAttr(item.id)}" data-common-field="text" value="${escapeAttr(item.text || "")}" placeholder="${escapeAttr(section.title)}" ${editable ? "" : "disabled"} />
+        </label>
+        <label>
+          <span>날짜</span>
+          <input type="date" data-common-id="${escapeAttr(item.id)}" data-common-field="dateKey" value="${escapeAttr(item.dateKey || "")}" ${editable ? "" : "disabled"} />
+        </label>
+        <label>
+          <span>상태</span>
+          <select data-common-id="${escapeAttr(item.id)}" data-common-field="eventStatus" ${editable ? "" : "disabled"}>
+            ${["예정", "확정", "보류"].map((value) => `<option value="${value}" ${status === value ? "selected" : ""}>${value}</option>`).join("")}
+          </select>
+        </label>
+        <label>
+          <span>반복</span>
+          <select data-common-id="${escapeAttr(item.id)}" data-common-field="repeat" ${editable ? "" : "disabled"}>
+            ${[
+              ["none", "반복 없음"],
+              ["monthly", "매월 반복"],
+              ["weekly", "매주 반복"],
+            ].map(([value, label]) => `<option value="${value}" ${repeat === value ? "selected" : ""}>${label}</option>`).join("")}
+          </select>
+        </label>
+        <label>
+          <span>담당</span>
+          <select data-common-id="${escapeAttr(item.id)}" data-common-field="owner" ${editable ? "" : "disabled"}>
+            ${ownerOptions.map((value) => `<option value="${escapeAttr(value)}" ${owner === value ? "selected" : ""}>${escapeHtml(value)}</option>`).join("")}
+          </select>
+        </label>
+        <label class="is-wide">
+          <span>세부내용</span>
+          <textarea data-common-id="${escapeAttr(item.id)}" data-common-field="detail" rows="2" placeholder="일정 배경, 준비물, 보고 대상, 후속조치" ${editable ? "" : "disabled"}>${escapeHtml(detailText)}</textarea>
+        </label>
+        ${editable ? `<button type="button" data-common-board-delete="${escapeAttr(item.id)}">삭제</button>` : ""}
+      </div>
+    </details>
+  `;
+}
+
+function getCompanyCommonOwnerOptions(companyKey = getCompanyCommonKey(), employee = getSelectedEmployee()) {
+  const names = getEmployeeOptions()
+    .filter((item) => isAssignedWorklogEmployee(item) || item.id === "profile-user")
+    .filter((item) => getCompanyCommonKey(item) === companyKey)
+    .map((item) => getEmployeeOwnLabel(item) || item.name || item.role)
+    .filter(Boolean);
+  const fallback = getEmployeeOwnLabel(employee) || employee?.name || "";
+  return [...new Set(["담당 미정", fallback, ...names, "대표", "업체"].filter(Boolean))];
+}
+
+function getDefaultCommonOwner(sectionId, employee = getSelectedEmployee()) {
+  if (/personal/i.test(sectionId)) return getEmployeeOwnLabel(employee) || employee?.name || "담당 미정";
+  return "담당 미정";
+}
+
+function findCommonScheduleItem(week, itemId) {
+  return Object.values(week?.sections || {}).flat().find((item) => item.id === itemId)
+    || Object.values(week?.days || {}).flat().find((item) => item.id === itemId);
 }
 
 function getWeekDateKeys(dateKey) {
@@ -6792,6 +6972,12 @@ function createCommonScheduleItem(text = "", source = null) {
     id,
     text,
     done: false,
+    dateKey: source?.dateKey || "",
+    owner: source?.owner || "",
+    eventStatus: source?.eventStatus || "예정",
+    repeat: source?.repeat || "none",
+    detail: source?.detail || "",
+    sectionId: source?.sectionId || "",
     createdAt: new Date().toISOString(),
     carryFrom: source?.carryFrom || source?.id || "",
     sourceWeekKey: source?.sourceWeekKey || "",
@@ -6811,11 +6997,31 @@ function ensureCompanyCommonWeek(companyKey = getCompanyCommonKey(), weekKey = g
   weeks[weekKey] ||= { weekKey, days: {} };
   const week = weeks[weekKey];
   week.days ||= {};
+  week.sections ||= {};
+  commonScheduleSections.forEach((section) => {
+    week.sections[section.id] = Array.isArray(week.sections[section.id]) ? week.sections[section.id] : [];
+  });
   getWeekDateKeys(weekKey).forEach((dateKey) => {
     week.days[dateKey] = Array.isArray(week.days[dateKey]) ? week.days[dateKey] : [];
   });
 
   let changed = false;
+  const legacyItems = Object.values(week.days || {}).flat().filter((item) => item.text?.trim() || item.done);
+  if (legacyItems.length && !week.migratedCommonBoardV1) {
+    const target = week.sections.departmentWeekly;
+    legacyItems.forEach((item) => {
+      if (target.some((current) => current.carryFrom === item.id || current.id === item.id)) return;
+      target.push(createCommonScheduleItem(item.text, {
+        ...item,
+        sectionId: "departmentWeekly",
+        dateKey: item.dateKey || Object.keys(week.days || {}).find((key) => (week.days[key] || []).some((row) => row.id === item.id)) || "",
+        owner: item.owner || "담당 미정",
+        carryFrom: item.carryFrom || item.id,
+      }));
+    });
+    week.migratedCommonBoardV1 = true;
+    changed = true;
+  }
   const previousWeek = weeks[getPreviousWeekKey(weekKey)];
   if (previousWeek?.days) {
     getWeekDateKeys(weekKey).forEach((dateKey, index) => {
@@ -6838,6 +7044,26 @@ function ensureCompanyCommonWeek(companyKey = getCompanyCommonKey(), weekKey = g
       week.days[dateKey] = currentItems;
     });
   }
+  if (previousWeek?.sections) {
+    ["departmentWeekly", "personalWeekly"].forEach((sectionId) => {
+      const currentItems = week.sections[sectionId] || [];
+      (previousWeek.sections[sectionId] || [])
+        .filter((item) => item.text?.trim() && !item.done)
+        .forEach((item) => {
+          const carryKey = item.carryFrom || item.id;
+          const exists = currentItems.some((current) => (current.carryFrom || current.id) === carryKey);
+          if (exists) return;
+          currentItems.push(createCommonScheduleItem(item.text, {
+            ...item,
+            sectionId,
+            carryFrom: carryKey,
+            sourceWeekKey: previousWeek.weekKey || getPreviousWeekKey(weekKey),
+          }));
+          changed = true;
+        });
+      week.sections[sectionId] = currentItems;
+    });
+  }
   return { week, changed };
 }
 
@@ -6856,7 +7082,9 @@ function guardCompanyCommonEdit(employee = getSelectedEmployee()) {
 }
 
 function getCommonWeekProgress(week) {
-  const items = Object.values(week?.days || {}).flat().filter((item) => item.text?.trim());
+  const boardItems = Object.values(week?.sections || {}).flat();
+  const legacyItems = Object.values(week?.days || {}).flat();
+  const items = [...boardItems, ...legacyItems].filter((item) => item.text?.trim());
   const done = items.filter((item) => item.done).length;
   return { total: items.length, done, pending: Math.max(0, items.length - done) };
 }
@@ -8083,83 +8311,10 @@ function renderAttendance() {
   const companyLaborLedgers = canAccessWorklogOverview() ? renderCompanyLaborLedgersMarkup() : "";
   list.innerHTML = `
     ${leaderLaborOverview}
-    ${renderPayrollStatement(payroll)}
     ${companyLaborLedgers}
-    <section class="labor-cost-ledger-card" id="laborCostLedger">
-      <header>
-        <div>
-          <span>Labor Cost Ledger</span>
-          <h3>${escapeHtml(ledger.title)}</h3>
-          <p>${escapeHtml(ledger.site)} · ${escapeHtml(ledger.employeeLabel)}</p>
-        </div>
-        <button type="button" id="copyLaborCostLedgerButton">대장 복사</button>
-      </header>
-      <div class="labor-cost-ledger-meta">
-        <span><b>사업장</b><strong>${escapeHtml(ledger.site)}</strong></span>
-        <span><b>대상월</b><strong>${escapeHtml(ledger.monthLabel)}</strong></span>
-        <span><b>출역일수</b><strong>${escapeHtml(String(ledger.workDays))}일</strong></span>
-        <span><b>총근무</b><strong>${escapeHtml(formatMinutesAsHours(ledger.actualMinutes))}</strong></span>
-        <span><b>임금단가</b><strong>${escapeHtml(ledger.wageLabel)}</strong></span>
-        <span><b>총금액</b><strong>${escapeHtml(ledger.totalPayLabel)}</strong></span>
-      </div>
-      <div class="labor-cost-ledger-wrap">
-        <table class="labor-cost-ledger-table" aria-label="노무비 지급 대장">
-          <thead>
-            <tr>
-              <th>구분</th>
-              <th>성명</th>
-              <th>주민등록번호</th>
-              <th>주소</th>
-              ${ledger.dayNumbers.map((day) => `<th>${day}</th>`).join("")}
-              <th>출역일수</th>
-              <th>임금</th>
-              <th>총금액</th>
-              <th>확인</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr>
-              <td>${escapeHtml(ledger.employmentType)}</td>
-              <td>${escapeHtml(ledger.name)}</td>
-              <td>${escapeHtml(ledger.laborId)}</td>
-              <td>${escapeHtml(ledger.address)}</td>
-              ${ledger.dayCells.map((cell) => `<td class="${cell.worked ? "is-worked" : ""}">${escapeHtml(cell.label)}</td>`).join("")}
-              <td>${escapeHtml(String(ledger.workDays))}</td>
-              <td>${escapeHtml(ledger.wageLabel)}</td>
-              <td>${escapeHtml(ledger.totalPayLabel)}</td>
-              <td>${escapeHtml(ledger.confirmLabel)}</td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
-    </section>
-    <section class="labor-register-card" id="laborRegister">
-      <header>
-        <div>
-          <span>Personal Labor Register</span>
-          <h3>${escapeHtml(labor.monthLabel)} 근무시간 현황</h3>
-          <p>${escapeHtml(getEmployeeAdminLabel(employee))} 본인 자료만 표시됩니다.</p>
-        </div>
-      </header>
-      <div class="labor-register-table" role="table" aria-label="월별 근무시간 현황">
-        <div class="labor-register-head" role="row">
-          <span>일자</span>
-          <span>요일</span>
-          <span>소정</span>
-          <span>출근</span>
-          <span>퇴근</span>
-          <span>외출</span>
-          <span>실근무</span>
-          <span>상태</span>
-          <span>유료/무료 PT</span>
-        </div>
-        ${labor.dayRows.map(renderLaborDayRow).join("")}
-      </div>
-    </section>
   `;
   dockGlobalHeaderActions("attendance");
   document.getElementById("copyAllSiteLaborLedgersButton")?.addEventListener("click", copyAllSiteLaborLedgers);
-  document.getElementById("copyPayrollStatementButton")?.addEventListener("click", () => copyPayrollStatement(payroll));
   list.querySelectorAll("[data-labor-jump]").forEach((button) => {
     button.addEventListener("click", () => {
       document.getElementById(button.dataset.laborJump)?.scrollIntoView({ behavior: "smooth", block: "start" });
@@ -8176,7 +8331,6 @@ function renderAttendance() {
       copySiteLaborCostLedger(ledger);
     });
   });
-  document.getElementById("copyLaborCostLedgerButton")?.addEventListener("click", () => copyLaborCostLedger(ledger));
   list.querySelectorAll("[data-labor-employee]").forEach((button) => {
     button.addEventListener("click", () => {
       state.selectedEmployeeId = button.dataset.laborEmployee;
@@ -8718,84 +8872,99 @@ function renderWorkHistorySummary() {
   const employeeId = getOwnLaborEmployeeId();
   const employee = getOwnLaborEmployee();
   const log = getEmployeeLogForDate(employeeId);
-  const monthPrefix = getActiveDateKey().slice(0, 7);
-  let recordedDays = 0;
-  let earlyOrLate = 0;
-  let totalMinutes = 0;
-  Object.entries(state.employeeLogs || {}).forEach(([dateKey, logsByEmployee]) => {
-    if (!dateKey.startsWith(monthPrefix)) return;
-    const dayLog = logsByEmployee?.[employeeId];
-    if (!dayLog || (!dayLog.clockIn && !dayLog.clockOut && !dayLog.attendanceStatus)) return;
-    recordedDays += 1;
-    if (["지각", "조퇴", "결근"].includes(getAttendanceStatusForLog(employee, dayLog))) earlyOrLate += 1;
-    if (dayLog.clockIn && dayLog.clockOut) {
-      const minutes = timeToMinutes(dayLog.clockOut) - timeToMinutes(dayLog.clockIn);
-      if (Number.isFinite(minutes) && minutes > 0) totalMinutes += minutes;
-    }
-  });
-  const breakSummary = (log.attendanceBreaks || [])
-    .map((item) => `${item.type || "외출"} ${item.start || "--:--"}~${item.end || "--:--"}`)
-    .join(" · ");
   const labor = buildMonthlyLaborSummary(employeeId, employee);
   const ledger = buildLaborCostLedger(labor, employee);
   const payroll = buildPayrollStatement(labor, employee, ledger);
-  const archives = buildLaborMonthArchives(employeeId, employee);
-  const cards = [
-    ["오늘 상태", getAttendanceStatusForLog(employee, log)],
-    ["출근", log.clockIn || "미기록"],
-    ["퇴근/조퇴", log.clockOut || "미기록"],
-    ["이번 달 기록", `${recordedDays}일`],
-    ["누적 근무", totalMinutes ? formatMinutesAsHours(totalMinutes) : "집계 전"],
-    ["확인 필요", earlyOrLate ? `${earlyOrLate}건` : "없음"],
-  ];
+  const monthHeading = formatLaborMonthHeading(labor.month);
   node.innerHTML = `
     <article class="work-history-hero">
       <div class="work-history-hero-copy">
-        <span class="work-history-eyebrow">Labor Control · ${escapeHtml(getEmployeeAdminLabel(employee))}</span>
+        <span class="work-history-eyebrow">${escapeHtml(getEmployeeAdminLabel(employee))}</span>
+        <b class="work-history-title">노무</b>
+        <em class="work-history-worktime">${escapeHtml(formatAttendanceSummary(log) || "출결 시간 미기록")}</em>
         <strong>${escapeHtml(formatFormalKoreanDate(getActiveDateKey()))}</strong>
         <div class="work-history-hero-meta">
-          <b>노무</b>
-          <em>${escapeHtml(formatAttendanceSummary(log) || "출결 시간 미기록")}</em>
+          <b>월별 정산 준비</b>
+          <em>${escapeHtml(`${labor.recordedDays}일 기록 · 실근무 ${formatMinutesAsHours(labor.actualMinutes)}`)}</em>
         </div>
       </div>
     </article>
-    ${renderLaborOperationsConsole(labor, employee, payroll)}
-    <div class="work-history-card-grid">
-      ${cards.map(([label, value]) => `<span><b>${escapeHtml(label)}</b><strong>${escapeHtml(value)}</strong></span>`).join("")}
-    </div>
-    <p class="work-history-note">${escapeHtml(breakSummary || "외출/복귀 기록이 있으면 이곳에 요약됩니다.")}</p>
-    <section class="labor-month-card">
+    <section class="labor-month-selector-card">
       <header>
         <div>
-          <span>Labor Submission Draft</span>
-          <h3>${escapeHtml(labor.monthLabel)} 노무신고 제출용 초안</h3>
+          <span>Monthly Work Status</span>
+          <h3>
+            <button type="button" id="laborMonthPickerButton" aria-label="${escapeAttr(monthHeading)} 월 선택">
+              ${escapeHtml(monthHeading)}
+            </button>
+          </h3>
+          <p>${escapeHtml("월 제목을 누르면 다른 연도와 월의 근무현황으로 이동합니다.")}</p>
         </div>
-        <button type="button" id="copyLaborMonthButton">복사</button>
+        <input type="month" id="laborMonthInput" value="${escapeAttr(labor.month)}" aria-label="노무 기준 월 선택" />
       </header>
-      <div class="labor-month-grid">
-        ${labor.cards.map(([label, value]) => `<span><b>${escapeHtml(label)}</b><strong>${escapeHtml(value)}</strong></span>`).join("")}
+      <div class="labor-month-grid labor-month-grid-compact">
+        ${[
+          ["기록일", `${labor.recordedDays}일`],
+          ["소정근무", formatMinutesAsHours(labor.scheduledMinutes)],
+          ["실근무", formatMinutesAsHours(labor.actualMinutes)],
+          ["외출/복귀", `${labor.breakCount}건`],
+        ].map(([label, value]) => `<span><b>${escapeHtml(label)}</b><strong>${escapeHtml(value)}</strong></span>`).join("")}
       </div>
-      <p>${escapeHtml("임금대장·노무신고 전 검토용 자료입니다. 급여 산정, 4대보험, 세무 신고 전에는 최신 법령과 노무사 확인을 권장합니다.")}</p>
     </section>
-    <section class="labor-archive-card">
+    ${renderLaborMonthlyRegister(labor, employee)}
+    <section class="labor-report-launch-card">
       <header>
-        <span>Monthly Archive</span>
-        <h3>기록 시작 이후 월별 보관</h3>
+        <div>
+          <span>Payroll Report</span>
+          <h3>급여명세서 보기</h3>
+          <p>월별 노무대장과 급여명세서를 A4 가로형 보고서로 확인합니다.</p>
+        </div>
+        <button type="button" id="openLaborReportButton">급여명세서 보기</button>
       </header>
-      <div class="labor-archive-list">
-        ${archives.map((item) => `
-          <button type="button" data-labor-month="${escapeAttr(item.month)}">
-            <b>${escapeHtml(item.monthLabel)}</b>
-            <span>${escapeHtml(item.recordedDays)}일 · ${escapeHtml(formatMinutesAsHours(item.actualMinutes))} · PT ${escapeHtml(String(item.settlementPtCount))}건</span>
-          </button>
-        `).join("") || "<p>아직 보관된 월별 기록이 없습니다.</p>"}
+    </section>
+  `;
+  document.getElementById("laborMonthPickerButton")?.addEventListener("click", () => {
+    const input = document.getElementById("laborMonthInput");
+    if (input?.showPicker) input.showPicker();
+    else input?.click();
+  });
+  document.getElementById("laborMonthInput")?.addEventListener("change", (event) => {
+    if (event.target.value) setSelectedDateKey(`${event.target.value}-01`);
+  });
+  document.getElementById("openLaborReportButton")?.addEventListener("click", () => openLaborReportSheet(labor, payroll, ledger));
+}
+
+function formatLaborMonthHeading(monthKey = getActiveDateKey().slice(0, 7)) {
+  const [year, month] = String(monthKey).split("-").map(Number);
+  return `${year}년 ${month}월 근무현황`;
+}
+
+function renderLaborMonthlyRegister(labor, employee) {
+  return `
+    <section class="labor-register-card labor-register-card-primary" id="laborRegister">
+      <header>
+        <div>
+          <span>Work Time Register</span>
+          <h3>월별 근무시간 현황</h3>
+          <p>${escapeHtml(getEmployeeAdminLabel(employee))} 기준 · 출결시간, 외출/복귀, 휴무, 실근무를 일자별로 기록합니다.</p>
+        </div>
+      </header>
+      <div class="labor-register-table" role="table" aria-label="월별 근무시간 현황">
+        <div class="labor-register-head" role="row">
+          <span>일자</span>
+          <span>요일</span>
+          <span>소정</span>
+          <span>출근</span>
+          <span>퇴근</span>
+          <span>외출</span>
+          <span>실근무</span>
+          <span>상태</span>
+          <span>유료/무료 PT</span>
+        </div>
+        ${labor.dayRows.map(renderLaborDayRow).join("")}
       </div>
     </section>
   `;
-  document.getElementById("copyLaborMonthButton")?.addEventListener("click", () => copyMonthlyLaborSummary(labor));
-  node.querySelectorAll("[data-labor-month]").forEach((button) => {
-    button.addEventListener("click", () => setSelectedDateKey(`${button.dataset.laborMonth}-01`));
-  });
 }
 
 function formatMinutesAsHours(minutes) {
@@ -8926,6 +9095,399 @@ function renderLaborDayRow(row) {
       <span>${escapeHtml(`${row.paidPt}/${row.freePt}`)}</span>
     </div>
   `;
+}
+
+function getLaborReportFileBase(labor) {
+  const employee = labor?.employee || getOwnLaborEmployee();
+  const name = (employee?.name || "직원").replace(/[^\w가-힣-]+/g, "-");
+  return `bangju-labor-${labor?.month || getActiveDateKey().slice(0, 7)}-${name}`;
+}
+
+function getLaborReportExportCss() {
+  return `
+    * { box-sizing: border-box; }
+    body { margin: 0; background: #fffefa; color: #17221d; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+    .labor-paper {
+      width: 1754px;
+      height: 1240px;
+      overflow: hidden;
+      background: #fffefa;
+      padding: 52px;
+      color: #17221d;
+    }
+    .labor-paper-title {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) 430px;
+      border: 3px solid #0f3b2e;
+    }
+    .labor-paper-title strong {
+      display: grid;
+      align-items: center;
+      min-height: 118px;
+      background: #0f3b2e;
+      color: #fffefa;
+      padding: 22px 28px;
+      font-size: 42px;
+      font-weight: 950;
+      letter-spacing: 0;
+    }
+    .labor-paper-title div {
+      display: grid;
+      grid-template-columns: 128px minmax(0, 1fr);
+      border-left: 3px solid #0f3b2e;
+    }
+    .labor-paper-title span,
+    .labor-paper-title b {
+      display: grid;
+      align-items: center;
+      min-height: 39px;
+      border-bottom: 2px solid rgba(15, 59, 46, 0.38);
+      padding: 8px 12px;
+      font-size: 22px;
+      line-height: 1.1;
+    }
+    .labor-paper-title span {
+      background: #eef4e9;
+      font-weight: 900;
+      text-align: center;
+    }
+    .labor-paper-title b {
+      font-weight: 950;
+    }
+    .labor-paper-summary {
+      display: grid;
+      grid-template-columns: repeat(6, minmax(0, 1fr));
+      gap: 10px;
+      margin-top: 18px;
+    }
+    .labor-paper-summary span {
+      display: grid;
+      gap: 4px;
+      min-height: 76px;
+      border: 2px solid rgba(15, 59, 46, 0.24);
+      background: #f6f7f1;
+      padding: 12px;
+    }
+    .labor-paper-summary b { color: #65746d; font-size: 17px; font-weight: 900; }
+    .labor-paper-summary strong { color: #0f3b2e; font-size: 27px; font-weight: 950; }
+    .labor-paper-grid {
+      display: grid;
+      grid-template-columns: 0.72fr 1.28fr;
+      gap: 18px;
+      margin-top: 18px;
+      min-height: 0;
+    }
+    .labor-paper-section {
+      border: 3px solid #0f3b2e;
+      background: #fffefa;
+    }
+    .labor-paper-section h3 {
+      margin: 0;
+      border-bottom: 2px solid rgba(15, 59, 46, 0.3);
+      background: #eef4e9;
+      padding: 12px 16px;
+      font-size: 24px;
+      font-weight: 950;
+    }
+    .labor-paper-section table {
+      width: 100%;
+      border-collapse: collapse;
+      table-layout: fixed;
+      font-size: 16px;
+    }
+    .labor-paper-section th,
+    .labor-paper-section td {
+      height: 34px;
+      border-right: 1px solid rgba(15, 59, 46, 0.26);
+      border-bottom: 1px solid rgba(15, 59, 46, 0.26);
+      padding: 6px 7px;
+      text-align: center;
+      vertical-align: middle;
+    }
+    .labor-paper-section th {
+      background: #f3f6ef;
+      font-weight: 950;
+    }
+    .labor-paper-pay td:nth-child(1),
+    .labor-paper-pay th:nth-child(1) { text-align: left; }
+    .labor-paper-register th,
+    .labor-paper-register td {
+      height: 25px;
+      padding: 3px;
+      font-size: 13px;
+    }
+    .labor-paper-ledger {
+      grid-column: 1 / -1;
+      margin-top: 18px;
+    }
+    .labor-paper-ledger table { font-size: 12px; }
+    .labor-paper-ledger th,
+    .labor-paper-ledger td {
+      height: 24px;
+      padding: 2px 3px;
+    }
+    .labor-paper-ledger th:nth-child(1),
+    .labor-paper-ledger td:nth-child(1) { width: 62px; }
+    .labor-paper-ledger th:nth-child(2),
+    .labor-paper-ledger td:nth-child(2) { width: 70px; }
+    .labor-paper-ledger th:nth-child(3),
+    .labor-paper-ledger td:nth-child(3) { width: 96px; }
+    .labor-paper-ledger th:nth-child(4),
+    .labor-paper-ledger td:nth-child(4) { width: 132px; text-align: left; }
+    .labor-paper-ledger th:nth-last-child(-n + 4),
+    .labor-paper-ledger td:nth-last-child(-n + 4) { width: 66px; }
+    .labor-paper-note {
+      margin-top: 10px;
+      color: #5e6b65;
+      font-size: 14px;
+      font-weight: 760;
+    }
+  `;
+}
+
+function renderLaborReportTemplate(labor, payroll, ledger) {
+  const dayRows = labor.dayRows.filter((row) => row.clockIn || row.clockOut || row.worked || row.status !== "휴무").slice(0, 18);
+  const payRows = [...payroll.wageItems, ["지급총액", payroll.grossPay, "지급 항목 합계"]];
+  const deductionRows = [...payroll.deductionItems, ["공제총액", payroll.deductionTotal], ["차인지급액", payroll.netPay]];
+  return `
+    <article class="labor-paper">
+      <header class="labor-paper-title">
+        <strong>비욘드 노무·급여명세서</strong>
+        <div>
+          <span>대상월</span><b>${escapeHtml(formatLaborMonthHeading(labor.month))}</b>
+          <span>직원</span><b>${escapeHtml(payroll.workerName)}</b>
+          <span>소속</span><b>${escapeHtml(payroll.org)} / ${escapeHtml(payroll.workplace)}</b>
+          <span>고용</span><b>${escapeHtml(payroll.employmentType)}</b>
+        </div>
+      </header>
+      <section class="labor-paper-summary">
+        ${[
+          ["기록일", `${labor.recordedDays}일`],
+          ["실근무", formatMinutesAsHours(labor.actualMinutes)],
+          ["연장추정", formatMinutesAsHours(labor.overtimeMinutes)],
+          ["야간추정", formatMinutesAsHours(labor.nightMinutes)],
+          ["유료 PT", `${labor.settlementPtCount}건`],
+          ["차인지급액", formatCurrency(payroll.netPay) || "계산 대기"],
+        ].map(([label, value]) => `<span><b>${escapeHtml(label)}</b><strong>${escapeHtml(value)}</strong></span>`).join("")}
+      </section>
+      <div class="labor-paper-grid">
+        <section class="labor-paper-section labor-paper-pay">
+          <h3>급여명세</h3>
+          <table>
+            <thead><tr><th>항목</th><th>금액</th><th>산식/비고</th></tr></thead>
+            <tbody>
+              ${payRows.map(([label, amount, formula]) => `<tr><td>${escapeHtml(label)}</td><td>${escapeHtml(formatCurrency(amount) || "0원")}</td><td>${escapeHtml(formula || "")}</td></tr>`).join("")}
+              ${deductionRows.map(([label, amount]) => `<tr><td>${escapeHtml(label)}</td><td>${escapeHtml(formatCurrency(amount) || "0원")}</td><td>공제/정산</td></tr>`).join("")}
+            </tbody>
+          </table>
+        </section>
+        <section class="labor-paper-section labor-paper-register">
+          <h3>월별 근무시간 현황</h3>
+          <table>
+            <thead><tr><th>일자</th><th>요일</th><th>소정</th><th>출근</th><th>퇴근</th><th>외출</th><th>실근무</th><th>상태</th><th>PT</th></tr></thead>
+            <tbody>
+              ${dayRows.map((row) => `
+                <tr>
+                  <td>${escapeHtml(row.dateKey.slice(5))}</td>
+                  <td>${escapeHtml(row.weekday)}</td>
+                  <td>${escapeHtml(row.scheduled ? formatMinutesAsHours(row.scheduled) : "-")}</td>
+                  <td>${escapeHtml(row.clockIn || "-")}</td>
+                  <td>${escapeHtml(row.clockOut || "-")}</td>
+                  <td>${escapeHtml(row.breakSummary || "-")}</td>
+                  <td>${escapeHtml(row.worked ? formatMinutesAsHours(row.worked) : "-")}</td>
+                  <td>${escapeHtml(row.status)}</td>
+                  <td>${escapeHtml(`${row.paidPt}/${row.freePt}`)}</td>
+                </tr>
+              `).join("") || `<tr><td colspan="9">해당 월의 근무기록이 아직 없습니다.</td></tr>`}
+            </tbody>
+          </table>
+        </section>
+      </div>
+      <section class="labor-paper-section labor-paper-ledger">
+        <h3>노무비 지급대장</h3>
+        <table>
+          <thead>
+            <tr>
+              <th>구분</th>
+              <th>성명</th>
+              <th>식별번호</th>
+              <th>주소</th>
+              ${ledger.dayNumbers.map((day) => `<th>${day}</th>`).join("")}
+              <th>출역</th>
+              <th>단가</th>
+              <th>총액</th>
+              <th>확인</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>${escapeHtml(ledger.employmentType)}</td>
+              <td>${escapeHtml(ledger.name)}</td>
+              <td>${escapeHtml(ledger.laborId)}</td>
+              <td>${escapeHtml(ledger.address)}</td>
+              ${ledger.dayCells.map((cell) => `<td>${escapeHtml(cell.label)}</td>`).join("")}
+              <td>${escapeHtml(String(ledger.workDays))}일</td>
+              <td>${escapeHtml(ledger.wageLabel)}</td>
+              <td>${escapeHtml(ledger.totalPayLabel)}</td>
+              <td></td>
+            </tr>
+          </tbody>
+        </table>
+      </section>
+      <p class="labor-paper-note">본 문서는 업무일지 출결기록 기반 초안입니다. 급여 지급, 4대보험, 세무·노무 신고 전 최종 검토가 필요합니다.</p>
+    </article>
+  `;
+}
+
+function ensureLaborReportSheet() {
+  let sheet = document.getElementById("laborReportSheet");
+  if (sheet) return sheet;
+  document.body.insertAdjacentHTML("beforeend", `
+    <div class="labor-report-backdrop" id="laborReportBackdrop" hidden></div>
+    <section class="labor-report-sheet" id="laborReportSheet" hidden role="dialog" aria-modal="true" aria-labelledby="laborReportTitle">
+      <header>
+        <div>
+          <span>Payroll & Labor Ledger</span>
+          <h2 id="laborReportTitle">급여명세서</h2>
+        </div>
+        <button type="button" id="laborReportCloseButton" aria-label="급여명세서 닫기">×</button>
+      </header>
+      <div class="labor-report-preview" id="laborReportPreview"></div>
+      <footer>
+        <button type="button" id="laborReportImageButton">사진저장</button>
+        <button type="button" id="laborReportPdfButton">PDF내보내기</button>
+        <button type="button" id="laborReportPrintButton">출력</button>
+      </footer>
+    </section>
+  `);
+  sheet = document.getElementById("laborReportSheet");
+  document.getElementById("laborReportBackdrop")?.addEventListener("click", closeLaborReportSheet);
+  document.getElementById("laborReportCloseButton")?.addEventListener("click", closeLaborReportSheet);
+  document.getElementById("laborReportPrintButton")?.addEventListener("click", printLaborReport);
+  document.getElementById("laborReportImageButton")?.addEventListener("click", () => {
+    saveLaborReportImage().catch(() => alert("이미지 파일을 만들지 못했습니다. 출력 메뉴에서 PDF 저장을 이용해주세요."));
+  });
+  document.getElementById("laborReportPdfButton")?.addEventListener("click", () => {
+    saveLaborReportPdf().catch(() => alert("PDF 파일을 만들지 못했습니다. 출력 메뉴를 이용해주세요."));
+  });
+  return sheet;
+}
+
+let currentLaborReportModel = null;
+
+function openLaborReportSheet(labor, payroll, ledger) {
+  currentLaborReportModel = { labor, payroll, ledger };
+  const sheet = ensureLaborReportSheet();
+  const backdrop = document.getElementById("laborReportBackdrop");
+  const preview = document.getElementById("laborReportPreview");
+  if (preview) preview.innerHTML = renderLaborReportTemplate(labor, payroll, ledger);
+  if (backdrop) backdrop.hidden = false;
+  sheet.hidden = false;
+  document.body.classList.add("is-labor-report-open");
+}
+
+function closeLaborReportSheet() {
+  document.getElementById("laborReportBackdrop")?.setAttribute("hidden", "");
+  document.getElementById("laborReportSheet")?.setAttribute("hidden", "");
+  document.body.classList.remove("is-labor-report-open", "is-printing-labor-report");
+}
+
+async function renderLaborReportCanvas() {
+  if (!currentLaborReportModel) throw new Error("급여명세서 모델이 없습니다.");
+  const width = 1754;
+  const height = 1240;
+  const html = `
+    <div xmlns="http://www.w3.org/1999/xhtml">
+      <style>${getLaborReportExportCss()}</style>
+      ${renderLaborReportTemplate(currentLaborReportModel.labor, currentLaborReportModel.payroll, currentLaborReportModel.ledger)}
+    </div>
+  `;
+  const svg = `
+    <svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}">
+      <foreignObject width="${width}" height="${height}">${html}</foreignObject>
+    </svg>
+  `;
+  if (document.fonts?.ready) await document.fonts.ready;
+  const svgBlob = new Blob([svg], { type: "image/svg+xml;charset=utf-8" });
+  const url = URL.createObjectURL(svgBlob);
+  try {
+    const image = new Image();
+    image.decoding = "async";
+    image.src = url;
+    await new Promise((resolve, reject) => {
+      image.onload = resolve;
+      image.onerror = reject;
+    });
+    const canvas = document.createElement("canvas");
+    canvas.width = width;
+    canvas.height = height;
+    const ctx = canvas.getContext("2d");
+    ctx.fillStyle = "#fffefa";
+    ctx.fillRect(0, 0, width, height);
+    ctx.drawImage(image, 0, 0);
+    return canvas;
+  } finally {
+    URL.revokeObjectURL(url);
+  }
+}
+
+function createLandscapePdfBlobFromCanvas(canvas) {
+  const encoder = new TextEncoder();
+  const jpegBytes = dataUrlToUint8Array(canvas.toDataURL("image/jpeg", 0.92));
+  const pageWidth = 841.89;
+  const pageHeight = 595.28;
+  const content = `q\n${pageWidth} 0 0 ${pageHeight} 0 0 cm\n/Im0 Do\nQ`;
+  const objects = [
+    encoder.encode("1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n"),
+    encoder.encode("2 0 obj\n<< /Type /Pages /Kids [3 0 R] /Count 1 >>\nendobj\n"),
+    encoder.encode(`3 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${pageWidth} ${pageHeight}] /Resources << /XObject << /Im0 5 0 R >> >> /Contents 4 0 R >>\nendobj\n`),
+    encoder.encode(`4 0 obj\n<< /Length ${content.length} >>\nstream\n${content}\nendstream\nendobj\n`),
+    concatUint8Arrays([
+      encoder.encode(`5 0 obj\n<< /Type /XObject /Subtype /Image /Width ${canvas.width} /Height ${canvas.height} /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode /Length ${jpegBytes.length} >>\nstream\n`),
+      jpegBytes,
+      encoder.encode("\nendstream\nendobj\n"),
+    ]),
+  ];
+  const chunks = [encoder.encode("%PDF-1.4\n%\n")];
+  const offsets = [0];
+  let length = chunks[0].length;
+  objects.forEach((object) => {
+    offsets.push(length);
+    chunks.push(object);
+    length += object.length;
+  });
+  const xrefStart = length;
+  const xref = [
+    "xref",
+    `0 ${objects.length + 1}`,
+    "0000000000 65535 f ",
+    ...offsets.slice(1).map((offset) => `${String(offset).padStart(10, "0")} 00000 n `),
+    "trailer",
+    `<< /Size ${objects.length + 1} /Root 1 0 R >>`,
+    "startxref",
+    String(xrefStart),
+    "%%EOF",
+  ].join("\n");
+  chunks.push(encoder.encode(xref));
+  return new Blob(chunks, { type: "application/pdf" });
+}
+
+async function saveLaborReportImage() {
+  const canvas = await renderLaborReportCanvas();
+  const blob = await canvasToBlob(canvas, "image/png");
+  downloadBlob(blob, `${getLaborReportFileBase(currentLaborReportModel?.labor)}.png`);
+}
+
+async function saveLaborReportPdf() {
+  const canvas = await renderLaborReportCanvas();
+  const blob = createLandscapePdfBlobFromCanvas(canvas);
+  downloadBlob(blob, `${getLaborReportFileBase(currentLaborReportModel?.labor)}.pdf`);
+}
+
+function printLaborReport() {
+  document.body.classList.add("is-printing-labor-report");
+  window.print();
+  window.setTimeout(() => document.body.classList.remove("is-printing-labor-report"), 300);
 }
 
 function buildLaborCostLedger(labor, employee) {
@@ -9904,6 +10466,199 @@ function renderOrganization() {
   node.innerHTML = assetHtml + companyHtml;
 }
 
+function getCommunicationTargetOptions() {
+  const options = [
+    ["all", "전 사업장"],
+    ["site:bangju", "(주)방주"],
+    ["site:beyond", "(주)비욘드컴퍼니"],
+    ["site:fitness", "비욘드 피트니스"],
+    ["site:construction", "(주)비제이종합건설"],
+  ];
+  getEmployeeOptions()
+    .filter(isAssignedWorklogEmployee)
+    .forEach((employee) => options.push([`employee:${employee.id}`, getEmployeeAdminLabel(employee)]));
+  return options;
+}
+
+function getCommunicationTargetLabel(value = "all") {
+  return getCommunicationTargetOptions().find(([id]) => id === value)?.[1] || "전 사업장";
+}
+
+function getCommunicationAudienceIds(target = "all") {
+  const assigned = getEmployeeOptions().filter(isAssignedWorklogEmployee);
+  if (target === "all") return assigned.map((employee) => employee.id);
+  if (target.startsWith("employee:")) return [target.replace("employee:", "")];
+  if (target.startsWith("site:")) {
+    const siteId = target.replace("site:", "");
+    return assigned.filter((employee) => getReportArchiveSiteId(employee) === siteId).map((employee) => employee.id);
+  }
+  return [];
+}
+
+function getCurrentCommunicationActor() {
+  const employee = getSelectedEmployee();
+  const profileName = state.profile?.nickname || state.profile?.name || authState.user?.email || "";
+  if (isRepresentativeProfile()) return `대표 ${profileName || "정찬훈"}`;
+  return getEmployeeAdminLabel(employee);
+}
+
+function canCreateCommunication() {
+  return Boolean(authState.user && (isRepresentativeProfile() || canAccessWorklogOverview() || isProfileApproved()));
+}
+
+function canManageCommunication(item = {}) {
+  return isRepresentativeProfile()
+    || canAccessWorklogOverview()
+    || item.createdByEmail === (authState.user?.email || "")
+    || item.createdBy === getCurrentCommunicationActor();
+}
+
+function isCommunicationVisible(item = {}) {
+  if (isRepresentativeProfile() || canAccessWorklogOverview()) return true;
+  const ownId = getMappedProfileEmployeeId() || state.selectedEmployeeId || "profile-user";
+  return item.target === "all"
+    || getCommunicationAudienceIds(item.target).includes(ownId)
+    || item.createdByEmail === (authState.user?.email || "");
+}
+
+function getCommunicationStatus(item = {}) {
+  if (isCommunicationDone(item)) return "완료";
+  if (item.dueDate && item.dueDate < todayKey) return "지연";
+  if (item.priority === "긴급") return "긴급";
+  return "진행";
+}
+
+function isCommunicationDone(item = {}) {
+  if (item.done) return true;
+  const audienceIds = getCommunicationAudienceIds(item.target);
+  if (!audienceIds.length) return false;
+  return audienceIds.every((id) => item.confirmations?.[id]);
+}
+
+function renderCommunicationHub() {
+  const type = document.getElementById("communicationType");
+  const target = document.getElementById("communicationTarget");
+  const title = document.getElementById("communicationTitle");
+  const body = document.getElementById("communicationBody");
+  const dueDate = document.getElementById("communicationDueDate");
+  const priority = document.getElementById("communicationPriority");
+  const openList = document.getElementById("communicationOpenList");
+  const doneList = document.getElementById("communicationDoneList");
+  const count = document.getElementById("communicationOpenCount");
+  if (!type || !target || !title || !body || !dueDate || !priority || !openList || !doneList) return;
+
+  const previousTarget = target.value || "all";
+  target.innerHTML = getCommunicationTargetOptions()
+    .map(([value, label]) => `<option value="${escapeAttr(value)}" ${previousTarget === value ? "selected" : ""}>${escapeHtml(label)}</option>`)
+    .join("");
+  dueDate.value ||= getActiveDateKey();
+
+  const items = (state.communications || []).filter(isCommunicationVisible)
+    .sort((a, b) => String(b.createdAt || "").localeCompare(String(a.createdAt || "")));
+  const openItems = items.filter((item) => !isCommunicationDone(item));
+  const doneItems = items.filter(isCommunicationDone).slice(0, 8);
+  if (count) count.textContent = `${openItems.length}건`;
+  openList.innerHTML = openItems.length ? openItems.map(renderCommunicationItem).join("") : `<p class="communication-empty">진행 중인 전달사항이 없습니다.</p>`;
+  doneList.innerHTML = doneItems.length ? doneItems.map(renderCommunicationItem).join("") : `<p class="communication-empty">확인 완료된 전달사항이 없습니다.</p>`;
+
+  const canCreate = canCreateCommunication();
+  [type, target, title, body, dueDate, priority].forEach((field) => {
+    field.disabled = !canCreate;
+  });
+  const addButton = document.getElementById("addCommunicationButton");
+  if (addButton) addButton.disabled = !canCreate;
+}
+
+function renderCommunicationItem(item = {}) {
+  const status = getCommunicationStatus(item);
+  const checkedCount = Object.values(item.confirmations || {}).filter(Boolean).length;
+  const audienceCount = getCommunicationAudienceIds(item.target).length || 1;
+  const ownId = getMappedProfileEmployeeId() || state.selectedEmployeeId || authState.user?.email || "profile-user";
+  const isCheckedByMe = Boolean(item.done || item.confirmations?.[ownId]);
+  return `
+    <article class="communication-item is-${escapeAttr(status)}" data-communication-id="${escapeAttr(item.id)}">
+      <header>
+        <span>${escapeHtml(item.type || "공지")} · ${escapeHtml(getCommunicationTargetLabel(item.target))}</span>
+        <b>${escapeHtml(status)}</b>
+      </header>
+      <strong>${escapeHtml(item.title || "제목 없음")}</strong>
+      <p>${escapeHtml(item.body || "내용 없음")}</p>
+      <footer>
+        <span>${escapeHtml(item.createdBy || "작성자 미상")}</span>
+        <em>${escapeHtml(item.dueDate ? `마감 ${formatKoreanDate(item.dueDate)}` : "마감 없음")}</em>
+        <em>확인 ${checkedCount}/${audienceCount}</em>
+        <button type="button" data-communication-toggle="${escapeAttr(item.id)}">${isCheckedByMe ? "확인 취소" : "확인 완료"}</button>
+        ${canManageCommunication(item) ? `<button type="button" data-communication-delete="${escapeAttr(item.id)}">보관 삭제</button>` : ""}
+      </footer>
+    </article>
+  `;
+}
+
+function addCommunication() {
+  const type = document.getElementById("communicationType")?.value || "공지";
+  const target = document.getElementById("communicationTarget")?.value || "all";
+  const title = document.getElementById("communicationTitle")?.value.trim() || "";
+  const body = document.getElementById("communicationBody")?.value.trim() || "";
+  const dueDate = document.getElementById("communicationDueDate")?.value || "";
+  const priority = document.getElementById("communicationPriority")?.value || "보통";
+  if (!canCreateCommunication()) {
+    showAppToast("로그인 후 보고·전달을 등록할 수 있습니다");
+    return;
+  }
+  if (!title) {
+    alert("제목 누락입니다.");
+    return;
+  }
+  if (!body) {
+    alert("내용 누락입니다.");
+    return;
+  }
+  state.communications ||= [];
+  state.communications.unshift({
+    id: `comm-${Date.now()}-${Math.random().toString(16).slice(2)}`,
+    type,
+    target,
+    title,
+    body,
+    dueDate,
+    priority,
+    done: false,
+    confirmations: {},
+    createdBy: getCurrentCommunicationActor(),
+    createdByEmail: authState.user?.email || "",
+    createdAt: new Date().toISOString(),
+  });
+  ["communicationTitle", "communicationBody"].forEach((id) => {
+    const field = document.getElementById(id);
+    if (field) field.value = "";
+  });
+  saveState();
+  renderCommunicationHub();
+  showAppToast("전달사항을 등록했습니다");
+}
+
+function toggleCommunicationDone(id = "") {
+  const item = (state.communications || []).find((entry) => entry.id === id);
+  if (!item || !isCommunicationVisible(item)) return;
+  item.confirmations ||= {};
+  const ownId = getMappedProfileEmployeeId() || state.selectedEmployeeId || authState.user?.email || "profile-user";
+  item.confirmations[ownId] = !item.confirmations[ownId];
+  item.done = false;
+  item.done = isCommunicationDone(item);
+  item.updatedAt = new Date().toISOString();
+  saveState();
+  renderCommunicationHub();
+}
+
+function deleteCommunication(id = "") {
+  const item = (state.communications || []).find((entry) => entry.id === id);
+  if (!item || !canManageCommunication(item)) return;
+  if (!confirm("이 전달사항을 삭제할까요?")) return;
+  state.communications = (state.communications || []).filter((entry) => entry.id !== id);
+  saveState();
+  renderCommunicationHub();
+}
+
 function renderReport() {
   const employee = getSelectedEmployee();
   const log = getSelectedLog();
@@ -9940,6 +10695,7 @@ function renderReport() {
     "7. 메모",
     log.memo || "-",
   ].join("\n");
+  renderCommunicationHub();
   renderReportArchive();
   renderBackupCenter();
   renderInnovationLab();
@@ -10568,14 +11324,14 @@ function openBackupEmailDraft() {
 
 function getInnovationItems() {
   return [
+    ["공지 확인 추적", "전 사업장·특정 사업장·개인별 전달사항의 확인 여부와 지연 상태를 한곳에서 봅니다."],
+    ["업무지시 에이전트", "대표 지시가 업무일지의 우선업무와 시간별일정으로 이어지도록 다음 행동을 제안합니다."],
+    ["인수인계 보드", "오픈·마감·외출·휴무처럼 놓치기 쉬운 교대 정보를 다음 근무자에게 자동 요약합니다."],
     ["운영 신호 레이더", "미작성, 지각, 무료수업 과다, 민원 반복을 자동 감지해 대표 개입 우선순위를 만듭니다."],
     ["목표-업무 자동 연결", "PT, 상담, 재등록, 시설 개선 목표가 오늘 업무와 자동으로 연결되어 성과로 누적됩니다."],
     ["역할별 매뉴얼 코치", "센터장, 재무, 공유사업, TBA, 인포, 트레이너별 매뉴얼을 상황에 맞게 꺼내 줍니다."],
     ["직원 성장 로그", "업무 패턴, 완료율, 커뮤니케이션, 책임감 변화를 월별 성장 리포트로 정리합니다."],
-    ["다짐 데이터 브릿지", "CSV 또는 수기 입력으로 회원수, 만료예정, PT, 상담 데이터를 운영현황과 합칩니다."],
-    ["노무 확정 워크플로", "월별 근무시간, 유료수업, 수정 이력, 승인자를 남겨 노무 제출자료로 고정합니다."],
-    ["시설 이슈 티켓", "반복되는 청결·고장·냉난방 이슈를 자동 티켓화하고 처리자를 배정합니다."],
-    ["대표의 오늘 10분", "전 사업장 중 오늘 대표가 직접 봐야 할 3가지만 압축해 실행 버튼으로 보여줍니다."],
+    ["자료 보관 패키지", "보고서, 공지, 노무, 업무지시를 날짜와 사업장 기준으로 묶어 대표 메일 보관용으로 정리합니다."],
   ];
 }
 
@@ -11531,7 +12287,7 @@ document.querySelectorAll("[data-section-shortcut]").forEach((button) => {
       switchSettingsTab("manual");
       return;
     }
-    if (action === "report" || action === "daily-report" || action === "backup" || action === "innovation") {
+    if (action === "report" || action === "daily-report" || action === "communication" || action === "backup" || action === "innovation") {
       switchView("report");
       if (action === "daily-report") {
         const employee = getProfileMappedEmployeeId()
@@ -11547,6 +12303,7 @@ document.querySelectorAll("[data-section-shortcut]").forEach((button) => {
         renderReportArchive();
         document.querySelector(".report-archive-card")?.scrollIntoView({ behavior: "smooth", block: "start" });
       }
+      if (action === "communication") document.querySelector(".communication-hub-card")?.scrollIntoView({ behavior: "smooth", block: "start" });
       if (action === "backup") document.querySelector(".backup-center-card")?.scrollIntoView({ behavior: "smooth", block: "start" });
       if (action === "innovation") document.querySelector(".innovation-lab-card")?.scrollIntoView({ behavior: "smooth", block: "start" });
       return;
@@ -12025,6 +12782,16 @@ document.getElementById("reportArchiveType")?.addEventListener("change", (event)
   settings.selectedId = "";
   saveState();
   renderReportArchive();
+});
+document.getElementById("addCommunicationButton")?.addEventListener("click", addCommunication);
+document.getElementById("communicationHub")?.addEventListener("click", (event) => {
+  const toggle = event.target.closest("[data-communication-toggle]");
+  if (toggle) {
+    toggleCommunicationDone(toggle.dataset.communicationToggle || "");
+    return;
+  }
+  const remove = event.target.closest("[data-communication-delete]");
+  if (remove) deleteCommunication(remove.dataset.communicationDelete || "");
 });
 document.getElementById("reportArchiveList")?.addEventListener("click", (event) => {
   const button = event.target.closest("[data-report-archive-id]");

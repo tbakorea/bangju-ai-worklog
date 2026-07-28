@@ -23,8 +23,8 @@
           <option value="staff">직원</option>
           <option value="attendance">노무</option>
           <option value="premium">AI 운영총괄</option>
-          <option value="ai">매뉴얼·코칭</option>
-          <option value="report">보고서·백업</option>
+          <option value="ai">성장지원</option>
+          <option value="report">보고·커뮤니티</option>
           <option value="settings">설정</option>
         </select>
         <div class="header-actions">
@@ -45,8 +45,8 @@
           <button type="button" data-menu-view="staff">직원</button>
           <button type="button" data-menu-view="attendance">노무</button>
           <button type="button" data-menu-view="premium">AI 운영총괄</button>
-          <button type="button" data-menu-view="ai">매뉴얼·코칭</button>
-          <button type="button" data-menu-view="report">보고서·백업</button>
+          <button type="button" data-menu-view="ai">성장지원</button>
+          <button type="button" data-menu-view="report">보고·커뮤니티</button>
           <button type="button" data-menu-view="settings">설정</button>
           <button type="button" data-menu-action="approval">승인요청 <span id="menuApprovalBadge" class="menu-approval-badge" hidden>0</span></button>
           <button type="button" data-menu-view="auth">로그인/직원등록</button>
@@ -80,8 +80,8 @@
         <button type="button" data-view="staff">직원</button>
         <button type="button" data-view="attendance">노무</button>
         <button type="button" data-view="premium">AI 운영총괄</button>
-        <button type="button" data-view="ai">매뉴얼·코칭</button>
-        <button type="button" data-view="report">보고서·백업</button>
+        <button type="button" data-view="ai">성장지원</button>
+        <button type="button" data-view="report">보고·커뮤니티</button>
         <button type="button" data-view="settings">설정</button>
       </nav>
 
@@ -352,7 +352,7 @@
           </header>
           <div class="worklog-pulse-row">
             <button type="button" class="worklog-side-nav" data-worklog-panel="weekly">공통일정</button>
-            <button type="button" class="worklog-pulse" id="worklogPulse" aria-label="AI 코칭 열기">
+            <button type="button" class="worklog-pulse" id="worklogPulse" aria-label="업무 도움 열기">
               <span id="worklogPulseText">오늘 실행 0/0 · 다음 일정 없음 · 이월 0</span>
             </button>
             <button type="button" class="worklog-side-nav" data-worklog-panel="memo">동료업무</button>
@@ -360,7 +360,7 @@
           <div class="worklog-edit-lock-banner" id="worklogEditLockBanner" hidden></div>
           <div class="worklog-main day-main-panel day-swipe" id="worklogMain" data-today-page="daily">
             <article class="worklog-panel shared-worklog-panel worklog-common-page">
-              <h3>주간섹션</h3>
+              <h3>공통 실행일정</h3>
               <div id="commonScheduleBoard"></div>
             </article>
             <div class="worklog-daily-page">
@@ -674,11 +674,11 @@
       <section class="worklog-view" id="view-ai">
         <div class="section-heading-panel">
           <div>
-            <p>Manual & Coaching</p>
-            <h2>매뉴얼·코칭</h2>
-            <span>직원 역할별 매뉴얼, 업무 코칭, 자기개발 미션을 한 곳에서 봅니다.</span>
+            <p id="aiSectionEyebrow">Manual & Coaching</p>
+            <h2 id="aiSectionTitle">성장지원</h2>
+            <span id="aiSectionSubtitle">내 업무 기록을 바탕으로 오늘 더 편하게 일하는 방법과 성장 포인트를 정리합니다.</span>
           </div>
-          <button type="button" data-section-shortcut="manual">매뉴얼 편집</button>
+          <button type="button" id="manualEditShortcut" data-section-shortcut="manual">매뉴얼 편집</button>
         </div>
         <div class="section-command-strip" aria-label="매뉴얼·코칭 주요 기능">
           <button type="button" data-section-shortcut="manual">
@@ -742,34 +742,86 @@
       <section class="worklog-view report-backup-view" id="view-report">
         <div class="report-command-card">
           <div>
-            <p>Report & Backup</p>
-            <h2>보고서·백업</h2>
-            <span>업무일지, 노무, 직원 현황을 하나의 운영 기록으로 정리합니다.</span>
+            <p>Report & Community</p>
+            <h2>보고·커뮤니티</h2>
+            <span>공지, 업무전달, 지시, 공유를 하나의 운영 커뮤니케이션으로 정리합니다.</span>
           </div>
-          <strong id="backupStatus">백업 준비</strong>
+          <strong id="backupStatus">보고 허브</strong>
         </div>
-        <div class="section-command-strip report-command-strip" aria-label="보고서·백업 주요 기능">
+        <div class="section-command-strip report-command-strip" aria-label="보고·커뮤니티 주요 기능">
           <button type="button" data-section-shortcut="daily-report">
             <span>01</span>
             <strong>일일보고</strong>
             <em>업무일지 기반 보고서 초안</em>
           </button>
-          <button type="button" data-section-shortcut="labor">
+          <button type="button" data-section-shortcut="communication">
             <span>02</span>
-            <strong>노무자료</strong>
-            <em>월별 노무비·근무이력</em>
+            <strong>공지·전달</strong>
+            <em>개인·사업장·전체 공유</em>
           </button>
           <button type="button" data-section-shortcut="backup">
             <span>03</span>
-            <strong>백업센터</strong>
-            <em>대표 메일·JSON 패키지</em>
+            <strong>보관·백업</strong>
+            <em>운영기록 패키지</em>
           </button>
           <button type="button" data-section-shortcut="innovation">
             <span>04</span>
-            <strong>개선후보</strong>
-            <em>다음 운영 OS 로드맵</em>
+            <strong>AI 제안</strong>
+            <em>보고 품질·실행 개선</em>
           </button>
         </div>
+
+        <article class="communication-hub-card" id="communicationHub">
+          <header>
+            <div>
+              <p>Communication Board</p>
+              <h3>공지·업무전달</h3>
+              <span>개인, 특정 사업장, 전 사업장에 공유할 내용을 기록하고 실행 확인까지 추적합니다.</span>
+            </div>
+            <strong id="communicationOpenCount">0건</strong>
+          </header>
+          <div class="communication-compose">
+            <label>전달유형
+              <select id="communicationType">
+                <option value="공지">공지</option>
+                <option value="업무전달">업무전달</option>
+                <option value="대표지시">대표지시</option>
+                <option value="공유">공유</option>
+                <option value="인수인계">인수인계</option>
+              </select>
+            </label>
+            <label>대상
+              <select id="communicationTarget"></select>
+            </label>
+            <label class="is-wide">제목
+              <input id="communicationTitle" type="text" placeholder="예: 오늘 마감 전 고객 상담 후보를 확인해주세요" />
+            </label>
+            <label class="is-full">내용
+              <textarea id="communicationBody" rows="3" placeholder="전달 배경, 처리 기준, 마감 시각, 확인 방법을 간결하게 작성합니다."></textarea>
+            </label>
+            <label>마감
+              <input id="communicationDueDate" type="date" />
+            </label>
+            <label>중요도
+              <select id="communicationPriority">
+                <option value="보통">보통</option>
+                <option value="중요">중요</option>
+                <option value="긴급">긴급</option>
+              </select>
+            </label>
+            <button type="button" id="addCommunicationButton">전달 등록</button>
+          </div>
+          <div class="communication-board-layout">
+            <section>
+              <h4>진행 중</h4>
+              <div class="communication-list" id="communicationOpenList"></div>
+            </section>
+            <section>
+              <h4>확인 완료</h4>
+              <div class="communication-list" id="communicationDoneList"></div>
+            </section>
+          </div>
+        </article>
 
         <article class="report-archive-card">
           <header>

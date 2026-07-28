@@ -2495,6 +2495,83 @@ body[data-device-mode="narrow"] .os-mode-switch span[data-device-mode="narrow"] 
   line-height: 1.45;
 }
 
+.labor-month-selector-card,
+.labor-report-launch-card {
+  display: grid;
+  gap: 10px;
+  border: 1px solid rgba(33, 55, 45, 0.1);
+  border-radius: 20px;
+  background: rgba(255, 253, 248, 0.92);
+  padding: 13px;
+  box-shadow: 0 12px 28px rgba(33, 55, 45, 0.04);
+}
+
+.labor-month-selector-card header,
+.labor-report-launch-card header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.labor-month-selector-card header span,
+.labor-report-launch-card header span {
+  display: block;
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 950;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.labor-month-selector-card h3,
+.labor-report-launch-card h3 {
+  margin: 2px 0 0;
+  color: var(--ink);
+  font-size: 22px;
+  font-weight: 950;
+}
+
+.labor-month-selector-card p,
+.labor-report-launch-card p {
+  margin: 4px 0 0;
+  color: rgba(38, 50, 56, 0.62);
+  font-size: 12px;
+  font-weight: 780;
+  line-height: 1.4;
+}
+
+#laborMonthPickerButton,
+#openLaborReportButton {
+  min-height: 42px;
+  border: 1px solid rgba(15, 59, 46, 0.13);
+  border-radius: 999px;
+  background: rgba(15, 59, 46, 0.08);
+  color: var(--fitness-green);
+  padding: 8px 14px;
+  font: inherit;
+  font-weight: 950;
+  white-space: nowrap;
+}
+
+#openLaborReportButton {
+  background: var(--fitness-green);
+  color: var(--nordic-sheet);
+  font-size: 13px;
+}
+
+#laborMonthInput {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.labor-month-grid-compact {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
 .payroll-statement-card {
   display: grid;
   gap: 12px;
@@ -2702,6 +2779,11 @@ body[data-device-mode="narrow"] .os-mode-switch span[data-device-mode="narrow"] 
   border-radius: 18px;
   background: rgba(255, 253, 248, 0.9);
   padding: 14px;
+}
+
+.labor-register-card-primary {
+  border-radius: 20px;
+  background: rgba(255, 253, 248, 0.94);
 }
 
 .labor-cost-ledger-card {
@@ -2934,6 +3016,153 @@ body[data-device-mode="narrow"] .os-mode-switch span[data-device-mode="narrow"] 
 .site-labor-ledger-table tfoot td {
   background: rgba(239, 243, 235, 0.95);
   font-weight: 950;
+}
+
+.labor-report-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 1200;
+  background: rgba(21, 29, 25, 0.42);
+  backdrop-filter: blur(10px);
+}
+
+.labor-report-sheet {
+  position: fixed;
+  inset: max(18px, env(safe-area-inset-top)) 18px max(18px, env(safe-area-inset-bottom));
+  z-index: 1201;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  gap: 12px;
+  max-width: min(1280px, calc(100vw - 36px));
+  margin: 0 auto;
+  border: 1px solid rgba(33, 55, 45, 0.16);
+  border-radius: 24px;
+  background: rgba(255, 253, 248, 0.98);
+  box-shadow: 0 28px 72px rgba(21, 29, 25, 0.28);
+  padding: 16px;
+}
+
+.labor-report-sheet[hidden],
+.labor-report-backdrop[hidden] {
+  display: none !important;
+}
+
+.labor-report-sheet > header,
+.labor-report-sheet > footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.labor-report-sheet > header span {
+  display: block;
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 950;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.labor-report-sheet h2 {
+  margin: 2px 0 0;
+  color: var(--fitness-green);
+  font-size: 26px;
+  font-weight: 950;
+}
+
+#laborReportCloseButton,
+.labor-report-sheet > footer button {
+  min-height: 42px;
+  border: 1px solid rgba(15, 59, 46, 0.14);
+  border-radius: 999px;
+  background: var(--fitness-green);
+  color: var(--nordic-sheet);
+  padding: 8px 14px;
+  font-size: 13px;
+  font-weight: 950;
+  white-space: nowrap;
+}
+
+#laborReportCloseButton {
+  width: 42px;
+  border-radius: 14px;
+  background: rgba(15, 59, 46, 0.08);
+  color: var(--fitness-green);
+  font-size: 24px;
+  line-height: 1;
+}
+
+.labor-report-preview {
+  min-width: 0;
+  min-height: 0;
+  overflow: auto;
+  border: 1px solid rgba(33, 55, 45, 0.1);
+  border-radius: 18px;
+  background: #f4f5ef;
+  padding: 14px;
+}
+
+.labor-report-preview .labor-paper {
+  transform-origin: top left;
+  width: 1754px;
+  min-height: 1240px;
+  background: #fffefa;
+}
+
+@media (max-width: 760px) {
+  .labor-report-sheet {
+    inset: max(8px, env(safe-area-inset-top)) 8px max(8px, env(safe-area-inset-bottom));
+    max-width: calc(100vw - 16px);
+    border-radius: 20px;
+    padding: 10px;
+  }
+
+  .labor-report-sheet h2 {
+    font-size: 20px;
+  }
+
+  .labor-report-sheet > footer {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .labor-report-sheet > footer button {
+    padding: 8px 6px;
+    font-size: 12px;
+  }
+}
+
+@media print {
+  body.is-printing-labor-report * {
+    visibility: hidden !important;
+  }
+
+  body.is-printing-labor-report #laborReportPreview,
+  body.is-printing-labor-report #laborReportPreview * {
+    visibility: visible !important;
+  }
+
+  body.is-printing-labor-report #laborReportPreview {
+    position: fixed;
+    inset: 0;
+    overflow: visible !important;
+    border: 0 !important;
+    border-radius: 0 !important;
+    background: #fffefa !important;
+    padding: 0 !important;
+  }
+
+  body.is-printing-labor-report .labor-paper {
+    width: 297mm !important;
+    height: 210mm !important;
+    transform: none !important;
+  }
+
+  @page {
+    size: A4 landscape;
+    margin: 0;
+  }
 }
 
 .staff-master-view {
@@ -12020,6 +12249,7 @@ body[data-layout-mode="phone"] #view-today .ai-section-button {
 .report-command-card,
 .report-archive-card,
 .report-draft-card,
+.communication-hub-card,
 .backup-center-card,
 .innovation-lab-card {
   border: 1px solid rgba(17, 20, 17, 0.1);
@@ -12041,6 +12271,7 @@ body[data-layout-mode="phone"] #view-today .ai-section-button {
 .report-command-card p,
 .report-archive-card p,
 .report-draft-card p,
+.communication-hub-card p,
 .backup-center-card p,
 .innovation-lab-card p {
   margin: 0 0 4px;
@@ -12055,6 +12286,7 @@ body[data-layout-mode="phone"] #view-today .ai-section-button {
 .report-command-card h2,
 .report-archive-card h3,
 .report-draft-card h3,
+.communication-hub-card h3,
 .backup-center-card h3,
 .innovation-lab-card h3 {
   margin: 0;
@@ -12089,6 +12321,7 @@ body[data-layout-mode="phone"] #view-today .ai-section-button {
 
 .report-archive-card,
 .report-draft-card,
+.communication-hub-card,
 .backup-center-card,
 .innovation-lab-card {
   padding: 16px;
@@ -12096,6 +12329,7 @@ body[data-layout-mode="phone"] #view-today .ai-section-button {
 
 .report-archive-card header,
 .report-draft-card header,
+.communication-hub-card header,
 .backup-center-card header,
 .innovation-lab-card header {
   display: flex;
@@ -12124,6 +12358,200 @@ body[data-layout-mode="phone"] #view-today .ai-section-button {
   font-size: 12px;
   font-weight: 950;
   white-space: nowrap;
+}
+
+.communication-hub-card header span {
+  display: block;
+  margin-top: 5px;
+  color: rgba(17, 20, 17, 0.58);
+  font-size: 13px;
+  font-weight: 760;
+  line-height: 1.4;
+}
+
+.communication-hub-card header > strong {
+  flex: 0 0 auto;
+  padding: 8px 11px;
+  border: 1px solid rgba(16, 75, 54, 0.14);
+  border-radius: 999px;
+  background: rgba(16, 75, 54, 0.06);
+  color: #104b36;
+  font-size: 12px;
+  font-weight: 950;
+  white-space: nowrap;
+}
+
+.communication-compose {
+  display: grid;
+  grid-template-columns: 132px 190px minmax(220px, 1fr) 132px 112px 120px;
+  gap: 8px;
+  align-items: end;
+}
+
+.communication-compose label {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+  color: rgba(17, 20, 17, 0.56);
+  font-size: 11px;
+  font-weight: 900;
+}
+
+.communication-compose .is-wide {
+  grid-column: span 2;
+}
+
+.communication-compose .is-full {
+  grid-column: 1 / -1;
+}
+
+.communication-compose input,
+.communication-compose select,
+.communication-compose textarea {
+  min-width: 0;
+  border: 1px solid rgba(17, 20, 17, 0.12);
+  border-radius: 12px;
+  background: #fffefa;
+  color: #111411;
+  font-size: 14px;
+  font-weight: 820;
+}
+
+.communication-compose input,
+.communication-compose select {
+  min-height: 38px;
+}
+
+.communication-compose textarea {
+  min-height: 74px;
+  padding: 10px 11px;
+  line-height: 1.45;
+  resize: vertical;
+}
+
+.communication-compose button {
+  min-height: 38px;
+  border: 0;
+  border-radius: 999px;
+  background: #104b36;
+  color: #fffefa;
+  font-size: 13px;
+  font-weight: 950;
+}
+
+.communication-board-layout {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin-top: 14px;
+}
+
+.communication-board-layout section {
+  min-width: 0;
+  padding: 10px;
+  border: 1px solid rgba(17, 20, 17, 0.08);
+  border-radius: 16px;
+  background: rgba(246, 248, 242, 0.54);
+}
+
+.communication-board-layout h4 {
+  margin: 0 0 8px;
+  color: #111411;
+  font-size: 14px;
+  font-weight: 950;
+}
+
+.communication-list {
+  display: grid;
+  align-content: start;
+  gap: 8px;
+  max-height: 360px;
+  overflow: auto;
+}
+
+.communication-empty {
+  padding: 12px;
+  border: 1px dashed rgba(17, 20, 17, 0.12);
+  border-radius: 14px;
+  color: rgba(17, 20, 17, 0.52) !important;
+  font-size: 13px !important;
+  font-weight: 800 !important;
+  letter-spacing: 0 !important;
+  text-transform: none !important;
+}
+
+.communication-item {
+  display: grid;
+  gap: 7px;
+  padding: 11px;
+  border: 1px solid rgba(17, 20, 17, 0.1);
+  border-radius: 14px;
+  background: rgba(255, 254, 250, 0.86);
+}
+
+.communication-item.is-긴급,
+.communication-item.is-지연 {
+  border-color: rgba(151, 76, 42, 0.22);
+  background: rgba(255, 244, 236, 0.72);
+}
+
+.communication-item header,
+.communication-item footer {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+}
+
+.communication-item header {
+  justify-content: space-between;
+}
+
+.communication-item header span,
+.communication-item footer span,
+.communication-item footer em {
+  color: rgba(17, 20, 17, 0.55);
+  font-size: 11px;
+  font-style: normal;
+  font-weight: 850;
+}
+
+.communication-item header b {
+  padding: 4px 8px;
+  border-radius: 999px;
+  background: rgba(16, 75, 54, 0.08);
+  color: #104b36;
+  font-size: 11px;
+  font-weight: 950;
+}
+
+.communication-item > strong {
+  color: #111411;
+  font-size: 15px;
+  font-weight: 950;
+  line-height: 1.35;
+}
+
+.communication-item > p {
+  margin: 0;
+  color: rgba(17, 20, 17, 0.72) !important;
+  font-size: 13px !important;
+  font-weight: 760 !important;
+  letter-spacing: 0 !important;
+  line-height: 1.45;
+  text-transform: none !important;
+}
+
+.communication-item footer button {
+  min-height: 28px;
+  padding: 0 9px;
+  border: 1px solid rgba(16, 75, 54, 0.16);
+  border-radius: 999px;
+  background: rgba(16, 75, 54, 0.07);
+  color: #104b36;
+  font-size: 11px;
+  font-weight: 920;
 }
 
 .backup-center-card header span,
@@ -12549,6 +12977,20 @@ body[data-layout-mode="phone"] #view-today .ai-section-button {
     grid-template-columns: minmax(0, 1fr);
   }
 
+  .communication-compose {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .communication-compose .is-wide,
+  .communication-compose .is-full,
+  .communication-compose button {
+    grid-column: 1 / -1;
+  }
+
+  .communication-board-layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
   .innovation-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
@@ -12586,16 +13028,28 @@ body[data-layout-mode="phone"] #view-today .ai-section-button {
     border-radius: 16px;
   }
 
-  .report-archive-card header {
+  .report-archive-card header,
+  .communication-hub-card header {
     align-items: stretch;
     flex-direction: column;
   }
 
-  .report-archive-card header strong {
+  .report-archive-card header strong,
+  .communication-hub-card header > strong {
     width: fit-content;
   }
 
+  .communication-hub-card {
+    padding: 13px;
+    border-radius: 16px;
+  }
+
+  .communication-compose {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
   .report-archive-list,
+  .communication-list,
   .report-archive-preview {
     max-height: 300px;
   }
@@ -15054,10 +15508,12 @@ body[data-layout-mode="phone"] #view-fitness-log .fitness-log-pager {
 }
 
 #view-today .common-week-header {
+  position: relative;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-columns: minmax(0, 1fr);
   align-items: center;
   gap: 10px;
+  padding-right: 82px;
 }
 
 #view-today .common-week-header div {
@@ -15086,14 +15542,19 @@ body[data-layout-mode="phone"] #view-fitness-log .fitness-log-pager {
 }
 
 #view-today .common-week-header button {
-  min-height: 38px;
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  min-width: 64px;
+  min-height: 30px;
   border: 1px solid rgba(15, 59, 46, 0.12);
   border-radius: 999px;
   background: rgba(15, 59, 46, 0.92);
   color: var(--nordic-sheet);
-  padding: 0 14px;
-  font-size: 13px;
+  padding: 0 10px;
+  font-size: 12px;
   font-weight: 950;
+  box-shadow: 0 8px 18px rgba(15, 59, 46, 0.12);
 }
 
 #view-today .common-week-guidance {
@@ -15293,6 +15754,220 @@ body[data-layout-mode="phone"] #view-fitness-log .fitness-log-pager {
   font-weight: 820;
 }
 
+#view-today .company-common-board {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+#view-today .company-common-section {
+  display: grid;
+  gap: 9px;
+  min-width: 0;
+  border: 1px solid rgba(15, 59, 46, 0.1);
+  border-radius: 16px;
+  background: rgba(255, 254, 250, 0.82);
+  padding: 10px;
+  box-shadow: 0 8px 22px rgba(17, 20, 17, 0.035);
+}
+
+#view-today .company-common-section > header {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: start;
+  padding-bottom: 8px;
+  border-bottom: 1px solid rgba(15, 59, 46, 0.08);
+}
+
+#view-today .company-common-section > header div {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+#view-today .company-common-section > header span {
+  color: rgba(15, 59, 46, 0.56);
+  font-size: 10px;
+  font-weight: 950;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+#view-today .company-common-section > header strong {
+  color: var(--fitness-green);
+  font-size: 16px;
+  line-height: 1.15;
+  font-weight: 950;
+}
+
+#view-today .company-common-section > header small {
+  color: rgba(38, 50, 56, 0.62);
+  font-size: 11px;
+  line-height: 1.35;
+  font-weight: 760;
+}
+
+#view-today .company-common-section > header b {
+  display: grid;
+  min-width: 44px;
+  min-height: 30px;
+  place-items: center;
+  border-radius: 999px;
+  background: rgba(15, 59, 46, 0.08);
+  color: var(--fitness-green);
+  font-size: 12px;
+  font-weight: 950;
+}
+
+#view-today .company-common-event-list {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+
+#view-today .company-common-event {
+  min-width: 0;
+  border: 1px solid rgba(15, 59, 46, 0.1);
+  border-radius: 12px;
+  background: rgba(250, 250, 245, 0.72);
+  overflow: hidden;
+}
+
+#view-today .company-common-event[open] {
+  background: rgba(255, 254, 250, 0.96);
+  border-color: rgba(15, 59, 46, 0.18);
+  box-shadow: 0 8px 18px rgba(17, 20, 17, 0.04);
+}
+
+#view-today .company-common-event summary {
+  display: grid;
+  grid-template-columns: 22px 44px minmax(0, 1fr) auto auto;
+  gap: 6px;
+  align-items: center;
+  min-width: 0;
+  min-height: 36px;
+  padding: 6px 8px;
+  cursor: pointer;
+  list-style: none;
+}
+
+#view-today .company-common-event summary::-webkit-details-marker {
+  display: none;
+}
+
+#view-today .company-common-event-check {
+  display: grid;
+  width: 20px;
+  height: 20px;
+  place-items: center;
+}
+
+#view-today .company-common-event-check input {
+  width: 17px;
+  height: 17px;
+  margin: 0;
+  accent-color: var(--fitness-green);
+}
+
+#view-today .company-common-event-date,
+#view-today .company-common-event summary b {
+  display: inline-grid;
+  min-height: 24px;
+  place-items: center;
+  border-radius: 999px;
+  background: rgba(15, 59, 46, 0.07);
+  color: rgba(15, 59, 46, 0.78);
+  padding: 0 7px;
+  font-size: 11px;
+  font-weight: 950;
+  white-space: nowrap;
+}
+
+#view-today .company-common-event summary strong {
+  overflow: hidden;
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 880;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+#view-today .company-common-event summary em {
+  color: rgba(38, 50, 56, 0.62);
+  font-size: 11px;
+  font-style: normal;
+  font-weight: 850;
+  white-space: nowrap;
+}
+
+#view-today .company-common-event.is-done summary strong {
+  color: rgba(38, 50, 56, 0.42);
+  text-decoration: line-through;
+  text-decoration-color: rgba(199, 55, 55, 0.68);
+  text-decoration-thickness: 2px;
+}
+
+#view-today .company-common-event-detail {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  padding: 0 8px 9px;
+}
+
+#view-today .company-common-event-detail label {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+#view-today .company-common-event-detail label.is-wide {
+  grid-column: 1 / -1;
+}
+
+#view-today .company-common-event-detail label span {
+  color: rgba(38, 50, 56, 0.56);
+  font-size: 10px;
+  font-weight: 900;
+}
+
+#view-today .company-common-event-detail input,
+#view-today .company-common-event-detail select,
+#view-today .company-common-event-detail textarea {
+  width: 100%;
+  min-width: 0;
+  border: 1px solid rgba(15, 59, 46, 0.12);
+  border-radius: 9px;
+  background: rgba(255, 254, 250, 0.92);
+  color: var(--ink);
+  padding: 7px 8px;
+  font-size: 12px;
+  font-weight: 820;
+}
+
+#view-today .company-common-event-detail textarea {
+  resize: vertical;
+  line-height: 1.35;
+}
+
+#view-today .company-common-event-detail :disabled {
+  color: rgba(38, 50, 56, 0.62);
+  opacity: 1;
+}
+
+#view-today .company-common-event-detail button {
+  grid-column: 1 / -1;
+  justify-self: end;
+  min-height: 30px;
+  border: 0;
+  border-radius: 999px;
+  background: rgba(199, 55, 55, 0.08);
+  color: rgba(149, 40, 40, 0.82);
+  padding: 0 12px;
+  font-size: 12px;
+  font-weight: 950;
+}
+
 #view-today .common-week-brief {
   display: grid;
   gap: 8px;
@@ -15358,7 +16033,8 @@ body[data-layout-mode="phone"] #view-fitness-log .fitness-log-pager {
   }
 
   #view-today .common-week-header,
-  #view-today .common-week-days {
+  #view-today .common-week-days,
+  #view-today .company-common-board {
     grid-template-columns: minmax(0, 1fr);
   }
 
@@ -15377,6 +16053,22 @@ body[data-layout-mode="phone"] #view-fitness-log .fitness-log-pager {
 
   #view-today .company-common-day {
     min-height: 118px;
+  }
+
+  #view-today .company-common-section {
+    padding: 9px;
+  }
+
+  #view-today .company-common-event summary {
+    grid-template-columns: 22px 42px minmax(0, 1fr) auto;
+  }
+
+  #view-today .company-common-event summary b {
+    display: none;
+  }
+
+  #view-today .company-common-event-detail {
+    grid-template-columns: minmax(0, 1fr);
   }
 }
 
@@ -17651,7 +18343,7 @@ body.physical-phone-device .control-tower-hero-actions {
 
 #view-attendance .work-history-hero-copy {
   display: grid;
-  gap: 7px;
+  gap: 5px;
   min-width: 0;
 }
 
@@ -17671,10 +18363,30 @@ body.physical-phone-device .control-tower-hero-actions {
   margin: 0 !important;
   max-width: 100%;
   color: #fff8d7 !important;
-  font-size: clamp(26px, 5.6vw, 38px) !important;
-  line-height: 1.02 !important;
+  font-size: clamp(20px, 3.8vw, 30px) !important;
+  line-height: 1.08 !important;
   letter-spacing: 0 !important;
+  white-space: nowrap !important;
   text-shadow: 0 2px 14px rgba(0, 0, 0, 0.18);
+}
+
+#view-attendance .work-history-title {
+  color: #fff8d7;
+  font-size: clamp(30px, 5.2vw, 46px);
+  font-weight: 950;
+  line-height: 1;
+  letter-spacing: 0;
+}
+
+#view-attendance .work-history-worktime {
+  overflow: hidden;
+  max-width: 100%;
+  color: rgba(255, 254, 250, 0.78);
+  font-size: 14px;
+  font-style: normal;
+  font-weight: 880;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 #view-attendance .work-history-hero-meta {
@@ -17736,13 +18448,18 @@ body.physical-phone-device #view-attendance .work-history-hero {
 
 body[data-layout-mode="phone"] #view-attendance .work-history-hero strong,
 body.physical-phone-device #view-attendance .work-history-hero strong {
-  font-size: clamp(24px, 7vw, 32px) !important;
+  font-size: clamp(18px, 5vw, 23px) !important;
 }
 
 body[data-layout-mode="phone"] #view-attendance .work-history-hero-meta,
 body.physical-phone-device #view-attendance .work-history-hero-meta {
   display: grid;
   gap: 5px;
+}
+
+body[data-layout-mode="phone"] #view-attendance .work-history-title,
+body.physical-phone-device #view-attendance .work-history-title {
+  font-size: clamp(27px, 7.2vw, 34px);
 }
 
 /* Worklog focus gate: phone/CEO mode keeps the two panels scannable, then

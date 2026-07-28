@@ -95,14 +95,17 @@ async function checkDesktopEmployeeWorklog(browser) {
     const board = document.querySelector("#commonScheduleBoard");
     return {
       title: board?.querySelector(".common-week-header strong")?.textContent?.trim() || "",
-      dayCount: board?.querySelectorAll(".company-common-day").length || 0,
+      sectionCount: board?.querySelectorAll(".company-common-section").length || 0,
       hasPriorityControl: Boolean(board?.querySelector(".priority-select, .task-status-cell, .overview-priority-box")),
-      hasCheckbox: Boolean(board?.querySelector('[data-common-check]')),
+      hasSectionTitles: /부서 월간 핵심일정|개인 주간 실행이벤트/.test(board?.textContent || ""),
+      hasAddButton: Boolean(board?.querySelector("[data-common-add-section]")),
       hasLegacyWeeklyCopy: /Beyond Work Weekly|일간 페이지에 업무를 입력하세요/.test(board?.textContent || ""),
     };
   });
-  if (!commonSchedule.title.includes("공통일정")) fail("common page should be company common schedule", JSON.stringify(commonSchedule));
-  if (commonSchedule.dayCount !== 7) fail("common page should render seven weekdays", JSON.stringify(commonSchedule));
+  if (!commonSchedule.title.includes("실행일정")) fail("common page should be company common schedule", JSON.stringify(commonSchedule));
+  if (commonSchedule.sectionCount !== 4) fail("common page should render four execution sections", JSON.stringify(commonSchedule));
+  if (!commonSchedule.hasSectionTitles) fail("common page should show monthly and weekly section titles", JSON.stringify(commonSchedule));
+  if (!commonSchedule.hasAddButton) fail("common page should expose add controls for editable common sections", JSON.stringify(commonSchedule));
   if (commonSchedule.hasPriorityControl) fail("common schedule should not expose priority controls", JSON.stringify(commonSchedule));
   if (commonSchedule.hasLegacyWeeklyCopy) fail("legacy weekly summary copy leaked into common schedule", JSON.stringify(commonSchedule));
 
