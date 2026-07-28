@@ -268,11 +268,27 @@ check(
 check(
   "Supabase schema exposes registration email check and auth-to-profile repair",
   read("supabase/worklog_schema.sql").includes("create or replace function public.check_registration_email")
+    && read("supabase/worklog_schema.sql").includes("create or replace function public.repair_profile_approval_queue")
+    && read("supabase/worklog_schema.sql").includes("grant execute on function public.repair_profile_approval_queue() to authenticated")
     && read("supabase/worklog_schema.sql").includes("from auth.users u")
     && read("supabase/worklog_schema.sql").includes("where lower(coalesce(u.email, ''))")
     && read("supabase/worklog_schema.sql").includes("update public.profiles p")
-    && read("supabase/worklog_schema.sql").includes("from auth.users u"),
-  "SQL schema should support duplicate checks and make Auth signups visible in approval queue"
+    && read("supabase/worklog_schema.sql").includes("from auth.users u")
+    && js.includes('supabaseClient.rpc("repair_profile_approval_queue"'),
+  "SQL schema and app should support duplicate checks and make Auth signups visible in approval queue"
+);
+
+check(
+  "staff master supports representative-assigned missions",
+  js.includes("function staffDetailMissionEditor")
+    && js.includes('data-staff-edit-field="assignedMission"')
+    && js.includes('data-staff-edit-field="assignedMissionVisible"')
+    && js.includes("getAssignedMissionForEmployee")
+    && js.includes("대표 지정 미션")
+    && read("supabase/worklog_schema.sql").includes("assigned_mission text not null default ''")
+    && read("supabase/worklog_schema.sql").includes("assigned_mission_visible boolean not null default true")
+    && read("supabase/worklog_schema.sql").includes("approval and assigned mission fields can only be changed by an approver"),
+  "representatives should edit employee facts and assign visible/hidden missions that feed AI coaching"
 );
 
 check(

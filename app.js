@@ -267,6 +267,10 @@ const defaultProfile = {
   authUserId: "",
   accessPreset: "employee",
   permissions: {},
+  assignedMission: "",
+  assignedMissionVisible: true,
+  assignedMissionUpdatedAt: "",
+  assignedMissionUpdatedBy: "",
 };
 
 const profileApprovalFieldMeta = [
@@ -560,6 +564,7 @@ const authState = {
   pendingPasswordResetCount: 0,
   approvalRows: [],
   approvalRowsLoaded: false,
+  approvalRepairTried: false,
   passwordResetRows: [],
   selectedApprovalId: "",
   approvalTimer: null,
@@ -847,6 +852,10 @@ function getProfileEmployee() {
     hourlyWage: profile.hourlyWage || "",
     dailyWage: profile.dailyWage || "",
     workHours: profile.workHours || defaultProfile.workHours,
+    assignedMission: profile.assignedMission || "",
+    assignedMissionVisible: profile.assignedMissionVisible !== false,
+    assignedMissionUpdatedAt: profile.assignedMissionUpdatedAt || "",
+    assignedMissionUpdatedBy: profile.assignedMissionUpdatedBy || "",
   };
 }
 
@@ -2752,12 +2761,13 @@ function buildPersonalGrowthModel(employee = getSelectedEmployee(), log = getSel
 function getEmployeeMissionBase(employee = getSelectedEmployee(), log = getEmployeeLogForDate(employee.id)) {
   const growth = buildPersonalGrowthModel(employee, log);
   const manual = getManualTemplateForEmployee(employee);
-  const customMission = state.profile?.manualSettings?.missionsByEmployee?.[employee.id] || "";
+  const assignedMission = getAssignedMissionForEmployee(employee);
+  const customMission = canRevealAssignedMission(employee, assignedMission) ? assignedMission.text : "";
   const tasks = (log.tasks || []).filter((task) => String(task.text || "").trim());
   const entries = (log.schedule || []).filter((entry) => getScheduleEntryText(entry));
   const reportText = String(log.report || log.memo || "").trim();
   const attendance = getAttendanceStatusForLog(employee, log);
-  return { employee, log, growth, manual, customMission, tasks, entries, reportText, attendance };
+  return { employee, log, growth, manual, assignedMission, customMission, tasks, entries, reportText, attendance };
 }
 
 function createMissionProposal(base, seed) {
@@ -2791,9 +2801,9 @@ function getMissionProposalsForEmployee(employee = getSelectedEmployee(), log = 
       type: "지정미션",
       priority: "A",
       title: customMission.split(/\n|\.|,/).find(Boolean)?.trim() || "대표 지정 미션 점검",
-      text: "직원설정에 입력된 지정 미션을 오늘 실행 가능한 업무로 쪼개어 기록합니다.",
-      tip: "지정 미션은 업무일지에 완료조건을 붙여야 실행 추적이 됩니다.",
-      reason: "직원별 미션 데이터",
+      text: "대표가 부여한 미션을 오늘 실행 가능한 업무로 쪼개어 기록합니다.",
+      tip: "대표 지정 미션은 업무일지에 완료조건을 붙여야 실행 추적이 됩니다.",
+      reason: "대표 지정 미션",
       impact: "대표 의도 반영",
       taskText: customMission.split(/\n/).find(Boolean)?.trim() || "대표 지정 미션 실행",
     });
@@ -4106,6 +4116,72 @@ function getManualSettings() {
   return state.profile.manualSettings;
 }
 
+function normalizeAssignedMissionRecord(value, visible = true) {
+  if (!value) return { text: "", visible: visible !== false, updatedAt: "", updatedBy: "", source: "" };
+  if (typeof value === "string") {
+    return { text: value.trim(), visible: visible !== false, updatedAt: "", updatedBy: "", source: "local" };
+  }
+  return {
+    text: String(value.text || value.assignedMission || value.mission || "").trim(),
+    visible: value.visible !== false && value.assignedMissionVisible !== false,
+    updatedAt: value.updatedAt || value.assignedMissionUpdatedAt || "",
+    updatedBy: value.updatedBy || value.assignedMissionUpdatedBy || "",
+    source: value.source || "local",
+  };
+}
+
+function getEmployeeSourceProfileRow(employee = {}) {
+  const email = String(employee.email || "").trim().toLowerCase();
+  return (authState.approvalRows || []).find((row) => {
+    if (employee.sourceProfileId && row.id === employee.sourceProfileId) return true;
+    if (email && String(row.email || "").trim().toLowerCase() === email) return true;
+    return false;
+  }) || null;
+}
+
+function canRevealAssignedMission(employee = {}, record = {}) {
+  if (!String(record.text || "").trim()) return false;
+  if (record.visible !== false) return true;
+  if (isRepresentativeProfile() || hasApprovalAuthority()) return true;
+  if (hasProfilePermission("staffManage") || hasProfilePermission("staffApproval")) return true;
+  const ownId = getSelectedEmployee()?.id || getMappedProfileEmployeeId();
+  return employee.id && employee.id !== ownId && canEditStaffProfile(employee);
+}
+
+function getAssignedMissionForEmployee(employee = {}) {
+  const row = getEmployeeSourceProfileRow(employee);
+  if (row) {
+    return normalizeAssignedMissionRecord({
+      text: row.assigned_mission || "",
+      visible: row.assigned_mission_visible !== false,
+      updatedAt: row.assigned_mission_updated_at || "",
+      updatedBy: row.assigned_mission_updated_by || "",
+      source: "profile",
+    });
+  }
+  const override = state.employeeDirectoryOverrides?.[employee.id];
+  if (override?.assignedMission || override?.assignedMissionVisible === false) {
+    return normalizeAssignedMissionRecord({
+      text: override.assignedMission || "",
+      visible: override.assignedMissionVisible !== false,
+      updatedAt: override.assignedMissionUpdatedAt || "",
+      updatedBy: override.assignedMissionUpdatedBy || "",
+      source: "override",
+    });
+  }
+  if (employee.assignedMission || employee.assignedMissionVisible === false) {
+    return normalizeAssignedMissionRecord({
+      text: employee.assignedMission || "",
+      visible: employee.assignedMissionVisible !== false,
+      updatedAt: employee.assignedMissionUpdatedAt || "",
+      updatedBy: employee.assignedMissionUpdatedBy || "",
+      source: "employee",
+    });
+  }
+  const localMission = state.profile?.manualSettings?.missionsByEmployee?.[employee.id];
+  return normalizeAssignedMissionRecord(localMission);
+}
+
 function renderManualSettings() {
   const settings = getManualSettings();
   const roleSelect = document.getElementById("manualRoleSelect");
@@ -4213,6 +4289,10 @@ async function refreshApprovalNotification() {
     renderApprovalNotification();
     return;
   }
+  if (!authState.approvalRepairTried) {
+    authState.approvalRepairTried = true;
+    await repairApprovalQueue({ silent: true });
+  }
   const { data, error } = await supabaseClient
     .from("profiles")
     .select("id, approval_status, pending_profile_changes");
@@ -4242,12 +4322,39 @@ function openApprovalManagement() {
   switchSettingsTab("approval");
   setTimeout(() => {
     if (activeView !== "settings" || !canShowApprovalMenu()) return;
-    loadApprovalRequests();
+    authState.approvalRepairTried = false;
+    loadApprovalRequests({ repair: true });
     loadPasswordResetRequests();
   }, 0);
 }
 
-async function loadApprovalRequests() {
+async function repairApprovalQueue({ silent = true } = {}) {
+  if (!supabaseClient || !authState.user || !hasApprovalAuthority()) return false;
+  try {
+    const { data, error } = await supabaseClient.rpc("repair_profile_approval_queue");
+    if (error) {
+      if (!silent) showAppToast(`승인요청 동기화 실패: ${error.message}`);
+      return false;
+    }
+    if (!silent) {
+      const count = Number(data || 0);
+      showAppToast(count > 0 ? `승인요청 ${count}건을 동기화했습니다` : "승인요청 목록을 확인했습니다");
+    }
+    return true;
+  } catch (error) {
+    if (!silent) showAppToast(`승인요청 동기화 실패: ${error.message}`);
+    return false;
+  }
+}
+
+async function fetchApprovalProfileRows() {
+  return supabaseClient
+    .from("profiles")
+    .select("*")
+    .order("updated_at", { ascending: false });
+}
+
+async function loadApprovalRequests(options = {}) {
   const list = document.getElementById("approvalRequestList");
   if (!list) return;
   if (!supabaseClient || !authState.user) {
@@ -4255,15 +4362,24 @@ async function loadApprovalRequests() {
     return;
   }
   list.innerHTML = `<p class="empty-note">직원등록 신청을 불러오는 중입니다...</p>`;
-  const { data, error } = await supabaseClient
-    .from("profiles")
-    .select("*")
-    .order("updated_at", { ascending: false });
+  let { data, error } = await fetchApprovalProfileRows();
   if (error) {
     list.innerHTML = `<p class="empty-note">직원등록 신청을 불러오지 못했습니다. 승인 데이터 구조를 적용했는지 확인해주세요.<br>${escapeHtml(error.message)}</p>`;
     return;
   }
-  const rows = getVisibleApprovalRows(data || []);
+  let rows = getVisibleApprovalRows(data || []);
+  if (!rows.length && options.repair !== false && !authState.approvalRepairTried) {
+    authState.approvalRepairTried = true;
+    const repaired = await repairApprovalQueue({ silent: !options.manual });
+    if (repaired) {
+      ({ data, error } = await fetchApprovalProfileRows());
+      if (error) {
+        list.innerHTML = `<p class="empty-note">직원등록 신청 동기화 후 목록을 다시 불러오지 못했습니다.<br>${escapeHtml(error.message)}</p>`;
+        return;
+      }
+      rows = getVisibleApprovalRows(data || []);
+    }
+  }
   authState.approvalRows = rows;
   authState.approvalRowsLoaded = true;
   authState.pendingApprovalCount = countApprovalActionItems(rows);
@@ -4286,10 +4402,11 @@ async function loadApprovalRequests() {
 
 async function refreshStaffApprovalRows() {
   if (!supabaseClient || !authState.user || !hasApprovalAuthority()) return;
-  const { data, error } = await supabaseClient
-    .from("profiles")
-    .select("*")
-    .order("updated_at", { ascending: false });
+  if (!authState.approvalRepairTried) {
+    authState.approvalRepairTried = true;
+    await repairApprovalQueue({ silent: true });
+  }
+  const { data, error } = await fetchApprovalProfileRows();
   if (error) return;
   authState.approvalRows = getVisibleApprovalRows(data || []);
   authState.approvalRowsLoaded = true;
@@ -4556,6 +4673,7 @@ async function updateApprovalRequest(id, action) {
     authState.selectedApprovalId = id;
     await loadApprovalRequests();
     await refreshApprovalNotification();
+    showAppToast(action === "applyProfileChange" ? "직원정보 변경요청을 적용했습니다" : "직원정보 변경요청을 반려했습니다");
     return;
   }
   const payload = collectApprovalCardPayload(id);
@@ -4578,6 +4696,9 @@ async function updateApprovalRequest(id, action) {
   authState.selectedApprovalId = id;
   await loadApprovalRequests();
   await refreshApprovalNotification();
+  if (action === "approve") showAppToast("직원등록을 승인했습니다");
+  else if (action === "reject") showAppToast("직원등록을 반려했습니다");
+  else showAppToast("승인요청 정보를 저장했습니다");
 }
 
 async function requestPasswordResetApproval() {
@@ -5110,6 +5231,7 @@ function clearAuthRuntimeState() {
   authState.approvalRows = [];
   authState.passwordResetRows = [];
   authState.selectedApprovalId = "";
+  authState.approvalRepairTried = false;
   authState.applyingRemote = false;
   clearTimeout(authState.saveTimer);
   authState.saveTimer = null;
@@ -5259,7 +5381,7 @@ async function signUpWithSupabase(options = {}) {
       }
       return;
     }
-    renderAuthStatus("직원 계정이 생성되었습니다. 이메일 확인 후 로그인하면 직원등록 정보가 대표 승인 목록에 저장됩니다.");
+    renderAuthStatus("직원 계정이 생성되었습니다. 직원등록 정보는 대표 승인 목록에 접수됩니다. 이메일 확인과 대표 승인 후 사용할 수 있습니다.");
     if (options.closeOnSuccess) {
       showSignupSubmittedMessage();
       closeSignupAfterSubmit();
@@ -5440,8 +5562,9 @@ async function loadRemoteWorklogForActiveDate() {
   renderAuthStatus();
 }
 
-function profileToRemoteRow() {
-  return {
+function profileToRemoteRow(options = {}) {
+  const includeApprovalFields = options.includeApprovalFields !== false;
+  const row = {
     id: authState.user.id,
     org: state.profile.org,
     role: state.profile.role,
@@ -5462,14 +5585,17 @@ function profileToRemoteRow() {
     strengths: state.profile.strengths,
     weaknesses: state.profile.weaknesses,
     development_goals: state.profile.developmentGoals,
-    approval_status: state.profile.approvalStatus || "pending",
-    approval_note: state.profile.approvalNote || "",
-    approved_by: state.profile.approvedBy || null,
-    approved_at: state.profile.approvedAt || null,
-    pending_profile_changes: state.profile.pendingProfileChanges || {},
-    profile_change_requested_at: state.profile.profileChangeRequestedAt || null,
     updated_at: new Date().toISOString(),
   };
+  if (includeApprovalFields) {
+    row.approval_status = state.profile.approvalStatus || "pending";
+    row.approval_note = state.profile.approvalNote || "";
+    row.approved_by = state.profile.approvedBy || null;
+    row.approved_at = state.profile.approvedAt || null;
+    row.pending_profile_changes = state.profile.pendingProfileChanges || {};
+    row.profile_change_requested_at = state.profile.profileChangeRequestedAt || null;
+  }
+  return row;
 }
 
 function remoteRowToProfile(row) {
@@ -5499,12 +5625,17 @@ function remoteRowToProfile(row) {
     approvedAt: row.approved_at || "",
     pendingProfileChanges: row.pending_profile_changes || {},
     profileChangeRequestedAt: row.profile_change_requested_at || "",
+    assignedMission: row.assigned_mission || "",
+    assignedMissionVisible: row.assigned_mission_visible !== false,
+    assignedMissionUpdatedAt: row.assigned_mission_updated_at || "",
+    assignedMissionUpdatedBy: row.assigned_mission_updated_by || "",
   };
 }
 
 async function saveRemoteProfile() {
   if (!supabaseClient || !authState.user) return;
-  const row = profileToRemoteRow();
+  const includeApprovalFields = hasApprovalAuthority() || !isProfileApproved();
+  const row = profileToRemoteRow({ includeApprovalFields });
   const { error } = await supabaseClient.from("profiles").upsert(row);
   if (!error) return;
   if (/pending_profile_changes|profile_change_requested_at/i.test(error.message || "")) {
@@ -8986,6 +9117,10 @@ function approvalRowToStaffEmployee(row = {}) {
     dailyWage: profile.dailyWage || "",
     workHours: profile.workHours || base?.workHours || defaultProfile.workHours,
     approvalStatus: profile.approvalStatus || row.approval_status || "approved",
+    assignedMission: row.assigned_mission || profile.assignedMission || "",
+    assignedMissionVisible: row.assigned_mission_visible !== false,
+    assignedMissionUpdatedAt: row.assigned_mission_updated_at || "",
+    assignedMissionUpdatedBy: row.assigned_mission_updated_by || "",
   };
 }
 
@@ -9241,11 +9376,35 @@ function staffDetailEditField(row, key, label, type = "text") {
   `;
 }
 
+function staffDetailMissionEditor(row = {}) {
+  const mission = getAssignedMissionForEmployee(row);
+  return `
+    <section class="staff-detail-section staff-detail-mission">
+      <div class="staff-detail-edit-title">
+        <strong>대표 지정 미션</strong>
+        <span>대표가 직접 부여한 미션은 이 직원의 AI 코칭과 오늘 업무 제안의 우선 신호가 됩니다.</span>
+      </div>
+      <label>미션 내용
+        <textarea data-staff-edit-field="assignedMission" rows="4" placeholder="예: 이번 달 재등록 후보 20명 관리 체계를 만들고, 매일 상담 후속 업무를 업무일지에 남깁니다.">${escapeHtml(mission.text || "")}</textarea>
+      </label>
+      <label class="staff-mission-visibility">
+        <input type="checkbox" data-staff-edit-field="assignedMissionVisible" ${mission.visible !== false ? "checked" : ""} />
+        <span>직원에게 보이기</span>
+      </label>
+      <p>숨김 상태에서는 대표와 권한자만 내용을 볼 수 있고, 직원 화면에는 직접 문구를 노출하지 않습니다.</p>
+    </section>
+  `;
+}
+
 function collectStaffDetailEditFields() {
   const card = document.querySelector("#staffDetailOverlay .staff-detail-card");
   const fields = {};
   card?.querySelectorAll("[data-staff-edit-field]").forEach((field) => {
     const key = field.dataset.staffEditField;
+    if (field.type === "checkbox") {
+      fields[key] = field.checked;
+      return;
+    }
     const value = String(field.value || "").trim();
     fields[key] = key === "phone" ? formatPhoneNumber(value) : value;
     if (key === "phone") field.value = fields[key];
@@ -9253,7 +9412,7 @@ function collectStaffDetailEditFields() {
   return fields;
 }
 
-function staffEditFieldsToRemotePayload(fields = {}) {
+function staffEditFieldsToRemotePayload(fields = {}, row = {}) {
   const hasField = (key) => Object.prototype.hasOwnProperty.call(fields, key);
   const numericOrNull = (value) => {
     const normalized = String(value || "").replaceAll(",", "").trim();
@@ -9281,6 +9440,18 @@ function staffEditFieldsToRemotePayload(fields = {}) {
   });
   if (hasField("hourlyWage")) payload.hourly_wage = numericOrNull(fields.hourlyWage);
   if (hasField("dailyWage")) payload.daily_wage = numericOrNull(fields.dailyWage);
+  if (hasField("assignedMission")) {
+    payload.assigned_mission = fields.assignedMission || "";
+    payload.assigned_mission_visible = fields.assignedMissionVisible !== false;
+    const currentMission = getAssignedMissionForEmployee(row);
+    if (
+      String(currentMission.text || "") !== String(fields.assignedMission || "")
+      || currentMission.visible !== payload.assigned_mission_visible
+    ) {
+      payload.assigned_mission_updated_by = authState.user?.id || null;
+      payload.assigned_mission_updated_at = new Date().toISOString();
+    }
+  }
   return payload;
 }
 
@@ -9299,6 +9470,10 @@ function mergeStaffFieldsIntoApprovalRow(row = {}, fields = {}) {
     employment_type: fields.employmentType ?? row.employment_type,
     hourly_wage: fields.hourlyWage === "" ? null : (fields.hourlyWage ?? row.hourly_wage),
     daily_wage: fields.dailyWage === "" ? null : (fields.dailyWage ?? row.daily_wage),
+    assigned_mission: fields.assignedMission ?? row.assigned_mission,
+    assigned_mission_visible: fields.assignedMissionVisible ?? row.assigned_mission_visible,
+    assigned_mission_updated_by: fields.assignedMission !== undefined ? (authState.user?.id || row.assigned_mission_updated_by) : row.assigned_mission_updated_by,
+    assigned_mission_updated_at: fields.assignedMission !== undefined ? new Date().toISOString() : row.assigned_mission_updated_at,
     updated_at: new Date().toISOString(),
   };
 }
@@ -9324,11 +9499,26 @@ async function saveStaffProfileEdits(employeeId) {
   }
   setStaffDetailSaveStatus("저장 중...", "saving");
   if (row.sourceProfileId && supabaseClient && authState.user) {
-    const payload = staffEditFieldsToRemotePayload(fields);
+    const payload = staffEditFieldsToRemotePayload(fields, row);
     const { error } = await supabaseClient.from("profiles").update(payload).eq("id", row.sourceProfileId);
     if (error) {
-      setStaffDetailSaveStatus(`원격 저장 실패: ${error.message}`, "error");
-      return;
+      if (/assigned_mission/i.test(error.message || "")) {
+        const fallbackPayload = { ...payload };
+        delete fallbackPayload.assigned_mission;
+        delete fallbackPayload.assigned_mission_visible;
+        delete fallbackPayload.assigned_mission_updated_by;
+        delete fallbackPayload.assigned_mission_updated_at;
+        const { error: fallbackError } = await supabaseClient.from("profiles").update(fallbackPayload).eq("id", row.sourceProfileId);
+        if (!fallbackError) {
+          setStaffDetailSaveStatus("직원정보는 저장되었습니다. 대표 지정 미션 저장은 최신 Supabase SQL 적용 후 원격 반영됩니다.", "done");
+        } else {
+          setStaffDetailSaveStatus(`원격 저장 실패: ${fallbackError.message}`, "error");
+          return;
+        }
+      } else {
+        setStaffDetailSaveStatus(`원격 저장 실패: ${error.message}`, "error");
+        return;
+      }
     }
     authState.approvalRows = (authState.approvalRows || []).map((item) => (
       item.id === row.sourceProfileId ? mergeStaffFieldsIntoApprovalRow(item, fields) : item
@@ -9341,6 +9531,10 @@ async function saveStaffProfileEdits(employeeId) {
   state.employeeDirectoryOverrides[employeeId] = {
     ...(state.employeeDirectoryOverrides[employeeId] || {}),
     ...fields,
+    assignedMission: fields.assignedMission || "",
+    assignedMissionVisible: fields.assignedMissionVisible !== false,
+    assignedMissionUpdatedAt: fields.assignedMission !== undefined ? new Date().toISOString() : state.employeeDirectoryOverrides[employeeId]?.assignedMissionUpdatedAt,
+    assignedMissionUpdatedBy: fields.assignedMission !== undefined ? (authState.user?.id || "") : state.employeeDirectoryOverrides[employeeId]?.assignedMissionUpdatedBy,
   };
   saveState({ fastSave: true });
   renderStaffMaster();
@@ -9383,6 +9577,12 @@ function renderStaffDetailModal(row) {
           <strong>역할 매뉴얼</strong>
           <p>${escapeHtml(manual?.title || "역할 매뉴얼")} · ${escapeHtml(manual?.summary || "직무 기준을 확인합니다.")}</p>
         </section>
+        ${canEdit ? staffDetailMissionEditor(row) : `
+          <section class="staff-detail-section">
+            <strong>대표 지정 미션</strong>
+            <p>${escapeHtml(getAssignedMissionForEmployee(row).visible === false ? "비공개 미션입니다." : (getAssignedMissionForEmployee(row).text || "아직 부여된 미션이 없습니다."))}</p>
+          </section>
+        `}
         <section class="staff-detail-section staff-detail-edit">
           <div class="staff-detail-edit-title">
             <strong>${canEdit ? "직원 정보 수정" : "직원 정보 검토"}</strong>
@@ -11288,7 +11488,10 @@ document.querySelectorAll("[data-settings-tab]").forEach((button) => {
 document.getElementById("closeSettingsButton")?.addEventListener("click", () => switchView("worklog"));
 document.getElementById("saveProfileButton").onclick = saveProfileFromForm;
 document.getElementById("saveSettingsProfileButton")?.addEventListener("click", saveSettingsProfileFromForm);
-document.getElementById("refreshApprovalRequestsButton")?.addEventListener("click", loadApprovalRequests);
+document.getElementById("refreshApprovalRequestsButton")?.addEventListener("click", () => {
+  authState.approvalRepairTried = false;
+  loadApprovalRequests({ repair: true, manual: true });
+});
 document.getElementById("refreshPasswordResetRequestsButton")?.addEventListener("click", loadPasswordResetRequests);
 document.getElementById("staffOpenApprovalButton")?.addEventListener("click", () => {
   openApprovalManagement();

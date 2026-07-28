@@ -25,6 +25,10 @@ create table if not exists public.profiles (
   approved_at timestamptz,
   pending_profile_changes jsonb not null default '{}'::jsonb,
   profile_change_requested_at timestamptz,
+  assigned_mission text not null default '',
+  assigned_mission_visible boolean not null default true,
+  assigned_mission_updated_by uuid references auth.users(id),
+  assigned_mission_updated_at timestamptz,
   updated_at timestamptz not null default now()
 );
 
@@ -40,6 +44,10 @@ alter table public.profiles add column if not exists approved_by uuid references
 alter table public.profiles add column if not exists approved_at timestamptz;
 alter table public.profiles add column if not exists pending_profile_changes jsonb not null default '{}'::jsonb;
 alter table public.profiles add column if not exists profile_change_requested_at timestamptz;
+alter table public.profiles add column if not exists assigned_mission text not null default '';
+alter table public.profiles add column if not exists assigned_mission_visible boolean not null default true;
+alter table public.profiles add column if not exists assigned_mission_updated_by uuid references auth.users(id);
+alter table public.profiles add column if not exists assigned_mission_updated_at timestamptz;
 
 create or replace function public.to_numeric_or_null(value text)
 returns numeric
@@ -63,9 +71,7 @@ declare
   user_email text := lower(coalesce(new.email, meta->>'email', ''));
   role_text text := coalesce(meta->>'role', '직원');
   primary_text text := coalesce(meta->>'primaryWork', '');
-  is_approver boolean := user_email in ('j3010@ymail.com', 'tbakorea@gmail.com')
-    or role_text ~* '대표|관리자|센터장|총괄|임원|admin|owner|manager'
-    or primary_text ~* '대표|관리자|센터장|총괄|임원|admin|owner|manager';
+  is_approver boolean := user_email in ('j3010@ymail.com', 'tbakorea@gmail.com');
 begin
   insert into public.profiles (
     id,
@@ -177,15 +183,11 @@ select
   coalesce(u.raw_user_meta_data->>'weaknesses', ''),
   coalesce(u.raw_user_meta_data->>'developmentGoals', ''),
   case
-    when lower(coalesce(u.email, '')) in ('j3010@ymail.com', 'tbakorea@gmail.com')
-      or coalesce(u.raw_user_meta_data->>'role', '') ~* '대표|관리자|센터장|총괄|임원|admin|owner|manager'
-    then 'approved'
+    when lower(coalesce(u.email, '')) in ('j3010@ymail.com', 'tbakorea@gmail.com') then 'approved'
     else 'pending'
   end,
   case
-    when lower(coalesce(u.email, '')) in ('j3010@ymail.com', 'tbakorea@gmail.com')
-      or coalesce(u.raw_user_meta_data->>'role', '') ~* '대표|관리자|센터장|총괄|임원|admin|owner|manager'
-    then now()
+    when lower(coalesce(u.email, '')) in ('j3010@ymail.com', 'tbakorea@gmail.com') then now()
     else null
   end,
   now()
@@ -215,15 +217,11 @@ set org = coalesce(nullif(u.raw_user_meta_data->>'org', ''), nullif(p.org, ''), 
     weaknesses = coalesce(nullif(u.raw_user_meta_data->>'weaknesses', ''), p.weaknesses, ''),
     development_goals = coalesce(nullif(u.raw_user_meta_data->>'developmentGoals', ''), p.development_goals, ''),
     approval_status = case
-      when lower(coalesce(u.email, '')) in ('j3010@ymail.com', 'tbakorea@gmail.com')
-        or coalesce(u.raw_user_meta_data->>'role', '') ~* '대표|관리자|센터장|총괄|임원|admin|owner|manager'
-      then 'approved'
+      when lower(coalesce(u.email, '')) in ('j3010@ymail.com', 'tbakorea@gmail.com') then 'approved'
       else coalesce(nullif(p.approval_status, ''), 'pending')
     end,
     approved_at = case
-      when lower(coalesce(u.email, '')) in ('j3010@ymail.com', 'tbakorea@gmail.com')
-        or coalesce(u.raw_user_meta_data->>'role', '') ~* '대표|관리자|센터장|총괄|임원|admin|owner|manager'
-      then coalesce(p.approved_at, now())
+      when lower(coalesce(u.email, '')) in ('j3010@ymail.com', 'tbakorea@gmail.com') then coalesce(p.approved_at, now())
       else p.approved_at
     end,
     updated_at = now()
@@ -238,7 +236,7 @@ update public.profiles
 set approval_status = 'approved',
     approved_at = coalesce(approved_at, now())
 where lower(coalesce(email, '')) in ('j3010@ymail.com', 'tbakorea@gmail.com')
-   or coalesce(role, '') ~* '대표|관리자|센터장|총괄|임원|admin|owner|manager';
+;
 
 create table if not exists public.worklog_states (
   id uuid primary key default gen_random_uuid(),
@@ -294,6 +292,110 @@ as $$
   );
 $$;
 
+create or replace function public.repair_profile_approval_queue()
+returns integer
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  repaired_count integer := 0;
+  inserted_count integer := 0;
+  filled_count integer := 0;
+begin
+  if not public.is_profile_approver() then
+    raise exception 'approval queue repair requires approver';
+  end if;
+
+  insert into public.profiles (
+    id,
+    org,
+    role,
+    name,
+    phone,
+    email,
+    primary_work,
+    secondary_work,
+    workplace,
+    employment_type,
+    labor_id,
+    address,
+    daily_wage,
+    hourly_wage,
+    work_hours,
+    weekly_work_hours,
+    extra,
+    strengths,
+    weaknesses,
+    development_goals,
+    approval_status,
+    approved_at,
+    updated_at
+  )
+  select
+    u.id,
+    coalesce(nullif(u.raw_user_meta_data->>'org', ''), '(주)방주'),
+    coalesce(nullif(u.raw_user_meta_data->>'role', ''), '직원'),
+    coalesce(nullif(u.raw_user_meta_data->>'name', ''), split_part(coalesce(u.email, ''), '@', 1), '내 프로필'),
+    coalesce(u.raw_user_meta_data->>'phone', ''),
+    coalesce(u.email, ''),
+    coalesce(u.raw_user_meta_data->>'primaryWork', ''),
+    coalesce(u.raw_user_meta_data->>'secondaryWork', ''),
+    coalesce(u.raw_user_meta_data->>'workplace', ''),
+    coalesce(nullif(u.raw_user_meta_data->>'employmentType', ''), '직원'),
+    coalesce(u.raw_user_meta_data->>'laborId', ''),
+    coalesce(u.raw_user_meta_data->>'address', ''),
+    public.to_numeric_or_null(u.raw_user_meta_data->>'dailyWage'),
+    public.to_numeric_or_null(u.raw_user_meta_data->>'hourlyWage'),
+    coalesce(nullif(u.raw_user_meta_data->>'workHours', ''), '08:00-18:00'),
+    coalesce(u.raw_user_meta_data->'weeklyWorkHours', '{}'::jsonb),
+    coalesce(u.raw_user_meta_data->>'extra', ''),
+    coalesce(u.raw_user_meta_data->>'strengths', ''),
+    coalesce(u.raw_user_meta_data->>'weaknesses', ''),
+    coalesce(u.raw_user_meta_data->>'developmentGoals', ''),
+    case when lower(coalesce(u.email, '')) in ('j3010@ymail.com', 'tbakorea@gmail.com') then 'approved' else 'pending' end,
+    case when lower(coalesce(u.email, '')) in ('j3010@ymail.com', 'tbakorea@gmail.com') then now() else null end,
+    now()
+  from auth.users u
+  where not exists (
+    select 1 from public.profiles p where p.id = u.id
+  );
+  get diagnostics inserted_count = row_count;
+
+  update public.profiles p
+  set email = coalesce(nullif(p.email, ''), nullif(u.email, ''), u.raw_user_meta_data->>'email', ''),
+      name = coalesce(nullif(p.name, ''), nullif(u.raw_user_meta_data->>'name', ''), split_part(coalesce(u.email, ''), '@', 1), '내 프로필'),
+      org = coalesce(nullif(p.org, ''), nullif(u.raw_user_meta_data->>'org', ''), '(주)방주'),
+      workplace = coalesce(nullif(p.workplace, ''), nullif(u.raw_user_meta_data->>'workplace', ''), ''),
+      work_hours = coalesce(nullif(p.work_hours, ''), nullif(u.raw_user_meta_data->>'workHours', ''), '08:00-18:00'),
+      approval_status = case
+        when lower(coalesce(u.email, p.email, '')) in ('j3010@ymail.com', 'tbakorea@gmail.com') then 'approved'
+        else coalesce(nullif(p.approval_status, ''), 'pending')
+      end,
+      approved_at = case
+        when lower(coalesce(u.email, p.email, '')) in ('j3010@ymail.com', 'tbakorea@gmail.com') then coalesce(p.approved_at, now())
+        else p.approved_at
+      end,
+      updated_at = now()
+  from auth.users u
+  where p.id = u.id
+    and (
+      nullif(p.email, '') is null
+      or nullif(p.name, '') is null
+      or nullif(p.org, '') is null
+      or nullif(p.work_hours, '') is null
+      or lower(coalesce(u.email, p.email, '')) in ('j3010@ymail.com', 'tbakorea@gmail.com')
+      or coalesce(p.approval_status, '') = ''
+    );
+  get diagnostics filled_count = row_count;
+
+  repaired_count := inserted_count + filled_count;
+  return repaired_count;
+end;
+$$;
+
+grant execute on function public.repair_profile_approval_queue() to authenticated;
+
 create or replace function public.check_registration_email(email_to_check text)
 returns jsonb
 language plpgsql
@@ -344,9 +446,13 @@ begin
       or new.approval_note is distinct from old.approval_note
       or new.approved_by is distinct from old.approved_by
       or new.approved_at is distinct from old.approved_at
+      or new.assigned_mission is distinct from old.assigned_mission
+      or new.assigned_mission_visible is distinct from old.assigned_mission_visible
+      or new.assigned_mission_updated_by is distinct from old.assigned_mission_updated_by
+      or new.assigned_mission_updated_at is distinct from old.assigned_mission_updated_at
     )
   then
-    raise exception 'approval fields can only be changed by an approver';
+    raise exception 'approval and assigned mission fields can only be changed by an approver';
   end if;
   return new;
 end;

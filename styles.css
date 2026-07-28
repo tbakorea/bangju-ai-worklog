@@ -3304,7 +3304,8 @@ body[data-device-mode="narrow"] .os-mode-switch span[data-device-mode="narrow"] 
   font-weight: 900;
 }
 
-.staff-detail-edit-grid input {
+.staff-detail-edit-grid input,
+.staff-detail-mission textarea {
   min-width: 0;
   min-height: 38px;
   border: 1px solid rgba(33, 55, 45, 0.13);
@@ -3314,6 +3315,45 @@ body[data-device-mode="narrow"] .os-mode-switch span[data-device-mode="narrow"] 
   padding: 8px 10px;
   font-size: 14px;
   font-weight: 850;
+}
+
+.staff-detail-mission {
+  display: grid;
+  gap: 10px;
+  border-color: rgba(15, 59, 46, 0.18);
+  background: linear-gradient(135deg, rgba(15, 59, 46, 0.08), rgba(255, 253, 248, 0.78));
+}
+
+.staff-detail-mission label {
+  display: grid;
+  gap: 6px;
+  color: rgba(38, 50, 56, 0.64);
+  font-size: 11px;
+  font-weight: 950;
+}
+
+.staff-detail-mission textarea {
+  min-height: 108px;
+  resize: vertical;
+  line-height: 1.5;
+}
+
+.staff-mission-visibility {
+  display: inline-flex !important;
+  grid-template-columns: auto 1fr;
+  align-items: center;
+  justify-content: flex-start;
+  width: fit-content;
+  border: 1px solid rgba(15, 59, 46, 0.12);
+  border-radius: 999px;
+  background: rgba(255, 253, 248, 0.78);
+  padding: 7px 11px;
+}
+
+.staff-mission-visibility input {
+  width: 18px;
+  height: 18px;
+  accent-color: var(--fitness-green);
 }
 
 .staff-detail-edit-actions {

@@ -1607,7 +1607,10 @@ async function checkFitnessNewEmployeeRegistrationFlow(browser) {
                   if (name === "check_registration_email") {
                     return Promise.resolve({ data: { exists: false, profileExists: false, authExists: false }, error: null });
                   }
-                  return Promise.resolve({ data: null, error: { message: "unknown rpc " + name } });
+                  if (name === "repair_profile_approval_queue") {
+                    return Promise.resolve({ data: 0, error: null });
+                  }
+	                  return Promise.resolve({ data: null, error: { message: "unknown rpc " + name } });
                 },
                 auth: {
                   getSession: () => Promise.resolve({ data: { session: null } }),
