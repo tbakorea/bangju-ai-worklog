@@ -4817,9 +4817,21 @@ async function updateApprovalRequest(id, action) {
       alert(`직원정보 변경요청 처리 실패: ${error.message}`);
       return;
     }
+    const nextRow = {
+      ...row,
+      ...payload,
+      approval_status: row.approval_status || "approved",
+    };
+    authState.approvalRows = (authState.approvalRows || []).map((item) => (
+      String(item.id) === String(id) ? nextRow : item
+    ));
+    applyApprovedProfileRowLocally(nextRow, `profile-${id}`);
+    saveState({ fastSave: true });
     authState.selectedApprovalId = id;
     await loadApprovalRequests();
     await refreshApprovalNotification();
+    if (activeView === "settings") renderSettings();
+    if (activeView === "staff") renderStaffMaster();
     showAppToast(action === "applyProfileChange" ? "직원정보 변경요청을 적용했습니다" : "직원정보 변경요청을 반려했습니다");
     return;
   }
@@ -4840,9 +4852,19 @@ async function updateApprovalRequest(id, action) {
     alert(`승인요청 처리 실패: ${error.message}`);
     return;
   }
+  const nextRow = { ...row, ...payload };
+  authState.approvalRows = (authState.approvalRows || []).map((item) => (
+    String(item.id) === String(id) ? nextRow : item
+  ));
+  if (action === "approve" || action === "save") {
+    applyApprovedProfileRowLocally(nextRow, `profile-${id}`);
+    saveState({ fastSave: true });
+  }
   authState.selectedApprovalId = id;
   await loadApprovalRequests();
   await refreshApprovalNotification();
+  if (activeView === "settings") renderSettings();
+  if (activeView === "staff") renderStaffMaster();
   if (action === "approve") showAppToast("직원등록을 승인했습니다");
   else if (action === "reject") showAppToast("직원등록을 반려했습니다");
   else showAppToast("승인요청 정보를 저장했습니다");
@@ -9543,10 +9565,10 @@ function renderLaborPayrollReportTemplate(labor, payroll, ledger) {
 }
 
 const laborReportModes = [
-  ["payroll", "급여명세서"],
-  ["ledger", "급여대장"],
-  ["freelancer", "프리랜서 신고"],
-  ["pt", "PT수업 집계"],
+  ["payroll", "① 급여명세서"],
+  ["ledger", "② 노무비 지급대장"],
+  ["freelancer", "③ 프리랜서 신고"],
+  ["pt", "④ PT수업 집계"],
 ];
 
 let currentLaborReportMode = "payroll";
@@ -9570,54 +9592,72 @@ function getCurrentLaborSiteLedger(labor) {
 function renderLaborWageLedgerReportTemplate(labor) {
   const siteLedger = getCurrentLaborSiteLedger(labor);
   const days = siteLedger.dayNumbers;
+  const laborEmployees = getVisibleLaborEmployees();
+  const rowModels = siteLedger.rows.map((row) => {
+    const employee = laborEmployees.find((item) => getLaborEmployeeLogId(item) === row.employeeId || item.id === row.employeeId)
+      || employees.find((item) => item.id === row.employeeId)
+      || { id: row.employeeId, name: row.name, employmentType: row.employmentType };
+    const summary = buildMonthlyLaborSummary(getLaborEmployeeLogId(employee), employee);
+    const statement = buildPayrollStatement(summary, employee, row);
+    return { row, employee, statement };
+  });
+  const totals = rowModels.reduce((sum, item) => ({
+    grossPay: sum.grossPay + (item.statement.grossPay || item.row.totalPay || 0),
+    deductionTotal: sum.deductionTotal + (item.statement.deductionTotal || 0),
+    netPay: sum.netPay + (item.statement.netPay || item.row.totalPay || 0),
+  }), { grossPay: 0, deductionTotal: 0, netPay: 0 });
   return `
     <article class="labor-paper labor-paper-landscape labor-paper-ledger-mode">
       <header class="labor-paper-simple-title">
-        <span>총인원 ${escapeHtml(String(siteLedger.rows.length))}</span>
-        <strong>${escapeHtml(siteLedger.monthLabel)} 급여대장</strong>
-        <b>주식회사 방주</b>
+        <span>총인원 ${escapeHtml(String(rowModels.length))}</span>
+        <strong>${escapeHtml(siteLedger.monthLabel)} 노무비 지급대장</strong>
+        <b>${escapeHtml(siteLedger.site)}</b>
       </header>
       <section class="labor-paper-section labor-paper-wide-table">
         <table>
           <thead>
             <tr>
-              <th>순번</th><th>성명</th><th>직책</th><th>통상시급</th><th>근로시간</th><th>입사일</th>
-              <th>기본급</th><th>식대</th><th>시간/금액</th><th>연장</th><th>야간</th><th>휴일</th><th>지급액</th>
-              <th>소득세</th><th>국민연금</th><th>건강보험</th><th>고용보험</th><th>공제액</th><th>실수령액</th>
+              <th rowspan="2">순번</th><th rowspan="2">성명</th><th rowspan="2">직책</th><th rowspan="2">주민/식별</th>
+              <th colspan="${days.length}">작업/근무 일수 표시</th>
+              <th rowspan="2">출력일수</th><th rowspan="2">총시간</th><th rowspan="2">지급총액</th>
+              <th rowspan="2">공제액</th><th rowspan="2">실지급액</th><th rowspan="2">확인</th>
+            </tr>
+            <tr>
+              ${days.map((day) => `<th>${day}</th>`).join("")}
             </tr>
           </thead>
           <tbody>
-            ${siteLedger.rows.map((row, index) => {
-              const employee = employees.find((item) => item.id === row.employeeId) || {};
+            ${rowModels.map(({ row, employee, statement }, index) => {
               const profile = getLaborProfileForEmployee(employee);
-              const hourly = numberValue(profile.hourlyWage);
-              const gross = row.totalPay || 0;
+              const gross = statement.grossPay || row.totalPay || 0;
+              const deductionTotal = statement.deductionTotal || 0;
+              const netPay = statement.netPay || Math.max(0, gross - deductionTotal);
               return `
                 <tr>
                   <td>${index + 1}</td>
                   <td>${escapeHtml(row.name)}</td>
                   <td>${escapeHtml(employee.role || row.employmentType)}</td>
-                  <td>${escapeHtml(hourly ? formatCurrency(hourly) : "-")}</td>
+                  <td>${escapeHtml(maskLaborId(profile.laborId || ""))}</td>
+                  ${row.dayCells.map((cell) => `<td>${escapeHtml(cell.label || "")}</td>`).join("")}
+                  <td>${escapeHtml(String(row.workDays || 0))}</td>
                   <td>${escapeHtml(formatMinutesAsHours(row.actualMinutes))}</td>
-                  <td>${escapeHtml(profile.joinDate || "-")}</td>
-                  <td>${escapeHtml(gross ? formatCurrency(gross) : "-")}</td>
-                  <td>-</td><td>-</td><td>-</td><td>-</td><td>-</td>
                   <td>${escapeHtml(gross ? formatCurrency(gross) : "계산 대기")}</td>
-                  <td>-</td><td>-</td><td>-</td><td>-</td><td>-</td>
-                  <td>${escapeHtml(gross ? formatCurrency(gross) : "계산 대기")}</td>
+                  <td>${escapeHtml(deductionTotal ? formatCurrency(deductionTotal) : "-")}</td>
+                  <td>${escapeHtml(netPay ? formatCurrency(netPay) : "계산 대기")}</td>
+                  <td></td>
                 </tr>
               `;
             }).join("")}
           </tbody>
           <tfoot>
             <tr>
-              <td colspan="4">합계</td>
+              <td colspan="${4 + days.length}">합계</td>
+              <td>${escapeHtml(String(siteLedger.totals.workDays || 0))}</td>
               <td>${escapeHtml(formatMinutesAsHours(siteLedger.totals.actualMinutes))}</td>
+              <td>${escapeHtml(totals.grossPay ? formatCurrency(totals.grossPay) : "계산 대기")}</td>
+              <td>${escapeHtml(totals.deductionTotal ? formatCurrency(totals.deductionTotal) : "-")}</td>
+              <td>${escapeHtml(totals.netPay ? formatCurrency(totals.netPay) : "계산 대기")}</td>
               <td></td>
-              <td colspan="6"></td>
-              <td>${escapeHtml(siteLedger.totals.totalPay ? formatCurrency(siteLedger.totals.totalPay) : "계산 대기")}</td>
-              <td colspan="5"></td>
-              <td>${escapeHtml(siteLedger.totals.totalPay ? formatCurrency(siteLedger.totals.totalPay) : "계산 대기")}</td>
             </tr>
           </tfoot>
         </table>
@@ -9934,7 +9974,7 @@ function buildLaborReportWorkbookBlob(labor, payroll) {
   const siteLedger = getCurrentLaborSiteLedger(labor);
   return buildXlsxWorkbookBlob([
     { name: "급여명세서", rows: buildPayrollSheetRows(labor, payroll), widths: [18, 18, 18, 18, 18, 18, 18] },
-    { name: "급여대장", rows: buildWageLedgerSheetRows(siteLedger), widths: [7, 14, 14, 12, 12, 12, 13, 10, 13, 10, 10, 10, 13, 10, 10, 10, 10, 10, 13] },
+    { name: "노무비지급대장", rows: buildWageLedgerSheetRows(siteLedger), widths: [7, 14, 14, 14, ...Array(31).fill(4), 8, 9, 12, 10, 12, 8] },
     { name: "프리랜서신고", rows: buildFreelancerSheetRows(siteLedger, labor), widths: Array(39).fill(9) },
     { name: "PT수업집계", rows: buildPtClassSheetRows(labor), widths: Array(35).fill(8) },
   ]);
@@ -9989,62 +10029,57 @@ function buildPayrollSheetRows(labor, payroll) {
 }
 
 function buildWageLedgerSheetRows(siteLedger) {
+  const days = siteLedger.dayNumbers;
+  const laborEmployees = getVisibleLaborEmployees();
   const rows = [
-    [`${siteLedger.monthLabel} 급여대장`],
+    [`${siteLedger.monthLabel} 노무비 지급대장`],
     ["사업장", siteLedger.site, "총인원", siteLedger.rows.length],
     [],
-    ["순번", "성명", "직책", "통상시급", "근로시간", "입사일", "기본급", "식대", "시간/금액", "연장", "야간", "휴일", "지급액", "소득세", "국민연금", "건강보험", "고용보험", "공제액", "실수령액"],
+    ["순번", "성명", "직책", "주민/식별", ...days, "출력일수", "총시간", "지급총액", "공제액", "실지급액", "확인"],
   ];
   const start = rows.length + 1;
   siteLedger.rows.forEach((row, index) => {
-    const employee = employees.find((item) => item.id === row.employeeId) || {};
-    const profile = getLaborProfileForEmployee(employee);
-    const hourly = numberValue(profile.hourlyWage);
-    const gross = row.totalPay || 0;
+    const employee = laborEmployees.find((item) => getLaborEmployeeLogId(item) === row.employeeId || item.id === row.employeeId)
+      || employees.find((item) => item.id === row.employeeId)
+      || { id: row.employeeId, name: row.name, employmentType: row.employmentType };
+    const summary = buildMonthlyLaborSummary(getLaborEmployeeLogId(employee), employee);
+    const statement = buildPayrollStatement(summary, employee, row);
+    const gross = statement.grossPay || row.totalPay || 0;
+    const deductions = statement.deductionTotal || 0;
+    const netPay = statement.netPay || Math.max(0, gross - deductions);
     const rowNumber = rows.length + 1;
     rows.push([
       index + 1,
       row.name,
-      employee.role || row.employmentType,
-      hourly || "",
+      employee.role || row.employmentType || "",
+      row.laborId || "",
+      ...row.dayCells.map((cell) => cell.label || ""),
+      row.workDays || 0,
       Math.round((row.actualMinutes / 60) * 100) / 100,
-      profile.joinDate || "",
       gross || "",
+      deductions || "",
+      { f: `${cellRef(rowNumber, 4 + days.length + 3)}-${cellRef(rowNumber, 4 + days.length + 4)}`, v: netPay || 0 },
       "",
-      "",
-      "",
-      "",
-      "",
-      { f: `SUM(G${rowNumber}:L${rowNumber})`, v: gross || 0 },
-      "",
-      "",
-      "",
-      "",
-      { f: `SUM(N${rowNumber}:Q${rowNumber})`, v: 0 },
-      { f: `M${rowNumber}-R${rowNumber}`, v: gross || 0 },
     ]);
   });
   const end = rows.length;
+  const workDaysColumn = 4 + days.length + 1;
+  const hoursColumn = workDaysColumn + 1;
+  const grossColumn = hoursColumn + 1;
+  const deductionColumn = grossColumn + 1;
+  const netColumn = deductionColumn + 1;
   rows.push([
     "합계",
     "",
     "",
     "",
-    { f: `SUM(E${start}:E${end})`, v: Math.round((siteLedger.totals.actualMinutes / 60) * 100) / 100 },
+    ...days.map(() => ""),
+    { f: `SUM(${cellRef(start, workDaysColumn)}:${cellRef(end, workDaysColumn)})`, v: siteLedger.totals.workDays || 0 },
+    { f: `SUM(${cellRef(start, hoursColumn)}:${cellRef(end, hoursColumn)})`, v: Math.round((siteLedger.totals.actualMinutes / 60) * 100) / 100 },
+    { f: `SUM(${cellRef(start, grossColumn)}:${cellRef(end, grossColumn)})`, v: siteLedger.totals.totalPay || 0 },
+    { f: `SUM(${cellRef(start, deductionColumn)}:${cellRef(end, deductionColumn)})`, v: 0 },
+    { f: `SUM(${cellRef(start, netColumn)}:${cellRef(end, netColumn)})`, v: siteLedger.totals.totalPay || 0 },
     "",
-    { f: `SUM(G${start}:G${end})`, v: siteLedger.totals.totalPay || 0 },
-    "",
-    "",
-    "",
-    "",
-    "",
-    { f: `SUM(M${start}:M${end})`, v: siteLedger.totals.totalPay || 0 },
-    "",
-    "",
-    "",
-    "",
-    { f: `SUM(R${start}:R${end})`, v: 0 },
-    { f: `SUM(S${start}:S${end})`, v: siteLedger.totals.totalPay || 0 },
   ]);
   return rows;
 }
@@ -10975,6 +11010,74 @@ function mergeStaffFieldsIntoApprovalRow(row = {}, fields = {}) {
   };
 }
 
+function getApprovalRowOverrideIds(row = {}, fallbackEmployeeId = "") {
+  const profile = remoteRowToProfile(row);
+  const mappedId = getProfileMappedEmployeeId(profile);
+  return [...new Set([
+    fallbackEmployeeId,
+    row.mappedEmployeeId,
+    mappedId,
+    row.id ? `profile-${row.id}` : "",
+  ].filter(Boolean))];
+}
+
+function profileRowToEmployeeOverride(row = {}) {
+  const profile = remoteRowToProfile(row);
+  return {
+    name: profile.name || row.name || "",
+    nickname: profile.nickname || row.nickname || "",
+    org: profile.org || "",
+    role: profile.role || "직원",
+    phone: profile.phone || "",
+    email: profile.email || row.email || "",
+    workplace: profile.workplace || "",
+    primaryWork: profile.primaryWork || "",
+    secondaryWork: profile.secondaryWork || "",
+    workHours: profile.workHours || defaultProfile.workHours,
+    employmentType: profile.employmentType || "직원",
+    laborId: profile.laborId || "",
+    address: profile.address || "",
+    hourlyWage: profile.hourlyWage || "",
+    dailyWage: profile.dailyWage || "",
+    assignedMission: profile.assignedMission || "",
+    assignedMissionVisible: profile.assignedMissionVisible !== false,
+    assignedMissionUpdatedAt: profile.assignedMissionUpdatedAt || "",
+    assignedMissionUpdatedBy: profile.assignedMissionUpdatedBy || "",
+  };
+}
+
+function applyApprovedProfileRowLocally(row = {}, fallbackEmployeeId = "") {
+  if (!row) return "";
+  const override = profileRowToEmployeeOverride(row);
+  const ids = getApprovalRowOverrideIds(row, fallbackEmployeeId);
+  state.employeeDirectoryOverrides ||= {};
+  ids.forEach((id) => {
+    state.employeeDirectoryOverrides[id] = {
+      ...(state.employeeDirectoryOverrides[id] || {}),
+      ...override,
+    };
+  });
+
+  const rowEmail = String(row.email || "").trim().toLowerCase();
+  const userEmail = String(authState.user?.email || "").trim().toLowerCase();
+  const isCurrentUser = Boolean((row.id && row.id === authState.user?.id) || (rowEmail && rowEmail === userEmail));
+  if (isCurrentUser) {
+    const profile = remoteRowToProfile(row);
+    state.profile = {
+      ...state.profile,
+      ...profile,
+      pendingProfileChanges: {},
+      profileChangeRequestedAt: "",
+    };
+    const mappedId = getProfileMappedEmployeeId(state.profile);
+    if (mappedId && !isRepresentativeProfile()) {
+      state.selectedEmployeeId = mappedId;
+      if (fitnessEmployeeIds.includes(mappedId)) state.fitnessWritableEmployeeId = mappedId;
+    }
+  }
+  return getProfileMappedEmployeeId(remoteRowToProfile(row));
+}
+
 function setStaffDetailSaveStatus(message, tone = "idle") {
   const node = document.querySelector("#staffDetailSaveStatus");
   if (!node) return;
@@ -10996,7 +11099,15 @@ async function saveStaffProfileEdits(employeeId) {
   }
   setStaffDetailSaveStatus("저장 중...", "saving");
   if (row.sourceProfileId && supabaseClient && authState.user) {
-    const payload = staffEditFieldsToRemotePayload(fields, row);
+    const sourceRow = (authState.approvalRows || []).find((item) => item.id === row.sourceProfileId) || {};
+    const payload = {
+      ...staffEditFieldsToRemotePayload(fields, row),
+      approval_status: "approved",
+      pending_profile_changes: {},
+      profile_change_requested_at: null,
+      approved_by: authState.user.id,
+      approved_at: new Date().toISOString(),
+    };
     const { error } = await supabaseClient.from("profiles").update(payload).eq("id", row.sourceProfileId);
     if (error) {
       if (/assigned_mission/i.test(error.message || "")) {
@@ -11017,25 +11128,47 @@ async function saveStaffProfileEdits(employeeId) {
         return;
       }
     }
+    const mergedRow = {
+      ...mergeStaffFieldsIntoApprovalRow(sourceRow, fields),
+      ...payload,
+      id: row.sourceProfileId,
+      email: fields.email || sourceRow.email || row.email,
+      approval_status: "approved",
+      pending_profile_changes: {},
+      profile_change_requested_at: null,
+    };
     authState.approvalRows = (authState.approvalRows || []).map((item) => (
-      item.id === row.sourceProfileId ? mergeStaffFieldsIntoApprovalRow(item, fields) : item
+      item.id === row.sourceProfileId ? mergedRow : item
     ));
+    applyApprovedProfileRowLocally(mergedRow, employeeId);
     if (row.sourceProfileId === authState.user.id) {
-      state.profile = { ...state.profile, ...fields };
+      state.profile = {
+        ...state.profile,
+        ...fields,
+        pendingProfileChanges: {},
+        profileChangeRequestedAt: "",
+      };
     }
   }
   state.employeeDirectoryOverrides ||= {};
-  state.employeeDirectoryOverrides[employeeId] = {
-    ...(state.employeeDirectoryOverrides[employeeId] || {}),
+  const localOverride = {
     ...fields,
     assignedMission: fields.assignedMission || "",
     assignedMissionVisible: fields.assignedMissionVisible !== false,
     assignedMissionUpdatedAt: fields.assignedMission !== undefined ? new Date().toISOString() : state.employeeDirectoryOverrides[employeeId]?.assignedMissionUpdatedAt,
     assignedMissionUpdatedBy: fields.assignedMission !== undefined ? (authState.user?.id || "") : state.employeeDirectoryOverrides[employeeId]?.assignedMissionUpdatedBy,
   };
+  const mappedAfterEdit = getProfileMappedEmployeeId({ ...row, ...fields });
+  [...new Set([employeeId, row.mappedEmployeeId, mappedAfterEdit].filter(Boolean))].forEach((id) => {
+    state.employeeDirectoryOverrides[id] = {
+      ...(state.employeeDirectoryOverrides[id] || {}),
+      ...localOverride,
+    };
+  });
   saveState({ fastSave: true });
   renderStaffMaster();
-  openStaffDetail(employeeId);
+  const nextEmployeeId = getEmployeeMasterRows().find((item) => item.sourceProfileId === row.sourceProfileId)?.id || mappedAfterEdit || employeeId;
+  openStaffDetail(nextEmployeeId);
   setStaffDetailSaveStatus("저장되었습니다.", "done");
 }
 
