@@ -18141,11 +18141,11 @@ body.physical-phone-device #view-today .mobile-focus-open::after {
 .mobile-focus-done::before {
   content: "+" !important;
   position: absolute;
-  left: 5px;
+  left: 4px;
   top: 4px;
   display: grid;
-  width: 18px;
-  height: 18px;
+  width: 17px;
+  height: 17px;
   place-items: center;
   border: 2px solid currentColor;
   border-radius: 50%;
@@ -18165,14 +18165,14 @@ body.physical-phone-device #view-today .mobile-focus-open::after {
 .mobile-focus-done::after {
   content: "" !important;
   position: absolute;
-  right: 5px;
-  bottom: 6px;
-  width: 7px;
+  left: 20px;
+  top: 21px;
+  width: 8px;
   height: 3px;
   border-radius: 999px;
   background: currentColor;
   transform: rotate(45deg);
-  transform-origin: center;
+  transform-origin: left center;
 }
 
 body[data-layout-mode="phone"] #view-today .schedule-unit-button,
