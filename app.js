@@ -8346,6 +8346,7 @@ function renderAttendance() {
       renderAttendance();
     });
   });
+  document.getElementById("openLaborReportFromAgentButton")?.addEventListener("click", () => openLaborReportSheet(labor, payroll, ledger));
 }
 
 function preserveSectionDockBeforeRender(panelView = worklogViewAliases[activeView] || activeView) {
@@ -8411,6 +8412,7 @@ function renderLaborOperationsConsole(labor, employee, payroll) {
     ["사업장별 근무기록", `${siteRecorded}/${siteEmployees}명`, "사업장별 출역·근무시간 원장", "companyLaborLedgers"],
     ["근태관리", totalIssues ? `${totalIssues}건 확인` : "정상", "지각·조퇴·결근·외출 추적", "laborRegister"],
     ["급여명세현황", `${readyCount}/${payroll.checks.length}`, "지급·공제·계산방법 준비도", "payrollStatement"],
+    ["월차·연차관리", `${labor.leaveDays}일`, "휴가·월차·연차 사용 기록", "laborRegister"],
     ["각 직원 근무기록", `${labor.recordedDays}일`, `${getEmployeeAdminLabel(employee)} 월별 기록`, "laborRegister"],
   ];
   return `
@@ -8430,7 +8432,7 @@ function renderLaborOperationsConsole(labor, employee, payroll) {
             <span>Labor Agent</span>
             <h3>AI 노무 에이전트</h3>
           </div>
-          <button type="button" data-labor-jump="payrollStatement">명세 보완</button>
+          <button type="button" id="openLaborReportFromAgentButton">출력</button>
         </header>
         <div class="labor-agent-list">
           ${agentSignals.map(([title, text, badge]) => `
@@ -8924,10 +8926,10 @@ function renderWorkHistorySummary() {
       <header>
         <div>
           <span>Payroll Report</span>
-          <h3>급여명세서 보기</h3>
-          <p>월별 노무대장과 급여명세서를 A4 가로형 보고서로 확인합니다.</p>
+          <h3>출력</h3>
+          <p>급여명세서, 급여대장, 프리랜서 신고, PT수업 집계를 A4 보고서로 확인합니다.</p>
         </div>
-        <button type="button" id="openLaborReportButton">급여명세서 보기</button>
+        <button type="button" id="openLaborReportButton">출력</button>
       </header>
     </section>
   `;
@@ -8999,6 +9001,7 @@ function buildMonthlyLaborSummary(employeeId, employee) {
   let lateCount = 0;
   let earlyCount = 0;
   let absenceCount = 0;
+  let leaveDays = 0;
   getMonthDateKeys(monthPrefix).forEach((dateKey) => {
     const logsByEmployee = state.employeeLogs?.[dateKey] || {};
     if (!dateKey.startsWith(monthPrefix)) return;
@@ -9028,6 +9031,7 @@ function buildMonthlyLaborSummary(employeeId, employee) {
     if (status.includes("지각")) lateCount += 1;
     if (status.includes("조퇴")) earlyCount += 1;
     if (status.includes("결근")) absenceCount += 1;
+    if (/휴가|연차|월차/.test(status)) leaveDays += 1;
     const breakSummary = (dayLog?.attendanceBreaks || [])
       .filter((item) => item.start || item.end)
       .map((item) => `${item.start || "--:--"}~${item.end || "--:--"}`)
@@ -9066,9 +9070,10 @@ function buildMonthlyLaborSummary(employeeId, employee) {
     ["지각", `${lateCount}건`],
     ["조퇴", `${earlyCount}건`],
     ["결근", `${absenceCount}건`],
+    ["월차/연차", `${leaveDays}일`],
     ["외출", `${breakCount}건`],
   ];
-  return { employee, monthLabel, month: monthPrefix, cards, logs, dayRows, scheduledMinutes, actualMinutes, overtimeMinutes, nightMinutes, holidayMinutes, paidPtCount, freePtCount, otherPtCount, settlementPtCount, lateCount, earlyCount, absenceCount, breakCount, recordedDays: logs.length };
+  return { employee, monthLabel, month: monthPrefix, cards, logs, dayRows, scheduledMinutes, actualMinutes, overtimeMinutes, nightMinutes, holidayMinutes, paidPtCount, freePtCount, otherPtCount, settlementPtCount, lateCount, earlyCount, absenceCount, leaveDays, breakCount, recordedDays: logs.length };
 }
 
 function getOwnLaborEmployeeId() {
@@ -9244,6 +9249,61 @@ function getLaborReportExportCss() {
     .labor-paper-ledger td:nth-child(4) { width: 132px; text-align: left; }
     .labor-paper-ledger th:nth-last-child(-n + 4),
     .labor-paper-ledger td:nth-last-child(-n + 4) { width: 66px; }
+    .labor-paper-simple-title {
+      display: grid;
+      grid-template-columns: 220px minmax(0, 1fr) 260px;
+      align-items: center;
+      min-height: 72px;
+      border: 3px solid #17221d;
+      text-align: center;
+    }
+    .labor-paper-simple-title span,
+    .labor-paper-simple-title b {
+      display: grid;
+      align-items: center;
+      height: 100%;
+      background: #eef4e9;
+      color: #17221d;
+      padding: 10px;
+      font-size: 20px;
+      font-weight: 900;
+    }
+    .labor-paper-simple-title strong {
+      color: #17221d;
+      font-size: 34px;
+      font-weight: 950;
+    }
+    .labor-paper-wide-table {
+      margin-top: 18px;
+    }
+    .labor-paper-wide-table table {
+      width: 100%;
+      border-collapse: collapse;
+      table-layout: fixed;
+      font-size: 12px;
+    }
+    .labor-paper-wide-table th,
+    .labor-paper-wide-table td {
+      height: 28px;
+      border: 1px solid rgba(23, 34, 29, 0.55);
+      padding: 3px;
+      text-align: center;
+      vertical-align: middle;
+    }
+    .labor-paper-wide-table th {
+      background: #eaf2e6;
+      font-weight: 950;
+    }
+    .labor-paper-ledger-mode .labor-paper-wide-table table {
+      font-size: 11px;
+    }
+    .labor-paper-signline {
+      margin-top: 30px;
+      color: #17221d;
+      font-size: 18px;
+      font-weight: 850;
+      text-align: center;
+    }
     .labor-paper-note {
       margin-top: 10px;
       color: #5e6b65;
@@ -9253,7 +9313,7 @@ function getLaborReportExportCss() {
   `;
 }
 
-function renderLaborReportTemplate(labor, payroll, ledger) {
+function renderLaborPayrollReportTemplate(labor, payroll, ledger) {
   const dayRows = labor.dayRows.filter((row) => row.clockIn || row.clockOut || row.worked || row.status !== "휴무").slice(0, 18);
   const payRows = [...payroll.wageItems, ["지급총액", payroll.grossPay, "지급 항목 합계"]];
   const deductionRows = [...payroll.deductionItems, ["공제총액", payroll.deductionTotal], ["차인지급액", payroll.netPay]];
@@ -9347,6 +9407,181 @@ function renderLaborReportTemplate(labor, payroll, ledger) {
   `;
 }
 
+const laborReportModes = [
+  ["payroll", "급여명세서"],
+  ["ledger", "급여대장"],
+  ["freelancer", "프리랜서 신고"],
+  ["pt", "PT수업 집계"],
+];
+
+let currentLaborReportMode = "payroll";
+
+function renderLaborReportTemplate(labor, payroll, ledger) {
+  if (currentLaborReportMode === "ledger") return renderLaborWageLedgerReportTemplate(labor, payroll, ledger);
+  if (currentLaborReportMode === "freelancer") return renderLaborFreelancerReportTemplate(labor, payroll, ledger);
+  if (currentLaborReportMode === "pt") return renderLaborPtClassReportTemplate(labor, payroll, ledger);
+  return renderLaborPayrollReportTemplate(labor, payroll, ledger);
+}
+
+function getLaborEmployeeSiteGroup(employeeId) {
+  return getWorklogSiteGroups().find((group) => group.employeeIds.includes(employeeId)) || getWorklogSiteGroups()[0];
+}
+
+function getCurrentLaborSiteLedger(labor) {
+  const group = getLaborEmployeeSiteGroup(labor?.employee?.id);
+  return buildSiteLaborCostLedger(group?.id);
+}
+
+function renderLaborWageLedgerReportTemplate(labor) {
+  const siteLedger = getCurrentLaborSiteLedger(labor);
+  const days = siteLedger.dayNumbers;
+  return `
+    <article class="labor-paper labor-paper-ledger-mode">
+      <header class="labor-paper-simple-title">
+        <span>총인원 ${escapeHtml(String(siteLedger.rows.length))}</span>
+        <strong>${escapeHtml(siteLedger.monthLabel)} 급여대장</strong>
+        <b>주식회사 방주</b>
+      </header>
+      <section class="labor-paper-section labor-paper-wide-table">
+        <table>
+          <thead>
+            <tr>
+              <th>순번</th><th>성명</th><th>직책</th><th>통상시급</th><th>근로시간</th><th>입사일</th>
+              <th>기본급</th><th>식대</th><th>시간/금액</th><th>연장</th><th>야간</th><th>휴일</th><th>지급액</th>
+              <th>소득세</th><th>국민연금</th><th>건강보험</th><th>고용보험</th><th>공제액</th><th>실수령액</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${siteLedger.rows.map((row, index) => {
+              const employee = employees.find((item) => item.id === row.employeeId) || {};
+              const profile = getLaborProfileForEmployee(employee);
+              const hourly = numberValue(profile.hourlyWage);
+              const gross = row.totalPay || 0;
+              return `
+                <tr>
+                  <td>${index + 1}</td>
+                  <td>${escapeHtml(row.name)}</td>
+                  <td>${escapeHtml(employee.role || row.employmentType)}</td>
+                  <td>${escapeHtml(hourly ? formatCurrency(hourly) : "-")}</td>
+                  <td>${escapeHtml(formatMinutesAsHours(row.actualMinutes))}</td>
+                  <td>${escapeHtml(profile.joinDate || "-")}</td>
+                  <td>${escapeHtml(gross ? formatCurrency(gross) : "-")}</td>
+                  <td>-</td><td>-</td><td>-</td><td>-</td><td>-</td>
+                  <td>${escapeHtml(gross ? formatCurrency(gross) : "계산 대기")}</td>
+                  <td>-</td><td>-</td><td>-</td><td>-</td><td>-</td>
+                  <td>${escapeHtml(gross ? formatCurrency(gross) : "계산 대기")}</td>
+                </tr>
+              `;
+            }).join("")}
+          </tbody>
+          <tfoot>
+            <tr>
+              <td colspan="4">합계</td>
+              <td>${escapeHtml(formatMinutesAsHours(siteLedger.totals.actualMinutes))}</td>
+              <td></td>
+              <td colspan="6"></td>
+              <td>${escapeHtml(siteLedger.totals.totalPay ? formatCurrency(siteLedger.totals.totalPay) : "계산 대기")}</td>
+              <td colspan="5"></td>
+              <td>${escapeHtml(siteLedger.totals.totalPay ? formatCurrency(siteLedger.totals.totalPay) : "계산 대기")}</td>
+            </tr>
+          </tfoot>
+        </table>
+      </section>
+      <p class="labor-paper-note">출결기록, 시급·일당, 공제항목 확정 후 노무사 제출용 급여대장으로 사용하세요.</p>
+    </article>
+  `;
+}
+
+function renderLaborFreelancerReportTemplate(labor) {
+  const siteLedger = getCurrentLaborSiteLedger(labor);
+  const days = siteLedger.dayNumbers;
+  const freelancerRows = siteLedger.rows.filter((row) => /프리랜서|트레이너|자유/i.test(row.employmentType) || /트레이너/.test(row.name));
+  const rows = freelancerRows.length ? freelancerRows : siteLedger.rows;
+  return `
+    <article class="labor-paper labor-paper-freelancer-mode">
+      <header class="labor-paper-simple-title">
+        <span>[별지 제14호의2서식]</span>
+        <strong>프리랜서(자유소득자) 국세청 등록 (${escapeHtml(labor.monthLabel)}분)</strong>
+        <b>자료마감일 매월 5일</b>
+      </header>
+      <section class="labor-paper-section labor-paper-wide-table">
+        <table>
+          <thead>
+            <tr>
+              <th>사업장관리번호</th><th>사업장명</th><th>대표자명</th><th>성명</th><th>주민등록번호</th><th>계약직종</th>
+              ${days.map((day) => `<th>${day}</th>`).join("")}
+              <th>월급총액</th><th>세율공제</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${rows.map((row) => `
+              <tr>
+                <td>199-86-02068-0</td>
+                <td>${escapeHtml(siteLedger.site)}</td>
+                <td>정찬훈</td>
+                <td>${escapeHtml(row.name)}</td>
+                <td>${escapeHtml(row.laborId)}</td>
+                <td>${escapeHtml(row.employmentType)}</td>
+                ${row.dayCells.map((cell) => `<td>${cell.worked ? "1" : ""}</td>`).join("")}
+                <td>${escapeHtml(row.totalPay ? formatCurrency(row.totalPay) : "계산 대기")}</td>
+                <td>${escapeHtml(row.totalPay ? formatCurrency(Math.round(row.totalPay * 0.033)) : "-")}</td>
+              </tr>
+            `).join("")}
+          </tbody>
+        </table>
+      </section>
+      <div class="labor-paper-signline">작성일 ${escapeHtml(formatFormalKoreanDate(getActiveDateKey()))} · 작성인(대표자) __________________</div>
+    </article>
+  `;
+}
+
+function renderLaborPtClassReportTemplate(labor) {
+  const fitnessGroup = getWorklogSiteGroups().find((group) => /피트니스/.test(group.title)) || getLaborEmployeeSiteGroup(labor?.employee?.id);
+  const rows = (fitnessGroup?.employeeIds || [])
+    .map((employeeId) => {
+      const employee = employees.find((item) => item.id === employeeId);
+      if (!employee) return null;
+      const summary = buildMonthlyLaborSummary(employeeId, employee);
+      return { employee, summary };
+    })
+    .filter(Boolean);
+  const days = Array.from({ length: 31 }, (_, index) => index + 1);
+  return `
+    <article class="labor-paper labor-paper-pt-mode">
+      <header class="labor-paper-simple-title">
+        <span>피트니스 전용</span>
+        <strong>비욘드 피트니스 (${escapeHtml(String(Number(labor.month.slice(5))))}월) PT수업</strong>
+        <b>무료수업 제외 정산</b>
+      </header>
+      <section class="labor-paper-section labor-paper-wide-table labor-paper-pt-table">
+        <table>
+          <thead>
+            <tr><th>순번</th><th>이름</th>${days.map((day) => `<th>${day}</th>`).join("")}<th>유료합계</th><th>무료</th></tr>
+          </thead>
+          <tbody>
+            ${rows.map(({ employee, summary }, index) => {
+              const rowByDay = new Map(summary.dayRows.map((row) => [Number(row.dateKey.slice(8)), row]));
+              return `
+                <tr>
+                  <td>${index + 1}</td>
+                  <td>${escapeHtml(getEmployeeAdminLabel(employee))}</td>
+                  ${days.map((day) => {
+                    const row = rowByDay.get(day);
+                    return `<td>${escapeHtml(row?.paidPt ? String(row.paidPt) : "")}</td>`;
+                  }).join("")}
+                  <td>${escapeHtml(String(summary.settlementPtCount))}</td>
+                  <td>${escapeHtml(String(summary.freePtCount))}</td>
+                </tr>
+              `;
+            }).join("")}
+          </tbody>
+        </table>
+      </section>
+      <p class="labor-paper-note">업무일지 시간별 일정의 유료PT/무료PT 구분을 기준으로 집계합니다. 무료PT는 정산 합계에서 제외됩니다.</p>
+    </article>
+  `;
+}
+
 function ensureLaborReportSheet() {
   let sheet = document.getElementById("laborReportSheet");
   if (sheet) return sheet;
@@ -9356,14 +9591,19 @@ function ensureLaborReportSheet() {
       <header>
         <div>
           <span>Payroll & Labor Ledger</span>
-          <h2 id="laborReportTitle">급여명세서</h2>
+          <h2 id="laborReportTitle">노무 출력</h2>
         </div>
         <button type="button" id="laborReportCloseButton" aria-label="급여명세서 닫기">×</button>
       </header>
+      <div class="labor-report-mode-tabs" id="laborReportModeTabs" aria-label="노무 출력 양식 선택">
+        ${laborReportModes.map(([mode, label]) => `
+          <button type="button" data-labor-report-mode="${escapeAttr(mode)}">${escapeHtml(label)}</button>
+        `).join("")}
+      </div>
       <div class="labor-report-preview" id="laborReportPreview"></div>
       <footer>
         <button type="button" id="laborReportImageButton">사진저장</button>
-        <button type="button" id="laborReportPdfButton">PDF내보내기</button>
+        <button type="button" id="laborReportShareButton">보내기</button>
         <button type="button" id="laborReportPrintButton">출력</button>
       </footer>
     </section>
@@ -9375,20 +9615,40 @@ function ensureLaborReportSheet() {
   document.getElementById("laborReportImageButton")?.addEventListener("click", () => {
     saveLaborReportImage().catch(() => alert("이미지 파일을 만들지 못했습니다. 출력 메뉴에서 PDF 저장을 이용해주세요."));
   });
-  document.getElementById("laborReportPdfButton")?.addEventListener("click", () => {
-    saveLaborReportPdf().catch(() => alert("PDF 파일을 만들지 못했습니다. 출력 메뉴를 이용해주세요."));
+  document.getElementById("laborReportShareButton")?.addEventListener("click", () => {
+    shareLaborReport().catch(() => alert("보내기 기능을 사용할 수 없어 사진저장 또는 출력 메뉴를 이용해주세요."));
+  });
+  sheet.querySelectorAll("[data-labor-report-mode]").forEach((button) => {
+    button.addEventListener("click", () => setLaborReportMode(button.dataset.laborReportMode));
   });
   return sheet;
 }
 
 let currentLaborReportModel = null;
 
+function setLaborReportMode(mode = "payroll") {
+  currentLaborReportMode = laborReportModes.some(([value]) => value === mode) ? mode : "payroll";
+  const preview = document.getElementById("laborReportPreview");
+  const title = laborReportModes.find(([value]) => value === currentLaborReportMode)?.[1] || "노무 출력";
+  const titleNode = document.getElementById("laborReportTitle");
+  if (titleNode) titleNode.textContent = title;
+  document.querySelectorAll("[data-labor-report-mode]").forEach((button) => {
+    button.classList.toggle("is-active", button.dataset.laborReportMode === currentLaborReportMode);
+  });
+  if (preview && currentLaborReportModel) {
+    preview.innerHTML = renderLaborReportTemplate(
+      currentLaborReportModel.labor,
+      currentLaborReportModel.payroll,
+      currentLaborReportModel.ledger,
+    );
+  }
+}
+
 function openLaborReportSheet(labor, payroll, ledger) {
   currentLaborReportModel = { labor, payroll, ledger };
   const sheet = ensureLaborReportSheet();
   const backdrop = document.getElementById("laborReportBackdrop");
-  const preview = document.getElementById("laborReportPreview");
-  if (preview) preview.innerHTML = renderLaborReportTemplate(labor, payroll, ledger);
+  setLaborReportMode(currentLaborReportMode || "payroll");
   if (backdrop) backdrop.hidden = false;
   sheet.hidden = false;
   document.body.classList.add("is-labor-report-open");
@@ -9490,6 +9750,32 @@ async function saveLaborReportPdf() {
   const canvas = await renderLaborReportCanvas();
   const blob = createLandscapePdfBlobFromCanvas(canvas);
   downloadBlob(blob, `${getLaborReportFileBase(currentLaborReportModel?.labor)}.pdf`);
+}
+
+async function shareLaborReport() {
+  const canvas = await renderLaborReportCanvas();
+  const pngBlob = await canvasToBlob(canvas, "image/png");
+  const pdfBlob = createLandscapePdfBlobFromCanvas(canvas);
+  const base = getLaborReportFileBase(currentLaborReportModel?.labor);
+  const pngFile = new File([pngBlob], `${base}.png`, { type: "image/png" });
+  const pdfFile = new File([pdfBlob], `${base}.pdf`, { type: "application/pdf" });
+  if (navigator.canShare?.({ files: [pngFile, pdfFile] }) && navigator.share) {
+    await navigator.share({
+      title: "Bangju Labor Report",
+      text: "방주 AI Worklog 노무 출력물입니다.",
+      files: [pngFile, pdfFile],
+    });
+    return;
+  }
+  if (navigator.canShare?.({ files: [pngFile] }) && navigator.share) {
+    await navigator.share({
+      title: "Bangju Labor Report",
+      text: "방주 AI Worklog 노무 출력물 이미지입니다.",
+      files: [pngFile],
+    });
+    return;
+  }
+  await saveLaborReportPdf();
 }
 
 function printLaborReport() {

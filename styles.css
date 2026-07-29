@@ -3071,6 +3071,36 @@ body[data-device-mode="narrow"] .os-mode-switch span[data-device-mode="narrow"] 
   font-weight: 950;
 }
 
+.labor-report-mode-tabs {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 6px;
+  border: 1px solid rgba(33, 55, 45, 0.1);
+  border-radius: 16px;
+  background: rgba(246, 245, 239, 0.72);
+  padding: 5px;
+}
+
+.labor-report-mode-tabs button {
+  min-width: 0;
+  min-height: 34px;
+  border: 1px solid transparent;
+  border-radius: 12px;
+  background: transparent;
+  color: rgba(38, 50, 56, 0.68);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 950;
+  white-space: nowrap;
+}
+
+.labor-report-mode-tabs button.is-active {
+  border-color: rgba(15, 59, 46, 0.18);
+  background: var(--fitness-green);
+  color: var(--nordic-sheet);
+  box-shadow: 0 8px 18px rgba(15, 59, 46, 0.16);
+}
+
 #laborReportCloseButton,
 .labor-report-sheet > footer button {
   min-height: 42px;
@@ -3110,6 +3140,75 @@ body[data-device-mode="narrow"] .os-mode-switch span[data-device-mode="narrow"] 
   background: #fffefa;
 }
 
+.labor-paper-simple-title {
+  display: grid;
+  grid-template-columns: 220px minmax(0, 1fr) 260px;
+  align-items: center;
+  min-height: 72px;
+  border: 3px solid #17221d;
+  text-align: center;
+}
+
+.labor-paper-simple-title span,
+.labor-paper-simple-title b {
+  display: grid;
+  align-items: center;
+  height: 100%;
+  background: #eef4e9;
+  color: #17221d;
+  padding: 10px;
+  font-size: 20px;
+  font-weight: 900;
+}
+
+.labor-paper-simple-title strong {
+  color: #17221d;
+  font-size: 34px;
+  font-weight: 950;
+}
+
+.labor-paper-wide-table {
+  margin-top: 18px;
+}
+
+.labor-paper-wide-table table {
+  width: 100%;
+  border-collapse: collapse;
+  table-layout: fixed;
+  font-size: 12px;
+}
+
+.labor-paper-wide-table th,
+.labor-paper-wide-table td {
+  height: 28px;
+  border: 1px solid rgba(23, 34, 29, 0.55);
+  padding: 3px;
+  text-align: center;
+  vertical-align: middle;
+}
+
+.labor-paper-wide-table th {
+  background: #eaf2e6;
+  font-weight: 950;
+}
+
+.labor-paper-ledger-mode .labor-paper-wide-table table {
+  font-size: 11px;
+}
+
+.labor-paper-freelancer-mode .labor-paper-wide-table table,
+.labor-paper-pt-mode .labor-paper-wide-table table {
+  font-size: 12px;
+}
+
+.labor-paper-signline {
+  margin-top: 30px;
+  color: #17221d;
+  font-size: 18px;
+  font-weight: 850;
+  text-align: center;
+}
+
 @media (max-width: 760px) {
   .labor-report-sheet {
     inset: max(8px, env(safe-area-inset-top)) 8px max(8px, env(safe-area-inset-bottom));
@@ -3125,6 +3224,10 @@ body[data-device-mode="narrow"] .os-mode-switch span[data-device-mode="narrow"] 
   .labor-report-sheet > footer {
     display: grid;
     grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .labor-report-mode-tabs {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .labor-report-sheet > footer button {
