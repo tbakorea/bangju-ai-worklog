@@ -15038,6 +15038,14 @@ body[data-view-mode="ceo"] .control-kpi-grid {
   font-weight: 950;
 }
 
+.labor-leader-overview p {
+  margin: 4px 0 0;
+  color: rgba(38, 50, 56, 0.62);
+  font-size: 12px;
+  font-weight: 760;
+  line-height: 1.45;
+}
+
 .labor-leader-grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -15053,6 +15061,12 @@ body[data-view-mode="ceo"] .control-kpi-grid {
   color: var(--ink);
   padding: 10px;
   text-align: left;
+}
+
+.labor-leader-grid button.is-active {
+  border-color: rgba(15, 59, 46, 0.34);
+  background: rgba(15, 59, 46, 0.08);
+  box-shadow: inset 3px 0 0 var(--fitness-green);
 }
 
 .labor-leader-grid button span {

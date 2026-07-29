@@ -1988,6 +1988,21 @@ function canAccessWorklogOverview() {
   return hasProfilePermission("worklogAll") || isRepresentativeProfile() || canAccessControlTower();
 }
 
+function canAccessAllLabor() {
+  if (isExplicitlySignedOut()) return false;
+  return isRepresentativeProfile() || hasProfilePermission("laborAll") || hasProfilePermission("controlTower");
+}
+
+function canAccessSiteLabor() {
+  if (isExplicitlySignedOut()) return false;
+  return canAccessAllLabor() || hasProfilePermission("laborSite") || isProfileApproved();
+}
+
+function canAccessLaborPayrollLedgers() {
+  if (isExplicitlySignedOut()) return false;
+  return canAccessAllLabor() || hasProfilePermission("laborSite") || hasProfilePermission("staffManage");
+}
+
 function canAccessManualCoachingAdmin() {
   if (isExplicitlySignedOut()) return false;
   return isRepresentativeProfile() || hasProfilePermission("staffManage") || hasProfilePermission("controlTower");
@@ -8308,6 +8323,15 @@ function renderAttendance() {
   const addButton = document.getElementById("addAttendanceButton");
   if (addButton) addButton.hidden = true;
   preserveSectionDockBeforeRender("attendance");
+  if (authState.user && hasApprovalAuthority() && canAccessSiteLabor() && !authState.approvalRowsLoaded && !authState.approvalRowsLoading) {
+    authState.approvalRowsLoading = true;
+    refreshStaffApprovalRows()
+      .catch(() => {})
+      .finally(() => {
+        authState.approvalRowsLoading = false;
+        if (activeView === "attendance") renderAttendance();
+      });
+  }
   renderWorkHistorySummary();
   if (!list) return;
   const employeeId = getOwnLaborEmployeeId();
@@ -8315,8 +8339,8 @@ function renderAttendance() {
   const labor = buildMonthlyLaborSummary(employeeId, employee);
   const ledger = buildLaborCostLedger(labor, employee);
   const payroll = buildPayrollStatement(labor, employee, ledger);
-  const leaderLaborOverview = canAccessWorklogOverview() ? renderLeaderLaborOverviewMarkup() : "";
-  const companyLaborLedgers = canAccessWorklogOverview() ? renderCompanyLaborLedgersMarkup() : "";
+  const leaderLaborOverview = canAccessSiteLabor() ? renderLeaderLaborOverviewMarkup() : "";
+  const companyLaborLedgers = canAccessLaborPayrollLedgers() ? renderCompanyLaborLedgersMarkup() : "";
   list.innerHTML = `
     ${leaderLaborOverview}
     ${companyLaborLedgers}
@@ -8341,7 +8365,12 @@ function renderAttendance() {
   });
   list.querySelectorAll("[data-labor-employee]").forEach((button) => {
     button.addEventListener("click", () => {
-      state.selectedEmployeeId = button.dataset.laborEmployee;
+      const employeeId = button.dataset.laborEmployee;
+      if (!canViewLaborEmployee(employeeId)) {
+        showAppToast("열람 권한이 없는 직원의 노무기록입니다.");
+        return;
+      }
+      state.selectedEmployeeId = employeeId;
       saveState({ fastSave: true });
       renderAttendance();
     });
@@ -8357,13 +8386,10 @@ function preserveSectionDockBeforeRender(panelView = worklogViewAliases[activeVi
 }
 
 function getLaborSiteConsoleRows() {
-  return getWorklogSiteGroups().map((group) => {
-    const employeeIds = getAssignedWorklogEmployeeIds(group.employeeIds);
-    const summaries = employeeIds
-      .map((employeeId) => {
-        const employee = employees.find((item) => item.id === employeeId);
-        return employee ? buildMonthlyLaborSummary(employeeId, employee) : null;
-      })
+  return getLaborSiteGroupsForScope().map((group) => {
+    const groupEmployees = getLaborEmployeesForGroup(group);
+    const summaries = groupEmployees
+      .map((employee) => buildMonthlyLaborSummary(getLaborEmployeeLogId(employee), employee))
       .filter(Boolean);
     const recordedEmployees = summaries.filter((item) => item.recordedDays > 0).length;
     const actualMinutes = summaries.reduce((sum, item) => sum + item.actualMinutes, 0);
@@ -8371,7 +8397,7 @@ function getLaborSiteConsoleRows() {
     const paidPt = summaries.reduce((sum, item) => sum + item.settlementPtCount, 0);
     return {
       ...group,
-      employeeCount: employeeIds.length,
+      employeeCount: groupEmployees.length,
       recordedEmployees,
       actualMinutes,
       issues,
@@ -8444,7 +8470,7 @@ function renderLaborOperationsConsole(labor, employee, payroll) {
           `).join("")}
         </div>
       </article>
-      ${canAccessWorklogOverview() ? `
+      ${canAccessSiteLabor() ? `
         <div class="labor-site-strip">
           ${siteRows.map((row) => `
             <span>
@@ -8504,7 +8530,8 @@ function getPayrollPayDate(draft, month) {
 
 function buildPayrollStatement(labor, employee, ledger) {
   const profile = getLaborProfileForEmployee(employee);
-  const draft = getLaborPayrollDraft(employee.id || "profile-user", labor.month);
+  const laborEmployeeId = getLaborEmployeeLogId(employee);
+  const draft = getLaborPayrollDraft(laborEmployeeId, labor.month);
   const hourlyWage = numberValue(profile.hourlyWage);
   const dailyWage = numberValue(profile.dailyWage);
   const regularCapMinutes = labor.scheduledMinutes || Math.max(0, labor.actualMinutes - labor.overtimeMinutes);
@@ -8561,7 +8588,7 @@ function buildPayrollStatement(labor, employee, ledger) {
     ["공제내역", deductionTotal > 0 || draft.memo.includes("공제 없음")],
   ];
   return {
-    employeeId: employee.id || "profile-user",
+    employeeId: laborEmployeeId,
     month: labor.month,
     monthLabel: labor.monthLabel,
     payDate: getPayrollPayDate(draft, labor.month),
@@ -8684,27 +8711,73 @@ async function copyPayrollStatement(statement) {
   showAppToast("급여명세서 초안을 복사했습니다.");
 }
 
+function getLaborEmployeeLogId(employee = {}) {
+  if (!employee) return "profile-user";
+  if (employee.id === "profile-user") return "profile-user";
+  if (employee.mappedEmployeeId) return employee.mappedEmployeeId;
+  return employee.id || "profile-user";
+}
+
+function getLaborSiteGroupsForScope() {
+  const allGroups = getWorklogSiteGroups();
+  if (canAccessAllLabor()) return allGroups;
+  const ownGroup = getStaffSiteGroupForEmployee(getProfileEmployee());
+  return ownGroup ? [ownGroup] : [];
+}
+
+function getLaborEmployeesForGroup(group) {
+  if (!group) return [];
+  const rows = getStaffDirectoryEmployees()
+    .filter((employee) => getStaffSiteGroupForEmployee(employee)?.id === group.id);
+  if (rows.length) return rows;
+  return getAssignedWorklogEmployeeIds(group.employeeIds)
+    .map((employeeId) => employees.find((employee) => employee.id === employeeId))
+    .filter(Boolean);
+}
+
+function getVisibleLaborEmployees() {
+  const groups = getLaborSiteGroupsForScope();
+  const seen = new Set();
+  return groups.flatMap((group) => getLaborEmployeesForGroup(group))
+    .filter((employee) => {
+      const key = employee.email ? `email:${String(employee.email).toLowerCase()}` : employee.id;
+      if (!key || seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+}
+
+function canViewLaborEmployee(employeeId = "") {
+  if (!employeeId) return false;
+  if (canAccessAllLabor()) return true;
+  return getVisibleLaborEmployees().some((employee) => getLaborEmployeeLogId(employee) === employeeId || employee.id === employeeId);
+}
+
 function renderLeaderLaborOverviewMarkup() {
   const month = getActiveDateKey().slice(0, 7);
-  const groups = getWorklogSiteGroups();
+  const groups = getLaborSiteGroupsForScope();
+  const heading = canAccessAllLabor() ? "전 사업장 노무현황" : "소속 사업장 노무현황";
+  const scopeText = canAccessAllLabor() ? "대표/권한자 전 사업장 열람" : "소속 사업장 직원 현황";
   return `
     <section class="labor-leader-overview">
       <header>
         <span>Company Labor Control</span>
-        <h3>${escapeHtml(month.replace("-", "."))} 전 사업장 노무현황</h3>
+        <h3>${escapeHtml(month.replace("-", "."))} ${escapeHtml(heading)}</h3>
+        <p>${escapeHtml(scopeText)} · 직원을 누르면 해당 직원의 월별 근무기록으로 전환됩니다.</p>
       </header>
       <div class="labor-leader-grid">
         ${groups.map((group) => `
           <article>
             <strong>${escapeHtml(group.title)}</strong>
-            ${group.employeeIds.map((employeeId) => {
-              const employee = employees.find((item) => item.id === employeeId);
+            ${getLaborEmployeesForGroup(group).map((employee) => {
               if (!employee) return "";
+              const employeeId = getLaborEmployeeLogId(employee);
               const labor = buildMonthlyLaborSummary(employeeId, employee);
+              const active = getOwnLaborEmployeeId() === employeeId;
               return `
-                <button type="button" data-labor-employee="${escapeAttr(employeeId)}">
+                <button type="button" class="${active ? "is-active" : ""}" data-labor-employee="${escapeAttr(employeeId)}">
                   <b>${escapeHtml(getEmployeeAdminLabel(employee))}</b>
-                  <span>${escapeHtml(labor.recordedDays)}일 · ${escapeHtml(formatMinutesAsHours(labor.actualMinutes))} · 유료PT ${escapeHtml(String(labor.settlementPtCount))}</span>
+                  <span>${escapeHtml(labor.recordedDays)}일 · ${escapeHtml(formatMinutesAsHours(labor.actualMinutes))} · 지각/조퇴/결근 ${escapeHtml(String(labor.lateCount + labor.earlyCount + labor.absenceCount))}</span>
                 </button>
               `;
             }).join("")}
@@ -8716,7 +8789,7 @@ function renderLeaderLaborOverviewMarkup() {
 }
 
 function renderCompanyLaborLedgersMarkup() {
-  const ledgers = getWorklogSiteGroups().map((group) => buildSiteLaborCostLedger(group.id));
+  const ledgers = getLaborSiteGroupsForScope().map((group) => buildSiteLaborCostLedger(group.id));
   const monthLabel = getActiveDateKey().slice(0, 7).replace("-", ".");
   return `
     <section class="company-labor-ledgers" id="companyLaborLedgers">
@@ -8734,14 +8807,13 @@ function renderCompanyLaborLedgersMarkup() {
 }
 
 function buildSiteLaborCostLedger(groupId) {
-  const group = getWorklogSiteGroups().find((item) => item.id === groupId) || getWorklogSiteGroups()[0];
+  const group = getLaborSiteGroupsForScope().find((item) => item.id === groupId) || getLaborSiteGroupsForScope()[0];
   const monthLabel = getActiveDateKey().slice(0, 7).replace("-", ".");
   const dayNumbers = Array.from({ length: 31 }, (_, index) => index + 1);
-  const rows = group.employeeIds
-    .map((employeeId) => {
-      const employee = employees.find((item) => item.id === employeeId);
+  const rows = getLaborEmployeesForGroup(group)
+    .map((employee) => {
       if (!employee) return null;
-      const labor = buildMonthlyLaborSummary(employeeId, employee);
+      const labor = buildMonthlyLaborSummary(getLaborEmployeeLogId(employee), employee);
       return buildLaborLedgerEmployeeRow(labor, employee, dayNumbers);
     })
     .filter(Boolean);
@@ -8815,6 +8887,13 @@ function getLaborProfileForEmployee(employee) {
     org: employee.org || "",
     role: employee.role || "",
     name: employee.name || "",
+    phone: employee.phone || "",
+    email: employee.email || "",
+    workplace: employee.workplace || "",
+    laborId: employee.laborId || "",
+    address: employee.address || "",
+    hourlyWage: employee.hourlyWage || "",
+    dailyWage: employee.dailyWage || "",
     employmentType: employee.employmentType || "직원",
     workHours: employee.workHours || defaultProfile.workHours,
   };
@@ -9053,7 +9132,8 @@ function buildMonthlyLaborSummary(employeeId, employee) {
       logs.push({ dateKey, clockIn: dayLog.clockIn || "", clockOut: dayLog.clockOut || "", status, worked });
     }
   });
-  const employmentType = String(state.profile?.employmentType || employee.employmentType || "직원");
+  const laborProfile = getLaborProfileForEmployee(employee);
+  const employmentType = String(laborProfile.employmentType || employee.employmentType || "직원");
   const settlementPtCount = paidPtCount + otherPtCount;
   const cards = [
     ["직원", getEmployeeAdminLabel(employee)],
@@ -9077,14 +9157,20 @@ function buildMonthlyLaborSummary(employeeId, employee) {
 }
 
 function getOwnLaborEmployeeId() {
-  if (canAccessWorklogOverview() && state.selectedEmployeeId) return state.selectedEmployeeId;
-  if (state.selectedEmployeeId && state.selectedEmployeeId !== "beyond-fitness-manager") return state.selectedEmployeeId;
+  if (state.selectedEmployeeId && canViewLaborEmployee(state.selectedEmployeeId)) return state.selectedEmployeeId;
+  const profileEmployee = getProfileEmployee();
+  const profileEmployeeId = getLaborEmployeeLogId(profileEmployee);
+  if (profileEmployeeId && canViewLaborEmployee(profileEmployeeId)) return profileEmployeeId;
+  const visibleEmployee = getVisibleLaborEmployees()[0];
+  if (visibleEmployee) return getLaborEmployeeLogId(visibleEmployee);
   return state.fitnessWritableEmployeeId || state.selectedEmployeeId || "profile-user";
 }
 
 function getOwnLaborEmployee() {
   const employeeId = getOwnLaborEmployeeId();
-  return getEmployeeOptions().find((item) => item.id === employeeId) || getProfileEmployee();
+  return getVisibleLaborEmployees().find((item) => getLaborEmployeeLogId(item) === employeeId || item.id === employeeId)
+    || getEmployeeOptions().find((item) => item.id === employeeId)
+    || getProfileEmployee();
 }
 
 function getMonthDateKeys(monthPrefix) {
@@ -10198,7 +10284,7 @@ function printLaborReport() {
 }
 
 function buildLaborCostLedger(labor, employee) {
-  const profile = { ...(state.profile || {}) };
+  const profile = getLaborProfileForEmployee(employee);
   const site = profile.workplace || employee.org?.split(" / ").at(-1) || employee.org || "사업장 미지정";
   const employmentType = String(profile.employmentType || employee.employmentType || "직원");
   const dailyWage = numberValue(profile.dailyWage);
@@ -10324,7 +10410,7 @@ async function copySiteLaborCostLedger(ledger) {
 }
 
 async function copyAllSiteLaborLedgers() {
-  const text = getWorklogSiteGroups()
+  const text = getLaborSiteGroupsForScope()
     .map((group) => formatSiteLaborCostLedgerText(buildSiteLaborCostLedger(group.id)))
     .join("\n\n");
   await navigator.clipboard?.writeText(text);
