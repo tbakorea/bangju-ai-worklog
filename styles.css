@@ -3047,12 +3047,17 @@ body[data-device-mode="narrow"] .os-mode-switch span[data-device-mode="narrow"] 
   display: none !important;
 }
 
-.labor-report-sheet > header,
-.labor-report-sheet > footer {
+.labor-report-sheet > header {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 10px;
+}
+
+.labor-report-sheet > footer {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 8px;
 }
 
 .labor-report-sheet > header span {
@@ -3140,6 +3145,16 @@ body[data-device-mode="narrow"] .os-mode-switch span[data-device-mode="narrow"] 
   background: #fffefa;
 }
 
+.labor-report-preview .labor-paper-portrait {
+  width: 1240px;
+  min-height: 1754px;
+}
+
+.labor-report-preview .labor-paper-landscape {
+  width: 1754px;
+  min-height: 1240px;
+}
+
 .labor-paper-simple-title {
   display: grid;
   grid-template-columns: 220px minmax(0, 1fr) 260px;
@@ -3222,8 +3237,8 @@ body[data-device-mode="narrow"] .os-mode-switch span[data-device-mode="narrow"] 
   }
 
   .labor-report-sheet > footer {
-    display: grid;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+    gap: 6px;
   }
 
   .labor-report-mode-tabs {
@@ -3232,7 +3247,7 @@ body[data-device-mode="narrow"] .os-mode-switch span[data-device-mode="narrow"] 
 
   .labor-report-sheet > footer button {
     padding: 8px 6px;
-    font-size: 12px;
+    font-size: 11px;
   }
 }
 
@@ -3262,7 +3277,35 @@ body[data-device-mode="narrow"] .os-mode-switch span[data-device-mode="narrow"] 
     transform: none !important;
   }
 
+  body.is-printing-labor-report.is-labor-report-portrait .labor-paper {
+    width: 210mm !important;
+    height: 297mm !important;
+  }
+
+  body.is-printing-labor-report.is-labor-report-landscape .labor-paper {
+    width: 297mm !important;
+    height: 210mm !important;
+  }
+
+  body.is-printing-labor-report .labor-paper-portrait {
+    page: labor-report-portrait;
+  }
+
+  body.is-printing-labor-report .labor-paper-landscape {
+    page: labor-report-landscape;
+  }
+
   @page {
+    size: A4 landscape;
+    margin: 0;
+  }
+
+  @page labor-report-portrait {
+    size: A4 portrait;
+    margin: 0;
+  }
+
+  @page labor-report-landscape {
     size: A4 landscape;
     margin: 0;
   }

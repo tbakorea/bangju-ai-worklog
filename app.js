@@ -9113,7 +9113,15 @@ function renderLaborDayRow(row) {
 function getLaborReportFileBase(labor) {
   const employee = labor?.employee || getOwnLaborEmployee();
   const name = (employee?.name || "직원").replace(/[^\w가-힣-]+/g, "-");
-  return `bangju-labor-${labor?.month || getActiveDateKey().slice(0, 7)}-${name}`;
+  const mode = laborReportModes.find(([value]) => value === currentLaborReportMode)?.[1] || "노무";
+  const modeSlug = mode.replace(/[^\w가-힣-]+/g, "-");
+  return `bangju-labor-${labor?.month || getActiveDateKey().slice(0, 7)}-${name}-${modeSlug}`;
+}
+
+function getLaborReportCanvasSize(mode = currentLaborReportMode) {
+  return mode === "payroll"
+    ? { width: 1240, height: 1754, orientation: "portrait" }
+    : { width: 1754, height: 1240, orientation: "landscape" };
 }
 
 function getLaborReportExportCss() {
@@ -9127,6 +9135,15 @@ function getLaborReportExportCss() {
       background: #fffefa;
       padding: 52px;
       color: #17221d;
+    }
+    .labor-paper-portrait {
+      width: 1240px;
+      height: 1754px;
+      padding: 54px 66px;
+    }
+    .labor-paper-landscape {
+      width: 1754px;
+      height: 1240px;
     }
     .labor-paper-title {
       display: grid;
@@ -9310,99 +9327,131 @@ function getLaborReportExportCss() {
       font-size: 14px;
       font-weight: 760;
     }
+    .payroll-form-title {
+      margin: 0 0 18px;
+      border-bottom: 3px solid #17221d;
+      padding-bottom: 14px;
+      color: #17221d;
+      font-size: 38px;
+      font-weight: 950;
+      text-align: center;
+    }
+    .payroll-form-grid {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+      gap: 14px;
+    }
+    .payroll-form-table {
+      width: 100%;
+      border-collapse: collapse;
+      table-layout: fixed;
+      color: #17221d;
+      font-size: 15px;
+    }
+    .payroll-form-table th,
+    .payroll-form-table td {
+      height: 32px;
+      border: 1px dotted rgba(23, 34, 29, 0.76);
+      padding: 5px 7px;
+      vertical-align: middle;
+    }
+    .payroll-form-table th {
+      background: #eaf2e6;
+      font-weight: 950;
+      text-align: center;
+    }
+    .payroll-form-table td:nth-child(2),
+    .payroll-form-table td:nth-child(4) {
+      text-align: right;
+      font-weight: 850;
+    }
+    .payroll-form-wide {
+      grid-column: 1 / -1;
+    }
+    .payroll-form-message {
+      margin-top: 28px;
+      border-top: 2px solid #17221d;
+      padding-top: 22px;
+      color: #17221d;
+      font-size: 20px;
+      font-weight: 780;
+      line-height: 1.7;
+      text-align: center;
+    }
   `;
 }
 
 function renderLaborPayrollReportTemplate(labor, payroll, ledger) {
-  const dayRows = labor.dayRows.filter((row) => row.clockIn || row.clockOut || row.worked || row.status !== "휴무").slice(0, 18);
-  const payRows = [...payroll.wageItems, ["지급총액", payroll.grossPay, "지급 항목 합계"]];
-  const deductionRows = [...payroll.deductionItems, ["공제총액", payroll.deductionTotal], ["차인지급액", payroll.netPay]];
+  const payRows = payroll.wageItems.slice(0, 9);
+  const deductionRows = payroll.deductionItems.slice(0, 8);
+  const workRows = [
+    ["기본 근로시간", formatMinutesAsHours(labor.scheduledMinutes)],
+    ["고정연장 근로시간", formatMinutesAsHours(Math.min(labor.overtimeMinutes, 40 * 60))],
+    ["고정법정휴일 근로시간", formatMinutesAsHours(labor.holidayMinutes)],
+    ["연장 근로시간", formatMinutesAsHours(labor.overtimeMinutes)],
+    ["휴일 근로시간", formatMinutesAsHours(labor.holidayMinutes)],
+  ];
+  const formulaRows = [
+    ["연장근로수당", "연장근로시간 × 통상시급 × 1.5"],
+    ["휴일근로수당", "휴일근로시간 × 통상시급 × 1.5"],
+    ["국민연금", "기준소득월액 × 4.5%"],
+    ["건강보험", "과세대상임금 × 3.545%"],
+    ["장기요양보험", "건강보험료 × 장기요양요율"],
+    ["고용보험", "과세대상임금 × 0.9%"],
+    ["근로소득세", "간이세액표 또는 프리랜서 원천징수 기준"],
+  ];
   return `
-    <article class="labor-paper">
-      <header class="labor-paper-title">
-        <strong>비욘드 노무·급여명세서</strong>
-        <div>
-          <span>대상월</span><b>${escapeHtml(formatLaborMonthHeading(labor.month))}</b>
-          <span>직원</span><b>${escapeHtml(payroll.workerName)}</b>
-          <span>소속</span><b>${escapeHtml(payroll.org)} / ${escapeHtml(payroll.workplace)}</b>
-          <span>고용</span><b>${escapeHtml(payroll.employmentType)}</b>
-        </div>
-      </header>
-      <section class="labor-paper-summary">
-        ${[
-          ["기록일", `${labor.recordedDays}일`],
-          ["실근무", formatMinutesAsHours(labor.actualMinutes)],
-          ["연장추정", formatMinutesAsHours(labor.overtimeMinutes)],
-          ["야간추정", formatMinutesAsHours(labor.nightMinutes)],
-          ["유료 PT", `${labor.settlementPtCount}건`],
-          ["차인지급액", formatCurrency(payroll.netPay) || "계산 대기"],
-        ].map(([label, value]) => `<span><b>${escapeHtml(label)}</b><strong>${escapeHtml(value)}</strong></span>`).join("")}
-      </section>
-      <div class="labor-paper-grid">
-        <section class="labor-paper-section labor-paper-pay">
-          <h3>급여명세</h3>
-          <table>
-            <thead><tr><th>항목</th><th>금액</th><th>산식/비고</th></tr></thead>
-            <tbody>
-              ${payRows.map(([label, amount, formula]) => `<tr><td>${escapeHtml(label)}</td><td>${escapeHtml(formatCurrency(amount) || "0원")}</td><td>${escapeHtml(formula || "")}</td></tr>`).join("")}
-              ${deductionRows.map(([label, amount]) => `<tr><td>${escapeHtml(label)}</td><td>${escapeHtml(formatCurrency(amount) || "0원")}</td><td>공제/정산</td></tr>`).join("")}
-            </tbody>
-          </table>
-        </section>
-        <section class="labor-paper-section labor-paper-register">
-          <h3>월별 근무시간 현황</h3>
-          <table>
-            <thead><tr><th>일자</th><th>요일</th><th>소정</th><th>출근</th><th>퇴근</th><th>외출</th><th>실근무</th><th>상태</th><th>PT</th></tr></thead>
-            <tbody>
-              ${dayRows.map((row) => `
-                <tr>
-                  <td>${escapeHtml(row.dateKey.slice(5))}</td>
-                  <td>${escapeHtml(row.weekday)}</td>
-                  <td>${escapeHtml(row.scheduled ? formatMinutesAsHours(row.scheduled) : "-")}</td>
-                  <td>${escapeHtml(row.clockIn || "-")}</td>
-                  <td>${escapeHtml(row.clockOut || "-")}</td>
-                  <td>${escapeHtml(row.breakSummary || "-")}</td>
-                  <td>${escapeHtml(row.worked ? formatMinutesAsHours(row.worked) : "-")}</td>
-                  <td>${escapeHtml(row.status)}</td>
-                  <td>${escapeHtml(`${row.paidPt}/${row.freePt}`)}</td>
-                </tr>
-              `).join("") || `<tr><td colspan="9">해당 월의 근무기록이 아직 없습니다.</td></tr>`}
-            </tbody>
-          </table>
-        </section>
-      </div>
-      <section class="labor-paper-section labor-paper-ledger">
-        <h3>노무비 지급대장</h3>
-        <table>
-          <thead>
-            <tr>
-              <th>구분</th>
-              <th>성명</th>
-              <th>식별번호</th>
-              <th>주소</th>
-              ${ledger.dayNumbers.map((day) => `<th>${day}</th>`).join("")}
-              <th>출역</th>
-              <th>단가</th>
-              <th>총액</th>
-              <th>확인</th>
-            </tr>
-          </thead>
+    <article class="labor-paper labor-paper-portrait labor-paper-payroll-mode">
+      <h1 class="payroll-form-title">${escapeHtml(String(labor.month).replace("-", "년 "))}월 급여명세서</h1>
+      <div class="payroll-form-grid">
+        <table class="payroll-form-table payroll-form-wide">
           <tbody>
             <tr>
-              <td>${escapeHtml(ledger.employmentType)}</td>
-              <td>${escapeHtml(ledger.name)}</td>
-              <td>${escapeHtml(ledger.laborId)}</td>
-              <td>${escapeHtml(ledger.address)}</td>
-              ${ledger.dayCells.map((cell) => `<td>${escapeHtml(cell.label)}</td>`).join("")}
-              <td>${escapeHtml(String(ledger.workDays))}일</td>
-              <td>${escapeHtml(ledger.wageLabel)}</td>
-              <td>${escapeHtml(ledger.totalPayLabel)}</td>
-              <td></td>
+              <th>인적사항</th><td>${escapeHtml(payroll.workerName)}</td>
+              <th>생년/식별</th><td>${escapeHtml(maskLaborId(payroll.workerId))}</td>
+              <th>급여지급일</th><td>${escapeHtml(payroll.payDate)}</td>
+            </tr>
+            <tr>
+              <th>소속</th><td>${escapeHtml(payroll.org)}</td>
+              <th>근무지</th><td>${escapeHtml(payroll.workplace)}</td>
+              <th>입사일</th><td>${escapeHtml(getLaborProfileForEmployee(labor.employee).joinDate || "-")}</td>
             </tr>
           </tbody>
         </table>
-      </section>
-      <p class="labor-paper-note">본 문서는 업무일지 출결기록 기반 초안입니다. 급여 지급, 4대보험, 세무·노무 신고 전 최종 검토가 필요합니다.</p>
+        <table class="payroll-form-table">
+          <thead><tr><th colspan="2">지급내역</th></tr><tr><th>지급항목</th><th>지급금액(원)</th></tr></thead>
+          <tbody>
+            ${payRows.map(([label, amount]) => `<tr><td>${escapeHtml(label)}</td><td>${escapeHtml(formatCurrency(amount) || "-")}</td></tr>`).join("")}
+            <tr><th>지급합계</th><td>${escapeHtml(formatCurrency(payroll.grossPay) || "-")}</td></tr>
+          </tbody>
+        </table>
+        <table class="payroll-form-table">
+          <thead><tr><th colspan="2">공제내역</th></tr><tr><th>공제항목</th><th>공제금액(원)</th></tr></thead>
+          <tbody>
+            ${deductionRows.map(([label, amount]) => `<tr><td>${escapeHtml(label)}</td><td>${escapeHtml(formatCurrency(amount) || "-")}</td></tr>`).join("")}
+            <tr><th>공제합계</th><td>${escapeHtml(formatCurrency(payroll.deductionTotal) || "-")}</td></tr>
+            <tr><th>실수령액</th><td>${escapeHtml(formatCurrency(payroll.netPay) || "-")}</td></tr>
+          </tbody>
+        </table>
+        <table class="payroll-form-table payroll-form-wide">
+          <thead><tr><th colspan="5">근로시간</th></tr></thead>
+          <tbody>
+            <tr>${workRows.map(([label]) => `<th>${escapeHtml(label)}</th>`).join("")}</tr>
+            <tr>${workRows.map(([, value]) => `<td>${escapeHtml(value)}</td>`).join("")}</tr>
+          </tbody>
+        </table>
+        <table class="payroll-form-table payroll-form-wide">
+          <thead><tr><th>구분</th><th>항목별 계산방법</th></tr></thead>
+          <tbody>
+            ${formulaRows.map(([label, formula]) => `<tr><td>${escapeHtml(label)}</td><td>${escapeHtml(formula)}</td></tr>`).join("")}
+          </tbody>
+        </table>
+      </div>
+      <div class="payroll-form-message">
+        <div>${escapeHtml(formatFormalKoreanDate(getActiveDateKey()))}</div>
+        <p>방주 가족 여러분 금월 수고 많으셨습니다.</p>
+        <strong>주식회사 방주</strong>
+      </div>
     </article>
   `;
 }
@@ -9436,7 +9485,7 @@ function renderLaborWageLedgerReportTemplate(labor) {
   const siteLedger = getCurrentLaborSiteLedger(labor);
   const days = siteLedger.dayNumbers;
   return `
-    <article class="labor-paper labor-paper-ledger-mode">
+    <article class="labor-paper labor-paper-landscape labor-paper-ledger-mode">
       <header class="labor-paper-simple-title">
         <span>총인원 ${escapeHtml(String(siteLedger.rows.length))}</span>
         <strong>${escapeHtml(siteLedger.monthLabel)} 급여대장</strong>
@@ -9498,7 +9547,7 @@ function renderLaborFreelancerReportTemplate(labor) {
   const freelancerRows = siteLedger.rows.filter((row) => /프리랜서|트레이너|자유/i.test(row.employmentType) || /트레이너/.test(row.name));
   const rows = freelancerRows.length ? freelancerRows : siteLedger.rows;
   return `
-    <article class="labor-paper labor-paper-freelancer-mode">
+    <article class="labor-paper labor-paper-landscape labor-paper-freelancer-mode">
       <header class="labor-paper-simple-title">
         <span>[별지 제14호의2서식]</span>
         <strong>프리랜서(자유소득자) 국세청 등록 (${escapeHtml(labor.monthLabel)}분)</strong>
@@ -9547,7 +9596,7 @@ function renderLaborPtClassReportTemplate(labor) {
     .filter(Boolean);
   const days = Array.from({ length: 31 }, (_, index) => index + 1);
   return `
-    <article class="labor-paper labor-paper-pt-mode">
+    <article class="labor-paper labor-paper-landscape labor-paper-pt-mode">
       <header class="labor-paper-simple-title">
         <span>피트니스 전용</span>
         <strong>비욘드 피트니스 (${escapeHtml(String(Number(labor.month.slice(5))))}월) PT수업</strong>
@@ -9602,7 +9651,9 @@ function ensureLaborReportSheet() {
       </div>
       <div class="labor-report-preview" id="laborReportPreview"></div>
       <footer>
-        <button type="button" id="laborReportImageButton">사진저장</button>
+        <button type="button" id="laborReportExcelButton">엑셀</button>
+        <button type="button" id="laborReportImageButton">JPEG</button>
+        <button type="button" id="laborReportPdfButton">PDF</button>
         <button type="button" id="laborReportShareButton">보내기</button>
         <button type="button" id="laborReportPrintButton">출력</button>
       </footer>
@@ -9612,8 +9663,14 @@ function ensureLaborReportSheet() {
   document.getElementById("laborReportBackdrop")?.addEventListener("click", closeLaborReportSheet);
   document.getElementById("laborReportCloseButton")?.addEventListener("click", closeLaborReportSheet);
   document.getElementById("laborReportPrintButton")?.addEventListener("click", printLaborReport);
+  document.getElementById("laborReportExcelButton")?.addEventListener("click", () => {
+    saveLaborReportExcel().catch(() => alert("엑셀 파일을 만들지 못했습니다. 잠시 후 다시 시도해주세요."));
+  });
   document.getElementById("laborReportImageButton")?.addEventListener("click", () => {
     saveLaborReportImage().catch(() => alert("이미지 파일을 만들지 못했습니다. 출력 메뉴에서 PDF 저장을 이용해주세요."));
+  });
+  document.getElementById("laborReportPdfButton")?.addEventListener("click", () => {
+    saveLaborReportPdf().catch(() => alert("PDF 파일을 만들지 못했습니다. 출력 메뉴에서 브라우저 저장을 이용해주세요."));
   });
   document.getElementById("laborReportShareButton")?.addEventListener("click", () => {
     shareLaborReport().catch(() => alert("보내기 기능을 사용할 수 없어 사진저장 또는 출력 메뉴를 이용해주세요."));
@@ -9628,6 +9685,8 @@ let currentLaborReportModel = null;
 
 function setLaborReportMode(mode = "payroll") {
   currentLaborReportMode = laborReportModes.some(([value]) => value === mode) ? mode : "payroll";
+  document.body.classList.toggle("is-labor-report-portrait", currentLaborReportMode === "payroll");
+  document.body.classList.toggle("is-labor-report-landscape", currentLaborReportMode !== "payroll");
   const preview = document.getElementById("laborReportPreview");
   const title = laborReportModes.find(([value]) => value === currentLaborReportMode)?.[1] || "노무 출력";
   const titleNode = document.getElementById("laborReportTitle");
@@ -9662,8 +9721,7 @@ function closeLaborReportSheet() {
 
 async function renderLaborReportCanvas() {
   if (!currentLaborReportModel) throw new Error("급여명세서 모델이 없습니다.");
-  const width = 1754;
-  const height = 1240;
+  const { width, height } = getLaborReportCanvasSize();
   const html = `
     <div xmlns="http://www.w3.org/1999/xhtml">
       <style>${getLaborReportExportCss()}</style>
@@ -9699,11 +9757,12 @@ async function renderLaborReportCanvas() {
   }
 }
 
-function createLandscapePdfBlobFromCanvas(canvas) {
+function createLaborPdfBlobFromCanvas(canvas) {
   const encoder = new TextEncoder();
   const jpegBytes = dataUrlToUint8Array(canvas.toDataURL("image/jpeg", 0.92));
-  const pageWidth = 841.89;
-  const pageHeight = 595.28;
+  const isPortrait = canvas.height > canvas.width;
+  const pageWidth = isPortrait ? 595.28 : 841.89;
+  const pageHeight = isPortrait ? 841.89 : 595.28;
   const content = `q\n${pageWidth} 0 0 ${pageHeight} 0 0 cm\n/Im0 Do\nQ`;
   const objects = [
     encoder.encode("1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n"),
@@ -9742,40 +9801,394 @@ function createLandscapePdfBlobFromCanvas(canvas) {
 
 async function saveLaborReportImage() {
   const canvas = await renderLaborReportCanvas();
-  const blob = await canvasToBlob(canvas, "image/png");
-  downloadBlob(blob, `${getLaborReportFileBase(currentLaborReportModel?.labor)}.png`);
+  const blob = await canvasToBlob(canvas, "image/jpeg", 0.94);
+  downloadBlob(blob, `${getLaborReportFileBase(currentLaborReportModel?.labor)}.jpg`);
 }
 
 async function saveLaborReportPdf() {
   const canvas = await renderLaborReportCanvas();
-  const blob = createLandscapePdfBlobFromCanvas(canvas);
+  const blob = createLaborPdfBlobFromCanvas(canvas);
   downloadBlob(blob, `${getLaborReportFileBase(currentLaborReportModel?.labor)}.pdf`);
 }
 
 async function shareLaborReport() {
   const canvas = await renderLaborReportCanvas();
-  const pngBlob = await canvasToBlob(canvas, "image/png");
-  const pdfBlob = createLandscapePdfBlobFromCanvas(canvas);
+  const jpegBlob = await canvasToBlob(canvas, "image/jpeg", 0.94);
+  const pdfBlob = createLaborPdfBlobFromCanvas(canvas);
   const base = getLaborReportFileBase(currentLaborReportModel?.labor);
-  const pngFile = new File([pngBlob], `${base}.png`, { type: "image/png" });
+  const jpegFile = new File([jpegBlob], `${base}.jpg`, { type: "image/jpeg" });
   const pdfFile = new File([pdfBlob], `${base}.pdf`, { type: "application/pdf" });
-  if (navigator.canShare?.({ files: [pngFile, pdfFile] }) && navigator.share) {
+  if (navigator.canShare?.({ files: [jpegFile, pdfFile] }) && navigator.share) {
     await navigator.share({
       title: "Bangju Labor Report",
       text: "방주 AI Worklog 노무 출력물입니다.",
-      files: [pngFile, pdfFile],
+      files: [jpegFile, pdfFile],
     });
     return;
   }
-  if (navigator.canShare?.({ files: [pngFile] }) && navigator.share) {
+  if (navigator.canShare?.({ files: [jpegFile] }) && navigator.share) {
     await navigator.share({
       title: "Bangju Labor Report",
       text: "방주 AI Worklog 노무 출력물 이미지입니다.",
-      files: [pngFile],
+      files: [jpegFile],
     });
     return;
   }
   await saveLaborReportPdf();
+}
+
+async function saveLaborReportExcel() {
+  if (!currentLaborReportModel) throw new Error("노무 출력 모델이 없습니다.");
+  const { labor, payroll } = currentLaborReportModel;
+  const workbook = buildLaborReportWorkbookBlob(labor, payroll);
+  downloadBlob(workbook, `${getLaborReportFileBase(labor)}.xlsx`);
+}
+
+function buildLaborReportWorkbookBlob(labor, payroll) {
+  const siteLedger = getCurrentLaborSiteLedger(labor);
+  return buildXlsxWorkbookBlob([
+    { name: "급여명세서", rows: buildPayrollSheetRows(labor, payroll), widths: [18, 18, 18, 18, 18, 18, 18] },
+    { name: "급여대장", rows: buildWageLedgerSheetRows(siteLedger), widths: [7, 14, 14, 12, 12, 12, 13, 10, 13, 10, 10, 10, 13, 10, 10, 10, 10, 10, 13] },
+    { name: "프리랜서신고", rows: buildFreelancerSheetRows(siteLedger, labor), widths: Array(39).fill(9) },
+    { name: "PT수업집계", rows: buildPtClassSheetRows(labor), widths: Array(35).fill(8) },
+  ]);
+}
+
+function buildPayrollSheetRows(labor, payroll) {
+  const rows = [
+    [{ v: `${String(labor.month).replace("-", "년 ")}월 급여명세서` }],
+    [],
+    ["인적사항", "성명", payroll.workerName, "급여지급일", payroll.payDate, "입사일", getLaborProfileForEmployee(labor.employee).joinDate || ""],
+    ["", "생년/식별", maskLaborId(payroll.workerId), "소속", payroll.org, "근무지", payroll.workplace],
+    [],
+    ["지급내역", "", "", "공제내역"],
+    ["지급항목", "지급금액(원)", "", "공제항목", "공제금액(원)"],
+  ];
+  const wageStart = rows.length + 1;
+  const maxRows = Math.max(payroll.wageItems.length, payroll.deductionItems.length, 9);
+  for (let index = 0; index < maxRows; index += 1) {
+    const wage = payroll.wageItems[index] || ["", ""];
+    const deduction = payroll.deductionItems[index] || ["", ""];
+    rows.push([wage[0], numberValue(wage[1]) || "", "", deduction[0], numberValue(deduction[1]) || ""]);
+  }
+  const wageEnd = rows.length;
+  rows.push(["지급합계", { f: `SUM(B${wageStart}:B${wageEnd})`, v: payroll.grossPay || 0 }, "", "공제합계", { f: `SUM(E${wageStart}:E${wageEnd})`, v: payroll.deductionTotal || 0 }]);
+  rows.push(["", "", "", "실수령액", { f: `B${rows.length}-E${rows.length}`, v: payroll.netPay || 0 }]);
+  rows.push([]);
+  rows.push(["근로시간", "기본 근로시간", "고정연장 근로시간", "고정법정휴일 근로시간", "연장 근로시간", "휴일 근로시간"]);
+  rows.push([
+    "",
+    labor.scheduledMinutes ? Math.round((labor.scheduledMinutes / 60) * 100) / 100 : 0,
+    labor.overtimeMinutes ? Math.round((Math.min(labor.overtimeMinutes, 40 * 60) / 60) * 100) / 100 : 0,
+    labor.holidayMinutes ? Math.round((labor.holidayMinutes / 60) * 100) / 100 : 0,
+    labor.overtimeMinutes ? Math.round((labor.overtimeMinutes / 60) * 100) / 100 : 0,
+    labor.holidayMinutes ? Math.round((labor.holidayMinutes / 60) * 100) / 100 : 0,
+  ]);
+  rows.push([]);
+  rows.push(["항목별 계산방법"]);
+  [
+    ["연장근로수당", "연장근로시간 × 통상시급 × 1.5"],
+    ["휴일근로수당", "휴일근로시간 × 통상시급 × 1.5"],
+    ["국민연금", "기준소득월액 × 4.5%"],
+    ["건강보험", "과세대상임금 × 3.545%"],
+    ["장기요양보험", "건강보험료 × 장기요양요율"],
+    ["고용보험", "과세대상임금 × 0.9%"],
+    ["근로소득세", "간이세액표 또는 프리랜서 원천징수 기준"],
+  ].forEach((row) => rows.push(row));
+  rows.push([]);
+  rows.push([formatFormalKoreanDate(getActiveDateKey())]);
+  rows.push(["방주 가족 여러분 금월 수고 많으셨습니다."]);
+  rows.push(["주식회사 방주"]);
+  return rows;
+}
+
+function buildWageLedgerSheetRows(siteLedger) {
+  const rows = [
+    [`${siteLedger.monthLabel} 급여대장`],
+    ["사업장", siteLedger.site, "총인원", siteLedger.rows.length],
+    [],
+    ["순번", "성명", "직책", "통상시급", "근로시간", "입사일", "기본급", "식대", "시간/금액", "연장", "야간", "휴일", "지급액", "소득세", "국민연금", "건강보험", "고용보험", "공제액", "실수령액"],
+  ];
+  const start = rows.length + 1;
+  siteLedger.rows.forEach((row, index) => {
+    const employee = employees.find((item) => item.id === row.employeeId) || {};
+    const profile = getLaborProfileForEmployee(employee);
+    const hourly = numberValue(profile.hourlyWage);
+    const gross = row.totalPay || 0;
+    const rowNumber = rows.length + 1;
+    rows.push([
+      index + 1,
+      row.name,
+      employee.role || row.employmentType,
+      hourly || "",
+      Math.round((row.actualMinutes / 60) * 100) / 100,
+      profile.joinDate || "",
+      gross || "",
+      "",
+      "",
+      "",
+      "",
+      "",
+      { f: `SUM(G${rowNumber}:L${rowNumber})`, v: gross || 0 },
+      "",
+      "",
+      "",
+      "",
+      { f: `SUM(N${rowNumber}:Q${rowNumber})`, v: 0 },
+      { f: `M${rowNumber}-R${rowNumber}`, v: gross || 0 },
+    ]);
+  });
+  const end = rows.length;
+  rows.push([
+    "합계",
+    "",
+    "",
+    "",
+    { f: `SUM(E${start}:E${end})`, v: Math.round((siteLedger.totals.actualMinutes / 60) * 100) / 100 },
+    "",
+    { f: `SUM(G${start}:G${end})`, v: siteLedger.totals.totalPay || 0 },
+    "",
+    "",
+    "",
+    "",
+    "",
+    { f: `SUM(M${start}:M${end})`, v: siteLedger.totals.totalPay || 0 },
+    "",
+    "",
+    "",
+    "",
+    { f: `SUM(R${start}:R${end})`, v: 0 },
+    { f: `SUM(S${start}:S${end})`, v: siteLedger.totals.totalPay || 0 },
+  ]);
+  return rows;
+}
+
+function buildFreelancerSheetRows(siteLedger, labor) {
+  const days = siteLedger.dayNumbers;
+  const rows = [
+    [`프리랜서(자유소득자) 국세청 등록 (${labor.monthLabel}분)`],
+    ["사업장관리번호", "199-86-02068-0", "대표자명", "정찬훈"],
+    [],
+    ["성명", "주민등록번호", "계약직종", ...days, "월급총액", "세율공제(3.3%)"],
+  ];
+  const sourceRows = siteLedger.rows.filter((row) => /프리랜서|트레이너|자유/i.test(row.employmentType) || /트레이너/.test(row.name));
+  const rowsToUse = sourceRows.length ? sourceRows : siteLedger.rows;
+  rowsToUse.forEach((row) => {
+    const rowNumber = rows.length + 1;
+    rows.push([
+      row.name,
+      row.laborId,
+      row.employmentType,
+      ...row.dayCells.map((cell) => (cell.worked ? 1 : "")),
+      row.totalPay || "",
+      { f: `ROUND(${cellRef(rowNumber, 35)}*3.3%,0)`, v: row.totalPay ? Math.round(row.totalPay * 0.033) : 0 },
+    ]);
+  });
+  return rows;
+}
+
+function buildPtClassSheetRows(labor) {
+  const fitnessGroup = getWorklogSiteGroups().find((group) => /피트니스/.test(group.title)) || getLaborEmployeeSiteGroup(labor?.employee?.id);
+  const days = Array.from({ length: 31 }, (_, index) => index + 1);
+  const rows = [
+    [`비욘드 피트니스 (${String(Number(labor.month.slice(5)))}월) PT수업`],
+    ["순번", "이름", ...days, "유료합계", "무료"],
+  ];
+  (fitnessGroup?.employeeIds || []).forEach((employeeId, index) => {
+    const employee = employees.find((item) => item.id === employeeId);
+    if (!employee) return;
+    const summary = buildMonthlyLaborSummary(employeeId, employee);
+    const rowByDay = new Map(summary.dayRows.map((row) => [Number(row.dateKey.slice(8)), row]));
+    const rowNumber = rows.length + 1;
+    rows.push([
+      index + 1,
+      getEmployeeAdminLabel(employee),
+      ...days.map((day) => rowByDay.get(day)?.paidPt || ""),
+      { f: `SUM(C${rowNumber}:AG${rowNumber})`, v: summary.settlementPtCount || 0 },
+      summary.freePtCount || 0,
+    ]);
+  });
+  return rows;
+}
+
+function buildXlsxWorkbookBlob(sheets) {
+  const workbookRels = sheets.map((_, index) => `
+    <Relationship Id="rId${index + 1}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet${index + 1}.xml"/>`).join("");
+  const sheetNodes = sheets.map((sheet, index) => `
+    <sheet name="${escapeXml(normalizeSheetName(sheet.name))}" sheetId="${index + 1}" r:id="rId${index + 1}"/>`).join("");
+  const worksheetFiles = sheets.map((sheet, index) => ({
+    path: `xl/worksheets/sheet${index + 1}.xml`,
+    data: buildWorksheetXml(sheet.rows, sheet.widths),
+  }));
+  return createZipBlob([
+    {
+      path: "[Content_Types].xml",
+      data: `<?xml version="1.0" encoding="UTF-8"?>
+        <Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
+          <Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
+          <Default Extension="xml" ContentType="application/xml"/>
+          <Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>
+          <Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/>
+          ${sheets.map((_, index) => `<Override PartName="/xl/worksheets/sheet${index + 1}.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>`).join("")}
+        </Types>`,
+    },
+    {
+      path: "_rels/.rels",
+      data: `<?xml version="1.0" encoding="UTF-8"?>
+        <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+          <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/>
+        </Relationships>`,
+    },
+    {
+      path: "xl/workbook.xml",
+      data: `<?xml version="1.0" encoding="UTF-8"?>
+        <workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
+          <sheets>${sheetNodes}</sheets>
+        </workbook>`,
+    },
+    {
+      path: "xl/_rels/workbook.xml.rels",
+      data: `<?xml version="1.0" encoding="UTF-8"?>
+        <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">${workbookRels}
+          <Relationship Id="rId${sheets.length + 1}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/>
+        </Relationships>`,
+    },
+    {
+      path: "xl/styles.xml",
+      data: `<?xml version="1.0" encoding="UTF-8"?>
+        <styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
+          <fonts count="2"><font><sz val="10"/><name val="Arial"/></font><font><b/><sz val="12"/><name val="Arial"/></font></fonts>
+          <fills count="2"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill></fills>
+          <borders count="1"><border><left/><right/><top/><bottom/><diagonal/></border></borders>
+          <cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs>
+          <cellXfs count="2"><xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/><xf numFmtId="0" fontId="1" fillId="0" borderId="0" xfId="0"/></cellXfs>
+          <cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles>
+        </styleSheet>`,
+    },
+    ...worksheetFiles,
+  ]);
+}
+
+function buildWorksheetXml(rows, widths = []) {
+  const cols = widths.length
+    ? `<cols>${widths.map((width, index) => `<col min="${index + 1}" max="${index + 1}" width="${width}" customWidth="1"/>`).join("")}</cols>`
+    : "";
+  const rowXml = rows.map((row, rowIndex) => `
+    <row r="${rowIndex + 1}">
+      ${(row || []).map((cell, columnIndex) => createXlsxCell(cell, rowIndex + 1, columnIndex + 1)).join("")}
+    </row>`).join("");
+  return `<?xml version="1.0" encoding="UTF-8"?>
+    <worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
+      ${cols}
+      <sheetData>${rowXml}</sheetData>
+    </worksheet>`;
+}
+
+function createXlsxCell(cell, rowIndex, columnIndex) {
+  if (cell === undefined || cell === null || cell === "") return "";
+  const ref = cellRef(rowIndex, columnIndex);
+  const value = typeof cell === "object" && !Array.isArray(cell) ? cell.v : cell;
+  const formula = typeof cell === "object" && !Array.isArray(cell) ? cell.f : "";
+  if (formula) return `<c r="${ref}"><f>${escapeXml(formula)}</f><v>${escapeXml(String(value ?? 0))}</v></c>`;
+  if (typeof value === "number" && Number.isFinite(value)) return `<c r="${ref}"><v>${value}</v></c>`;
+  return `<c r="${ref}" t="inlineStr"><is><t>${escapeXml(String(value))}</t></is></c>`;
+}
+
+function cellRef(rowIndex, columnIndex) {
+  return `${columnName(columnIndex)}${rowIndex}`;
+}
+
+function columnName(index) {
+  let column = "";
+  let value = index;
+  while (value > 0) {
+    const remainder = (value - 1) % 26;
+    column = String.fromCharCode(65 + remainder) + column;
+    value = Math.floor((value - 1) / 26);
+  }
+  return column;
+}
+
+function normalizeSheetName(name = "Sheet") {
+  return String(name).replace(/[\\/?*:[\]]/g, " ").slice(0, 31) || "Sheet";
+}
+
+function escapeXml(value = "") {
+  return String(value)
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&apos;");
+}
+
+function createZipBlob(files) {
+  const encoder = new TextEncoder();
+  const localParts = [];
+  const centralParts = [];
+  let offset = 0;
+  const { dosTime, dosDate } = getDosDateTime(new Date());
+  files.forEach((file) => {
+    const nameBytes = encoder.encode(file.path);
+    const dataBytes = encoder.encode(String(file.data).replace(/>\s+</g, "><").trim());
+    const crc = crc32(dataBytes);
+    const localHeader = new Uint8Array(30 + nameBytes.length);
+    const localView = new DataView(localHeader.buffer);
+    localView.setUint32(0, 0x04034b50, true);
+    localView.setUint16(4, 20, true);
+    localView.setUint16(10, dosTime, true);
+    localView.setUint16(12, dosDate, true);
+    localView.setUint32(14, crc, true);
+    localView.setUint32(18, dataBytes.length, true);
+    localView.setUint32(22, dataBytes.length, true);
+    localView.setUint16(26, nameBytes.length, true);
+    localHeader.set(nameBytes, 30);
+    localParts.push(localHeader, dataBytes);
+
+    const centralHeader = new Uint8Array(46 + nameBytes.length);
+    const centralView = new DataView(centralHeader.buffer);
+    centralView.setUint32(0, 0x02014b50, true);
+    centralView.setUint16(4, 20, true);
+    centralView.setUint16(6, 20, true);
+    centralView.setUint16(12, dosTime, true);
+    centralView.setUint16(14, dosDate, true);
+    centralView.setUint32(16, crc, true);
+    centralView.setUint32(20, dataBytes.length, true);
+    centralView.setUint32(24, dataBytes.length, true);
+    centralView.setUint16(28, nameBytes.length, true);
+    centralView.setUint32(42, offset, true);
+    centralHeader.set(nameBytes, 46);
+    centralParts.push(centralHeader);
+    offset += localHeader.length + dataBytes.length;
+  });
+  const centralOffset = offset;
+  const centralSize = centralParts.reduce((sum, part) => sum + part.length, 0);
+  const end = new Uint8Array(22);
+  const endView = new DataView(end.buffer);
+  endView.setUint32(0, 0x06054b50, true);
+  endView.setUint16(8, files.length, true);
+  endView.setUint16(10, files.length, true);
+  endView.setUint32(12, centralSize, true);
+  endView.setUint32(16, centralOffset, true);
+  return new Blob([...localParts, ...centralParts, end], {
+    type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  });
+}
+
+function getDosDateTime(date) {
+  return {
+    dosTime: (date.getHours() << 11) | (date.getMinutes() << 5) | Math.floor(date.getSeconds() / 2),
+    dosDate: ((date.getFullYear() - 1980) << 9) | ((date.getMonth() + 1) << 5) | date.getDate(),
+  };
+}
+
+function crc32(bytes) {
+  let crc = 0xffffffff;
+  for (let index = 0; index < bytes.length; index += 1) {
+    crc ^= bytes[index];
+    for (let bit = 0; bit < 8; bit += 1) crc = (crc >>> 1) ^ (0xedb88320 & -(crc & 1));
+  }
+  return (crc ^ 0xffffffff) >>> 0;
 }
 
 function printLaborReport() {
