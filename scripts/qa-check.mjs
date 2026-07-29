@@ -233,7 +233,7 @@ check(
   js.includes("function formatPhoneNumber")
     && js.includes("isPhoneField(field)")
     && js.includes('field("phone", "전화", row.phone)')
-    && js.includes("formatPhoneNumber(state.profile.phone)"),
+    && (js.includes("formatPhoneNumber(state.profile.phone)") || js.includes("formatPhoneNumber(profile.phone)")),
   "phone inputs should accept digits and display hyphenated Korean phone numbers"
 );
 

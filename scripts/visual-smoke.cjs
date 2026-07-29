@@ -555,38 +555,38 @@ async function checkUnmappedEmployeeDoesNotInheritFitnessManager(browser) {
     lockHidden: document.querySelector("#worklogEditLockBanner")?.hidden ?? true
   })`));
   const parsed = JSON.parse(metrics);
-  if (parsed.representative) fail("unmapped employee should not become representative", metrics);
-  if (parsed.activeView !== "bangju-log") fail("unmapped Bangju employee should land on Bangju worklog", metrics);
-  if (parsed.selectedEmployeeId !== "profile-user" || parsed.ownEditableEmployeeId !== "profile-user") {
-    fail("unmapped employee should use own profile worklog instead of saved fitness manager", metrics);
+  if (parsed.representative) fail("fitness info employee should not become representative", metrics);
+  if (parsed.activeView !== "fitness-log") fail("Hong profile should land on fitness worklog", metrics);
+  if (parsed.selectedEmployeeId !== "fitness-weekday-info" || parsed.ownEditableEmployeeId !== "fitness-weekday-info") {
+    fail("Hong profile should use the weekday fitness info worklog slot", metrics);
   }
   if (/박주홍|센터장|beyond-fitness-manager/.test(`${parsed.selectedEmployee} ${parsed.header} ${parsed.identityBadge} ${parsed.lockBanner}`)) {
-    fail("unmapped employee inherited fitness manager label", metrics);
+    fail("Hong profile inherited fitness manager label", metrics);
   }
   if (!/홍길동/.test(`${parsed.selectedEmployee} ${parsed.header} ${parsed.identityBadge}`)) {
-    fail("unmapped employee identity should be visible on own worklog", metrics);
+    fail("Hong profile identity should be visible on own worklog", metrics);
   }
-  if (!/\(주\)방주/.test(parsed.identityBadge) || !/직원/.test(parsed.identityBadge)) {
-    fail("worklog identity badge should show company and role", metrics);
+  if (!/피트니스/.test(`${parsed.header} ${parsed.identityBadge}`) || !/인포/.test(`${parsed.header} ${parsed.identityBadge}`)) {
+    fail("worklog identity badge should show fitness affiliation and info role", metrics);
   }
   if (!parsed.lockHidden && /열람 전용|본인 업무일지만/.test(parsed.lockBanner)) {
-    fail("own profile worklog should not show readonly banner", metrics);
+    fail("own fitness worklog should not show readonly banner", metrics);
   }
-  await page.fill("#worklogTaskBoard .task-text-input", "홍길동 업무 입력 저장 확인");
+  await page.fill("#fitnessTaskBoard .task-text-input", "홍길동 업무 입력 저장 확인");
   await page.waitForTimeout(350);
   const saveMetrics = await page.evaluate(() => window.eval(`JSON.stringify({
-    disabled: document.querySelector("#worklogTaskBoard .task-text-input")?.disabled ?? true,
-    value: document.querySelector("#worklogTaskBoard .task-text-input")?.value || "",
+    disabled: document.querySelector("#fitnessTaskBoard .task-text-input")?.disabled ?? true,
+    value: document.querySelector("#fitnessTaskBoard .task-text-input")?.value || "",
     selectedDateKey: state.selectedDateKey,
-    savedText: state.employeeLogs?.[state.selectedDateKey]?.["profile-user"]?.tasks?.[0]?.text || "",
-    storageText: JSON.parse(localStorage.getItem("beyond-worklog-state-v1") || "{}").employeeLogs?.[state.selectedDateKey]?.["profile-user"]?.tasks?.[0]?.text || ""
+    savedText: state.employeeLogs?.[state.selectedDateKey]?.["fitness-weekday-info"]?.tasks?.[0]?.text || "",
+    storageText: JSON.parse(localStorage.getItem("beyond-worklog-state-v1") || "{}").employeeLogs?.[state.selectedDateKey]?.["fitness-weekday-info"]?.tasks?.[0]?.text || ""
   })`));
   const saved = JSON.parse(saveMetrics);
-  if (saved.disabled) fail("unmapped employee own worklog input should be enabled", saveMetrics);
+  if (saved.disabled) fail("Hong own fitness worklog input should be enabled", saveMetrics);
   if (saved.value !== "홍길동 업무 입력 저장 확인" || saved.savedText !== saved.value || saved.storageText !== saved.value) {
-    fail("unmapped employee own worklog input should persist to profile-user log", saveMetrics);
+    fail("Hong own fitness worklog input should persist to weekday info log", saveMetrics);
   }
-  if (errors.length) fail("unmapped employee identity regression page errors", errors.join(" | "));
+  if (errors.length) fail("Hong fitness identity regression page errors", errors.join(" | "));
   await page.close();
 }
 
@@ -738,11 +738,11 @@ async function checkStaffDirectoryListAndDetail(browser) {
           id: "hong-profile",
           email: "projch@naver.com",
           name: "홍길동",
-          org: "(주)방주",
-          role: "직원",
-          workplace: "본사",
-          primary_work: "기획관리",
-          work_hours: "09:00-18:00",
+          org: "(주)방주 / 비욘드 피트니스 지사",
+          role: "인포데스크",
+          workplace: "비욘드 피트니스",
+          primary_work: "고객응대, 센터관리",
+          work_hours: "16:00-20:00",
           employment_type: "직원",
           approval_status: "approved",
           updated_at: "2026-07-27T09:00:00.000Z"
@@ -1301,6 +1301,8 @@ async function checkReportArchiveVault(browser) {
     window.switchView?.("report");
   });
   await page.waitForTimeout(300);
+  await page.click('[data-section-shortcut="daily-report"]');
+  await page.waitForTimeout(220);
   await page.fill("#reportArchiveDate", "2026-07-24");
   await page.selectOption("#reportArchiveSite", "fitness");
   await page.selectOption("#reportArchiveType", "fitness");
@@ -1453,6 +1455,8 @@ async function checkReportArchiveFitnessSubmission(browser) {
     `);
   });
   await page.waitForTimeout(250);
+  await page.click('[data-section-shortcut="daily-report"]');
+  await page.waitForTimeout(220);
   await page.fill("#reportArchiveDate", "2026-07-24");
   await page.selectOption("#reportArchiveSite", "fitness");
   await page.selectOption("#reportArchiveType", "fitness");

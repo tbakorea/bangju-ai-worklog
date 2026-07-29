@@ -279,6 +279,39 @@ const defaultProfile = {
   assignedMissionUpdatedBy: "",
 };
 
+const profilePlacementOverrides = {
+  "projch@naver.com": {
+    org: "(주)방주 / 비욘드 피트니스 지사",
+    workplace: "비욘드 피트니스",
+    role: "인포데스크",
+    name: "홍길동",
+    nickname: "홍길동",
+    primaryWork: "고객응대, 센터관리",
+    secondaryWork: "운영 지원",
+    employmentType: "직원",
+    workHours: "16:00-20:00",
+    accessPreset: "employee",
+  },
+};
+
+function getProfilePlacementOverride(email = "") {
+  const key = String(email || state?.profile?.email || authState.user?.email || "").trim().toLowerCase();
+  return key ? profilePlacementOverrides[key] : null;
+}
+
+function applyProfilePlacementOverride(profile = {}) {
+  const email = String(profile.email || authState.user?.email || "").trim().toLowerCase();
+  const override = getProfilePlacementOverride(email);
+  if (!override) return profile;
+  return {
+    ...profile,
+    ...override,
+    email: profile.email || email,
+    approvalStatus: profile.approvalStatus || "approved",
+    permissions: { ...(profile.permissions || {}) },
+  };
+}
+
 const profileApprovalFieldMeta = [
   ["org", "소속", "org", "text"],
   ["workplace", "근무지", "workplace", "text"],
@@ -679,6 +712,7 @@ function createEmployeeLog(employee = employees[0], profile = defaultProfile) {
 
 function normalizeState() {
   state.profile = { ...defaultProfile, ...(state.profile || {}) };
+  state.profile = applyProfilePlacementOverride(state.profile);
   state.profile.nickname ||= "";
   state.profile.weeklyWorkHours = { ...(state.profile.weeklyWorkHours || {}) };
   state.profile.permissions = { ...(state.profile.permissions || {}) };
@@ -842,7 +876,7 @@ function getEmployeeOptions() {
 }
 
 function getProfileEmployee() {
-  const profile = { ...defaultProfile, ...(state?.profile || {}) };
+  const profile = applyProfilePlacementOverride({ ...defaultProfile, ...(state?.profile || {}) });
   return {
     id: "profile-user",
     name: profile.name || "내 프로필",
@@ -868,7 +902,7 @@ function getProfileEmployee() {
 }
 
 function getMappedProfileEmployeeId() {
-  return getProfileMappedEmployeeId(state?.profile || {});
+  return getProfileMappedEmployeeId(applyProfilePlacementOverride(state?.profile || {}));
 }
 
 function isEmployeeLinkedToProfile(employeeId) {
@@ -911,6 +945,7 @@ function getEmployeeAdminLabel(employee = getSelectedEmployee()) {
 
 function getWorklogCompanyLabel(employee = getSelectedEmployee()) {
   const source = `${employee?.org || ""} ${employee?.workplace || ""} ${state.profile?.org || ""} ${state.profile?.workplace || ""}`;
+  if (/비욘드\s*피트니스|피트니스|fitness/i.test(source)) return "비욘드 피트니스";
   if (/비제이|종합건설|건설|bj/i.test(source)) return "(주)비제이종합건설";
   if (/비욘드\s*컴퍼니|beyond\s*company/i.test(source)) return "(주)비욘드컴퍼니";
   if (/방주|bangju/i.test(source)) return "(주)방주";
@@ -5724,6 +5759,7 @@ async function loadRemoteWorklogForActiveDate() {
   authState.applyingRemote = true;
   state.selectedEmployeeId = data.state.selectedEmployeeId || state.selectedEmployeeId;
   state.profile = { ...state.profile, ...(data.state.profile || {}) };
+  state.profile = applyProfilePlacementOverride(state.profile);
   enforceAuthProfileBoundary();
   state.employeeLogs = { ...(state.employeeLogs || {}), ...(data.state.employeeLogs || {}) };
   state.attendance = { ...(state.attendance || {}), ...(data.state.attendance || {}) };
@@ -5742,44 +5778,45 @@ async function loadRemoteWorklogForActiveDate() {
 function profileToRemoteRow(options = {}) {
   const includeApprovalFields = options.includeApprovalFields !== false;
   const includePendingProfileChangeFields = includeApprovalFields || options.includePendingProfileChangeFields === true;
+  const profile = applyProfilePlacementOverride(state.profile || {});
   const row = {
     id: authState.user.id,
-    org: state.profile.org,
-    role: state.profile.role,
-    name: state.profile.name,
-    phone: formatPhoneNumber(state.profile.phone),
-    email: state.profile.email || authState.user.email || "",
-    primary_work: state.profile.primaryWork,
-    secondary_work: state.profile.secondaryWork,
-    workplace: state.profile.workplace,
-    employment_type: state.profile.employmentType,
-    labor_id: state.profile.laborId,
-    address: state.profile.address,
-    daily_wage: state.profile.dailyWage || null,
-    hourly_wage: state.profile.hourlyWage || null,
-    work_hours: state.profile.workHours,
-    weekly_work_hours: state.profile.weeklyWorkHours || {},
-    extra: state.profile.extra,
-    strengths: state.profile.strengths,
-    weaknesses: state.profile.weaknesses,
-    development_goals: state.profile.developmentGoals,
+    org: profile.org,
+    role: profile.role,
+    name: profile.name,
+    phone: formatPhoneNumber(profile.phone),
+    email: profile.email || authState.user.email || "",
+    primary_work: profile.primaryWork,
+    secondary_work: profile.secondaryWork,
+    workplace: profile.workplace,
+    employment_type: profile.employmentType,
+    labor_id: profile.laborId,
+    address: profile.address,
+    daily_wage: profile.dailyWage || null,
+    hourly_wage: profile.hourlyWage || null,
+    work_hours: profile.workHours,
+    weekly_work_hours: profile.weeklyWorkHours || {},
+    extra: profile.extra,
+    strengths: profile.strengths,
+    weaknesses: profile.weaknesses,
+    development_goals: profile.developmentGoals,
     updated_at: new Date().toISOString(),
   };
   if (includeApprovalFields) {
-    row.approval_status = state.profile.approvalStatus || "pending";
-    row.approval_note = state.profile.approvalNote || "";
-    row.approved_by = state.profile.approvedBy || null;
-    row.approved_at = state.profile.approvedAt || null;
+    row.approval_status = profile.approvalStatus || "pending";
+    row.approval_note = profile.approvalNote || "";
+    row.approved_by = profile.approvedBy || null;
+    row.approved_at = profile.approvedAt || null;
   }
   if (includePendingProfileChangeFields) {
-    row.pending_profile_changes = state.profile.pendingProfileChanges || {};
-    row.profile_change_requested_at = state.profile.profileChangeRequestedAt || null;
+    row.pending_profile_changes = profile.pendingProfileChanges || {};
+    row.profile_change_requested_at = profile.profileChangeRequestedAt || null;
   }
   return row;
 }
 
 function remoteRowToProfile(row) {
-  return {
+  return applyProfilePlacementOverride({
     org: row.org,
     role: row.role,
     name: row.name,
@@ -5809,7 +5846,7 @@ function remoteRowToProfile(row) {
     assignedMissionVisible: row.assigned_mission_visible !== false,
     assignedMissionUpdatedAt: row.assigned_mission_updated_at || "",
     assignedMissionUpdatedBy: row.assigned_mission_updated_by || "",
-  };
+  });
 }
 
 async function saveRemoteProfile(options = {}) {
@@ -11625,6 +11662,104 @@ function renderReport() {
   renderReportArchive();
   renderBackupCenter();
   renderInnovationLab();
+  refreshOpenReportDetail();
+}
+
+let reportDetailRestoreStack = [];
+let activeReportDetail = "";
+
+function getReportDetailConfig(action = "daily-report") {
+  const configs = {
+    "daily-report": {
+      eyebrow: "Daily Report",
+      title: "일일보고",
+      description: "사업장 운영보고와 개인 업무보고를 날짜별로 확인하고 제출합니다.",
+      selectors: [".report-archive-card", ".report-draft-card"],
+    },
+    communication: {
+      eyebrow: "Communication Board",
+      title: "공지·업무전달",
+      description: "개인, 사업장, 전 사업장에 전달할 공지와 지시를 등록하고 확인합니다.",
+      selectors: [".communication-hub-card"],
+    },
+    backup: {
+      eyebrow: "Backup Center",
+      title: "보관·백업",
+      description: "업무일지, 노무, 직원 현황을 하나의 운영기록으로 묶어 보관합니다.",
+      selectors: [".backup-center-card"],
+    },
+    innovation: {
+      eyebrow: "AI Operating Lab",
+      title: "AI 제안",
+      description: "보고 품질, 실행력, 운영 자동화를 높이는 다음 개선 후보를 검토합니다.",
+      selectors: [".innovation-lab-card"],
+    },
+  };
+  return configs[action] || configs["daily-report"];
+}
+
+function restoreReportDetailNodes() {
+  reportDetailRestoreStack.forEach(({ node, placeholder }) => {
+    if (placeholder?.parentNode) placeholder.parentNode.insertBefore(node, placeholder);
+    placeholder?.remove();
+  });
+  reportDetailRestoreStack = [];
+}
+
+function openReportDetail(action = "daily-report") {
+  const sheet = document.getElementById("reportDetailSheet");
+  const body = document.getElementById("reportDetailBody");
+  const backdrop = document.getElementById("reportDetailBackdrop");
+  if (!sheet || !body || !backdrop) return;
+
+  restoreReportDetailNodes();
+  const config = getReportDetailConfig(action);
+  activeReportDetail = action;
+  document.getElementById("reportDetailEyebrow").textContent = config.eyebrow;
+  document.getElementById("reportDetailTitle").textContent = config.title;
+  document.getElementById("reportDetailDescription").textContent = config.description;
+  body.innerHTML = "";
+
+  config.selectors.forEach((selector) => {
+    const node = document.querySelector(selector);
+    if (!node) return;
+    const placeholder = document.createComment(`report-detail-placeholder:${selector}`);
+    node.parentNode?.insertBefore(placeholder, node);
+    reportDetailRestoreStack.push({ node, placeholder });
+    body.appendChild(node);
+  });
+
+  document.getElementById("view-report")?.classList.add("is-detail-open");
+  document.body.classList.add("is-section-detail-open");
+  sheet.hidden = false;
+  backdrop.hidden = false;
+  window.setTimeout(() => {
+    sheet.classList.add("is-open");
+    backdrop.classList.add("is-open");
+    sheet.focus?.();
+  }, 0);
+}
+
+function closeReportDetail() {
+  const sheet = document.getElementById("reportDetailSheet");
+  const backdrop = document.getElementById("reportDetailBackdrop");
+  if (!sheet || !backdrop) return;
+  sheet.classList.remove("is-open");
+  backdrop.classList.remove("is-open");
+  window.setTimeout(() => {
+    restoreReportDetailNodes();
+    sheet.hidden = true;
+    backdrop.hidden = true;
+    document.getElementById("view-report")?.classList.remove("is-detail-open");
+    document.body.classList.remove("is-section-detail-open");
+    activeReportDetail = "";
+  }, 180);
+}
+
+function refreshOpenReportDetail() {
+  if (!activeReportDetail) return;
+  const current = activeReportDetail;
+  window.setTimeout(() => openReportDetail(current), 0);
 }
 
 function getReportArchiveSettings() {
@@ -13227,11 +13362,8 @@ document.querySelectorAll("[data-section-shortcut]").forEach((button) => {
         settings.selectedId = "";
         saveState({ fastSave: true });
         renderReportArchive();
-        document.querySelector(".report-archive-card")?.scrollIntoView({ behavior: "smooth", block: "start" });
       }
-      if (action === "communication") document.querySelector(".communication-hub-card")?.scrollIntoView({ behavior: "smooth", block: "start" });
-      if (action === "backup") document.querySelector(".backup-center-card")?.scrollIntoView({ behavior: "smooth", block: "start" });
-      if (action === "innovation") document.querySelector(".innovation-lab-card")?.scrollIntoView({ behavior: "smooth", block: "start" });
+      openReportDetail(action === "report" ? "daily-report" : action);
       return;
     }
     if (action === "labor") {
@@ -13737,6 +13869,11 @@ document.getElementById("reportArchivePreview")?.addEventListener("click", (even
     toggleFitnessCenterReportConfirmation(getReportArchiveSettings().dateKey);
     renderReportArchive();
   }
+});
+document.getElementById("reportDetailCloseButton")?.addEventListener("click", closeReportDetail);
+document.getElementById("reportDetailBackdrop")?.addEventListener("click", closeReportDetail);
+document.addEventListener("keydown", (event) => {
+  if (event.key === "Escape" && activeReportDetail) closeReportDetail();
 });
 document.getElementById("reportTone").onchange = (event) => {
   state.reportTone = event.target.value;
