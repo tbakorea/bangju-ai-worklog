@@ -4642,6 +4642,7 @@ function renderPendingProfileChangeBox(row = {}) {
         </div>
         <em>대표 확인 필요</em>
       </header>
+      <p class="approval-change-guide">왼쪽은 현재 확정 정보, 오른쪽은 직원이 요청한 변경값입니다. 승인 전까지 앱에는 현재 확정 정보가 유지됩니다.</p>
       <div class="approval-change-grid">
         ${entries.map(([key, nextValue]) => {
           const label = profileApprovalFieldByKey[key]?.[1] || key;
@@ -5090,11 +5091,12 @@ function saveSettingsProfileFromForm() {
     state.profile.pendingProfileChanges = {
       status: "pending",
       requestedAt,
+      requestedBy: authState.user?.id || "",
       fields: changes,
     };
     state.profile.profileChangeRequestedAt = requestedAt;
     saveManualSettingsFromForm();
-    saveProfileChanges({ stayInSettings: true });
+    saveProfileChanges({ stayInSettings: true, includePendingProfileChangeFields: true });
     showAppToast("직원정보 변경 승인요청을 보냈습니다. 대표 승인요청 알림에 표시됩니다.");
     return;
   }
@@ -5107,7 +5109,7 @@ function saveSettingsProfileFromForm() {
   saveProfileChanges();
 }
 
-function saveProfileChanges({ stayInSettings = false } = {}) {
+function saveProfileChanges({ stayInSettings = false, includePendingProfileChangeFields = false } = {}) {
   if (authState.user && (!state.profile.approvalStatus || state.profile.approvalStatus === "draft")) state.profile.approvalStatus = "pending";
   const nextWorklogView = getUserWorklogView();
   if (nextWorklogView === "fitness-log") {
@@ -5119,7 +5121,7 @@ function saveProfileChanges({ stayInSettings = false } = {}) {
   normalizeEmployeeLogRows(getSelectedLog());
   normalizeEmployeeLogRows(getEmployeeLogForDate(state.fitnessWritableEmployeeId));
   saveState();
-  saveRemoteProfile();
+  saveRemoteProfile({ includePendingProfileChangeFields });
   renderAll();
   if (authState.user && !isProfileApproved()) {
     switchView("auth");
@@ -5702,6 +5704,7 @@ async function loadRemoteWorklogForActiveDate() {
 
 function profileToRemoteRow(options = {}) {
   const includeApprovalFields = options.includeApprovalFields !== false;
+  const includePendingProfileChangeFields = includeApprovalFields || options.includePendingProfileChangeFields === true;
   const row = {
     id: authState.user.id,
     org: state.profile.org,
@@ -5730,6 +5733,8 @@ function profileToRemoteRow(options = {}) {
     row.approval_note = state.profile.approvalNote || "";
     row.approved_by = state.profile.approvedBy || null;
     row.approved_at = state.profile.approvedAt || null;
+  }
+  if (includePendingProfileChangeFields) {
     row.pending_profile_changes = state.profile.pendingProfileChanges || {};
     row.profile_change_requested_at = state.profile.profileChangeRequestedAt || null;
   }
@@ -5770,10 +5775,13 @@ function remoteRowToProfile(row) {
   };
 }
 
-async function saveRemoteProfile() {
+async function saveRemoteProfile(options = {}) {
   if (!supabaseClient || !authState.user) return;
   const includeApprovalFields = hasApprovalAuthority() || !isProfileApproved();
-  const row = profileToRemoteRow({ includeApprovalFields });
+  const row = profileToRemoteRow({
+    includeApprovalFields,
+    includePendingProfileChangeFields: options.includePendingProfileChangeFields,
+  });
   const { error } = await supabaseClient.from("profiles").upsert(row);
   if (!error) return;
   if (/pending_profile_changes|profile_change_requested_at/i.test(error.message || "")) {

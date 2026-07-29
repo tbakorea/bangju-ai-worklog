@@ -4988,6 +4988,17 @@ body[data-device-mode="narrow"] .os-mode-switch span[data-device-mode="narrow"] 
   white-space: nowrap;
 }
 
+.approval-change-guide {
+  margin: 0;
+  border-radius: 10px;
+  background: rgba(255, 253, 248, 0.7);
+  color: rgba(38, 50, 56, 0.68);
+  padding: 8px 9px;
+  font-size: 12px;
+  font-weight: 820;
+  line-height: 1.45;
+}
+
 .approval-change-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -5189,6 +5200,10 @@ body[data-device-mode="narrow"] .os-mode-switch span[data-device-mode="narrow"] 
   }
 
   .approval-edit-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .approval-change-grid {
     grid-template-columns: minmax(0, 1fr);
   }
 }
