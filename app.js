@@ -16,7 +16,7 @@ const worklogViewAliases = {
   "beyond-log": "today",
 };
 const attendanceEnabledViews = new Set(["worklog", "fitness-log", "bangju-log", "beyond-log", "today"]);
-const controlTowerEmails = new Set(["j3010@ymail.com", "tbakorea@gmail.com"]);
+const controlTowerEmails = new Set(["j3010@ymail.com"]);
 let activeView = "fitness-log";
 let attendancePromptLastAt = 0;
 let todayPageMode = "daily";
@@ -300,6 +300,20 @@ const profilePlacementOverrides = {
     employmentType: "직원",
     workHours: "16:00-20:00",
     accessPreset: "employee",
+    mappedEmployeeId: "fitness-weekday-info",
+  },
+  "tbakorea@gmail.com": {
+    org: "(주)비욘드컴퍼니",
+    workplace: "TBA studio",
+    role: "실장",
+    name: "김성민",
+    nickname: "김성민",
+    primaryWork: "TBA studio 운영, 인월바스 시스템 시공, 인테리어 시행",
+    secondaryWork: "제품·시공·현장 운영 지원",
+    employmentType: "직원",
+    workHours: "08:00-18:00",
+    accessPreset: "employee",
+    mappedEmployeeId: "beyond-company-leader",
   },
 };
 
@@ -317,7 +331,7 @@ function applyProfilePlacementOverride(profile = {}) {
     ...override,
     email: profile.email || email,
     approvalStatus: profile.approvalStatus || "approved",
-    permissions: { ...(profile.permissions || {}) },
+    permissions: { ...(override.permissions || profile.permissions || {}) },
   };
 }
 
@@ -491,7 +505,7 @@ const employees = [
   { id: "fitness-saturday-info", name: "토요 인포", nickname: "토요인포", org: "(주)방주 / 비욘드 피트니스 지사", role: "토요 인포", workHours: "10:00-18:00", primaryWork: "토요일 고객응대, 센터관리" },
   { id: "fitness-sunday-info", name: "일요 인포", nickname: "일요인포", org: "(주)방주 / 비욘드 피트니스 지사", role: "일요 인포", workHours: "10:00-18:00", primaryWork: "일요일 고객응대, 센터관리" },
   { id: "fitness-spare-1", name: "피트니스 예비", nickname: "예비", org: "(주)방주 / 비욘드 피트니스 지사", role: "예비", workHours: "10:00-18:00", primaryWork: "운영 지원" },
-  { id: "beyond-company-leader", name: "비욘드 실장", org: "(주)비욘드컴퍼니", role: "실장", primaryWork: "비욘드컴퍼니 운영총괄" },
+  { id: "beyond-company-leader", name: "김성민", org: "(주)비욘드컴퍼니", role: "실장", primaryWork: "TBA studio 운영, 인월바스 시스템 시공, 인테리어 시행" },
   { id: "beyond-shared-manager", name: "공유사업부 매니저", org: "(주)비욘드컴퍼니 / 공유사업부", role: "공유사업부 매니저", primaryWork: "공유오피스, 공유창고, 고객관리" },
   { id: "beyond-spare-1", name: "비욘드 예비", org: "(주)비욘드컴퍼니", role: "예비", primaryWork: "공통 지원" },
 ];
@@ -639,7 +653,7 @@ const authState = {
     message: "직원등록 전 이메일 중복확인을 해주세요.",
   },
 };
-const state = loadState();
+var state = loadState();
 let dateSlideTimer = 0;
 let verticalDateSwipeTimer = 0;
 let verticalDateSwipeAnimating = false;
@@ -1426,6 +1440,8 @@ function getProfileMappedEmployeeId(profile = state.profile || {}) {
   const profileEmail = String(profile.email || "").trim().toLowerCase();
   const email = profileEmail || String(authState.user?.email || "").trim().toLowerCase();
   const source = `${profile.org || ""} ${profile.workplace || ""} ${profile.role || ""} ${profile.name || ""} ${profile.nickname || ""} ${profile.primaryWork || ""}`.toLowerCase();
+  const overrideMappedEmployeeId = getProfilePlacementOverride(email)?.mappedEmployeeId;
+  if (overrideMappedEmployeeId) return overrideMappedEmployeeId;
   if (controlTowerEmails.has(email) || /대표|owner|ceo/.test(source)) return "";
   if (/이소미/.test(source) || (!/비제이|종합건설|건설|bj|construction/.test(source) && /재무\s*대리|finance\s*assistant/.test(source))) return "bangju-finance-assistant";
   if (/재무\s*과장|finance\s*manager/.test(source)) return "bangju-finance-manager";
@@ -4015,6 +4031,8 @@ function getRecommendedPermissionPresetForProfile(profile = {}) {
   const email = String(authState.user?.email || profile.email || "").trim().toLowerCase();
   const roleText = `${profile.role || ""} ${profile.primaryWork || ""} ${profile.nickname || ""}`;
   if (controlTowerEmails.has(email)) return "owner";
+  const overridePreset = getProfilePlacementOverride(email)?.accessPreset;
+  if (overridePreset) return normalizePermissionPresetKey(overridePreset);
   if (/임원|총괄/i.test(roleText)) return "executive_delegate";
   if (/실장|관리자|센터장|manager/i.test(roleText)) return "site_manager";
   if (/프리랜서|트레이너/i.test(`${roleText} ${profile.employmentType || ""}`)) return "freelance";
@@ -6021,13 +6039,12 @@ async function applySession(session) {
   authState.user = session?.user || null;
   if (!authState.user) {
     clearAuthRuntimeState();
-    if (isExplicitlySignedOut()) {
-      clearAuthFormCredentials();
-      setAuthRegistrationVisible(false, { clear: true });
-    }
+    clearAuthFormCredentials();
+    setAuthRegistrationVisible(false, { clear: false });
     renderApprovalNotification();
-    renderAuthStatus();
+    renderAuthStatus("로그인 또는 직원등록을 진행해주세요.");
     renderAll();
+    switchView("auth");
     return;
   }
   localStorage.removeItem(localAuthSignedOutKey);
@@ -13780,6 +13797,10 @@ async function shareFitnessReport() {
 }
 
 function switchView(view) {
+  if (!state) {
+    window.setTimeout(() => switchView(view), 0);
+    return;
+  }
   const requestedView = view;
   if (view === "management") view = "control";
   if (isExplicitlySignedOut() && view !== "auth") {
@@ -14726,9 +14747,9 @@ resetStartupDateToToday();
 document.getElementById("reportTone").value = state.reportTone;
 renderBackupCenter();
 renderInnovationLab();
-if (isExplicitlySignedOut()) clearAuthFormCredentials();
-else document.getElementById("authEmail").value = state.profile.email || "";
-renderAuthStatus();
+clearAuthFormCredentials();
+setAuthRegistrationVisible(false, { clear: false });
+renderAuthStatus("로그인 또는 직원등록을 진행해주세요.");
 renderAll();
-switchView(getInitialLandingView());
+switchView("auth");
 initializeAuth();

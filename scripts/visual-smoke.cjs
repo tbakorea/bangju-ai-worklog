@@ -20,8 +20,32 @@ async function openPage(browser, viewport) {
   return { page, errors };
 }
 
+async function seedApprovedBangjuEmployee(page) {
+  await page.evaluate(() => {
+    window.eval(`
+      authState.user = { id: "qa-finance-manager", email: "finance.manager@example.com" };
+      state.profile = {
+        ...state.profile,
+        email: "finance.manager@example.com",
+        org: "(주)방주",
+        workplace: "본사",
+        role: "재무과장",
+        name: "재무과장",
+        nickname: "재무",
+        primaryWork: "자금 회계 보고",
+        approvalStatus: "approved",
+        accessPreset: "employee",
+        permissions: {}
+      };
+      state.selectedEmployeeId = "bangju-finance-manager";
+      normalizeState();
+    `);
+  });
+}
+
 async function checkDesktopEmployeeWorklog(browser) {
   const { page, errors } = await openPage(browser, { width: 1440, height: 900 });
+  await seedApprovedBangjuEmployee(page);
   await page.evaluate(() => {
     window.switchView?.("bangju-log");
     document.body.classList.remove("physical-phone-device");
@@ -115,6 +139,7 @@ async function checkDesktopEmployeeWorklog(browser) {
 
 async function checkPhoneWorklog(browser) {
   const { page, errors } = await openPage(browser, { width: 390, height: 844 });
+  await seedApprovedBangjuEmployee(page);
   await page.evaluate(() => {
     window.switchView?.("bangju-log");
     document.body.classList.add("physical-phone-device");
@@ -200,6 +225,7 @@ async function checkPhoneWorklog(browser) {
 
 async function checkExplicitWorklogExpandOutsidePhoneMode(browser) {
   const { page, errors } = await openPage(browser, { width: 430, height: 900 });
+  await seedApprovedBangjuEmployee(page);
   await page.evaluate(() => {
     window.switchView?.("bangju-log");
     document.body.classList.remove("physical-phone-device", "smartphone-device");
