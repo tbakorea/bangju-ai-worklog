@@ -312,6 +312,23 @@ function applyProfilePlacementOverride(profile = {}) {
   };
 }
 
+function normalizeProfilePlacementForAuth() {
+  if (!state?.profile) return;
+  const email = String(authState.user?.email || state.profile.email || "").trim().toLowerCase();
+  const override = getProfilePlacementOverride(email);
+  if (!override) return;
+  state.profile = applyProfilePlacementOverride({
+    ...state.profile,
+    email,
+    authUserId: authState.user?.id || state.profile.authUserId || "",
+  });
+  const mappedId = getProfileMappedEmployeeId(state.profile);
+  if (mappedId) {
+    if (fitnessEmployeeIds.includes(mappedId)) state.fitnessWritableEmployeeId = mappedId;
+    if (!isRepresentativeProfile()) state.selectedEmployeeId = mappedId;
+  }
+}
+
 const profileApprovalFieldMeta = [
   ["org", "소속", "org", "text"],
   ["workplace", "근무지", "workplace", "text"],
@@ -713,6 +730,7 @@ function createEmployeeLog(employee = employees[0], profile = defaultProfile) {
 function normalizeState() {
   state.profile = { ...defaultProfile, ...(state.profile || {}) };
   state.profile = applyProfilePlacementOverride(state.profile);
+  normalizeProfilePlacementForAuth();
   state.profile.nickname ||= "";
   state.profile.weeklyWorkHours = { ...(state.profile.weeklyWorkHours || {}) };
   state.profile.permissions = { ...(state.profile.permissions || {}) };
@@ -863,6 +881,7 @@ function normalizeEmployeeLogRows(log) {
 
 function saveState(options = {}) {
   recordActiveCorrectionAudits();
+  normalizeProfilePlacementForAuth();
   localStorage.setItem(storageKey, JSON.stringify(state));
   scheduleRemoteSave(options.fastSave ? 500 : 700);
 }
@@ -2036,6 +2055,14 @@ function canAccessSiteLabor() {
 function canAccessLaborPayrollLedgers() {
   if (isExplicitlySignedOut()) return false;
   return canAccessAllLabor() || hasProfilePermission("laborSite") || hasProfilePermission("staffManage");
+}
+
+function canOpenLaborSection() {
+  if (isExplicitlySignedOut()) return false;
+  return canAccessAllLabor()
+    || hasProfilePermission("laborSite")
+    || hasProfilePermission("staffManage")
+    || hasProfilePermission("staffApproval");
 }
 
 function canAccessManualCoachingAdmin() {
@@ -5412,18 +5439,28 @@ function renderMainMenuAuthButton() {
 }
 
 function renderMainMenuVisibility() {
-  const generalMenuViews = new Set(["worklog", "attendance", "report", "settings", "auth"]);
+  const generalMenuViews = new Set(["worklog", "report", "settings", "auth"]);
   const showFullMenu = canAccessWorklogOverview();
+  const showLaborMenu = canOpenLaborSection();
   document.querySelectorAll("#mainMenuPopover [data-menu-view]").forEach((item) => {
     const view = item.dataset.menuView;
     if (isExplicitlySignedOut()) {
       item.hidden = view !== "auth";
       return;
     }
-    item.hidden = (!showFullMenu && !generalMenuViews.has(view)) || (view === "ai" && !canAccessManualCoachingAdmin());
+    item.hidden = (!showFullMenu && !generalMenuViews.has(view))
+      || (view === "ai" && !canAccessManualCoachingAdmin())
+      || (view === "attendance" && !showLaborMenu);
+  });
+  document.querySelectorAll('.worklog-tabs [data-view="attendance"]').forEach((item) => {
+    item.hidden = !showLaborMenu;
   });
   document.querySelectorAll('.worklog-tabs [data-view="ai"]').forEach((item) => {
     item.hidden = !canAccessManualCoachingAdmin();
+  });
+  document.querySelectorAll('#mainMenuWheelSelect option[value="attendance"]').forEach((item) => {
+    item.hidden = !showLaborMenu;
+    item.disabled = !showLaborMenu;
   });
   document.querySelectorAll('#mainMenuWheelSelect option[value="ai"]').forEach((item) => {
     item.hidden = !canAccessManualCoachingAdmin();
@@ -5709,17 +5746,18 @@ function scheduleRemoteSave(delay = 700) {
 
 function buildRemoteSnapshot() {
   const key = getActiveDateKey();
+  const snapshotProfile = applyProfilePlacementOverride(state.profile || {});
   return {
+    backupSettings: state.backupSettings,
     selectedEmployeeId: state.selectedEmployeeId,
     selectedDateKey: key,
-    profile: state.profile,
+    profile: snapshotProfile,
     employeeLogs: { [key]: state.employeeLogs?.[key] || {} },
     attendance: { [key]: state.attendance?.[key] || [] },
     companyCommonWeeks: state.companyCommonWeeks || {},
     fitnessCenterReports: state.fitnessCenterReports || {},
     worklogReportSubmissions: state.worklogReportSubmissions || {},
     reportTone: state.reportTone,
-    backupSettings: state.backupSettings,
   };
 }
 
@@ -5757,9 +5795,11 @@ async function loadRemoteWorklogForActiveDate() {
   }
   if (!data?.state) return;
   authState.applyingRemote = true;
+  state.backupSettings = { ...(state.backupSettings || {}), ...(data.state.backupSettings || {}) };
   state.selectedEmployeeId = data.state.selectedEmployeeId || state.selectedEmployeeId;
   state.profile = { ...state.profile, ...(data.state.profile || {}) };
   state.profile = applyProfilePlacementOverride(state.profile);
+  normalizeProfilePlacementForAuth();
   enforceAuthProfileBoundary();
   state.employeeLogs = { ...(state.employeeLogs || {}), ...(data.state.employeeLogs || {}) };
   state.attendance = { ...(state.attendance || {}), ...(data.state.attendance || {}) };
@@ -5767,7 +5807,6 @@ async function loadRemoteWorklogForActiveDate() {
   state.fitnessCenterReports = { ...(state.fitnessCenterReports || {}), ...(data.state.fitnessCenterReports || {}) };
   state.worklogReportSubmissions = { ...(state.worklogReportSubmissions || {}), ...(data.state.worklogReportSubmissions || {}) };
   state.reportTone = data.state.reportTone || state.reportTone;
-  state.backupSettings = { ...(state.backupSettings || {}), ...(data.state.backupSettings || {}) };
   normalizeState();
   localStorage.setItem(storageKey, JSON.stringify(state));
   authState.applyingRemote = false;
@@ -5905,6 +5944,7 @@ async function loadRemoteProfile() {
     if (state.profile.accessPreset === "owner") state.profile.accessPreset = "employee";
     state.profile.permissions = {};
   }
+  normalizeProfilePlacementForAuth();
   enforceAuthProfileBoundary();
   if (state.profile.workHours === "12:00-19:00") state.profile.workHours = defaultProfile.workHours;
   localStorage.setItem(storageKey, JSON.stringify(state));
@@ -13042,6 +13082,9 @@ function switchView(view) {
   if (!["auth", "settings"].includes(view) && authState.user && !isProfileApproved()) {
     view = "auth";
     renderAuthStatus(`현재 상태: ${getApprovalStatusLabel()}. 승인 후 업무일지를 사용할 수 있습니다.`);
+  }
+  if (view === "attendance" && !canOpenLaborSection()) {
+    view = getUserWorklogView();
   }
   if (view === "worklog") view = getUserWorklogView();
   view = view === "today" ? "bangju-log" : view;
