@@ -1759,9 +1759,14 @@ async function checkFitnessCenterReportConfirmation(browser) {
   if (reportState.buttonHidden || reportState.buttonText !== "확정 취소" || !reportState.previewText.includes("확정")) {
     fail("fitness report preview should expose confirmation state", JSON.stringify(reportState));
   }
-  ["명일 예정업무", "출결현황 / PT수업", "계약현황 / 고객관리", "오늘의 기록", "담당", "팀장", "센터장"].forEach((label) => {
+  ["명일 예정업무", "전체 직원 운영기록", "유료PT", "무료PT", "기타PT", "신규", "재등록", "상담", "아웃바운드", "인바운드", "특이사항", "오늘의 기록", "담당", "팀장", "센터장"].forEach((label) => {
     if (!reportState.previewText.includes(label)) {
       fail("fitness center report should preserve handwritten report fields", `${label} missing`);
+    }
+  });
+  ["출결현황 / PT수업", "계약현황 / 고객관리", "시간별 세부업무", "근태"].forEach((label) => {
+    if (reportState.previewText.includes(label)) {
+      fail("fitness center report should use the compact center operations sheet", `${label} should be removed`);
     }
   });
   if (errors.length) fail("fitness center confirmation page errors", errors.join(" | "));

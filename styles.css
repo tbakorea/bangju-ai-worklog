@@ -11329,6 +11329,7 @@ body[data-layout-mode="phone"] .fitness-log-schedule-panel .appointment-merge-bu
 .fitness-paper-tasks,
 .fitness-paper-kpi,
 .fitness-paper-approval,
+.fitness-paper-center-ops-table,
 .fitness-paper-attendance-table,
 .fitness-paper-contract-table,
 .fitness-paper-schedule,
@@ -11340,6 +11341,7 @@ body[data-layout-mode="phone"] .fitness-log-schedule-panel .appointment-merge-bu
 }
 
 .fitness-paper-tasks h3,
+.fitness-paper-center-ops-table h3,
 .fitness-paper-attendance-table h3,
 .fitness-paper-contract-table h3,
 .fitness-paper-schedule h3,
@@ -11467,10 +11469,12 @@ body[data-layout-mode="phone"] .fitness-log-schedule-panel .appointment-merge-bu
 }
 
 .fitness-paper-wide-table,
+.fitness-paper-center-ops-table,
 .fitness-paper-attendance-table {
   margin-top: 8px;
 }
 
+.fitness-paper-center-ops-table table,
 .fitness-paper-attendance-table table,
 .fitness-paper-contract-table table,
 .fitness-paper-schedule table {
@@ -11479,6 +11483,8 @@ body[data-layout-mode="phone"] .fitness-log-schedule-panel .appointment-merge-bu
   table-layout: fixed;
 }
 
+.fitness-paper-center-ops-table th,
+.fitness-paper-center-ops-table td,
 .fitness-paper-attendance-table th,
 .fitness-paper-attendance-table td,
 .fitness-paper-contract-table th,
@@ -11492,6 +11498,56 @@ body[data-layout-mode="phone"] .fitness-log-schedule-panel .appointment-merge-bu
   line-height: 1.18;
 }
 
+.fitness-paper-center-ops-table th,
+.fitness-paper-center-ops-table td {
+  padding: 2.5px 3px;
+  font-size: 8.6px;
+  line-height: 1.08;
+  text-align: center;
+  word-break: keep-all;
+}
+
+.fitness-paper-center-ops-table th:nth-child(1),
+.fitness-paper-center-ops-table td:nth-child(1) {
+  width: 24px;
+}
+
+.fitness-paper-center-ops-table th:nth-child(2),
+.fitness-paper-center-ops-table td:nth-child(2) {
+  width: 44px;
+}
+
+.fitness-paper-center-ops-table th:nth-child(3),
+.fitness-paper-center-ops-table td:nth-child(3) {
+  width: 52px;
+}
+
+.fitness-paper-center-ops-table th:nth-child(4),
+.fitness-paper-center-ops-table td:nth-child(4),
+.fitness-paper-center-ops-table th:nth-child(5),
+.fitness-paper-center-ops-table td:nth-child(5) {
+  width: 42px;
+}
+
+.fitness-paper-center-ops-table th:nth-child(6),
+.fitness-paper-center-ops-table td:nth-child(6) {
+  width: 50px;
+}
+
+.fitness-paper-center-ops-table th:nth-child(n + 7):nth-child(-n + 14),
+.fitness-paper-center-ops-table td:nth-child(n + 7):nth-child(-n + 14) {
+  width: 34px;
+}
+
+.fitness-paper-center-ops-table th:nth-child(15),
+.fitness-paper-center-ops-table td:nth-child(15) {
+  width: auto;
+  min-width: 78px;
+  text-align: left;
+  white-space: normal;
+}
+
+.fitness-paper-center-ops-table th,
 .fitness-paper-attendance-table th,
 .fitness-paper-contract-table th,
 .fitness-paper-schedule th {
@@ -11499,12 +11555,15 @@ body[data-layout-mode="phone"] .fitness-log-schedule-panel .appointment-merge-bu
   font-weight: 950;
 }
 
+.fitness-paper-center-ops-table tfoot td,
 .fitness-paper-attendance-table tfoot td,
 .fitness-paper-contract-table tfoot td {
   background: rgba(237, 244, 224, 0.62);
   font-weight: 950;
 }
 
+.fitness-paper-center-ops-table th:last-child,
+.fitness-paper-center-ops-table td:last-child,
 .fitness-paper-attendance-table th:last-child,
 .fitness-paper-attendance-table td:last-child,
 .fitness-paper-contract-table th:last-child,

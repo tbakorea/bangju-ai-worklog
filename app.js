@@ -534,6 +534,7 @@ function createFitnessOps() {
     customerRenewal: "",
     dayPass: "",
     consultation: "",
+    inbound: "",
     outbound: "",
     outsideSales: "",
     shiftNote: "",
@@ -6909,11 +6910,12 @@ function renderFitnessCenterDaily() {
     summary.new += numberValue(row.ops.customerNew);
     summary.renewal += numberValue(row.ops.customerRenewal);
     summary.consultation += numberValue(row.ops.consultation);
+    summary.inbound += numberValue(row.ops.inbound);
     summary.outbound += numberValue(row.ops.outbound);
     summary.workMinutes += row.workMinutes;
     summary.recordedDays += row.recordedDays;
     return summary;
-  }, { pt: 0, ptPaid: 0, ptFree: 0, ptOther: 0, new: 0, renewal: 0, consultation: 0, outbound: 0, workMinutes: 0, recordedDays: 0 });
+  }, { pt: 0, ptPaid: 0, ptFree: 0, ptOther: 0, new: 0, renewal: 0, consultation: 0, inbound: 0, outbound: 0, workMinutes: 0, recordedDays: 0 });
 
   const summaryGrid = document.getElementById("fitnessCenterSummaryGrid");
   if (summaryGrid) {
@@ -6927,6 +6929,7 @@ function renderFitnessCenterDaily() {
       ["재등록", `${total.renewal}건`],
       ["상담", `${total.consultation}건`],
       ["아웃바운드", `${total.outbound}건`],
+      ["인바운드", `${total.inbound}건`],
     ].map(([label, value]) => `<article><span>${label}</span><strong>${value}</strong></article>`).join("");
   }
 
@@ -6940,7 +6943,6 @@ function renderFitnessCenterDaily() {
         <td>${escapeHtml(row.firstClockIn || "-")}</td>
         <td>${escapeHtml(row.lastClockOut || "-")}</td>
         <td>${row.workMinutes ? formatWorkDuration(row.workMinutes) : "-"}</td>
-        <td>${escapeHtml(row.attendanceStatus)}</td>
         <td>${escapeHtml(row.breakSummary || "-")}</td>
         <td>${row.paidPtTotal || ""}</td>
         <td>${row.freePtTotal || ""}</td>
@@ -6949,6 +6951,7 @@ function renderFitnessCenterDaily() {
         <td>${escapeHtml(row.ops.customerRenewal || "")}</td>
         <td>${escapeHtml(row.ops.consultation || "")}</td>
         <td>${escapeHtml(row.ops.outbound || "")}</td>
+        <td>${escapeHtml(row.ops.inbound || "")}</td>
         <td>${escapeHtml(row.ops.specialReport || row.ops.shiftNote || "")}</td>
       </tr>
     `).join("");
@@ -6958,7 +6961,7 @@ function renderFitnessCenterDaily() {
   if (foot) {
     foot.innerHTML = `
       <tr>
-        <td colspan="8">합계</td>
+        <td colspan="7">합계</td>
         <td>${total.ptPaid}</td>
         <td>${total.ptFree}</td>
         <td>${total.ptOther}</td>
@@ -6966,6 +6969,7 @@ function renderFitnessCenterDaily() {
         <td>${total.renewal}</td>
         <td>${total.consultation}</td>
         <td>${total.outbound}</td>
+        <td>${total.inbound}</td>
         <td></td>
       </tr>
     `;
@@ -8735,6 +8739,7 @@ function collectFitnessOpsFromSchedule(log = getSelectedLog()) {
     customerRenewal: 0,
     dayPass: 0,
     consultation: 0,
+    inbound: 0,
     outbound: 0,
     outsideSales: 0,
   };
@@ -8761,7 +8766,8 @@ function applyFitnessOpsItemCount(totals, type = "업무", text = "") {
   if (/재등록|재가입|연장|갱신/.test(source)) totals.customerRenewal += count;
   if (/일일권|1일권|데이패스|day\s*pass/i.test(source)) totals.dayPass += count;
   if (normalizedType === "고객/상담" || /상담|문의|회원관리|고객관리|인바운드/.test(source)) {
-    if (/상담|문의|인바운드|등록상담/.test(source)) totals.consultation += count;
+    if (/인바운드|문의|방문|walk[-\s]?in/i.test(source)) totals.inbound += count;
+    if (/상담|등록상담/.test(source)) totals.consultation += count;
   }
   if (normalizedType === "영업/홍보" || /아웃바운드|전화|콜|문자|디엠|dm|영업/i.test(source)) {
     if (/외부영업|방문영업|외근|현장영업/.test(source)) totals.outsideSales += count;
@@ -8790,7 +8796,7 @@ function formatFitnessOpsReport(fitnessOps = createFitnessOps()) {
   return [
     `수업현황: 정규 ${ops.ptRegular || 0}, 체험/무료 ${ops.ptFree || 0}, 보강/기타 ${ops.ptOther || 0}, 합계 ${ptTotal}`,
     `상담/계약: 상담 ${ops.consultation || 0}, 신규 ${ops.customerNew || 0}, 재등록 ${ops.customerRenewal || 0}, 일일권 ${ops.dayPass || 0}, 합계 ${contractTotal}`,
-    `홍보/마케팅: 홍보 ${ops.outbound || 0}, 마케팅 ${ops.outsideSales || 0}, 합계 ${marketingTotal}`,
+    `고객유입: 인바운드 ${ops.inbound || 0}, 아웃바운드 ${ops.outbound || 0}, 외부영업 ${ops.outsideSales || 0}, 합계 ${marketingTotal + Number(ops.inbound || 0)}`,
     `업무 메모: ${ops.shiftNote || "-"}`,
     `특이사항 보고: ${ops.specialReport || "-"}`,
   ];
@@ -13234,6 +13240,7 @@ function summarizeFitnessReportRows(logEntries = []) {
     const customerRenewal = numberValue(ops.customerRenewal);
     const dayPass = numberValue(ops.dayPass);
     const consultation = numberValue(ops.consultation);
+    const inbound = numberValue(ops.inbound);
     const outbound = numberValue(ops.outbound);
     const outsideSales = numberValue(ops.outsideSales);
     const breakSummary = (log.attendanceBreaks || [])
@@ -13258,12 +13265,12 @@ function summarizeFitnessReportRows(logEntries = []) {
       dayPass,
       contractOther: 0,
       contractTotal: customerNew + customerRenewal + dayPass,
-      inbound: 0,
+      inbound,
       outbound,
       outsideSales,
       consultation,
       customerOther: 0,
-      customerTotal: outbound + outsideSales + consultation,
+      customerTotal: inbound + outbound + outsideSales + consultation,
       recordText: [ops.specialReport, ops.shiftNote, log.report, log.memo].filter(Boolean).join(" / "),
     };
   });
@@ -13374,7 +13381,7 @@ function renderFitnessReportTemplate(model = buildFitnessReportModel()) {
   const tomorrowRows = model.tomorrowTasks.map((task, index) => `<p><b>${index + 1}</b><span>${escapeHtml(task || "")}</span></p>`).join("");
   const approvalCells = model.approvalColumns.map((label) => `<th>${escapeHtml(label)}</th>`).join("");
   const approvalBlanks = model.approvalColumns.map((label) => `<td>${label === "센터장" && model.confirmation?.confirmedAt ? "확정" : ""}</td>`).join("");
-  const attendanceRows = model.staffRows.map((row) => `
+  const centerOpsRows = model.staffRows.map((row) => `
     <tr>
       <td>${escapeHtml(row.no)}</td>
       <td>${escapeHtml(row.role)}</td>
@@ -13382,31 +13389,15 @@ function renderFitnessReportTemplate(model = buildFitnessReportModel()) {
       <td>${escapeHtml(row.clockIn)}</td>
       <td>${escapeHtml(row.clockOut)}</td>
       <td>${escapeHtml(row.workDuration)}</td>
-      <td>${escapeHtml(row.attendanceNote || row.attendanceStatus)}</td>
       <td>${escapeHtml(row.ptRegular || "")}</td>
       <td>${escapeHtml(row.ptFree || "")}</td>
       <td>${escapeHtml(row.ptOther || "")}</td>
-      <td>${escapeHtml(row.ptTotal || "")}</td>
-      <td></td>
-    </tr>
-  `).join("");
-  const contractRows = model.staffRows.map((row) => `
-    <tr>
-      <td>${escapeHtml(row.no)}</td>
-      <td>${escapeHtml(row.role)}</td>
-      <td>${escapeHtml(row.name)}</td>
       <td>${escapeHtml(row.customerNew || "")}</td>
       <td>${escapeHtml(row.customerRenewal || "")}</td>
-      <td>${escapeHtml(row.dayPass || "")}</td>
-      <td>${escapeHtml(row.contractOther || "")}</td>
-      <td>${escapeHtml(row.contractTotal || "")}</td>
-      <td>${escapeHtml(row.inbound || "")}</td>
-      <td>${escapeHtml(row.outbound || "")}</td>
-      <td>${escapeHtml(row.outsideSales || "")}</td>
       <td>${escapeHtml(row.consultation || "")}</td>
-      <td>${escapeHtml(row.customerOther || "")}</td>
-      <td>${escapeHtml(row.customerTotal || "")}</td>
-      <td></td>
+      <td>${escapeHtml(row.outbound || "")}</td>
+      <td>${escapeHtml(row.inbound || "")}</td>
+      <td>${escapeHtml(row.recordText || row.attendanceNote || row.attendanceStatus || "")}</td>
     </tr>
   `).join("");
   return `
@@ -13452,21 +13443,12 @@ function renderFitnessReportTemplate(model = buildFitnessReportModel()) {
       </section>
 
       ${model.isCenter ? `
-        <section class="fitness-paper-wide-table fitness-paper-attendance-table">
-          <h3>출결현황 / PT수업</h3>
+        <section class="fitness-paper-wide-table fitness-paper-center-ops-table">
+          <h3>전체 직원 운영기록</h3>
           <table>
-            <thead><tr><th>No.</th><th>구분</th><th>성명</th><th>출근</th><th>퇴근</th><th>근무시간</th><th>비고</th><th>정규수업</th><th>무료수업</th><th>기타</th><th>소계</th><th>비고</th></tr></thead>
-            <tbody>${attendanceRows}</tbody>
-            <tfoot><tr><td colspan="7">합계</td><td>${numberValue(model.totals.ptRegular) || ""}</td><td>${numberValue(model.totals.ptFree) || ""}</td><td>${numberValue(model.totals.ptOther) || ""}</td><td>${numberValue(model.totals.ptTotal) || ""}</td><td></td></tr></tfoot>
-          </table>
-        </section>
-
-        <section class="fitness-paper-wide-table fitness-paper-contract-table">
-          <h3>계약현황 / 고객관리</h3>
-          <table>
-            <thead><tr><th>No.</th><th>구분</th><th>성명</th><th>신규</th><th>재등록</th><th>일일권</th><th>기타</th><th>소계</th><th>인바운드</th><th>아웃바운드</th><th>외부영업</th><th>상담</th><th>기타</th><th>소계</th><th>비고</th></tr></thead>
-            <tbody>${contractRows}</tbody>
-            <tfoot><tr><td colspan="3">합계</td><td>${numberValue(model.totals.customerNew) || ""}</td><td>${numberValue(model.totals.customerRenewal) || ""}</td><td>${numberValue(model.totals.dayPass) || ""}</td><td>${numberValue(model.totals.contractOther) || ""}</td><td>${numberValue(model.totals.contractTotal) || ""}</td><td>${numberValue(model.totals.inbound) || ""}</td><td>${numberValue(model.totals.outbound) || ""}</td><td>${numberValue(model.totals.outsideSales) || ""}</td><td>${numberValue(model.totals.consultation) || ""}</td><td>${numberValue(model.totals.customerOther) || ""}</td><td>${numberValue(model.totals.customerTotal) || ""}</td><td></td></tr></tfoot>
+            <thead><tr><th>No.</th><th>구분</th><th>성명</th><th>출근</th><th>퇴근</th><th>근무시간</th><th>유료PT</th><th>무료PT</th><th>기타PT</th><th>신규</th><th>재등록</th><th>상담</th><th>아웃바운드</th><th>인바운드</th><th>특이사항</th></tr></thead>
+            <tbody>${centerOpsRows}</tbody>
+            <tfoot><tr><td colspan="6">합계</td><td>${numberValue(model.totals.ptRegular) || ""}</td><td>${numberValue(model.totals.ptFree) || ""}</td><td>${numberValue(model.totals.ptOther) || ""}</td><td>${numberValue(model.totals.customerNew) || ""}</td><td>${numberValue(model.totals.customerRenewal) || ""}</td><td>${numberValue(model.totals.consultation) || ""}</td><td>${numberValue(model.totals.outbound) || ""}</td><td>${numberValue(model.totals.inbound) || ""}</td><td></td></tr></tfoot>
           </table>
         </section>
       ` : ""}
@@ -13479,7 +13461,7 @@ function renderFitnessReportTemplate(model = buildFitnessReportModel()) {
         </section>
       ` : ""}
 
-      <section class="fitness-paper-schedule">
+      ${!model.isCenter ? `<section class="fitness-paper-schedule">
         <h3>시간별 세부업무</h3>
         <table>
           <thead><tr><th>업무시간</th><th>세부업무내용</th><th>분류</th></tr></thead>
@@ -13487,7 +13469,7 @@ function renderFitnessReportTemplate(model = buildFitnessReportModel()) {
             ${scheduleRows.map((entry) => `<tr><td>${escapeHtml(entry.time)}</td><td>${escapeHtml(entry.text || "")}</td><td>${escapeHtml(inferScheduleType(entry.text || ""))}</td></tr>`).join("")}
           </tbody>
         </table>
-      </section>
+      </section>` : ""}
 
       <section class="fitness-paper-footer-grid">
         <div>
@@ -13677,6 +13659,7 @@ function getFitnessReportExportCss() {
     .fitness-paper-tasks,
     .fitness-paper-kpi,
     .fitness-paper-approval,
+    .fitness-paper-center-ops-table,
     .fitness-paper-attendance-table,
     .fitness-paper-contract-table,
     .fitness-paper-schedule,
@@ -13687,6 +13670,7 @@ function getFitnessReportExportCss() {
       background: rgba(255, 254, 250, 0.95);
     }
     .fitness-paper-tasks h3,
+    .fitness-paper-center-ops-table h3,
     .fitness-paper-attendance-table h3,
     .fitness-paper-contract-table h3,
     .fitness-paper-schedule h3,
@@ -13788,9 +13772,11 @@ function getFitnessReportExportCss() {
       font-weight: 950;
     }
     .fitness-paper-attendance-table,
+    .fitness-paper-center-ops-table,
     .fitness-paper-contract-table,
     .fitness-paper-schedule,
     .fitness-paper-footer-grid { margin-top: 16px; }
+    .fitness-paper-center-ops-table table,
     .fitness-paper-attendance-table table,
     .fitness-paper-contract-table table,
     .fitness-paper-schedule table {
@@ -13798,6 +13784,8 @@ function getFitnessReportExportCss() {
       border-collapse: collapse;
       table-layout: fixed;
     }
+    .fitness-paper-center-ops-table th,
+    .fitness-paper-center-ops-table td,
     .fitness-paper-attendance-table th,
     .fitness-paper-attendance-table td,
     .fitness-paper-contract-table th,
@@ -13810,16 +13798,47 @@ function getFitnessReportExportCss() {
       font-size: 17px;
       line-height: 1.12;
     }
+    .fitness-paper-center-ops-table th,
     .fitness-paper-attendance-table th,
     .fitness-paper-contract-table th,
     .fitness-paper-schedule th {
       background: rgba(250, 250, 245, 0.95);
       font-weight: 950;
     }
+    .fitness-paper-center-ops-table tfoot td,
     .fitness-paper-attendance-table tfoot td,
     .fitness-paper-contract-table tfoot td {
       background: rgba(237, 244, 224, 0.62);
       font-weight: 950;
+    }
+    .fitness-paper-center-ops-table th,
+    .fitness-paper-center-ops-table td {
+      padding: 5px 5px;
+      font-size: 14px;
+      line-height: 1.08;
+      text-align: center;
+      word-break: keep-all;
+    }
+    .fitness-paper-center-ops-table th:nth-child(1),
+    .fitness-paper-center-ops-table td:nth-child(1) { width: 44px; }
+    .fitness-paper-center-ops-table th:nth-child(2),
+    .fitness-paper-center-ops-table td:nth-child(2) { width: 76px; }
+    .fitness-paper-center-ops-table th:nth-child(3),
+    .fitness-paper-center-ops-table td:nth-child(3) { width: 92px; }
+    .fitness-paper-center-ops-table th:nth-child(4),
+    .fitness-paper-center-ops-table td:nth-child(4),
+    .fitness-paper-center-ops-table th:nth-child(5),
+    .fitness-paper-center-ops-table td:nth-child(5) { width: 72px; }
+    .fitness-paper-center-ops-table th:nth-child(6),
+    .fitness-paper-center-ops-table td:nth-child(6) { width: 86px; }
+    .fitness-paper-center-ops-table th:nth-child(n + 7):nth-child(-n + 14),
+    .fitness-paper-center-ops-table td:nth-child(n + 7):nth-child(-n + 14) { width: 58px; }
+    .fitness-paper-center-ops-table th:nth-child(15),
+    .fitness-paper-center-ops-table td:nth-child(15) {
+      width: auto;
+      min-width: 154px;
+      text-align: left;
+      white-space: normal;
     }
     .fitness-paper-schedule th:nth-child(1),
     .fitness-paper-schedule td:nth-child(1) {
