@@ -4833,6 +4833,30 @@ async function fetchApprovalProfileRows() {
     .order("updated_at", { ascending: false });
 }
 
+function getMissingSchemaColumnFromError(error) {
+  const message = [error?.message, error?.details, error?.hint].filter(Boolean).join(" ");
+  const match = String(message).match(/Could not find the ['"]([^'"]+)['"] column/i);
+  return match?.[1] || "";
+}
+
+async function updateProfileRowWithSchemaFallback(id, payload = {}, client = supabaseClient) {
+  let nextPayload = { ...payload };
+  let lastError = null;
+  const removedColumns = [];
+  for (let attempt = 0; attempt < 8; attempt += 1) {
+    const { error } = await client.from("profiles").update(nextPayload).eq("id", id);
+    if (!error) return { error: null, payload: nextPayload, removedColumns };
+    lastError = error;
+    const missingColumn = getMissingSchemaColumnFromError(error);
+    if (!missingColumn || !Object.prototype.hasOwnProperty.call(nextPayload, missingColumn)) {
+      return { error, payload: nextPayload, removedColumns };
+    }
+    delete nextPayload[missingColumn];
+    removedColumns.push(missingColumn);
+  }
+  return { error: lastError, payload: nextPayload, removedColumns };
+}
+
 async function loadApprovalRequests(options = {}) {
   const list = document.getElementById("approvalRequestList");
   if (!list) return;
@@ -5170,7 +5194,7 @@ async function updateApprovalRequest(id, action) {
     } else {
       payload.approval_note = `${String(row.approval_note || "").trim()}${row.approval_note ? "\n" : ""}[직원정보 변경요청 반려] ${new Date().toLocaleString("ko-KR")}`.trim();
     }
-    const { error } = await supabaseClient.from("profiles").update(payload).eq("id", id);
+    const { error } = await updateProfileRowWithSchemaFallback(id, payload);
     if (error) {
       alert(`직원정보 변경요청 처리 실패: ${error.message}`);
       return;
@@ -5205,7 +5229,7 @@ async function updateApprovalRequest(id, action) {
     payload.approved_by = authState.user.id;
     payload.approved_at = new Date().toISOString();
   }
-  const { error } = await supabaseClient.from("profiles").update(payload).eq("id", id);
+  const { error } = await updateProfileRowWithSchemaFallback(id, payload);
   if (error) {
     alert(`승인요청 처리 실패: ${error.message}`);
     return;
@@ -11742,29 +11766,17 @@ async function saveStaffProfileEdits(employeeId) {
       approved_by: authState.user.id,
       approved_at: new Date().toISOString(),
     };
-    const { error } = await supabaseClient.from("profiles").update(payload).eq("id", row.sourceProfileId);
+    const { error, payload: savedPayload, removedColumns } = await updateProfileRowWithSchemaFallback(row.sourceProfileId, payload);
     if (error) {
-      if (/assigned_mission/i.test(error.message || "")) {
-        const fallbackPayload = { ...payload };
-        delete fallbackPayload.assigned_mission;
-        delete fallbackPayload.assigned_mission_visible;
-        delete fallbackPayload.assigned_mission_updated_by;
-        delete fallbackPayload.assigned_mission_updated_at;
-        const { error: fallbackError } = await supabaseClient.from("profiles").update(fallbackPayload).eq("id", row.sourceProfileId);
-        if (!fallbackError) {
-          setStaffDetailSaveStatus("직원정보는 저장되었습니다. 대표 지정 미션 저장은 최신 Supabase SQL 적용 후 원격 반영됩니다.", "done");
-        } else {
-          setStaffDetailSaveStatus(`원격 저장 실패: ${fallbackError.message}`, "error");
-          return;
-        }
-      } else {
-        setStaffDetailSaveStatus(`원격 저장 실패: ${error.message}`, "error");
-        return;
-      }
+      setStaffDetailSaveStatus(`원격 저장 실패: ${error.message}`, "error");
+      return;
+    }
+    if (removedColumns.length) {
+      setStaffDetailSaveStatus("직원정보는 저장되었습니다. 일부 신규 관리항목은 최신 Supabase SQL 적용 후 원격 반영됩니다.", "done");
     }
     const mergedRow = {
       ...mergeStaffFieldsIntoApprovalRow(sourceRow, fields),
-      ...payload,
+      ...savedPayload,
       id: row.sourceProfileId,
       email: fields.email || sourceRow.email || row.email,
       approval_status: "approved",

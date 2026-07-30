@@ -1152,6 +1152,63 @@ async function checkStaffDirectoryListAndDetail(browser) {
   if (!editMetrics.hasEditedName || editMetrics.overrideName !== "재무총괄") {
     fail("staff detail editor should save manager edits", JSON.stringify(editMetrics));
   }
+  const fallbackMetrics = await page.evaluate(() => window.eval(`(async () => {
+    const calls = [];
+    const fakeClient = {
+      from(table) {
+        return {
+          update(payload) {
+            calls.push({ table, payload: { ...payload } });
+            return {
+              eq() {
+                if (Object.prototype.hasOwnProperty.call(payload, "pending_profile_changes")) {
+                  return Promise.resolve({
+                    error: {
+                      message: "Could not find the 'pending_profile_changes' column of 'profiles' in the schema cache",
+                    },
+                  });
+                }
+                if (Object.prototype.hasOwnProperty.call(payload, "assigned_mission")) {
+                  return Promise.resolve({
+                    error: {
+                      message: "Could not find the 'assigned_mission' column of 'profiles' in the schema cache",
+                    },
+                  });
+                }
+                return Promise.resolve({ error: null });
+              }
+            };
+          }
+        };
+      }
+    };
+    const result = await updateProfileRowWithSchemaFallback("profile-1", {
+      name: "박주홍",
+      pending_profile_changes: {},
+      profile_change_requested_at: null,
+      assigned_mission: "센터 운영 총괄",
+      approved_at: "2026-07-30T00:00:00.000Z"
+    }, fakeClient);
+    return JSON.stringify({
+      error: result.error?.message || "",
+      removedColumns: result.removedColumns,
+      callCount: calls.length,
+      finalPayload: calls.at(-1)?.payload || {},
+    });
+  })()`));
+  const parsedFallback = JSON.parse(fallbackMetrics);
+  if (parsedFallback.error || parsedFallback.callCount !== 3) {
+    fail("profile schema fallback should retry missing profile columns", fallbackMetrics);
+  }
+  if (
+    !parsedFallback.removedColumns.includes("pending_profile_changes")
+    || !parsedFallback.removedColumns.includes("assigned_mission")
+    || Object.prototype.hasOwnProperty.call(parsedFallback.finalPayload, "pending_profile_changes")
+    || Object.prototype.hasOwnProperty.call(parsedFallback.finalPayload, "assigned_mission")
+    || parsedFallback.finalPayload.name !== "박주홍"
+  ) {
+    fail("profile schema fallback should preserve safe fields only", fallbackMetrics);
+  }
   if (errors.length) fail("staff directory page errors", errors.join(" | "));
   await page.close();
 }
