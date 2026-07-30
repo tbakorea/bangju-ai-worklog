@@ -609,7 +609,6 @@ const operatingRisks = [
   ["문서", "계약서, 도면, 사진이 사업장 단위로 연결되어야 AI 검색 가능", "상"],
 ];
 
-const state = loadState();
 const authState = {
   session: null,
   user: null,
@@ -624,12 +623,14 @@ const authState = {
   passwordResetRows: [],
   selectedApprovalId: "",
   approvalTimer: null,
+  passwordRecoveryMode: false,
   signupEmailCheck: {
     email: "",
     status: "idle",
     message: "직원등록 전 이메일 중복확인을 해주세요.",
   },
 };
+const state = loadState();
 let dateSlideTimer = 0;
 let verticalDateSwipeTimer = 0;
 let verticalDateSwipeAnimating = false;
@@ -653,6 +654,14 @@ function loadState() {
     return saved;
   } catch {
     return createState();
+  }
+}
+
+function resetStartupDateToToday() {
+  state.selectedDateKey = todayKey;
+  calendarViewDate = parseDateKey(todayKey);
+  if (!/^\d{4}-\d{2}$/.test(String(state.fitnessCenterMonth || ""))) {
+    state.fitnessCenterMonth = todayKey.slice(0, 7);
   }
 }
 
@@ -707,8 +716,12 @@ function createState() {
   };
 }
 
-function createEmployeeLog(employee = employees[0], profile = defaultProfile) {
-  const workHours = employee.workHours || getEmployeeWorkHours(employee.id, profile);
+function createEmployeeLog(employee = employees[0], profile = defaultProfile, dateKey = todayKey) {
+  const mappedProfileId = getProfileMappedEmployeeId(profile || {});
+  const profileHours = getProfileWorkHoursForDate(profile || defaultProfile, dateKey) || profile?.workHours || defaultProfile.workHours;
+  const workHours = employee.id === "profile-user" || mappedProfileId === employee.id
+    ? profileHours
+    : employee.workHours || defaultProfile.workHours;
   return {
     employeeId: employee.id,
     org: employee.org,
@@ -803,7 +816,7 @@ function normalizeState() {
   state.employeeLogs ||= {};
   state.employeeLogs[getActiveDateKey()] ||= {};
   getEmployeeOptions().forEach((employee) => {
-    state.employeeLogs[getActiveDateKey()][employee.id] ||= createEmployeeLog(employee);
+    state.employeeLogs[getActiveDateKey()][employee.id] ||= createEmployeeLog(employee, state.profile, getActiveDateKey());
     const log = state.employeeLogs[getActiveDateKey()][employee.id];
     log.employeeId ||= employee.id;
     log.org ||= employee.org;
@@ -813,12 +826,12 @@ function normalizeState() {
     log.attendanceBreaks = Array.isArray(log.attendanceBreaks) ? log.attendanceBreaks : [];
     log.attendanceStatus ||= "";
     log.attendanceStep ||= log.attendanceStatus === "조퇴" ? "early" : log.clockOut ? "out" : log.clockIn ? "in" : "ready";
-    log.tasks ||= createEmployeeLog(employee).tasks;
-    log.schedule ||= createEmployeeLog(employee).schedule;
+    log.tasks ||= createEmployeeLog(employee, state.profile, getActiveDateKey()).tasks;
+    log.schedule ||= createEmployeeLog(employee, state.profile, getActiveDateKey()).schedule;
     if (shouldApplyFitnessHourDefault && fitnessEmployeeIds.includes(employee.id)) {
       log.scheduleUnit = "60";
     }
-    normalizeEmployeeLogRows(log);
+    normalizeEmployeeLogRows(log, getActiveDateKey());
     log.report ||= log.record || "";
     log.memo ||= "";
     log.record ||= "";
@@ -838,7 +851,7 @@ function normalizeState() {
   state.fitnessScheduleUnitDefaultApplied = true;
 }
 
-function normalizeEmployeeLogRows(log) {
+function normalizeEmployeeLogRows(log, dateKey = getActiveDateKey()) {
   log.tasks ||= [];
   log.schedule ||= [];
   log.tasks.forEach((task, index) => {
@@ -868,7 +881,7 @@ function normalizeEmployeeLogRows(log) {
   }
   log.scheduleUnit = log.scheduleUnit === "60" ? "60" : "30";
   const scheduleByTime = new Map(log.schedule.map((item) => [item.time, item]));
-  const scheduleTimes = getWorklogScheduleSlots(log);
+  const scheduleTimes = getWorklogScheduleSlots(log, dateKey);
   log.schedule = scheduleTimes.map((time) => {
     const item = scheduleByTime.get(time) || { time, text: "", status: "예정", items: [createScheduleItem()] };
     item.time = time;
@@ -950,9 +963,14 @@ function getWorkdayKey(dateKey = getActiveDateKey()) {
 }
 
 function getFitnessEmployees() {
-  return fitnessEmployeeIds
+  const profile = state.profile || {};
+  const source = `${profile.org || ""} ${profile.workplace || ""} ${profile.primaryWork || ""} ${profile.role || ""}`.toLowerCase();
+  const includeProfileEmployee = !isRepresentativeProfile()
+    && (state.fitnessWritableEmployeeId === "profile-user" || (!getProfileMappedEmployeeId() && /피트니스|fitness/.test(source)));
+  const list = fitnessEmployeeIds
     .map((id) => employees.find((employee) => employee.id === id))
     .filter(isAssignedWorklogEmployee);
+  return includeProfileEmployee ? [getProfileEmployee(), ...list] : list;
 }
 
 function getEmployeeAdminLabel(employee = getSelectedEmployee()) {
@@ -985,6 +1003,52 @@ function getWorklogIdentityText(employee = getSelectedEmployee()) {
   return `${getWorklogCompanyLabel(employee)} · ${getWorklogPersonLabel(employee)}`;
 }
 
+function getDailyGreetingSeed(dateKey = getActiveDateKey(), employee = getSelectedEmployee()) {
+  const source = `${dateKey}|${employee?.id || ""}|${employee?.org || ""}|${employee?.role || ""}|${state.profile?.email || ""}`;
+  return Array.from(source).reduce((sum, char) => sum + char.charCodeAt(0), 0);
+}
+
+function pickDailyGreeting(items = [], dateKey = getActiveDateKey(), employee = getSelectedEmployee()) {
+  if (!items.length) return "";
+  return items[getDailyGreetingSeed(dateKey, employee) % items.length];
+}
+
+function getPersonalizedWelcomeMessage(employee = getSelectedEmployee(), log = getEmployeeLogForDate(employee?.id || state.selectedEmployeeId)) {
+  const person = getEmployeeOwnLabel(employee);
+  const role = String(employee?.role || state.profile?.role || "직원").trim();
+  const company = getWorklogCompanyLabel(employee);
+  const work = String(employee?.primaryWork || state.profile?.primaryWork || "").trim();
+  const mission = getAssignedMissionForEmployee(employee);
+  const missionText = mission?.visible && mission.text ? mission.text : "";
+  const tasks = getWorklogTaskRefs(log || createEmployeeLog(employee)).map((ref) => ref.task).filter(isActiveTask);
+  const pending = tasks.filter((task) => !task.done && !["완료", "취소"].includes(task.status)).length;
+  const nextEntry = getNextScheduleEntry(log || createEmployeeLog(employee));
+  const base = [
+    `${person}님, 오늘도 ${company}의 흐름을 만드는 중요한 하루입니다.`,
+    `${person}님, ${role}의 기준이 오늘 현장의 신뢰를 만듭니다.`,
+    `${person}님, 작은 기록 하나가 팀 전체의 실행력을 높입니다.`,
+    `${person}님, 오늘 업무일지가 내일의 더 좋은 판단을 만듭니다.`,
+  ];
+  const roleHints = [];
+  if (/피트니스|인포|센터장|트레이너|pt|fitness/i.test(`${company} ${role} ${work}`)) {
+    roleHints.push("회원 응대와 센터 컨디션을 먼저 살피면 매출과 재등록 기회가 선명해집니다.");
+  }
+  if (/재무|회계|자금|정산/i.test(`${role} ${work}`)) {
+    roleHints.push("숫자와 증빙을 한 번 더 맞추면 대표의 판단 속도가 빨라집니다.");
+  }
+  if (/공유|워크베이스|워크박스|오피스|창고/i.test(`${company} ${work}`)) {
+    roleHints.push("공간 상태, 입주 고객, 공실 신호를 짧게 남기면 운영 품질이 올라갑니다.");
+  }
+  if (/tba|studio|시공|인테리어|욕실|바스/i.test(`${company} ${work}`)) {
+    roleHints.push("시공·상담·제품 이슈를 사진처럼 구체적으로 남기면 프로젝트 품질이 단단해집니다.");
+  }
+  if (missionText) roleHints.push(`대표 미션: ${missionText}`);
+  if (nextEntry) roleHints.push(`다음 일정 ${nextEntry.time} 전에 준비 포인트를 한 줄로 남겨주세요.`);
+  else if (pending) roleHints.push(`미완료 ${pending}건 중 가장 중요한 1건부터 처리해봅시다.`);
+  else roleHints.push("오늘 우선업무 1건과 시간표 1칸만 먼저 채워도 하루의 방향이 잡힙니다.");
+  return `${pickDailyGreeting(base, getActiveDateKey(), employee)} ${pickDailyGreeting(roleHints, getActiveDateKey(), employee)}`;
+}
+
 function getEmployeeOwnLabel(employee = getSelectedEmployee()) {
   if (employee.id === state.fitnessWritableEmployeeId && isEmployeeLinkedToProfile(employee.id)) {
     return state.profile?.nickname || employee.nickname || employee.name || "내 업무일지";
@@ -1011,10 +1075,10 @@ function getFitnessOwnIdentity(employee = employees.find((item) => item.id === s
 function syncFitnessWritableEmployeeFromProfile() {
   const profile = state.profile || {};
   if (isRepresentativeProfile()) return;
-  const source = `${profile.org || ""} ${profile.workplace || ""} ${profile.primaryWork || ""}`.toLowerCase();
+  const source = `${profile.org || ""} ${profile.workplace || ""} ${profile.primaryWork || ""} ${profile.role || ""} ${profile.name || ""} ${profile.nickname || ""}`.toLowerCase();
   if (!/피트니스|fitness/.test(source)) return;
-  const role = `${profile.role || ""} ${profile.primaryWork || ""} ${profile.nickname || ""}`;
-  let id = "beyond-fitness-manager";
+  let id = fitnessEmployeeIds.includes(getProfileMappedEmployeeId(profile)) ? getProfileMappedEmployeeId(profile) : "profile-user";
+  const role = source;
   if (/홍현규|트레이너|trainer|pt|피티/.test(role)) id = "fitness-trainer-1";
   else if (/토요|토요일/.test(role)) id = "fitness-saturday-info";
   else if (/일요|일요일/.test(role)) id = "fitness-sunday-info";
@@ -1189,7 +1253,7 @@ function getProfileMappedEmployeeId(profile = state.profile || {}) {
   if (/토요|토요일/.test(source)) return "fitness-saturday-info";
   if (/일요|일요일/.test(source)) return "fitness-sunday-info";
   if (/인포|데스크|front|프론트|주중/.test(source)) return "fitness-weekday-info";
-  if (/피트니스|fitness/.test(source)) return "fitness-weekday-info";
+  if (/피트니스|fitness/.test(source)) return "";
   if (/비욘드/.test(source) && /공유|워크베이스|워크박스|창고|오피스|shared|workbase|workbox/.test(source)) return "beyond-shared-manager";
   if (/비욘드/.test(source) && /실장|tba|티비에이|인월|욕실|바스|bath/.test(source)) return "beyond-company-leader";
   return "";
@@ -1450,10 +1514,11 @@ function getEmployeeLogForDate(employeeId, key = getActiveDateKey()) {
   const employee = getEmployeeOptions().find((item) => item.id === employeeId) || employees.find((item) => item.id === employeeId) || getSelectedEmployee();
   state.employeeLogs ||= {};
   state.employeeLogs[key] ||= {};
-  state.employeeLogs[key][employee.id] ||= createEmployeeLog(employee);
+  state.employeeLogs[key][employee.id] ||= createEmployeeLog(employee, state.profile, key);
   state.employeeLogs[key][employee.id].attendanceBreaks = Array.isArray(state.employeeLogs[key][employee.id].attendanceBreaks)
     ? state.employeeLogs[key][employee.id].attendanceBreaks
     : [];
+  normalizeEmployeeLogRows(state.employeeLogs[key][employee.id], key);
   return state.employeeLogs[key][employee.id];
 }
 
@@ -2177,6 +2242,7 @@ function getOverviewActiveTasks(log) {
 function getOverviewScheduleRows(log) {
   const filled = (log.schedule || []).filter((item) => getScheduleEntryText(item));
   const base = filled.length ? filled : log.schedule || [];
+  if (fitnessEmployeeIds.includes(log?.employeeId)) return base;
   return base.slice(0, 12);
 }
 
@@ -2309,13 +2375,20 @@ function renderOverviewFitnessSummary(log) {
 }
 
 function renderOverviewEmployeeSheet({ group, employee, employeeId, index, dayLog, context }) {
+  const isFitness = group.id === "fitness";
   const activeTasks = getOverviewActiveTasks(dayLog);
   const scheduleRows = getOverviewScheduleRows(dayLog);
   const insightPanel = renderOverviewInsightPanel(employee, dayLog, context);
   const directivePanel = renderOverviewDirectivePanel(employee, dayLog, employeeId, context);
-  const fitnessPanel = group.id === "fitness" ? renderOverviewFitnessSummary(dayLog) : "";
+  const fitnessPanel = isFitness ? renderOverviewFitnessSummary(dayLog) : "";
+  const fitnessFormLabel = isFitness ? `
+    <div class="overview-fitness-form-label">
+      <span>FITNESS WORKLOG</span>
+      <strong>수업 · 상담 · 계약 · 운영기록</strong>
+    </div>
+  ` : "";
   return `
-    <article class="worklog-overview-employee-sheet projected-worklog-sheet ${group.id === "fitness" ? "is-fitness-sheet" : ""}" data-overview-site="${escapeAttr(group.id)}">
+    <article class="worklog-overview-employee-sheet projected-worklog-sheet ${isFitness ? "is-fitness-sheet" : ""}" data-overview-site="${escapeAttr(group.id)}">
       <header class="overview-sheet-head">
         <div>
           <span>${escapeHtml(group.label)} ${index + 1}</span>
@@ -2324,6 +2397,7 @@ function renderOverviewEmployeeSheet({ group, employee, employeeId, index, dayLo
         </div>
         <button type="button" data-overview-employee="${escapeAttr(employeeId)}" data-overview-view="${escapeAttr(group.view)}">열기</button>
       </header>
+      ${fitnessFormLabel}
       ${insightPanel}
       ${fitnessPanel}
       ${directivePanel}
@@ -2333,13 +2407,13 @@ function renderOverviewEmployeeSheet({ group, employee, employeeId, index, dayLo
       </section>
       <div class="overview-sheet-body">
         <section class="projected-task-panel">
-          <h4>${group.id === "fitness" ? "우선업무" : "주요업무"} <em>${context.done}/${context.tasks.length || 0}</em></h4>
+          <h4>${isFitness ? "오늘의 우선업무" : "주요업무"} <em>${context.done}/${context.tasks.length || 0}</em></h4>
           <ul>
             ${(activeTasks.length ? activeTasks : [{ priority: "?", text: "업무 내용", status: "예정" }]).map(renderOverviewTaskMini).join("")}
           </ul>
         </section>
-        <section class="${group.id === "fitness" ? "projected-fitness-schedule-panel" : "projected-schedule-panel"}">
-          <h4>시간별 일정 <em>${context.scheduleCount}</em></h4>
+        <section class="${isFitness ? "projected-fitness-schedule-panel" : "projected-schedule-panel"}">
+          <h4>${isFitness ? "시간별 수업·운영" : "시간별 일정"} <em>${context.scheduleCount}</em></h4>
           <ul>
             ${scheduleRows.map(renderOverviewScheduleMini).join("")}
           </ul>
@@ -2370,7 +2444,7 @@ function renderWorklogOverview() {
     const employeeCards = group.employeeIds.map((employeeId, index) => {
       const employee = employees.find((item) => item.id === employeeId);
       if (!employee) return "";
-      const dayLog = state.employeeLogs?.[dateKey]?.[employeeId] || createEmployeeLog(employee);
+      const dayLog = getEmployeeLogForDate(employeeId, dateKey);
       const tasks = (dayLog.tasks || []).filter(isActiveTask);
       const done = tasks.filter((task) => task.done || task.status === "완료").length;
       const scheduleCount = (dayLog.schedule || []).filter((item) => getScheduleEntryText(item)).length;
@@ -3881,7 +3955,6 @@ function getUserWorklogView() {
 }
 
 function getInitialLandingView() {
-  if (isRepresentativeProfile()) return "executive";
   return getUserWorklogView();
 }
 
@@ -4932,10 +5005,22 @@ async function updateApprovalRequest(id, action) {
   else showAppToast("승인요청 정보를 저장했습니다");
 }
 
+function setPasswordRecoveryMode(active, message = "") {
+  authState.passwordRecoveryMode = Boolean(active);
+  const updateCard = document.getElementById("passwordUpdateCard");
+  const loginCard = document.querySelector(".login-card:not(.password-update-card)");
+  if (updateCard) updateCard.hidden = !authState.passwordRecoveryMode;
+  if (loginCard) loginCard.hidden = authState.passwordRecoveryMode || isAuthRegistrationVisible();
+  if (authState.passwordRecoveryMode) {
+    setAuthRegistrationVisible(false, { clear: false });
+    document.getElementById("resetNewPassword")?.focus();
+  }
+  if (message) renderAuthStatus(message);
+}
+
 async function requestPasswordResetApproval() {
   const emailInput = document.getElementById("authEmail");
   const email = String(emailInput?.value || "").trim().toLowerCase();
-  const requesterName = String(document.querySelector('[data-profile-field="name"]')?.value || state.profile?.name || "").trim();
   if (!email) {
     renderAuthStatus("비밀번호를 재설정할 직원 이메일을 입력해주세요.");
     emailInput?.focus();
@@ -4947,22 +5032,57 @@ async function requestPasswordResetApproval() {
     return;
   }
   if (!supabaseClient) {
-    renderAuthStatus("원격 저장 연결 후 비밀번호 재설정 요청을 보낼 수 있습니다.");
+    renderAuthStatus("원격 저장 연결 후 비밀번호 재설정 메일을 보낼 수 있습니다.");
     return;
   }
-  renderAuthStatus("비밀번호 재설정 승인을 요청하는 중입니다...");
-  const { error } = await supabaseClient.from("password_reset_requests").insert({
-    email,
-    requester_name: requesterName || email.split("@")[0],
-    status: "pending",
-    note: "직원이 로그인 화면에서 비밀번호 재설정을 요청했습니다.",
-    updated_at: new Date().toISOString(),
+  renderAuthStatus("비밀번호 재설정 메일을 보내는 중입니다...");
+  const { error } = await supabaseClient.auth.resetPasswordForEmail(email, {
+    redirectTo: getAuthRedirectUrl(),
   });
   if (error) {
-    renderAuthStatus(`비밀번호 재설정 요청 실패: ${error.message}`);
+    renderAuthStatus(`비밀번호 재설정 메일 발송 실패: ${error.message}`);
     return;
   }
-  renderAuthStatus("비밀번호 재설정 요청이 대표 승인 목록에 접수되었습니다. 승인 후 재설정 메일을 받을 수 있습니다.");
+  renderAuthStatus(`${email} 주소로 비밀번호 재설정 메일을 보냈습니다. 메일의 링크를 열어 새 비밀번호를 설정해주세요.`);
+}
+
+async function completePasswordReset() {
+  if (!supabaseClient) {
+    renderAuthStatus("원격 저장 연결 후 비밀번호를 변경할 수 있습니다.");
+    return;
+  }
+  const passwordInput = document.getElementById("resetNewPassword");
+  const confirmInput = document.getElementById("resetNewPasswordConfirm");
+  const password = passwordInput?.value || "";
+  const confirm = confirmInput?.value || "";
+  if (password.length < 6) {
+    renderAuthStatus("새 비밀번호는 6자 이상이어야 합니다.");
+    passwordInput?.focus();
+    return;
+  }
+  if (password !== confirm) {
+    renderAuthStatus("새 비밀번호 확인이 일치하지 않습니다.");
+    confirmInput?.focus();
+    return;
+  }
+  renderAuthStatus("새 비밀번호를 저장하는 중입니다...");
+  const { error } = await supabaseClient.auth.updateUser({ password });
+  if (error) {
+    renderAuthStatus(`비밀번호 변경 실패: ${error.message}`);
+    return;
+  }
+  if (passwordInput) passwordInput.value = "";
+  if (confirmInput) confirmInput.value = "";
+  setPasswordRecoveryMode(false, "비밀번호가 변경되었습니다. 새 비밀번호로 로그인할 수 있습니다.");
+  showAppToast("비밀번호가 변경되었습니다");
+}
+
+function cancelPasswordReset() {
+  const passwordInput = document.getElementById("resetNewPassword");
+  const confirmInput = document.getElementById("resetNewPasswordConfirm");
+  if (passwordInput) passwordInput.value = "";
+  if (confirmInput) confirmInput.value = "";
+  setPasswordRecoveryMode(false, "비밀번호 재설정을 취소했습니다.");
 }
 
 async function loadPasswordResetRequests() {
@@ -5244,11 +5364,15 @@ function clearAuthFormCredentials() {
   const registrationEmailInput = document.getElementById("registrationEmail");
   const registrationPasswordInput = document.getElementById("registrationPassword");
   const passwordConfirmInput = document.getElementById("authPasswordConfirm");
+  const resetPasswordInput = document.getElementById("resetNewPassword");
+  const resetPasswordConfirmInput = document.getElementById("resetNewPasswordConfirm");
   if (emailInput) emailInput.value = "";
   if (passwordInput) passwordInput.value = "";
   if (registrationEmailInput) registrationEmailInput.value = "";
   if (registrationPasswordInput) registrationPasswordInput.value = "";
   if (passwordConfirmInput) passwordConfirmInput.value = "";
+  if (resetPasswordInput) resetPasswordInput.value = "";
+  if (resetPasswordConfirmInput) resetPasswordConfirmInput.value = "";
   resetSignupEmailCheck();
 }
 
@@ -5261,9 +5385,11 @@ function setAuthRegistrationVisible(visible, { clear = false } = {}) {
   document.querySelectorAll("[data-auth-registration]").forEach((node) => {
     node.hidden = !visible;
   });
-  document.querySelectorAll(".login-card").forEach((node) => {
-    node.hidden = visible;
+  document.querySelectorAll(".login-card:not(.password-update-card)").forEach((node) => {
+    node.hidden = visible || authState.passwordRecoveryMode;
   });
+  const passwordUpdateCard = document.getElementById("passwordUpdateCard");
+  if (passwordUpdateCard) passwordUpdateCard.hidden = !authState.passwordRecoveryMode;
   if (!visible) {
     switchAuthTab("personal");
     return;
@@ -5481,6 +5607,7 @@ function clearAuthRuntimeState() {
   authState.passwordResetRows = [];
   authState.selectedApprovalId = "";
   authState.approvalRepairTried = false;
+  authState.passwordRecoveryMode = false;
   authState.applyingRemote = false;
   clearTimeout(authState.saveTimer);
   authState.saveTimer = null;
@@ -5727,6 +5854,7 @@ async function applySession(session) {
     renderAuthStatus(`현재 상태: ${getApprovalStatusLabel()}. 대표 승인 후 업무일지를 사용할 수 있습니다.`);
     return;
   }
+  resetStartupDateToToday();
   await loadRemoteWorklogForActiveDate();
   await saveRemoteProfile();
   scheduleRemoteSave(0);
@@ -5958,8 +6086,12 @@ async function initializeAuth() {
   }
   const { data } = await supabaseClient.auth.getSession();
   await applySession(data.session);
-  supabaseClient.auth.onAuthStateChange((_event, session) => {
+  supabaseClient.auth.onAuthStateChange((event, session) => {
     applySession(session);
+    if (event === "PASSWORD_RECOVERY") {
+      switchView("auth");
+      setPasswordRecoveryMode(true, "새 비밀번호를 입력해 재설정을 완료해주세요.");
+    }
   });
 }
 
@@ -6597,6 +6729,7 @@ function getFitnessCoachingMessages() {
   const visits = numberValue(dagym.visits);
   const expiring = numberValue(dagym.expiring);
   const messages = [
+    ["오늘 환영", getPersonalizedWelcomeMessage(employee, log)],
     ["우선업무", pending.length ? `${getEmployeeOwnLabel(employee)}님은 미완료 ${pending.length}건을 먼저 정리하고, 가장 매출과 회원경험에 가까운 업무 1건을 상단에 두세요.` : "우선업무 흐름이 안정적입니다. 다음 일정 전까지 완료 기록을 남기면 코칭 정확도가 올라갑니다."],
     ["시간관리", nextEntry ? `다음 일정은 ${nextEntry.time} ${getScheduleEntryText(nextEntry)}입니다. 시작 전 준비물과 고객 응대 포인트를 5분 전에 확인하세요.` : "다음 일정이 비어 있습니다. 센터관리, 상담 후보 확인, 시설 점검 중 하나를 시간표에 배치하세요."],
     ["센터운영", visits ? `오늘 출석 ${visits}명 기준으로 상담/재등록 행동 ${salesAction}건입니다. 출석 대비 3% 이상을 상담 기록으로 남기는 것을 권장합니다.` : "다짐 출석/매출 자료를 입력하면 운영 코칭이 더 구체화됩니다."],
@@ -6687,7 +6820,8 @@ function renderWorklogSummary(log) {
   document.getElementById("worklogCompletion").textContent = `${completed}/${tasks.length}`;
   const pulseText = document.getElementById("worklogPulseText");
   if (pulseText) {
-    pulseText.textContent = `업무 도움 · 오늘 실행 ${completed}/${tasks.length} · 다음 일정 ${nextEntry ? `${nextEntry.time} ${getScheduleEntryText(nextEntry)}` : "없음"} · 미완료 ${pending} · 운영 신호 ${pending ? "추적" : "정상"} · 공통일정과 동료업무를 함께 확인하세요`;
+    const employee = getSelectedEmployee();
+    pulseText.textContent = `${getPersonalizedWelcomeMessage(employee, log)} · 오늘 실행 ${completed}/${tasks.length} · 다음 일정 ${nextEntry ? `${nextEntry.time} ${getScheduleEntryText(nextEntry)}` : "없음"} · 미완료 ${pending} · 운영 신호 ${pending ? "추적" : "정상"}`;
   }
   const unitButton = document.getElementById("scheduleUnitButton");
   if (unitButton) unitButton.textContent = log.scheduleUnit === "60" ? "1시간" : "30분";
@@ -6876,7 +7010,7 @@ function renderSharedWorklogPanels(log = getSelectedLog()) {
     .filter((employee) => !siteKey || employee.org?.includes(siteKey) || selectedEmployee.org?.includes(employee.org?.split(" / ").at(-1) || ""))
     .slice(0, 8)
     .map((employee) => {
-      const dayLog = state.employeeLogs?.[dateKey]?.[employee.id] || createEmployeeLog(employee);
+      const dayLog = getEmployeeLogForDate(employee.id, dateKey);
       const tasks = (dayLog.tasks || []).filter(isActiveTask).slice(0, 3);
       const completed = tasks.filter((task) => task.done || task.status === "완료").length;
       return { employee, tasks, completed };
@@ -8056,9 +8190,9 @@ function normalizeWorklogSchedule(log) {
   });
 }
 
-function getWorklogScheduleSlots(log) {
+function getWorklogScheduleSlots(log, dateKey = getActiveDateKey()) {
   const unit = log?.scheduleUnit === "60" ? 60 : 30;
-  const baseTimes = getScheduleTimes(getEmployeeWorkHours(log?.employeeId));
+  const baseTimes = getScheduleTimes(getEmployeeWorkHours(log?.employeeId, state?.profile, dateKey));
   const scheduleTimes = (log?.schedule || [])
     .filter((entry) => getScheduleEntryText(entry))
     .map((entry) => entry.time)
@@ -10623,7 +10757,7 @@ function getEmployeeMasterRows() {
   return getStaffDirectoryEmployees().map((employee) => {
     const group = siteLookup.get(employee.id) || getStaffSiteGroupForEmployee(employee);
     const labor = buildMonthlyLaborSummary(employee.id, employee);
-    const log = todayLogs[employee.id] || createEmployeeLog(employee);
+    const log = todayLogs[employee.id] || createEmployeeLog(employee, state.profile, getActiveDateKey());
     const tasks = (log.tasks || []).filter((task) => task.text?.trim());
     const completed = tasks.filter((task) => task.done || task.status === "완료").length;
     const access = getEmployeePermissionProfile(employee, group);
@@ -11848,7 +11982,8 @@ function getReportArchiveEmployees(siteId = "all") {
 
 function getReportArchiveEmployeeLog(employee, dateKey) {
   const stored = state.employeeLogs?.[dateKey]?.[employee.id];
-  const log = stored ? { ...stored } : createEmployeeLog(employee);
+  const log = stored ? { ...stored } : createEmployeeLog(employee, state.profile, dateKey);
+  normalizeEmployeeLogRows(log, dateKey);
   log.tasks = Array.isArray(log.tasks) ? log.tasks : [];
   log.schedule = Array.isArray(log.schedule) ? log.schedule : [];
   log.fitnessOps = { ...createFitnessOps(), ...(log.fitnessOps || {}) };
@@ -13543,6 +13678,8 @@ document.getElementById("loadDefaultManualButton")?.addEventListener("click", lo
 document.getElementById("loginButton").onclick = signInWithSupabase;
 document.getElementById("signupButton").onclick = signUpWithSupabase;
 document.getElementById("passwordResetButton").onclick = requestPasswordResetApproval;
+document.getElementById("completePasswordResetButton")?.addEventListener("click", completePasswordReset);
+document.getElementById("cancelPasswordResetButton")?.addEventListener("click", cancelPasswordReset);
 document.getElementById("emailCheckButton")?.addEventListener("click", checkSignupEmailDuplicate);
 document.getElementById("authEmail")?.addEventListener("input", () => {
   resetSignupEmailCheck();
@@ -13948,6 +14085,7 @@ window.addEventListener("resize", () => {
 
 renderResponsiveMode();
 normalizeState();
+resetStartupDateToToday();
 document.getElementById("reportTone").value = state.reportTone;
 renderBackupCenter();
 renderInnovationLab();

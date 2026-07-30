@@ -14918,7 +14918,41 @@ body[data-view-mode="ceo"] .control-kpi-grid {
 }
 
 .is-fitness-sheet {
-  background: linear-gradient(180deg, rgba(244, 249, 245, 0.88), rgba(255, 254, 250, 0.76));
+  border-color: rgba(15, 83, 64, 0.22);
+  background: linear-gradient(180deg, rgba(239, 248, 241, 0.94), rgba(255, 254, 250, 0.78));
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 255, 255, 0.62),
+    0 14px 28px rgba(15, 83, 64, 0.09);
+}
+
+.overview-fitness-form-label {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: center;
+  border: 1px solid rgba(15, 83, 64, 0.14);
+  border-radius: 12px;
+  background: rgba(15, 83, 64, 0.08);
+  padding: 7px 8px;
+}
+
+.overview-fitness-form-label span {
+  overflow: hidden;
+  color: rgba(15, 83, 64, 0.64);
+  font-size: 10px;
+  font-weight: 960;
+  letter-spacing: 0.08em;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.overview-fitness-form-label strong {
+  overflow: hidden;
+  color: var(--fitness-green);
+  font-size: 11px;
+  font-weight: 950;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .overview-fitness-summary {

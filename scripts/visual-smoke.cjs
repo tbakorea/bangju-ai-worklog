@@ -590,6 +590,88 @@ async function checkUnmappedEmployeeDoesNotInheritFitnessManager(browser) {
   await page.close();
 }
 
+async function checkUnclassifiedFitnessEmployeeCanEditOwnProfileWorklog(browser) {
+  const page = await browser.newPage({ viewport: { width: 390, height: 844 } });
+  const errors = [];
+  page.on("pageerror", (error) => errors.push(error.message));
+  await page.addInitScript(() => {
+    localStorage.setItem("beyond-worklog-state-v1", JSON.stringify({
+      selectedDateKey: "2026-07-27",
+      selectedEmployeeId: "beyond-fitness-manager",
+      fitnessWritableEmployeeId: "beyond-fitness-manager",
+      profile: {
+        email: "shinsemin@example.com",
+        role: "직원",
+        name: "신세민",
+        nickname: "신세민",
+        org: "(주)비욘드컴퍼니",
+        workplace: "비욘드 피트니스",
+        primaryWork: "센터 운영 보조",
+        approvalStatus: "approved",
+        accessPreset: "employee",
+        permissions: {},
+      },
+      employeeLogs: {},
+    }));
+    localStorage.setItem("beyond-worklog-global-view-mode", "ceo");
+  });
+  await page.goto(target, { waitUntil: "domcontentloaded" });
+  await page.evaluate(() => {
+    document.body.classList.add("physical-phone-device");
+    document.body.dataset.layoutMode = "phone";
+    document.body.dataset.viewMode = "ceo";
+    window.eval(`
+      authState.user = { id: "shin-semin-user", email: "shinsemin@example.com" };
+      normalizeState();
+      switchView(getInitialLandingView());
+    `);
+  });
+  await page.waitForTimeout(350);
+  const metrics = await page.evaluate(() => window.eval(`JSON.stringify({
+    activeView: document.body.dataset.activeView,
+    selectedEmployeeId: state.selectedEmployeeId,
+    fitnessWritableEmployeeId: state.fitnessWritableEmployeeId,
+    ownEditableEmployeeId: getOwnEditableEmployeeIdForView(activeView),
+    canEdit: canEditCurrentWorklog(activeView),
+    selectedEmployee: getEmployeeAdminLabel(getSelectedEmployee()),
+    header: document.querySelector("#globalHeaderTitle")?.textContent?.trim() || "",
+    identityBadge: document.querySelector("#fitnessIdentityText")?.textContent?.trim() || "",
+    lockBanner: document.querySelector("#fitnessReadOnlyNotice")?.textContent?.trim() || "",
+    lockHidden: document.querySelector("#fitnessReadOnlyNotice")?.hidden ?? true,
+    taskDisabled: document.querySelector("#fitnessTaskBoard .task-text-input")?.disabled ?? true
+  })`));
+  const parsed = JSON.parse(metrics);
+  if (parsed.activeView !== "fitness-log") fail("unclassified fitness employee should land on fitness worklog", metrics);
+  if (parsed.selectedEmployeeId !== "profile-user" || parsed.fitnessWritableEmployeeId !== "profile-user") {
+    fail("unclassified fitness employee should use own profile worklog slot", metrics);
+  }
+  if (parsed.ownEditableEmployeeId !== "profile-user" || !parsed.canEdit || parsed.taskDisabled) {
+    fail("unclassified fitness employee own worklog should be editable", metrics);
+  }
+  if (!/신세민/.test(`${parsed.selectedEmployee} ${parsed.header} ${parsed.identityBadge}`)) {
+    fail("unclassified fitness employee identity should be visible", metrics);
+  }
+  if (!parsed.lockHidden && /열람 전용|본인 업무일지만/.test(parsed.lockBanner)) {
+    fail("unclassified fitness employee own page should not show readonly banner", metrics);
+  }
+  await page.fill("#fitnessTaskBoard .task-text-input", "신세민 업무 입력 저장 확인");
+  await page.waitForTimeout(350);
+  const saveMetrics = await page.evaluate(() => window.eval(`JSON.stringify({
+    disabled: document.querySelector("#fitnessTaskBoard .task-text-input")?.disabled ?? true,
+    value: document.querySelector("#fitnessTaskBoard .task-text-input")?.value || "",
+    selectedDateKey: state.selectedDateKey,
+    savedText: state.employeeLogs?.[state.selectedDateKey]?.["profile-user"]?.tasks?.[0]?.text || "",
+    storageText: JSON.parse(localStorage.getItem("beyond-worklog-state-v1") || "{}").employeeLogs?.[state.selectedDateKey]?.["profile-user"]?.tasks?.[0]?.text || ""
+  })`));
+  const saved = JSON.parse(saveMetrics);
+  if (saved.disabled) fail("unclassified fitness employee input should remain enabled", saveMetrics);
+  if (saved.value !== "신세민 업무 입력 저장 확인" || saved.savedText !== saved.value || saved.storageText !== saved.value) {
+    fail("unclassified fitness employee input should persist to profile worklog", saveMetrics);
+  }
+  if (errors.length) fail("unclassified fitness employee regression page errors", errors.join(" | "));
+  await page.close();
+}
+
 async function checkApprovedEmployeeWorklogEditMatrix(browser) {
   const cases = [
     {
@@ -1798,6 +1880,7 @@ async function checkFitnessNewEmployeeRegistrationFlow(browser) {
     await checkRepresentativeProfileSeparation(browser);
     await checkNonControlRoleTextDoesNotBecomeRepresentative(browser);
     await checkUnmappedEmployeeDoesNotInheritFitnessManager(browser);
+    await checkUnclassifiedFitnessEmployeeCanEditOwnProfileWorklog(browser);
     await checkApprovedEmployeeWorklogEditMatrix(browser);
     await checkStaffDirectoryListAndDetail(browser);
     await checkCalendarAnnotations(browser);
