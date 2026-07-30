@@ -17883,7 +17883,7 @@ body[data-active-view="control"] .control-tower-hero-actions .main-menu-popover[
 }
 
 .premium-command-strip {
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(5, minmax(0, 1fr));
 }
 
 .premium-operating-grid {
@@ -18020,6 +18020,165 @@ body[data-active-view="control"] .control-tower-hero-actions .main-menu-popover[
   font-weight: 900;
 }
 
+.premium-quality-console {
+  display: grid;
+  gap: 10px;
+  border: 1px solid rgba(15, 59, 46, 0.11);
+  border-radius: 22px;
+  background:
+    linear-gradient(180deg, rgba(255, 254, 250, 0.96), rgba(246, 248, 243, 0.82));
+  padding: 14px;
+  box-shadow: 0 16px 34px rgba(15, 59, 46, 0.07);
+}
+
+.premium-quality-console header {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: center;
+}
+
+.premium-quality-console header span {
+  display: block;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 950;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.premium-quality-console header strong {
+  display: block;
+  margin-top: 3px;
+  color: var(--ink);
+  font-size: 22px;
+  font-weight: 950;
+}
+
+.premium-quality-console header p {
+  margin: 4px 0 0;
+  color: rgba(38, 50, 56, 0.68);
+  font-size: 13px;
+  font-weight: 780;
+  line-height: 1.45;
+}
+
+.premium-quality-console header > b {
+  display: grid;
+  place-items: center;
+  min-width: 74px;
+  min-height: 58px;
+  border-radius: 18px;
+  background: var(--fitness-green);
+  color: #fff7cf;
+  font-size: 26px;
+  font-weight: 950;
+}
+
+.premium-quality-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.premium-quality-summary span {
+  min-height: 28px;
+  border: 1px solid rgba(15, 59, 46, 0.08);
+  border-radius: 999px;
+  background: rgba(255, 254, 250, 0.72);
+  color: rgba(38, 50, 56, 0.7);
+  padding: 6px 10px;
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.premium-quality-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.premium-quality-check {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 8px 10px;
+  align-items: start;
+  min-width: 0;
+  border: 1px solid rgba(15, 59, 46, 0.08);
+  border-radius: 18px;
+  background: rgba(255, 254, 250, 0.78);
+  padding: 11px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.premium-quality-check em {
+  display: grid;
+  place-items: center;
+  width: 34px;
+  min-height: 34px;
+  border-radius: 12px;
+  background: rgba(15, 59, 46, 0.08);
+  color: var(--fitness-green);
+  font-size: 12px;
+  font-style: normal;
+  font-weight: 950;
+}
+
+.premium-quality-check strong {
+  display: block;
+  color: var(--ink);
+  font-size: 15px;
+  font-weight: 950;
+}
+
+.premium-quality-check p {
+  margin: 4px 0 0;
+  color: rgba(38, 50, 56, 0.68);
+  font-size: 12px;
+  font-weight: 780;
+  line-height: 1.38;
+}
+
+.premium-quality-check > b {
+  grid-column: 1 / -1;
+  justify-self: start;
+  border-radius: 999px;
+  background: rgba(15, 59, 46, 0.08);
+  color: var(--fitness-green);
+  padding: 5px 9px;
+  font-size: 12px;
+  font-weight: 950;
+}
+
+.premium-quality-check.is-action {
+  border-color: rgba(170, 83, 36, 0.28);
+  background: rgba(255, 246, 236, 0.86);
+}
+
+.premium-quality-check.is-action em,
+.premium-quality-check.is-action > b {
+  background: rgba(170, 83, 36, 0.12);
+  color: #8d3f18;
+}
+
+.premium-quality-check.is-warn {
+  border-color: rgba(151, 120, 52, 0.22);
+  background: rgba(255, 250, 235, 0.82);
+}
+
+.premium-quality-check.is-warn em,
+.premium-quality-check.is-warn > b {
+  background: rgba(151, 120, 52, 0.12);
+  color: #80601b;
+}
+
+.premium-quality-check:hover,
+.premium-quality-check:focus-visible {
+  border-color: rgba(15, 59, 46, 0.28);
+  transform: translateY(-1px);
+}
+
 .premium-operator-layout {
   display: grid;
   grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr);
@@ -18146,6 +18305,12 @@ body.physical-phone-device .premium-agent-grid {
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
+body[data-layout-mode="phone"] .premium-quality-grid,
+body[data-view-mode="ceo"] .premium-quality-grid,
+body.physical-phone-device .premium-quality-grid {
+  grid-template-columns: minmax(0, 1fr);
+}
+
 body[data-layout-mode="phone"] .premium-score-card,
 body[data-view-mode="ceo"] .premium-score-card,
 body.physical-phone-device .premium-score-card,
@@ -18159,6 +18324,7 @@ body.physical-phone-device .premium-operator-layout {
   .premium-command-strip,
   .premium-proof-grid,
   .premium-agent-grid,
+  .premium-quality-grid,
   .premium-score-card,
   .premium-operator-layout {
     grid-template-columns: minmax(0, 1fr);

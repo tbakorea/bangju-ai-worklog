@@ -3006,6 +3006,118 @@ function getControlSiteRows(assetRows, staffRows) {
   });
 }
 
+function buildPremiumQualityChecks({
+  staffRows = [],
+  issueRows = [],
+  missingLogs = [],
+  laborSignals = 0,
+  taskTotal = 0,
+  completedTotal = 0,
+  salesActions = 0,
+  missionQueue = [],
+} = {}) {
+  const selectedEmployee = getSelectedEmployee();
+  const profile = state.profile || {};
+  const pendingApprovals = (authState.pendingApprovalCount || 0) + (authState.pendingPasswordResetCount || 0);
+  const assignedStaff = getEmployeeOptions().filter(isAssignedWorklogEmployee);
+  const requiredFields = [
+    ["소속", profile.org],
+    ["근무지", profile.workplace],
+    ["직책/직급", profile.role],
+    ["근무시간", profile.workHours],
+  ];
+  const missingProfileFields = requiredFields.filter(([, value]) => !String(value || "").trim()).map(([label]) => label);
+  const selectedLog = getSelectedLog();
+  const selectedReport = String(selectedLog.report || selectedLog.memo || selectedLog.record || "").trim();
+  const backupRecipient = String(state.backupSettings?.recipientEmail || "").trim();
+  const completionRate = taskTotal ? Math.round((completedTotal / Math.max(1, taskTotal)) * 100) : 0;
+  const checks = [
+    {
+      id: "account",
+      title: "계정·승인",
+      metric: authState.user && !isExplicitlySignedOut() ? getApprovalStatusLabel() : "로그인 필요",
+      status: authState.user && !isExplicitlySignedOut() && isProfileApproved() ? "good" : "action",
+      detail: authState.user && !isExplicitlySignedOut() ? "원격 계정과 직원 승인 상태를 확인했습니다." : "앱 사용 전 로그인 또는 직원등록이 필요합니다.",
+      view: authState.user && !isExplicitlySignedOut() ? "settings" : "auth",
+    },
+    {
+      id: "approval",
+      title: "승인 요청",
+      metric: `${pendingApprovals}건`,
+      status: pendingApprovals > 0 ? "action" : "good",
+      detail: pendingApprovals > 0 ? "직원등록, 정보변경, 비밀번호 재설정 요청을 먼저 처리하세요." : "대표 확인이 필요한 승인 대기 항목이 없습니다.",
+      view: hasApprovalAuthority() ? "settings" : "staff",
+    },
+    {
+      id: "profile",
+      title: "직원 원장",
+      metric: missingProfileFields.length ? `${missingProfileFields.length}개 보완` : `${assignedStaff.length}명`,
+      status: missingProfileFields.length ? "warn" : "good",
+      detail: missingProfileFields.length ? `${missingProfileFields.join(", ")} 정보가 비어 있어 업무일지·노무 연결이 약해집니다.` : "소속, 근무지, 직책, 근무시간이 업무일지 기준값으로 연결됩니다.",
+      view: hasApprovalAuthority() ? "staff" : "settings",
+    },
+    {
+      id: "worklog",
+      title: "업무일지 입력",
+      metric: taskTotal ? `${completionRate}%` : "입력 대기",
+      status: missingLogs.length > Math.max(1, Math.floor(staffRows.length * 0.25)) ? "action" : taskTotal ? "good" : "warn",
+      detail: taskTotal ? `오늘 업무 ${taskTotal}건 중 ${completedTotal}건이 완료 처리되었습니다.` : "오늘 우선업무와 시간별일정 입력을 유도해야 합니다.",
+      view: hasProfilePermission("worklogAll") || hasApprovalAuthority() ? "control" : "worklog",
+    },
+    {
+      id: "labor",
+      title: "출결·노무",
+      metric: `${laborSignals}건`,
+      status: laborSignals > 0 ? "action" : "good",
+      detail: laborSignals > 0 ? "출결 미기록 또는 결석 신호가 있어 월마감 전에 보완해야 합니다." : "오늘 출결 신호는 안정적입니다.",
+      view: "attendance",
+    },
+    {
+      id: "revenue",
+      title: "수익 행동",
+      metric: `${salesActions}건`,
+      status: salesActions > 0 ? "good" : "warn",
+      detail: salesActions > 0 ? "상담, 계약, 재등록, 홍보 행동이 업무데이터로 잡혔습니다." : "피트니스·고객 접점 행동이 비어 있으면 매출 코칭이 약해집니다.",
+      view: "worklog",
+    },
+    {
+      id: "report",
+      title: "보고 품질",
+      metric: selectedReport ? `${Math.min(100, selectedReport.length)}자` : "미작성",
+      status: selectedReport.length >= 40 ? "good" : selectedReport ? "warn" : "action",
+      detail: selectedReport.length >= 40 ? `${selectedEmployee.nickname || selectedEmployee.name} 업무보고가 코칭에 쓸 만큼 기록되어 있습니다.` : "완료사항, 이슈, 지원요청, 내일 액션을 3줄 이상 남기도록 유도하세요.",
+      view: "report",
+    },
+    {
+      id: "mission",
+      title: "AI 미션",
+      metric: `${missionQueue.length}건`,
+      status: missionQueue.length ? "good" : "warn",
+      detail: missionQueue.length ? "직원별 업무·직책·매뉴얼 기반의 다음 행동 후보가 준비되어 있습니다." : "업무와 미션 데이터가 쌓이면 직원별 코칭 정확도가 올라갑니다.",
+      view: "ai",
+    },
+    {
+      id: "backup",
+      title: "보고·백업",
+      metric: backupRecipient || "수신 메일 없음",
+      status: backupRecipient ? "good" : "warn",
+      detail: backupRecipient ? "대표 백업 수신처가 설정되어 보고서 패키지화가 가능합니다." : "대표 백업 수신처를 지정하면 일일보고와 노무자료 보존성이 높아집니다.",
+      view: "report",
+    },
+  ];
+  const score = Math.round(checks.reduce((sum, check) => {
+    if (check.status === "good") return sum + 100;
+    if (check.status === "warn") return sum + 62;
+    return sum + 28;
+  }, 0) / Math.max(1, checks.length));
+  return {
+    checks,
+    score,
+    urgentCount: checks.filter((check) => check.status === "action").length,
+    warnCount: checks.filter((check) => check.status === "warn").length,
+  };
+}
+
 function getControlBriefingItems({ staffRows, siteRows, fitnessOps, issueCount, taskTotal, completedTotal }) {
   const incomplete = Math.max(0, taskTotal - completedTotal);
   const salesActions = fitnessOps.consultation + fitnessOps.outbound + fitnessOps.outsideSales;
@@ -3608,6 +3720,7 @@ function buildPremiumOperatingModel() {
   const laborScore = clampScore(100 - laborSignals * 12);
   const automationScore = clampScore((authState.remoteReady ? 22 : 8) + (authState.user ? 22 : 8) + 16 + (missionQueue.length ? 18 : 8) + (state.backupSettings ? 14 : 8));
   const readinessScore = clampScore((operatingScore * 0.22) + (dataCaptureScore * 0.2) + (peopleScore * 0.18) + (revenueScore * 0.16) + (laborScore * 0.12) + (automationScore * 0.12));
+  const quality = buildPremiumQualityChecks({ staffRows, issueRows, missingLogs, laborSignals, taskTotal, completedTotal, salesActions, missionQueue });
   const growthModels = getEmployeeOptions()
     .filter(isAssignedWorklogEmployee)
     .slice(0, 8)
@@ -3658,7 +3771,7 @@ function buildPremiumOperatingModel() {
     ["4단계", "대표 개입 최소화", "위험 신호, 칭찬 신호, 위임 후보를 매일 10분 보고서로 압축합니다.", peopleScore],
     ["5단계", "월 500만원 패키지", "운영진단, 노무자료, 직원성장, 매출행동, 백업을 월간 컨설팅 산출물로 제공합니다.", readinessScore],
   ];
-  return { readinessScore, proofItems, agentLanes, roadmap, missionQueue, growthModels, weakestGrowth };
+  return { readinessScore, proofItems, agentLanes, roadmap, missionQueue, growthModels, weakestGrowth, quality };
 }
 
 function renderPremiumOperatingSystem() {
@@ -3701,6 +3814,33 @@ function renderPremiumOperatingSystem() {
           <small>${escapeHtml(lane.action)}</small>
         </button>
       `).join("")}
+    </section>
+    <section class="premium-quality-console" id="premium-quality">
+      <header>
+        <div>
+          <span>System Quality Console</span>
+          <strong>앱 품질 자동 점검</strong>
+          <p>로그인, 승인, 직원원장, 업무일지, 노무, 보고·백업 상태를 오늘 기준으로 진단합니다.</p>
+        </div>
+        <b>${model.quality.score}점</b>
+      </header>
+      <div class="premium-quality-summary">
+        <span>처리 필요 ${model.quality.urgentCount}건</span>
+        <span>보완 권장 ${model.quality.warnCount}건</span>
+        <span>점검 ${model.quality.checks.length}개</span>
+      </div>
+      <div class="premium-quality-grid">
+        ${model.quality.checks.map((check, index) => `
+          <button type="button" class="premium-quality-check is-${escapeAttr(check.status)}" data-premium-jump="${escapeAttr(check.view)}">
+            <em>${String(index + 1).padStart(2, "0")}</em>
+            <div>
+              <strong>${escapeHtml(check.title)}</strong>
+              <p>${escapeHtml(check.detail)}</p>
+            </div>
+            <b>${escapeHtml(check.metric)}</b>
+          </button>
+        `).join("")}
+      </div>
     </section>
     <section class="premium-operator-layout">
       <article class="premium-personal-card">
