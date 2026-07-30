@@ -607,6 +607,7 @@ async function checkUnclassifiedFitnessEmployeeCanEditOwnProfileWorklog(browser)
         org: "(주)비욘드컴퍼니",
         workplace: "비욘드 피트니스",
         primaryWork: "센터 운영 보조",
+        workHours: "16:00-20:00",
         approvalStatus: "approved",
         accessPreset: "employee",
         permissions: {},
@@ -638,7 +639,8 @@ async function checkUnclassifiedFitnessEmployeeCanEditOwnProfileWorklog(browser)
     identityBadge: document.querySelector("#fitnessIdentityText")?.textContent?.trim() || "",
     lockBanner: document.querySelector("#fitnessReadOnlyNotice")?.textContent?.trim() || "",
     lockHidden: document.querySelector("#fitnessReadOnlyNotice")?.hidden ?? true,
-    taskDisabled: document.querySelector("#fitnessTaskBoard .task-text-input")?.disabled ?? true
+    taskDisabled: document.querySelector("#fitnessTaskBoard .task-text-input")?.disabled ?? true,
+    scheduleTimes: (state.employeeLogs?.[state.selectedDateKey]?.["profile-user"]?.schedule || []).map((entry) => entry.time)
   })`));
   const parsed = JSON.parse(metrics);
   if (parsed.activeView !== "fitness-log") fail("unclassified fitness employee should land on fitness worklog", metrics);
@@ -653,6 +655,9 @@ async function checkUnclassifiedFitnessEmployeeCanEditOwnProfileWorklog(browser)
   }
   if (!parsed.lockHidden && /열람 전용|본인 업무일지만/.test(parsed.lockBanner)) {
     fail("unclassified fitness employee own page should not show readonly banner", metrics);
+  }
+  if (parsed.scheduleTimes[0] !== "16:00" || parsed.scheduleTimes.at(-1) !== "20:00" || parsed.scheduleTimes.includes("08:00")) {
+    fail("unclassified fitness employee schedule should follow profile work hours", metrics);
   }
   await page.fill("#fitnessTaskBoard .task-text-input", "신세민 업무 입력 저장 확인");
   await page.waitForTimeout(350);

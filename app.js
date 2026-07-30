@@ -8200,14 +8200,15 @@ function getWorklogScheduleSlots(log, dateKey = getActiveDateKey()) {
   const taskTimes = (log?.tasks || []).map((task) => extractWorklogTaskTimeHint(task.text)?.slot).filter(Boolean);
   const allTimes = [...baseTimes, ...scheduleTimes, ...taskTimes];
   if (!allTimes.length) return [];
-  let start = 8 * 60;
-  let end = 18 * 60;
+  let start = Infinity;
+  let end = -Infinity;
   allTimes.forEach((time) => {
     const minutes = timeToMinutes(time);
     if (!Number.isFinite(minutes)) return;
     start = Math.min(start, Math.floor(minutes / unit) * unit);
-    end = Math.max(end, Math.floor(minutes / unit) * unit + unit);
+    end = Math.max(end, Math.floor(minutes / unit) * unit);
   });
+  if (!Number.isFinite(start) || !Number.isFinite(end)) return [];
   const slots = [];
   for (let minute = start; minute <= end; minute += unit) {
     slots.push(minutesToTime(minute));
