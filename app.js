@@ -236,6 +236,15 @@ const organizationPlacementOptions = {
 const registrationWorkplaceOptions = Object.fromEntries(
   Object.entries(organizationPlacementOptions).map(([org, config]) => [org, config.workplaces])
 );
+const siteWeatherAddressTargets = [
+  { key: "비욘드 피트니스", label: "비욘드 피트니스", hint: "예: 울산광역시 남구 옥동 ..." },
+  { key: "(주)방주 · 재무", label: "(주)방주 · 재무", hint: "본사 또는 재무팀 근무지 주소" },
+  { key: "(주)비욘드컴퍼니 · 공유사업부", label: "(주)비욘드컴퍼니 · 공유사업부", hint: "워크베이스/워크박스 운영 주소" },
+  { key: "(주)비욘드컴퍼니 · TBA studio", label: "(주)비욘드컴퍼니 · TBA studio", hint: "TBA studio 또는 쇼룸 주소" },
+  { key: "(주)비제이종합건설 · 동천체육관 현장", label: "(주)비제이종합건설 · 동천체육관 현장", hint: "동천체육관 현장 주소" },
+  { key: "(주)비제이종합건설 · 옥동 더헤이븐빌 신축현장", label: "(주)비제이종합건설 · 옥동 더헤이븐빌 신축현장", hint: "옥동 더헤이븐빌 신축현장 주소" },
+  { key: "기타", label: "기타 사업장/현장", hint: "기타 사업장 주소" },
+];
 const defaultProfile = {
   org: "(주)방주",
   role: "직원",
@@ -646,6 +655,7 @@ const dailyEditingState = {
   focused: false,
   composing: false,
 };
+const weatherRequestInFlight = new Set();
 
 function loadState() {
   try {
@@ -710,6 +720,8 @@ function createState() {
       cadence: "daily",
       lastPreparedAt: "",
     },
+    siteWeatherAddresses: {},
+    weatherCache: {},
     worklogCorrectionRequests: [],
     worklogCorrectionGrants: {},
     worklogCorrectionAudit: [],
@@ -754,6 +766,8 @@ function normalizeState() {
   state.employeeDirectoryOverrides = { ...(state.employeeDirectoryOverrides || {}) };
   state.companyCommonWeeks = { ...(state.companyCommonWeeks || {}) };
   state.laborPayroll = { ...(state.laborPayroll || {}) };
+  state.siteWeatherAddresses = { ...(state.siteWeatherAddresses || {}) };
+  state.weatherCache = { ...(state.weatherCache || {}) };
   state.communications = Array.isArray(state.communications) ? state.communications.slice(-300) : [];
   state.profile.manualSettings = {
     ...defaultProfile.manualSettings,
@@ -960,6 +974,173 @@ function getProfileWorkHoursForDate(profile = state?.profile, dateKey = getActiv
 function getWorkdayKey(dateKey = getActiveDateKey()) {
   const date = parseDateKey(dateKey);
   return ["sun", "mon", "tue", "wed", "thu", "fri", "sat"][date.getDay()] || "mon";
+}
+
+function getSiteWeatherKeyForEmployee(employee = getSelectedEmployee()) {
+  const source = `${employee?.org || ""} ${employee?.workplace || ""} ${employee?.primaryWork || ""} ${employee?.role || ""}`.toLowerCase();
+  if (/피트니스|fitness/.test(source)) return "비욘드 피트니스";
+  if (/tba|스튜디오|studio/.test(source)) return "(주)비욘드컴퍼니 · TBA studio";
+  if (/워크베이스|워크박스|공유/.test(source)) return "(주)비욘드컴퍼니 · 공유사업부";
+  if (/동천/.test(source)) return "(주)비제이종합건설 · 동천체육관 현장";
+  if (/헤이븐|옥동/.test(source) && /건설|현장|비제이/.test(source)) return "(주)비제이종합건설 · 옥동 더헤이븐빌 신축현장";
+  if (/방주|재무/.test(source)) return "(주)방주 · 재무";
+  return "기타";
+}
+
+function getSiteWeatherAddress(siteKey = "") {
+  return String(state.siteWeatherAddresses?.[siteKey] || "").trim();
+}
+
+function getWeatherCacheKey(siteKey = "", dateKey = getActiveDateKey()) {
+  return `${dateKey}::${siteKey || "기타"}`;
+}
+
+function getWeatherRecordForSite(siteKey = "", dateKey = getActiveDateKey()) {
+  return state.weatherCache?.[getWeatherCacheKey(siteKey, dateKey)] || null;
+}
+
+function getWeatherRecordForEmployee(employee = getSelectedEmployee(), dateKey = getActiveDateKey()) {
+  const siteKey = getSiteWeatherKeyForEmployee(employee);
+  return getWeatherRecordForSite(siteKey, dateKey);
+}
+
+function getWeatherConditionLabel(code) {
+  const value = Number(code);
+  if ([0].includes(value)) return "맑음";
+  if ([1, 2].includes(value)) return "대체로 맑음";
+  if ([3].includes(value)) return "흐림";
+  if ([45, 48].includes(value)) return "안개";
+  if ([51, 53, 55, 56, 57].includes(value)) return "이슬비";
+  if ([61, 63, 65, 66, 67, 80, 81, 82].includes(value)) return "비";
+  if ([71, 73, 75, 77, 85, 86].includes(value)) return "눈";
+  if ([95, 96, 99].includes(value)) return "뇌우";
+  return "날씨";
+}
+
+function formatWeatherSummary(record, { compact = false } = {}) {
+  if (!record) return compact ? "날씨 미기록" : "사업장 주소 입력 후 날씨를 갱신하세요.";
+  const parts = [
+    record.condition || getWeatherConditionLabel(record.weatherCode),
+    Number.isFinite(Number(record.temperature)) ? `${Math.round(Number(record.temperature))}°C` : "",
+    Number.isFinite(Number(record.humidity)) ? `습도 ${Math.round(Number(record.humidity))}%` : "",
+    Number.isFinite(Number(record.precipitation)) && Number(record.precipitation) > 0 ? `강수 ${record.precipitation}mm` : "",
+  ].filter(Boolean);
+  const body = parts.join(" · ") || "날씨 기록";
+  return compact ? body : `${record.siteKey || "사업장"} · ${body}`;
+}
+
+function getActiveWeatherEmployee(scope = activeView) {
+  if (scope === "fitness-log") {
+    const page = getCurrentFitnessLogPage?.();
+    if (page?.type === "employee") return page.employee || getSelectedEmployee();
+    return employees.find((item) => item.id === state.fitnessWritableEmployeeId) || getSelectedEmployee();
+  }
+  return getSelectedEmployee();
+}
+
+function renderWeatherWidgets() {
+  renderWeatherWidget("worklog", getSelectedEmployee());
+  renderWeatherWidget("fitness", getActiveWeatherEmployee("fitness-log"));
+}
+
+function renderWeatherWidget(scope, employee) {
+  const prefix = scope === "fitness" ? "fitness" : "worklog";
+  const row = document.getElementById(`${prefix}WeatherRow`);
+  const text = document.getElementById(`${prefix}WeatherText`);
+  const button = document.getElementById(`${prefix}WeatherRefreshButton`);
+  if (!row || !text || !button) return;
+  const siteKey = getSiteWeatherKeyForEmployee(employee);
+  const address = getSiteWeatherAddress(siteKey);
+  const record = getWeatherRecordForSite(siteKey, getActiveDateKey());
+  row.dataset.siteKey = siteKey;
+  row.dataset.hasAddress = address ? "true" : "false";
+  row.classList.toggle("is-missing", !address);
+  row.classList.toggle("is-loading", address && weatherRequestInFlight.has(getWeatherCacheKey(siteKey, getActiveDateKey())));
+  text.textContent = address
+    ? `${formatWeatherSummary(record, { compact: true })} · ${siteKey}`
+    : `${siteKey} 주소 입력 필요`;
+  button.disabled = !address;
+  button.textContent = record ? "날씨 새로고침" : "날씨 갱신";
+  if (address && !record && getActiveDateKey() === todayKey) {
+    requestWeatherForSite(siteKey, address, getActiveDateKey(), { silent: true, scope });
+  }
+}
+
+async function requestWeatherForSite(siteKey, address, dateKey = getActiveDateKey(), { silent = false, scope = "worklog" } = {}) {
+  const trimmedAddress = String(address || "").trim();
+  if (!trimmedAddress) {
+    if (!silent) alert("앱설정에서 사업장/현장 주소를 먼저 입력해주세요.");
+    return null;
+  }
+  const requestKey = getWeatherCacheKey(siteKey, dateKey);
+  if (weatherRequestInFlight.has(requestKey)) return state.weatherCache?.[requestKey] || null;
+  weatherRequestInFlight.add(requestKey);
+  try {
+    const geoUrl = `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(trimmedAddress)}&count=1&language=ko&format=json`;
+    const geoResponse = await fetch(geoUrl);
+    const geo = geoResponse.ok ? await geoResponse.json() : {};
+    let place = geo?.results?.[0]
+      ? {
+          latitude: geo.results[0].latitude,
+          longitude: geo.results[0].longitude,
+          name: geo.results[0].name,
+          admin1: geo.results[0].admin1,
+        }
+      : null;
+    if (!place) {
+      const fallbackGeoUrl = `https://nominatim.openstreetmap.org/search?format=json&limit=1&accept-language=ko&q=${encodeURIComponent(trimmedAddress)}`;
+      const fallbackResponse = await fetch(fallbackGeoUrl);
+      const fallbackGeo = fallbackResponse.ok ? await fallbackResponse.json() : [];
+      const fallbackPlace = Array.isArray(fallbackGeo) ? fallbackGeo[0] : null;
+      if (fallbackPlace) {
+        place = {
+          latitude: Number(fallbackPlace.lat),
+          longitude: Number(fallbackPlace.lon),
+          name: String(fallbackPlace.display_name || "").split(",")[0],
+          admin1: String(fallbackPlace.display_name || "").split(",").slice(1, 3).join(" ").trim(),
+        };
+      }
+    }
+    if (!place) throw new Error("주소 좌표를 찾지 못했습니다.");
+    const weatherUrl = `https://api.open-meteo.com/v1/forecast?latitude=${encodeURIComponent(place.latitude)}&longitude=${encodeURIComponent(place.longitude)}&current=temperature_2m,relative_humidity_2m,precipitation,weather_code,wind_speed_10m&timezone=Asia%2FSeoul`;
+    const weatherResponse = await fetch(weatherUrl);
+    if (!weatherResponse.ok) throw new Error("날씨 정보를 불러오지 못했습니다.");
+    const weather = await weatherResponse.json();
+    const current = weather?.current || {};
+    const record = {
+      siteKey,
+      address: trimmedAddress,
+      location: [place.name, place.admin1].filter(Boolean).join(" "),
+      dateKey,
+      fetchedAt: new Date().toISOString(),
+      temperature: current.temperature_2m,
+      humidity: current.relative_humidity_2m,
+      precipitation: current.precipitation,
+      wind: current.wind_speed_10m,
+      weatherCode: current.weather_code,
+      condition: getWeatherConditionLabel(current.weather_code),
+    };
+    state.weatherCache = { ...(state.weatherCache || {}), [requestKey]: record };
+    saveState({ fastSave: true });
+    renderWeatherWidgets();
+    if (document.getElementById("fitnessReportSheet")?.classList.contains("is-open")) {
+      document.getElementById("fitnessReportPreview").innerHTML = renderFitnessReportTemplate(buildFitnessReportModel());
+      fitFitnessReportPreview();
+    }
+    return record;
+  } catch (error) {
+    if (!silent) alert(error.message || "날씨 정보를 불러오지 못했습니다.");
+    return null;
+  } finally {
+    weatherRequestInFlight.delete(requestKey);
+    if (scope) renderWeatherWidgets();
+  }
+}
+
+function refreshWeatherForScope(scope = activeView) {
+  const employee = getActiveWeatherEmployee(scope);
+  const siteKey = getSiteWeatherKeyForEmployee(employee);
+  return requestWeatherForSite(siteKey, getSiteWeatherAddress(siteKey), getActiveDateKey(), { scope });
 }
 
 function getFitnessEmployees() {
@@ -4209,8 +4390,24 @@ function renderSettingsForm() {
   });
   renderManualSettings();
   renderApprovalAccess();
+  renderSiteAddressSettings();
   renderSettingsProfileChangeNotice();
   updateSettingsProfileSaveButton();
+}
+
+function renderSiteAddressSettings() {
+  const list = document.getElementById("siteAddressList");
+  if (!list) return;
+  const addresses = state.siteWeatherAddresses || {};
+  list.innerHTML = siteWeatherAddressTargets.map((target) => `
+    <label class="site-address-row">
+      <span>
+        <b>${escapeHtml(target.label)}</b>
+        <small>${escapeHtml(target.hint)}</small>
+      </span>
+      <input data-site-weather-address="${escapeAttr(target.key)}" type="text" value="${escapeAttr(addresses[target.key] || "")}" placeholder="사업장/현장 주소 입력" />
+    </label>
+  `).join("");
 }
 
 function normalizePendingProfileChangeRequest(raw) {
@@ -6303,6 +6500,7 @@ function renderEntries() {
   renderClockPanel();
   renderEmployeeTitle();
   renderWorklogIdentityBadges();
+  renderWeatherWidgets();
   renderDateNav();
   renderTodayContext();
   renderReport();
@@ -6341,6 +6539,7 @@ function renderFitnessWorklog(log = getSelectedLog()) {
   renderFitnessCenterDaily();
   renderFitnessCoaching();
   renderWorklogIdentityBadges();
+  renderWeatherWidgets();
   renderWorklogEditLockBanner("fitness");
   const isCenter = page?.type === "center";
   document.getElementById("fitnessCenterDailyPanel").hidden = !isCenter;
@@ -12591,6 +12790,7 @@ function buildFitnessReportLines() {
     `작성일: ${model.dateLabel}`,
     `작성자: ${model.writer}`,
     `출퇴근: ${model.clock}`,
+    `날씨: ${model.weatherText}${model.weatherAddress ? ` (${model.weatherAddress})` : ""}`,
     ...(model.isCenter ? [`확정: ${model.confirmation?.confirmedAt ? getFitnessCenterReportStatusText(model.dateKey) : "미확정"}`] : []),
     "",
     "[금일 주요업무]",
@@ -12610,6 +12810,119 @@ function buildFitnessReportLines() {
   ];
 }
 
+function getNextDateKey(dateKey) {
+  const date = parseDateKey(dateKey);
+  date.setDate(date.getDate() + 1);
+  return formatDateKey(date);
+}
+
+function formatReportClock(value = "") {
+  return String(value || "").trim() || "-";
+}
+
+function getReportClockMinutes(clockIn = "", clockOut = "") {
+  const start = timeToMinutes(clockIn);
+  const endRaw = timeToMinutes(clockOut);
+  if (!Number.isFinite(start) || !Number.isFinite(endRaw)) return 0;
+  const end = endRaw < start ? endRaw + 24 * 60 : endRaw;
+  return Math.max(0, end - start);
+}
+
+function formatReportWorkDuration(minutes = 0) {
+  if (!minutes) return "";
+  const hours = Math.floor(minutes / 60);
+  const rest = minutes % 60;
+  if (!rest) return String(hours);
+  return `${hours}시간 ${rest}분`;
+}
+
+function getFitnessReportLogEntries(dateKey, isCenter, employee) {
+  if (isCenter) {
+    return getFitnessEmployees().map((item) => ({
+      employee: item,
+      log: getEmployeeLogForDate(item.id, dateKey),
+    }));
+  }
+  return [{
+    employee,
+    log: getEmployeeLogForDate(employee.id, dateKey),
+  }];
+}
+
+function summarizeFitnessReportRows(logEntries = []) {
+  const rows = logEntries.map(({ employee, log }, index) => {
+    const ops = { ...createFitnessOps(), ...(log.fitnessOps || {}) };
+    const ptRegular = numberValue(ops.ptRegular);
+    const ptFree = numberValue(ops.ptFree);
+    const ptOther = numberValue(ops.ptOther);
+    const customerNew = numberValue(ops.customerNew);
+    const customerRenewal = numberValue(ops.customerRenewal);
+    const dayPass = numberValue(ops.dayPass);
+    const consultation = numberValue(ops.consultation);
+    const outbound = numberValue(ops.outbound);
+    const outsideSales = numberValue(ops.outsideSales);
+    const breakSummary = (log.attendanceBreaks || [])
+      .map((record) => `${record.start || "--:--"}~${record.end || "--:--"}`)
+      .join(" / ");
+    const workMinutes = getReportClockMinutes(log.clockIn, log.clockOut);
+    return {
+      no: index + 1,
+      role: employee.role || "직원",
+      name: employee.name || getEmployeeOwnLabel(employee),
+      clockIn: formatReportClock(log.clockIn),
+      clockOut: formatReportClock(log.clockOut),
+      workDuration: formatReportWorkDuration(workMinutes),
+      attendanceNote: breakSummary || "",
+      attendanceStatus: getAttendanceStatusForLog(employee, log),
+      ptRegular,
+      ptFree,
+      ptOther,
+      ptTotal: ptRegular + ptFree + ptOther,
+      customerNew,
+      customerRenewal,
+      dayPass,
+      contractOther: 0,
+      contractTotal: customerNew + customerRenewal + dayPass,
+      inbound: 0,
+      outbound,
+      outsideSales,
+      consultation,
+      customerOther: 0,
+      customerTotal: outbound + outsideSales + consultation,
+      recordText: [ops.specialReport, ops.shiftNote, log.report, log.memo].filter(Boolean).join(" / "),
+    };
+  });
+  const totals = rows.reduce((sum, row) => {
+    ["ptRegular", "ptFree", "ptOther", "ptTotal", "customerNew", "customerRenewal", "dayPass", "contractOther", "contractTotal", "inbound", "outbound", "outsideSales", "consultation", "customerOther", "customerTotal"].forEach((key) => {
+      sum[key] = (sum[key] || 0) + numberValue(row[key]);
+    });
+    return sum;
+  }, {});
+  return { rows, totals };
+}
+
+function getFitnessReportTaskRows(logEntries = [], count = 3) {
+  const tasks = logEntries.flatMap(({ log }) => getWorklogTaskRefs(log).map((ref) => ref.task).filter(isActiveTask));
+  return Array.from({ length: count }, (_, index) => {
+    const task = tasks[index];
+    if (!task) return "";
+    return `${task.priority || "?"} ${task.text || ""}${task.done || task.status === "완료" ? " (완료)" : ""}`.trim();
+  });
+}
+
+function getFitnessReportRecordRows(logEntries = []) {
+  return logEntries
+    .flatMap(({ employee, log }) => {
+      const ops = { ...createFitnessOps(), ...(log.fitnessOps || {}) };
+      return [ops.specialReport, ops.shiftNote, log.report, log.memo]
+        .filter(Boolean)
+        .map((text) => `${employee.name || getEmployeeOwnLabel(employee)}: ${text}`);
+    })
+    .slice(0, 3)
+    .concat(Array(3).fill(""))
+    .slice(0, 3);
+}
+
 function buildFitnessReportModel(options = {}) {
   const page = getCurrentFitnessLogPage();
   const dateKey = options.dateKey || getActiveDateKey();
@@ -12620,35 +12933,18 @@ function buildFitnessReportModel(options = {}) {
     || getSelectedEmployee();
   const sourceLog = options.log
     || (isCenter ? getEmployeeLogForDate(state.fitnessWritableEmployeeId, dateKey) : getEmployeeLogForDate(employee.id, dateKey));
-  const centerLogs = isCenter ? getFitnessEmployees().map((item) => getEmployeeLogForDate(item.id, dateKey)) : [sourceLog];
-  const tasks = centerLogs.flatMap((log) => getWorklogTaskRefs(log).map((ref) => ref.task).filter(isActiveTask));
-  const entries = centerLogs.flatMap((log) => (log.schedule || []).filter((entry) => entry.time && (isCenter ? getScheduleEntryText(entry) : true)));
-  const ops = centerLogs.reduce((total, log) => {
-    const sourceOps = { ...createFitnessOps(), ...(log.fitnessOps || {}) };
-    Object.keys(createFitnessOps()).forEach((key) => {
-      if (["shiftNote", "specialReport"].includes(key)) return;
-      total[key] = String(numberValue(total[key]) + numberValue(sourceOps[key]));
-    });
-    total.shiftNote = [total.shiftNote, sourceOps.shiftNote].filter(Boolean).join(" / ");
-    total.specialReport = [total.specialReport, sourceOps.specialReport].filter(Boolean).join(" / ");
-    return total;
-  }, createFitnessOps());
-  const ptTotal = ["ptRegular", "ptFree", "ptOther"].reduce((sum, key) => sum + numberValue(ops[key]), 0);
-  const contractTotal = ["customerNew", "customerRenewal"].reduce((sum, key) => sum + numberValue(ops[key]), 0);
-  const marketingTotal = ["outbound", "outsideSales"].reduce((sum, key) => sum + numberValue(ops[key]), 0);
-  const centerAttendanceRows = getFitnessEmployees().map((item) => {
-    const rowLog = getEmployeeLogForDate(item.id, dateKey);
-    const breakSummary = (rowLog.attendanceBreaks || []).map((record) => `${record.start || "--:--"}~${record.end || "--:--"}`).join(" / ");
-    return {
-      role: item.role || "",
-      name: item.name || getEmployeeOwnLabel(item),
-      clock: `${rowLog.clockIn || "-"}~${rowLog.clockOut || "-"}`,
-      status: getAttendanceStatusForLog(item, rowLog),
-      breaks: breakSummary || "-",
-    };
-  });
+  const logEntries = getFitnessReportLogEntries(dateKey, isCenter, employee);
+  if (!isCenter && options.log) logEntries[0].log = options.log;
+  const nextLogEntries = getFitnessReportLogEntries(getNextDateKey(dateKey), isCenter, employee);
+  const entries = logEntries.flatMap(({ log }) => (log.schedule || []).filter((entry) => entry.time && (isCenter ? getScheduleEntryText(entry) : true)));
+  const { rows: staffRows, totals } = summarizeFitnessReportRows(logEntries);
   const title = isCenter ? "< 비욘드 피트니스 운영일지 >" : "< 비욘드 피트니스 업무일지 >";
   const confirmation = isCenter ? getFitnessCenterReportRecord(dateKey) : null;
+  const weatherEmployee = isCenter
+    ? employees.find((item) => item.id === "beyond-fitness-manager") || employee
+    : employee;
+  const weatherSiteKey = getSiteWeatherKeyForEmployee(weatherEmployee);
+  const weather = getWeatherRecordForSite(weatherSiteKey, dateKey);
   return {
     title,
     dateKey,
@@ -12660,25 +12956,28 @@ function buildFitnessReportModel(options = {}) {
     role: isCenter ? "운영 취합" : employee.role || "직원",
     ownerLabel: isCenter ? "담당 : 센터 운영 취합" : `담당 : ${employee.role || "직원"} ${employee.name || getEmployeeOwnLabel(employee)}`,
     clock: isCenter ? "센터 취합" : `${sourceLog.clockIn || "-"} ~ ${sourceLog.clockOut || "-"}`,
-    centerAttendanceRows,
-    topTasks: Array.from({ length: 3 }, (_, index) => {
-      const task = tasks[index];
-      if (!task) return "";
-      return `${task.priority || "?"} ${task.text || ""}${task.done || task.status === "완료" ? " (완료)" : ""}`.trim();
-    }),
+    weather,
+    weatherText: formatWeatherSummary(weather, { compact: true }),
+    weatherAddress: getSiteWeatherAddress(weatherSiteKey),
+    weatherSiteKey,
+    staffRows,
+    totals,
+    approvalColumns: ["담당", "팀장", "센터장"],
+    topTasks: getFitnessReportTaskRows(logEntries),
+    tomorrowTasks: getFitnessReportTaskRows(nextLogEntries),
     schedule: entries.map((entry) => ({
       time: formatReportTime(entry.time),
       text: getScheduleEntryText(entry),
     })),
     kpis: [
-      ["수업", `${ptTotal}건`],
-      ["상담", `${numberValue(ops.consultation)}건`],
-      ["계약", `${contractTotal}건`],
-      ["홍보", `${numberValue(ops.outbound)}건`],
-      ["마케팅", `${marketingTotal}건`],
-      ["일일권", `${numberValue(ops.dayPass)}건`],
+      ["수업", `${numberValue(totals.ptTotal)}건`],
+      ["상담", `${numberValue(totals.consultation)}건`],
+      ["계약", `${numberValue(totals.contractTotal)}건`],
+      ["홍보", `${numberValue(totals.outbound)}건`],
+      ["마케팅", `${numberValue(totals.outsideSales)}건`],
+      ["일일권", `${numberValue(totals.dayPass)}건`],
     ],
-    issueRows: [ops.specialReport, ops.shiftNote, sourceLog.memo].filter(Boolean).slice(0, 3).concat(Array(3).fill("")).slice(0, 3),
+    issueRows: getFitnessReportRecordRows(logEntries),
     coaching: getFitnessCoachingMessages(),
   };
 }
@@ -12697,12 +12996,42 @@ function formatReportTime(value = "") {
 function renderFitnessReportTemplate(model = buildFitnessReportModel()) {
   const scheduleRows = getFitnessReportScheduleRows(model.schedule);
   const taskRows = model.topTasks.map((task, index) => `<p><b>${index + 1}</b><span>${escapeHtml(task || "")}</span></p>`).join("");
-  const attendanceRows = model.centerAttendanceRows.map((row) => `
+  const tomorrowRows = model.tomorrowTasks.map((task, index) => `<p><b>${index + 1}</b><span>${escapeHtml(task || "")}</span></p>`).join("");
+  const approvalCells = model.approvalColumns.map((label) => `<th>${escapeHtml(label)}</th>`).join("");
+  const approvalBlanks = model.approvalColumns.map((label) => `<td>${label === "센터장" && model.confirmation?.confirmedAt ? "확정" : ""}</td>`).join("");
+  const attendanceRows = model.staffRows.map((row) => `
     <tr>
+      <td>${escapeHtml(row.no)}</td>
       <td>${escapeHtml(row.role)}</td>
       <td>${escapeHtml(row.name)}</td>
-      <td>${escapeHtml(row.clock)}</td>
-      <td>${escapeHtml(row.status)}</td>
+      <td>${escapeHtml(row.clockIn)}</td>
+      <td>${escapeHtml(row.clockOut)}</td>
+      <td>${escapeHtml(row.workDuration)}</td>
+      <td>${escapeHtml(row.attendanceNote || row.attendanceStatus)}</td>
+      <td>${escapeHtml(row.ptRegular || "")}</td>
+      <td>${escapeHtml(row.ptFree || "")}</td>
+      <td>${escapeHtml(row.ptOther || "")}</td>
+      <td>${escapeHtml(row.ptTotal || "")}</td>
+      <td></td>
+    </tr>
+  `).join("");
+  const contractRows = model.staffRows.map((row) => `
+    <tr>
+      <td>${escapeHtml(row.no)}</td>
+      <td>${escapeHtml(row.role)}</td>
+      <td>${escapeHtml(row.name)}</td>
+      <td>${escapeHtml(row.customerNew || "")}</td>
+      <td>${escapeHtml(row.customerRenewal || "")}</td>
+      <td>${escapeHtml(row.dayPass || "")}</td>
+      <td>${escapeHtml(row.contractOther || "")}</td>
+      <td>${escapeHtml(row.contractTotal || "")}</td>
+      <td>${escapeHtml(row.inbound || "")}</td>
+      <td>${escapeHtml(row.outbound || "")}</td>
+      <td>${escapeHtml(row.outsideSales || "")}</td>
+      <td>${escapeHtml(row.consultation || "")}</td>
+      <td>${escapeHtml(row.customerOther || "")}</td>
+      <td>${escapeHtml(row.customerTotal || "")}</td>
+      <td></td>
     </tr>
   `).join("");
   return `
@@ -12717,27 +13046,61 @@ function renderFitnessReportTemplate(model = buildFitnessReportModel()) {
           <dt>작성자</dt><dd>${escapeHtml(model.writer)}</dd>
           <dt>구분</dt><dd>${escapeHtml(model.role)}</dd>
           <dt>출퇴근</dt><dd>${escapeHtml(model.clock)}</dd>
+          <dt>날씨</dt><dd>${escapeHtml(model.weatherText)}</dd>
           ${model.isCenter ? `<dt>확정</dt><dd>${escapeHtml(model.confirmation?.confirmedAt ? getFitnessCenterReportStatusText(model.dateKey) : "미확정")}</dd>` : ""}
         </dl>
       </header>
+
+      ${model.isCenter ? `
+        <section class="fitness-paper-approval">
+          <div>
+            <b>${escapeHtml(model.dateLabel)}</b>
+            <span>날씨 ${escapeHtml(model.weatherText)}</span>
+            <em>${escapeHtml(model.weatherAddress || `${model.weatherSiteKey} 주소 입력 필요`)}</em>
+          </div>
+          <table>
+            <thead><tr>${approvalCells}</tr></thead>
+            <tbody><tr>${approvalBlanks}</tr></tbody>
+          </table>
+        </section>
+      ` : ""}
 
       <section class="fitness-paper-summary">
         <div class="fitness-paper-tasks">
           <h3>금일 주요업무</h3>
           ${taskRows}
         </div>
-        <div class="fitness-paper-kpi">
-          ${model.kpis.map(([label, value]) => `<div><span>${escapeHtml(label)}</span><strong>${escapeHtml(value)}</strong></div>`).join("")}
+        <div class="fitness-paper-tasks">
+          <h3>명일 예정업무</h3>
+          ${tomorrowRows}
         </div>
       </section>
 
       ${model.isCenter ? `
-        <section class="fitness-paper-attendance-table">
-          <h3>전직원 출결현황</h3>
+        <section class="fitness-paper-wide-table fitness-paper-attendance-table">
+          <h3>출결현황 / PT수업</h3>
           <table>
-            <thead><tr><th>직함</th><th>이름</th><th>출퇴근</th><th>근태</th></tr></thead>
+            <thead><tr><th>No.</th><th>구분</th><th>성명</th><th>출근</th><th>퇴근</th><th>근무시간</th><th>비고</th><th>정규수업</th><th>무료수업</th><th>기타</th><th>소계</th><th>비고</th></tr></thead>
             <tbody>${attendanceRows}</tbody>
+            <tfoot><tr><td colspan="7">합계</td><td>${numberValue(model.totals.ptRegular) || ""}</td><td>${numberValue(model.totals.ptFree) || ""}</td><td>${numberValue(model.totals.ptOther) || ""}</td><td>${numberValue(model.totals.ptTotal) || ""}</td><td></td></tr></tfoot>
           </table>
+        </section>
+
+        <section class="fitness-paper-wide-table fitness-paper-contract-table">
+          <h3>계약현황 / 고객관리</h3>
+          <table>
+            <thead><tr><th>No.</th><th>구분</th><th>성명</th><th>신규</th><th>재등록</th><th>일일권</th><th>기타</th><th>소계</th><th>인바운드</th><th>아웃바운드</th><th>외부영업</th><th>상담</th><th>기타</th><th>소계</th><th>비고</th></tr></thead>
+            <tbody>${contractRows}</tbody>
+            <tfoot><tr><td colspan="3">합계</td><td>${numberValue(model.totals.customerNew) || ""}</td><td>${numberValue(model.totals.customerRenewal) || ""}</td><td>${numberValue(model.totals.dayPass) || ""}</td><td>${numberValue(model.totals.contractOther) || ""}</td><td>${numberValue(model.totals.contractTotal) || ""}</td><td>${numberValue(model.totals.inbound) || ""}</td><td>${numberValue(model.totals.outbound) || ""}</td><td>${numberValue(model.totals.outsideSales) || ""}</td><td>${numberValue(model.totals.consultation) || ""}</td><td>${numberValue(model.totals.customerOther) || ""}</td><td>${numberValue(model.totals.customerTotal) || ""}</td><td></td></tr></tfoot>
+          </table>
+        </section>
+      ` : ""}
+
+      ${!model.isCenter ? `
+        <section class="fitness-paper-summary">
+          <div class="fitness-paper-kpi">
+            ${model.kpis.map(([label, value]) => `<div><span>${escapeHtml(label)}</span><strong>${escapeHtml(value)}</strong></div>`).join("")}
+          </div>
         </section>
       ` : ""}
 
@@ -12753,7 +13116,7 @@ function renderFitnessReportTemplate(model = buildFitnessReportModel()) {
 
       <section class="fitness-paper-footer-grid">
         <div>
-          <h3>특이사항 / 인수인계</h3>
+          <h3>${model.isCenter ? "오늘의 기록" : "특이사항 / 인수인계"}</h3>
           ${model.issueRows.map((row, index) => `<p><b>${index + 1}</b><span>${escapeHtml(row || "")}</span></p>`).join("")}
         </div>
         <div>
@@ -12932,13 +13295,15 @@ function getFitnessReportExportCss() {
     .fitness-paper-top dd:last-child { border-bottom: 0; }
     .fitness-paper-summary {
       display: grid;
-      grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr);
+      grid-template-columns: repeat(2, minmax(0, 1fr));
       gap: 16px;
       margin-top: 16px;
     }
     .fitness-paper-tasks,
     .fitness-paper-kpi,
+    .fitness-paper-approval,
     .fitness-paper-attendance-table,
+    .fitness-paper-contract-table,
     .fitness-paper-schedule,
     .fitness-paper-footer-grid > div {
       border: 2px solid rgba(18, 59, 45, 0.22);
@@ -12948,6 +13313,7 @@ function getFitnessReportExportCss() {
     }
     .fitness-paper-tasks h3,
     .fitness-paper-attendance-table h3,
+    .fitness-paper-contract-table h3,
     .fitness-paper-schedule h3,
     .fitness-paper-footer-grid h3 {
       margin: 0;
@@ -12980,6 +13346,49 @@ function getFitnessReportExportCss() {
       line-height: 1.25;
       font-weight: 830;
     }
+    .fitness-paper-approval {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) minmax(320px, 0.7fr);
+      gap: 16px;
+      align-items: stretch;
+      margin-top: 16px;
+      border: 0;
+      background: transparent;
+    }
+    .fitness-paper-approval > div {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) 146px;
+      align-items: center;
+      border: 2px solid rgba(18, 59, 45, 0.2);
+      border-radius: 14px;
+      overflow: hidden;
+    }
+    .fitness-paper-approval b,
+    .fitness-paper-approval span {
+      min-height: 62px;
+      padding: 16px;
+      font-size: 20px;
+      font-weight: 950;
+    }
+    .fitness-paper-approval span {
+      display: grid;
+      place-items: center;
+      border-left: 2px solid rgba(18, 59, 45, 0.16);
+      background: rgba(250, 250, 245, 0.95);
+    }
+    .fitness-paper-approval table {
+      width: 100%;
+      border-collapse: collapse;
+      table-layout: fixed;
+    }
+    .fitness-paper-approval th,
+    .fitness-paper-approval td {
+      border: 2px solid rgba(18, 59, 45, 0.2);
+      padding: 10px;
+      text-align: center;
+      font-size: 18px;
+      font-weight: 950;
+    }
     .fitness-paper-summary .fitness-paper-kpi {
       display: grid;
       grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -13004,9 +13413,11 @@ function getFitnessReportExportCss() {
       font-weight: 950;
     }
     .fitness-paper-attendance-table,
+    .fitness-paper-contract-table,
     .fitness-paper-schedule,
     .fitness-paper-footer-grid { margin-top: 16px; }
     .fitness-paper-attendance-table table,
+    .fitness-paper-contract-table table,
     .fitness-paper-schedule table {
       width: 100%;
       border-collapse: collapse;
@@ -13014,17 +13425,25 @@ function getFitnessReportExportCss() {
     }
     .fitness-paper-attendance-table th,
     .fitness-paper-attendance-table td,
+    .fitness-paper-contract-table th,
+    .fitness-paper-contract-table td,
     .fitness-paper-schedule th,
     .fitness-paper-schedule td {
       border-top: 2px solid rgba(18, 59, 45, 0.13);
       border-right: 2px solid rgba(18, 59, 45, 0.13);
-      padding: 8px 10px;
-      font-size: 18px;
+      padding: 7px 8px;
+      font-size: 17px;
       line-height: 1.12;
     }
     .fitness-paper-attendance-table th,
+    .fitness-paper-contract-table th,
     .fitness-paper-schedule th {
       background: rgba(250, 250, 245, 0.95);
+      font-weight: 950;
+    }
+    .fitness-paper-attendance-table tfoot td,
+    .fitness-paper-contract-table tfoot td {
+      background: rgba(237, 244, 224, 0.62);
       font-weight: 950;
     }
     .fitness-paper-schedule th:nth-child(1),
@@ -13697,6 +14116,25 @@ document.querySelector('[data-settings-profile-field="org"]')?.addEventListener(
 });
 document.querySelector('[data-settings-profile-field="workplace"]')?.addEventListener("change", () => {
   updateSettingsPlacementOptions({ preserve: true, resetRole: true });
+});
+document.getElementById("siteAddressList")?.addEventListener("input", (event) => {
+  const input = event.target.closest("[data-site-weather-address]");
+  if (!input) return;
+  const key = input.dataset.siteWeatherAddress || "";
+  state.siteWeatherAddresses ||= {};
+  state.siteWeatherAddresses[key] = input.value.trim();
+  const cacheSuffix = `::${key}`;
+  Object.keys(state.weatherCache || {}).forEach((cacheKey) => {
+    if (cacheKey.endsWith(cacheSuffix)) delete state.weatherCache[cacheKey];
+  });
+  saveState({ fastSave: true });
+  renderWeatherWidgets();
+});
+document.getElementById("worklogWeatherRefreshButton")?.addEventListener("click", () => {
+  refreshWeatherForScope("worklog");
+});
+document.getElementById("fitnessWeatherRefreshButton")?.addEventListener("click", () => {
+  refreshWeatherForScope("fitness-log");
 });
 document.getElementById("employeeSelect").onchange = (event) => {
   state.selectedEmployeeId = event.target.value;

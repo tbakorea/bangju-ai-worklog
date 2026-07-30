@@ -1605,6 +1605,48 @@ body[data-device-mode="narrow"] .os-mode-switch span[data-device-mode="narrow"] 
   white-space: nowrap;
 }
 
+.worklog-weather-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 6px;
+  align-items: center;
+  min-height: 34px;
+  border: 1px solid rgba(15, 59, 46, 0.12);
+  border-radius: 999px;
+  background: rgba(250, 252, 246, 0.88);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.72);
+  color: rgba(21, 55, 45, 0.82);
+  padding: 4px 5px 4px 12px;
+  font-size: 12px;
+  font-weight: 850;
+}
+
+.worklog-weather-row span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.worklog-weather-row button {
+  min-height: 26px;
+  border: 1px solid rgba(15, 59, 46, 0.12);
+  border-radius: 999px;
+  background: rgba(255, 254, 250, 0.94);
+  color: var(--fitness-green);
+  padding: 0 10px;
+  font-size: 11px;
+  font-weight: 950;
+}
+
+.worklog-weather-row.is-missing {
+  color: rgba(113, 91, 51, 0.88);
+  background: rgba(255, 247, 226, 0.8);
+}
+
+.worklog-weather-row.is-loading {
+  opacity: 0.78;
+}
+
 .worklog-main {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
@@ -4504,6 +4546,88 @@ body[data-device-mode="narrow"] .os-mode-switch span[data-device-mode="narrow"] 
   color: var(--muted);
   font-size: 12px;
   font-weight: 760;
+}
+
+.site-address-card {
+  display: grid;
+  gap: 14px;
+  margin-top: 16px;
+  border: 1px solid rgba(15, 59, 46, 0.1);
+  border-radius: 18px;
+  background: rgba(255, 254, 250, 0.88);
+  padding: 16px;
+}
+
+.site-address-card p {
+  margin: 0 0 4px;
+  color: rgba(15, 59, 46, 0.55);
+  font-size: 11px;
+  font-weight: 950;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.site-address-card h3 {
+  margin: 0;
+  color: var(--ink);
+  font-size: 20px;
+  font-weight: 950;
+}
+
+.site-address-card span {
+  display: block;
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 780;
+  line-height: 1.45;
+}
+
+.site-address-list {
+  display: grid;
+  gap: 8px;
+}
+
+.site-address-row {
+  display: grid;
+  grid-template-columns: minmax(140px, 0.42fr) minmax(0, 1fr);
+  gap: 10px;
+  align-items: center;
+  border: 1px solid rgba(15, 59, 46, 0.1);
+  border-radius: 14px;
+  background: rgba(250, 252, 246, 0.72);
+  padding: 10px;
+}
+
+.site-address-row span {
+  margin: 0;
+}
+
+.site-address-row b {
+  display: block;
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 950;
+}
+
+.site-address-row small {
+  display: block;
+  margin-top: 3px;
+  color: rgba(40, 55, 48, 0.58);
+  font-size: 11px;
+  font-weight: 760;
+  line-height: 1.35;
+}
+
+.site-address-row input {
+  width: 100%;
+  min-width: 0;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: rgba(255, 253, 248, 0.96);
+  color: var(--ink);
+  padding: 10px 11px;
+  font-weight: 850;
 }
 
 .settings-pending-note {
@@ -10928,14 +11052,16 @@ body[data-layout-mode="phone"] .fitness-log-schedule-panel .appointment-merge-bu
 
 .fitness-paper-summary {
   display: grid;
-  grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr);
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 8px;
   margin-top: 8px;
 }
 
 .fitness-paper-tasks,
 .fitness-paper-kpi,
+.fitness-paper-approval,
 .fitness-paper-attendance-table,
+.fitness-paper-contract-table,
 .fitness-paper-schedule,
 .fitness-paper-footer-grid > div {
   border: 1px solid rgba(18, 59, 45, 0.22);
@@ -10946,6 +11072,7 @@ body[data-layout-mode="phone"] .fitness-log-schedule-panel .appointment-merge-bu
 
 .fitness-paper-tasks h3,
 .fitness-paper-attendance-table h3,
+.fitness-paper-contract-table h3,
 .fitness-paper-schedule h3,
 .fitness-paper-footer-grid h3 {
   margin: 0;
@@ -10982,6 +11109,66 @@ body[data-layout-mode="phone"] .fitness-log-schedule-panel .appointment-merge-bu
   font-weight: 820;
 }
 
+.fitness-paper-approval {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(170px, 0.72fr);
+  gap: 8px;
+  align-items: stretch;
+  margin-top: 8px;
+  border: 0;
+  background: transparent;
+}
+
+.fitness-paper-approval > div {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 118px;
+  align-items: center;
+  border: 1px solid rgba(18, 59, 45, 0.2);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.fitness-paper-approval b,
+.fitness-paper-approval span {
+  min-height: 34px;
+  padding: 8px;
+  font-size: 11px;
+  font-weight: 950;
+}
+
+.fitness-paper-approval span {
+  display: grid;
+  place-items: center;
+  border-left: 1px solid rgba(18, 59, 45, 0.16);
+  background: rgba(250, 250, 245, 0.95);
+}
+
+.fitness-paper-approval em {
+  grid-column: 1 / -1;
+  min-height: 22px;
+  border-top: 1px solid rgba(18, 59, 45, 0.12);
+  color: rgba(35, 54, 46, 0.62);
+  padding: 5px 8px;
+  font-size: 9px;
+  font-style: normal;
+  font-weight: 780;
+}
+
+.fitness-paper-approval table {
+  width: 100%;
+  border-collapse: collapse;
+  table-layout: fixed;
+}
+
+.fitness-paper-approval th,
+.fitness-paper-approval td {
+  border: 1px solid rgba(18, 59, 45, 0.2);
+  padding: 5px;
+  text-align: center;
+  font-size: 10px;
+  font-weight: 950;
+}
+
 .fitness-paper-summary .fitness-paper-kpi {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -10995,11 +11182,28 @@ body[data-layout-mode="phone"] .fitness-log-schedule-panel .appointment-merge-bu
   padding: 7px;
 }
 
+.fitness-paper-summary .fitness-paper-kpi span {
+  display: block;
+  color: rgba(17, 20, 17, 0.66);
+  font-size: 10px;
+  font-weight: 900;
+}
+
+.fitness-paper-summary .fitness-paper-kpi strong {
+  display: block;
+  margin-top: 2px;
+  color: var(--ink);
+  font-size: 15px;
+  font-weight: 950;
+}
+
+.fitness-paper-wide-table,
 .fitness-paper-attendance-table {
   margin-top: 8px;
 }
 
 .fitness-paper-attendance-table table,
+.fitness-paper-contract-table table,
 .fitness-paper-schedule table {
   width: 100%;
   border-collapse: collapse;
@@ -11008,23 +11212,34 @@ body[data-layout-mode="phone"] .fitness-log-schedule-panel .appointment-merge-bu
 
 .fitness-paper-attendance-table th,
 .fitness-paper-attendance-table td,
+.fitness-paper-contract-table th,
+.fitness-paper-contract-table td,
 .fitness-paper-schedule th,
 .fitness-paper-schedule td {
   border-top: 1px solid rgba(18, 59, 45, 0.13);
   border-right: 1px solid rgba(18, 59, 45, 0.13);
-  padding: 4px 6px;
+  padding: 3px 4px;
   font-size: 10px;
   line-height: 1.18;
 }
 
 .fitness-paper-attendance-table th,
+.fitness-paper-contract-table th,
 .fitness-paper-schedule th {
   background: rgba(250, 250, 245, 0.95);
   font-weight: 950;
 }
 
+.fitness-paper-attendance-table tfoot td,
+.fitness-paper-contract-table tfoot td {
+  background: rgba(237, 244, 224, 0.62);
+  font-weight: 950;
+}
+
 .fitness-paper-attendance-table th:last-child,
 .fitness-paper-attendance-table td:last-child,
+.fitness-paper-contract-table th:last-child,
+.fitness-paper-contract-table td:last-child,
 .fitness-paper-schedule th:last-child,
 .fitness-paper-schedule td:last-child {
   border-right: 0;
@@ -16356,6 +16571,29 @@ body[data-layout-mode="phone"] #view-fitness-log .fitness-log-pager {
 }
 
 @media (max-width: 640px) {
+  .worklog-weather-row {
+    min-height: 32px;
+    padding-left: 10px;
+    font-size: 11px;
+  }
+
+  .worklog-weather-row button {
+    min-height: 24px;
+    padding: 0 8px;
+    font-size: 10px;
+  }
+
+  .site-address-card {
+    border-radius: 16px;
+    padding: 12px;
+  }
+
+  .site-address-row {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 8px;
+    padding: 9px;
+  }
+
   #view-today .worklog-pulse-row {
     grid-template-columns: 74px minmax(0, 1fr) 74px;
     border-radius: 13px;

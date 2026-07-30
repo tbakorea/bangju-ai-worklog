@@ -357,6 +357,10 @@
             </button>
             <button type="button" class="worklog-side-nav" data-worklog-panel="memo">동료업무</button>
           </div>
+          <div class="worklog-weather-row" id="worklogWeatherRow">
+            <span id="worklogWeatherText">사업장 날씨 준비 중</span>
+            <button type="button" id="worklogWeatherRefreshButton">날씨 갱신</button>
+          </div>
           <div class="worklog-edit-lock-banner" id="worklogEditLockBanner" hidden></div>
           <div class="worklog-main day-main-panel day-swipe" id="worklogMain" data-today-page="daily">
             <article class="worklog-panel shared-worklog-panel worklog-common-page">
@@ -411,6 +415,10 @@
             <button type="button" data-layout-mode-choice="wide">Studio</button>
             <button type="button" data-layout-mode-choice="phone">Focus</button>
           </div>
+        </div>
+        <div class="worklog-weather-row fitness-weather-row" id="fitnessWeatherRow">
+          <span id="fitnessWeatherText">센터 날씨 준비 중</span>
+          <button type="button" id="fitnessWeatherRefreshButton">날씨 갱신</button>
         </div>
         <div class="fitness-log-title">
           <div class="fitness-date-nav">
@@ -1068,6 +1076,14 @@
             <label>단점 <textarea data-settings-profile-field="weaknesses" rows="4" placeholder="보완점, 어려운 업무, 개선 필요 역량"></textarea></label>
             <label>자기개발 목표 <textarea data-settings-profile-field="developmentGoals" rows="4" placeholder="학습 목표, 역량강화 계획, 필요한 교육"></textarea></label>
           </div>
+          <section class="site-address-card">
+            <div>
+              <p>Weather Address Master</p>
+              <h3>사업장/현장 날씨 주소</h3>
+              <span>업무일지와 보고서의 날씨는 직원의 현재 소속 사업장 주소를 기준으로 표시됩니다.</span>
+            </div>
+            <div id="siteAddressList" class="site-address-list"></div>
+          </section>
           <p class="profile-note">앱설정의 자기개발 데이터는 AI 코칭과 업무 배치 제안의 기초 자료로 사용됩니다.</p>
         </div>
         <div class="settings-panel" id="settings-panel-approval">

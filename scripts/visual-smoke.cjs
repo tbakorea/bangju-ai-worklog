@@ -677,6 +677,106 @@ async function checkUnclassifiedFitnessEmployeeCanEditOwnProfileWorklog(browser)
   await page.close();
 }
 
+async function checkFitnessManagerCanEditOwnWorklog(browser) {
+  const page = await browser.newPage({ viewport: { width: 390, height: 844 } });
+  const errors = [];
+  page.on("pageerror", (error) => errors.push(error.message));
+  await page.addInitScript(() => {
+    localStorage.setItem("beyond-worklog-state-v1", JSON.stringify({
+      selectedDateKey: "2026-07-27",
+      selectedEmployeeId: "fitness-weekday-info",
+      fitnessWritableEmployeeId: "fitness-weekday-info",
+      fitnessLogPage: 2,
+      profile: {
+        email: "pjhong0@naver.com",
+        role: "센터장",
+        name: "박주홍",
+        nickname: "박주홍",
+        org: "(주)비욘드컴퍼니",
+        workplace: "비욘드 피트니스",
+        primaryWork: "피트니스 운영총괄 PT 수업",
+        workHours: "06:00-24:00",
+        approvalStatus: "approved",
+        accessPreset: "employee",
+        permissions: {},
+      },
+      employeeLogs: {},
+    }));
+    localStorage.setItem("beyond-worklog-global-view-mode", "ceo");
+  });
+  await page.goto(target, { waitUntil: "domcontentloaded" });
+  await page.evaluate(() => {
+    document.body.classList.add("physical-phone-device");
+    document.body.dataset.layoutMode = "phone";
+    document.body.dataset.viewMode = "ceo";
+    window.eval(`
+      authState.user = { id: "park-juhong-user", email: "pjhong0@naver.com" };
+      normalizeState();
+      switchView(getInitialLandingView());
+    `);
+  });
+  await page.waitForTimeout(350);
+  const metrics = await page.evaluate(() => window.eval(`JSON.stringify({
+    activeView: document.body.dataset.activeView,
+    selectedEmployeeId: state.selectedEmployeeId,
+    fitnessWritableEmployeeId: state.fitnessWritableEmployeeId,
+    ownEditableEmployeeId: getOwnEditableEmployeeIdForView(activeView),
+    currentEmployeeId: getCurrentWorklogEmployeeId(activeView),
+    canEdit: canEditCurrentWorklog(activeView),
+    selectedEmployee: getEmployeeAdminLabel(getSelectedEmployee()),
+    header: document.querySelector("#globalHeaderTitle")?.textContent?.trim() || "",
+    identityBadge: document.querySelector("#fitnessIdentityText")?.textContent?.trim() || "",
+    lockBanner: document.querySelector("#fitnessReadOnlyNotice")?.textContent?.trim() || "",
+    lockHidden: document.querySelector("#fitnessReadOnlyNotice")?.hidden ?? true,
+    taskDisabled: document.querySelector("#fitnessTaskBoard .task-text-input")?.disabled ?? true,
+    scheduleTimes: (state.employeeLogs?.[state.selectedDateKey]?.["beyond-fitness-manager"]?.schedule || []).map((entry) => entry.time)
+  })`));
+  const parsed = JSON.parse(metrics);
+  if (parsed.activeView !== "fitness-log") fail("Park fitness manager should land on fitness worklog", metrics);
+  if (parsed.selectedEmployeeId !== "beyond-fitness-manager" || parsed.fitnessWritableEmployeeId !== "beyond-fitness-manager") {
+    fail("Park fitness manager should use the center manager worklog slot", metrics);
+  }
+  if (parsed.ownEditableEmployeeId !== "beyond-fitness-manager" || parsed.currentEmployeeId !== "beyond-fitness-manager" || !parsed.canEdit || parsed.taskDisabled) {
+    fail("Park fitness manager own worklog should be editable", metrics);
+  }
+  if (!/박주홍/.test(`${parsed.selectedEmployee} ${parsed.header} ${parsed.identityBadge}`) || !/센터장/.test(`${parsed.selectedEmployee} ${parsed.header} ${parsed.identityBadge}`)) {
+    fail("Park fitness manager identity should be visible", metrics);
+  }
+  if (!parsed.lockHidden && /열람 전용|본인 업무일지만/.test(parsed.lockBanner)) {
+    fail("Park fitness manager own page should not show readonly banner", metrics);
+  }
+  if (parsed.scheduleTimes[0] !== "06:00" || parsed.scheduleTimes.at(-1) !== "24:00" || parsed.scheduleTimes.includes("08:00") === false) {
+    fail("Park fitness manager schedule should follow 06:00-24:00 profile work hours", metrics);
+  }
+  await page.fill("#fitnessTaskBoard .task-text-input", "박주홍 센터 운영 입력 저장 확인");
+  await page.click(".fitness-appointment-row .fitness-appointment-summary");
+  await page.waitForTimeout(120);
+  await page.click('[data-fitness-schedule-type="유료PT"]');
+  await page.fill("#fitnessScheduleEditorText", "김영수 수업");
+  await page.click("#fitnessScheduleEditorDone");
+  await page.waitForTimeout(350);
+  const saveMetrics = await page.evaluate(() => window.eval(`JSON.stringify({
+    disabled: document.querySelector("#fitnessTaskBoard .task-text-input")?.disabled ?? true,
+    value: document.querySelector("#fitnessTaskBoard .task-text-input")?.value || "",
+    selectedDateKey: state.selectedDateKey,
+    savedTaskText: state.employeeLogs?.[state.selectedDateKey]?.["beyond-fitness-manager"]?.tasks?.[0]?.text || "",
+    savedScheduleText: state.employeeLogs?.[state.selectedDateKey]?.["beyond-fitness-manager"]?.schedule?.[0]?.items?.[0]?.text || "",
+    savedScheduleType: state.employeeLogs?.[state.selectedDateKey]?.["beyond-fitness-manager"]?.schedule?.[0]?.items?.[0]?.type || "",
+    storageTaskText: JSON.parse(localStorage.getItem("beyond-worklog-state-v1") || "{}").employeeLogs?.[state.selectedDateKey]?.["beyond-fitness-manager"]?.tasks?.[0]?.text || "",
+    storageScheduleText: JSON.parse(localStorage.getItem("beyond-worklog-state-v1") || "{}").employeeLogs?.[state.selectedDateKey]?.["beyond-fitness-manager"]?.schedule?.[0]?.items?.[0]?.text || ""
+  })`));
+  const saved = JSON.parse(saveMetrics);
+  if (saved.disabled) fail("Park fitness manager input should remain enabled", saveMetrics);
+  if (saved.value !== "박주홍 센터 운영 입력 저장 확인" || saved.savedTaskText !== saved.value || saved.storageTaskText !== saved.value) {
+    fail("Park fitness manager task input should persist", saveMetrics);
+  }
+  if (saved.savedScheduleType !== "유료PT" || saved.savedScheduleText !== "김영수 수업" || saved.storageScheduleText !== "김영수 수업") {
+    fail("Park fitness manager schedule editor should persist", saveMetrics);
+  }
+  if (errors.length) fail("Park fitness manager regression page errors", errors.join(" | "));
+  await page.close();
+}
+
 async function checkApprovedEmployeeWorklogEditMatrix(browser) {
   const cases = [
     {
@@ -1489,6 +1589,11 @@ async function checkFitnessCenterReportConfirmation(browser) {
   if (reportState.buttonHidden || reportState.buttonText !== "확정 취소" || !reportState.previewText.includes("확정")) {
     fail("fitness report preview should expose confirmation state", JSON.stringify(reportState));
   }
+  ["명일 예정업무", "출결현황 / PT수업", "계약현황 / 고객관리", "오늘의 기록", "담당", "팀장", "센터장"].forEach((label) => {
+    if (!reportState.previewText.includes(label)) {
+      fail("fitness center report should preserve handwritten report fields", `${label} missing`);
+    }
+  });
   if (errors.length) fail("fitness center confirmation page errors", errors.join(" | "));
   await page.close();
 }
@@ -1886,6 +1991,7 @@ async function checkFitnessNewEmployeeRegistrationFlow(browser) {
     await checkNonControlRoleTextDoesNotBecomeRepresentative(browser);
     await checkUnmappedEmployeeDoesNotInheritFitnessManager(browser);
     await checkUnclassifiedFitnessEmployeeCanEditOwnProfileWorklog(browser);
+    await checkFitnessManagerCanEditOwnWorklog(browser);
     await checkApprovedEmployeeWorklogEditMatrix(browser);
     await checkStaffDirectoryListAndDetail(browser);
     await checkCalendarAnnotations(browser);
