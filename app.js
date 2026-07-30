@@ -5441,15 +5441,19 @@ function applyProfileWeeklyWorkHoursFields() {
   });
 }
 
+function getSignupSheetField(selector) {
+  return document.querySelector(`#auth-panel-personal ${selector}`);
+}
+
 function getRequiredSignupFields() {
   return [
     { label: "등록 이메일", element: document.getElementById("registrationEmail"), getValue: () => document.getElementById("registrationEmail")?.value.trim() || "" },
     { label: "등록 비밀번호", element: document.getElementById("registrationPassword"), getValue: () => document.getElementById("registrationPassword")?.value || "" },
-    { label: "이름", element: document.querySelector('[data-profile-field="name"]'), getValue: () => document.querySelector('[data-profile-field="name"]')?.value.trim() || "" },
-    { label: "전화", element: document.querySelector('[data-profile-field="phone"]'), getValue: () => document.querySelector('[data-profile-field="phone"]')?.value.trim() || "" },
-    { label: "소속", element: document.querySelector('[data-profile-field="org"]'), getValue: () => document.querySelector('[data-profile-field="org"]')?.value.trim() || "" },
-    { label: "근무지", element: document.querySelector('[data-profile-field="workplace"]'), getValue: () => document.querySelector('[data-profile-field="workplace"]')?.value.trim() || "" },
-    { label: "기본 근무시간", element: document.querySelector('[data-profile-field="workHours"]'), getValue: () => document.querySelector('[data-profile-field="workHours"]')?.value.trim() || "" },
+    { label: "이름", element: getSignupSheetField('[data-profile-field="name"]'), getValue: () => getSignupSheetField('[data-profile-field="name"]')?.value.trim() || "" },
+    { label: "전화", element: getSignupSheetField('[data-profile-field="phone"]'), getValue: () => getSignupSheetField('[data-profile-field="phone"]')?.value.trim() || "" },
+    { label: "소속", element: getSignupSheetField('[data-profile-field="org"]'), getValue: () => getSignupSheetField('[data-profile-field="org"]')?.value.trim() || "" },
+    { label: "근무지", element: getSignupSheetField('[data-profile-field="workplace"]'), getValue: () => getSignupSheetField('[data-profile-field="workplace"]')?.value.trim() || "" },
+    { label: "기본 근무시간", element: getSignupSheetField('[data-profile-field="workHours"]'), getValue: () => getSignupSheetField('[data-profile-field="workHours"]')?.value.trim() || "" },
   ];
 }
 
@@ -5903,7 +5907,7 @@ function getAuthRedirectUrl() {
 }
 
 function collectSignupMetadata(credentials = {}) {
-  applyProfileFields("[data-profile-field]", "profileField");
+  applyProfileFields("#auth-panel-personal [data-profile-field]", "profileField");
   applyProfileWeeklyWorkHoursFields();
   const profile = { ...defaultProfile, ...(state.profile || {}) };
   profile.email = credentials.email || profile.email || "";
@@ -5939,6 +5943,30 @@ function collectSignupMetadata(credentials = {}) {
   };
 }
 
+function getSignupErrorMessage(error = {}) {
+  const raw = String(error.message || error.error_description || error || "").trim();
+  const lower = raw.toLowerCase();
+  if (!raw) return "직원등록 처리 중 오류가 발생했습니다.";
+  if (lower.includes("already") || lower.includes("registered") || lower.includes("exists")) {
+    return "이미 등록된 이메일입니다. 기존 직원이면 로그인하시고, 비밀번호를 잊은 경우 비밀번호 재설정을 사용해주세요.";
+  }
+  if (lower.includes("email") && (lower.includes("confirm") || lower.includes("verified"))) {
+    return "이메일 확인이 필요합니다. 메일함에서 확인 링크를 먼저 눌러주세요.";
+  }
+  if (lower.includes("password")) return `비밀번호를 확인해주세요. ${raw}`;
+  return `직원등록 실패: ${raw}`;
+}
+
+function setSignupBusy(isBusy) {
+  const button = document.getElementById("saveProfileButton");
+  const signupButton = document.getElementById("signupButton");
+  if (button) {
+    button.disabled = isBusy;
+    button.textContent = isBusy ? "신청 처리 중" : "신청 완료";
+  }
+  if (signupButton) signupButton.disabled = isBusy;
+}
+
 async function signUpWithSupabase(options = {}) {
   if (!isAuthRegistrationVisible()) {
     openEmployeeRegistrationForm({ clear: isExplicitlySignedOut() || !authState.user, prefill: true });
@@ -5946,47 +5974,64 @@ async function signUpWithSupabase(options = {}) {
   }
   if (!validateSignupRequiredFields()) return;
   const credentials = getAuthCredentials({ registration: true });
-  if (!credentials || !supabaseClient) return;
-  renderAuthStatus("직원등록 처리 중입니다...");
-  const signupMetadata = collectSignupMetadata(credentials);
-  const { data, error } = await supabaseClient.auth.signUp({
-    email: credentials.email,
-    password: credentials.password,
-    options: {
-      emailRedirectTo: getAuthRedirectUrl(),
-      data: signupMetadata,
-    },
-  });
-  if (error) {
-    renderAuthStatus(`직원등록 실패: ${error.message}`);
+  if (!credentials) return;
+  if (!supabaseClient) {
+    const message = "직원등록 서버 연결이 아직 준비되지 않았습니다. 잠시 후 다시 눌러주세요.";
+    renderAuthStatus(message);
+    alert(message);
     return;
   }
-  if (data.user) {
-    state.profile.email = credentials.email;
-    saveState();
-    renderProfileForm();
-    if (data.session) {
-      await applySession(data.session);
-      setOwnApprovalPending();
-      await saveRemoteProfile();
-      renderAuthStatus("직원등록 신청이 접수되었습니다. 대표 또는 권한자의 승인 후 사용할 수 있습니다.");
+  renderAuthStatus("직원등록 처리 중입니다...");
+  setSignupBusy(true);
+  try {
+    const signupMetadata = collectSignupMetadata(credentials);
+    const { data, error } = await supabaseClient.auth.signUp({
+      email: credentials.email,
+      password: credentials.password,
+      options: {
+        emailRedirectTo: getAuthRedirectUrl(),
+        data: signupMetadata,
+      },
+    });
+    if (error) {
+      const message = getSignupErrorMessage(error);
+      renderAuthStatus(message);
+      alert(message);
+      return;
+    }
+    if (data.user) {
+      state.profile.email = credentials.email;
+      saveState();
+      renderProfileForm();
+      if (data.session) {
+        await applySession(data.session);
+        setOwnApprovalPending();
+        await saveRemoteProfile();
+        renderAuthStatus("직원등록 신청이 접수되었습니다. 대표 또는 권한자의 승인 후 사용할 수 있습니다.");
+        if (options.closeOnSuccess) {
+          showSignupSubmittedMessage();
+          closeSignupAfterSubmit();
+        }
+        return;
+      }
+      renderAuthStatus("직원 계정이 생성되었습니다. 직원등록 정보는 대표 승인 목록에 접수됩니다. 이메일 확인과 대표 승인 후 사용할 수 있습니다.");
       if (options.closeOnSuccess) {
         showSignupSubmittedMessage();
         closeSignupAfterSubmit();
       }
       return;
     }
-    renderAuthStatus("직원 계정이 생성되었습니다. 직원등록 정보는 대표 승인 목록에 접수됩니다. 이메일 확인과 대표 승인 후 사용할 수 있습니다.");
+    renderAuthStatus("직원등록 신청이 접수되었습니다. 대표 또는 권한자의 승인 후 사용할 수 있습니다.");
     if (options.closeOnSuccess) {
       showSignupSubmittedMessage();
       closeSignupAfterSubmit();
     }
-    return;
-  }
-  renderAuthStatus("직원등록 신청이 접수되었습니다. 대표 또는 권한자의 승인 후 사용할 수 있습니다.");
-  if (options.closeOnSuccess) {
-    showSignupSubmittedMessage();
-    closeSignupAfterSubmit();
+  } catch (error) {
+    const message = getSignupErrorMessage(error);
+    renderAuthStatus(message);
+    alert(message);
+  } finally {
+    setSignupBusy(false);
   }
 }
 
