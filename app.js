@@ -300,6 +300,7 @@ const profilePlacementOverrides = {
     employmentType: "직원",
     workHours: "16:00-20:00",
     accessPreset: "employee",
+    permissions: {},
     mappedEmployeeId: "fitness-weekday-info",
   },
   "tbakorea@gmail.com": {
@@ -313,6 +314,7 @@ const profilePlacementOverrides = {
     employmentType: "직원",
     workHours: "08:00-18:00",
     accessPreset: "employee",
+    permissions: {},
     mappedEmployeeId: "beyond-company-leader",
   },
 };
@@ -331,7 +333,7 @@ function applyProfilePlacementOverride(profile = {}) {
     ...override,
     email: profile.email || email,
     approvalStatus: profile.approvalStatus || "approved",
-    permissions: { ...(override.permissions || profile.permissions || {}) },
+    permissions: { ...(override.permissions || (override.accessPreset ? {} : profile.permissions || {})) },
   };
 }
 
@@ -4063,9 +4065,10 @@ function getProfilePermissionSet(profile = state.profile || {}) {
   const email = String(authState.user?.email || profile.email || "").trim().toLowerCase();
   if (controlTowerEmails.has(email)) return buildPermissionSet("owner");
 
-  let presetKey = normalizePermissionPresetKey(profile.accessPreset || getRecommendedPermissionPresetForProfile(profile));
+  const overridePreset = getProfilePlacementOverride(email)?.accessPreset;
+  let presetKey = normalizePermissionPresetKey(overridePreset || profile.accessPreset || getRecommendedPermissionPresetForProfile(profile));
   let permissions = { ...(profile.permissions || {}) };
-  if (presetKey === "owner") {
+  if (overridePreset || presetKey === "owner") {
     presetKey = "employee";
     permissions = {};
   }
@@ -5864,6 +5867,7 @@ function hasUnsafeRepresentativeResidue(user = authState.user, profile = state.p
 function enforceAuthProfileBoundary(user = authState.user) {
   if (!user) return;
   const email = String(user.email || state.profile?.email || "").trim().toLowerCase();
+  const overridePreset = getProfilePlacementOverride(email)?.accessPreset;
   state.profile.email = email;
   state.profile.authUserId = user.id || state.profile.authUserId || "";
   if (controlTowerEmails.has(email)) {
@@ -5871,7 +5875,7 @@ function enforceAuthProfileBoundary(user = authState.user) {
     state.profile.permissions = {};
     return;
   }
-  let presetKey = normalizePermissionPresetKey(state.profile.accessPreset || getRecommendedPermissionPresetForProfile(state.profile));
+  let presetKey = normalizePermissionPresetKey(overridePreset || state.profile.accessPreset || getRecommendedPermissionPresetForProfile(state.profile));
   if (presetKey === "owner") presetKey = "employee";
   state.profile.accessPreset = presetKey;
   if (["employee", "freelance", "readonly"].includes(presetKey)) {

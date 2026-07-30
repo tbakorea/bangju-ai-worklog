@@ -532,6 +532,93 @@ async function checkNonControlRoleTextDoesNotBecomeRepresentative(browser) {
   await page.close();
 }
 
+async function checkKimSungminAccountIsEmployeeOnly(browser) {
+  const page = await browser.newPage({ viewport: { width: 390, height: 844 } });
+  const errors = [];
+  page.on("pageerror", (error) => errors.push(error.message));
+  await page.addInitScript(() => {
+    localStorage.setItem("beyond-worklog-state-v1", JSON.stringify({
+      selectedDateKey: "2026-07-27",
+      selectedEmployeeId: "bangju-finance-manager",
+      profile: {
+        email: "tbakorea@gmail.com",
+        role: "대표",
+        name: "김성민",
+        nickname: "김성민",
+        org: "(주)방주",
+        workplace: "본사",
+        primaryWork: "기획/관리",
+        approvalStatus: "approved",
+        accessPreset: "owner",
+        permissions: {
+          executiveRoom: true,
+          controlTower: true,
+          worklogAll: true,
+          staffApproval: true,
+          staffManage: true,
+          laborAll: true,
+        },
+      },
+      employeeLogs: {},
+    }));
+    localStorage.setItem("beyond-worklog-global-view-mode", "ceo");
+  });
+  await page.goto(target, { waitUntil: "domcontentloaded" });
+  await page.evaluate(() => {
+    document.body.classList.add("physical-phone-device");
+    document.body.dataset.layoutMode = "phone";
+    document.body.dataset.viewMode = "ceo";
+    window.eval(`
+      authState.user = { id: "tbakorea-user", email: "tbakorea@gmail.com" };
+      normalizeState();
+      enforceAuthProfileBoundary(authState.user);
+      normalizeProfilePlacementForAuth();
+      enforceAuthProfileBoundary(authState.user);
+      switchView(getInitialLandingView());
+    `);
+  });
+  await page.waitForTimeout(350);
+  const metrics = await page.evaluate(() => window.eval(`JSON.stringify({
+    activeView: document.body.dataset.activeView,
+    representative: isRepresentativeProfile(),
+    approvalAuthority: hasApprovalAuthority(),
+    worklogOverview: canAccessWorklogOverview(),
+    staffManage: hasProfilePermission("staffManage"),
+    worklogAll: hasProfilePermission("worklogAll"),
+    laborAll: hasProfilePermission("laborAll"),
+    accessPreset: state.profile.accessPreset,
+    permissionKeys: Object.keys(state.profile.permissions || {}).filter((key) => state.profile.permissions[key]),
+    selectedEmployeeId: state.selectedEmployeeId,
+    ownEditableEmployeeId: getOwnEditableEmployeeIdForView(activeView),
+    title: document.querySelector("#globalHeaderTitle")?.textContent?.trim() || "",
+    badge: document.querySelector("#worklogIdentityBadge")?.textContent?.trim()
+      || document.querySelector("#fitnessIdentityBadge")?.textContent?.trim()
+      || "",
+    visibleMenuItems: Array.from(document.querySelectorAll("#mainMenuPopover button"))
+      .filter((button) => !button.hidden && getComputedStyle(button).display !== "none")
+      .map((button) => button.textContent.trim().replace(/\\s+/g, " "))
+  })`));
+  const parsed = JSON.parse(metrics);
+  if (parsed.representative || parsed.approvalAuthority || parsed.worklogOverview || parsed.staffManage || parsed.worklogAll || parsed.laborAll) {
+    fail("Kim Sungmin account should be employee-only", metrics);
+  }
+  if (parsed.accessPreset !== "employee" || parsed.permissionKeys.length) {
+    fail("Kim Sungmin account should not retain stale representative permissions", metrics);
+  }
+  if (parsed.activeView !== "beyond-log") fail("Kim Sungmin account should land on Beyond employee worklog", metrics);
+  if (parsed.selectedEmployeeId !== "beyond-company-leader" || parsed.ownEditableEmployeeId !== "beyond-company-leader") {
+    fail("Kim Sungmin account should be mapped to the Beyond company leader sheet", metrics);
+  }
+  if (!/김성민|TBA|비욘드/.test(`${parsed.title} ${parsed.badge}`)) {
+    fail("Kim Sungmin employee identity should be visible on the worklog", metrics);
+  }
+  if (parsed.visibleMenuItems.some((label) => /가입승인|통합관제|대표경영|직원명부/.test(label))) {
+    fail("Kim Sungmin employee menu should not show representative-only items", metrics);
+  }
+  if (errors.length) fail("Kim Sungmin employee-only regression page errors", errors.join(" | "));
+  await page.close();
+}
+
 async function checkUnmappedEmployeeDoesNotInheritFitnessManager(browser) {
   const page = await browser.newPage({ viewport: { width: 390, height: 844 } });
   const errors = [];
@@ -2015,6 +2102,7 @@ async function checkFitnessNewEmployeeRegistrationFlow(browser) {
     await checkFitnessNewEmployeeRegistrationFlow(browser);
     await checkRepresentativeProfileSeparation(browser);
     await checkNonControlRoleTextDoesNotBecomeRepresentative(browser);
+    await checkKimSungminAccountIsEmployeeOnly(browser);
     await checkUnmappedEmployeeDoesNotInheritFitnessManager(browser);
     await checkUnclassifiedFitnessEmployeeCanEditOwnProfileWorklog(browser);
     await checkFitnessManagerCanEditOwnWorklog(browser);
