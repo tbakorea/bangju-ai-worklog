@@ -11130,6 +11130,8 @@ function resetEmployeePermission(employeeId) {
   renderStaffMaster();
 }
 
+let staffPermissionDraft = null;
+
 function getEmployeeOnboardingState(employee, labor, log) {
   const checks = [
     ["기본설정", Boolean(employee.name && employee.org && employee.role)],
@@ -11167,6 +11169,154 @@ function renderStaffPermissionRow(row) {
       <button type="button" class="staff-permission-reset" data-staff-permission-reset="${escapeAttr(row.id)}" ${hasOverride ? "" : "disabled"}>기본값</button>
     </article>
   `;
+}
+
+function renderStaffPermissionListItem(row) {
+  const hasOverride = Boolean(state.employeePermissions?.[row.id]);
+  const enabledCount = permissionKeys.filter(([key]) => row.access.permissions[key]).length;
+  const criticalSummary = [
+    row.access.permissions.staffManage ? "직원관리" : "",
+    row.access.permissions.staffApproval ? "승인" : "",
+    row.access.permissions.worklogAll ? "전사일지" : row.access.permissions.worklogSite ? "소속일지" : "본인일지",
+    row.access.permissions.laborAll ? "전사노무" : row.access.permissions.laborSite ? "소속노무" : "본인노무",
+  ].filter(Boolean).join(" · ");
+  return `
+    <button type="button" class="staff-permission-list-item" data-staff-permission-open="${escapeAttr(row.id)}">
+      <span class="staff-permission-person">
+        <em>${escapeHtml(row.site || row.org || "직원")}</em>
+        <strong>${escapeHtml(`${row.role || "직원"} ${row.name || ""}`.trim())}</strong>
+        <small>${escapeHtml(row.email || row.employeeCode || "")}</small>
+      </span>
+      <span class="staff-permission-status">
+        <b>${escapeHtml(row.access.role)}</b>
+        <small>${escapeHtml(`${enabledCount}/${permissionKeys.length}개 권한 · ${criticalSummary}`)}</small>
+      </span>
+      ${hasOverride ? `<span class="staff-permission-badge">조정됨</span>` : `<span class="staff-permission-badge is-default">기본</span>`}
+    </button>
+  `;
+}
+
+function createStaffPermissionDraft(employeeId) {
+  const row = getEmployeeMasterRows().find((item) => item.id === employeeId);
+  if (!row) return null;
+  const recommended = getRecommendedPermissionPresetForEmployee(row);
+  const override = state.employeePermissions?.[employeeId] || {};
+  const preset = normalizePermissionPresetKey(override.preset || recommended);
+  const set = buildPermissionSet(preset, override.permissions || {});
+  return {
+    employeeId,
+    preset,
+    recommended,
+    permissions: { ...set.permissions },
+  };
+}
+
+function normalizeStaffPermissionOverride(employeeId, draft = staffPermissionDraft) {
+  const row = getEmployeeMasterRows().find((item) => item.id === employeeId);
+  if (!row || !draft) return null;
+  const preset = normalizePermissionPresetKey(draft.preset || "employee");
+  const recommended = getRecommendedPermissionPresetForEmployee(row);
+  const base = buildPermissionSet(preset, {}).permissions;
+  const permissionDelta = {};
+  permissionKeys.forEach(([key]) => {
+    const value = Boolean(draft.permissions?.[key]);
+    if (value !== Boolean(base[key])) permissionDelta[key] = value;
+  });
+  const hasCustom = preset !== recommended || Object.keys(permissionDelta).length > 0;
+  return {
+    hasCustom,
+    override: {
+      preset,
+      permissions: permissionDelta,
+    },
+  };
+}
+
+function renderStaffPermissionModal(row) {
+  const draft = staffPermissionDraft || createStaffPermissionDraft(row.id);
+  const preset = normalizePermissionPresetKey(draft?.preset || row.access.presetKey);
+  const enabledCount = permissionKeys.filter(([key]) => draft?.permissions?.[key]).length;
+  return `
+    <div class="staff-permission-modal-backdrop" data-staff-permission-modal-close>
+      <article class="staff-permission-modal-card" role="dialog" aria-modal="true" aria-label="직원 권한 편집">
+        <button type="button" class="staff-detail-close" data-staff-permission-modal-close aria-label="닫기">×</button>
+        <header>
+          <span>Permission Control</span>
+          <h3>${escapeHtml(`${row.role || "직원"} ${row.name || ""}`.trim())}</h3>
+          <p>${escapeHtml(`${row.site || row.org || "소속 확인"} · ${row.email || row.employeeCode || ""}`)}</p>
+        </header>
+        <section class="staff-permission-modal-summary">
+          <article><span>현재 프리셋</span><strong>${escapeHtml(permissionPresets[preset]?.label || "직원")}</strong></article>
+          <article><span>활성 권한</span><strong>${escapeHtml(`${enabledCount}/${permissionKeys.length}`)}</strong></article>
+          <article><span>권한 기준</span><strong>${escapeHtml(preset === draft?.recommended ? "역할 기본" : "대표 조정")}</strong></article>
+        </section>
+        <label class="staff-permission-modal-preset">권한 프리셋
+          <select data-staff-permission-modal-preset>
+            ${getPermissionPresetOptions(preset)}
+          </select>
+        </label>
+        <div class="staff-permission-modal-note">
+          <strong>권한 변경은 하단의 “권한 확정”을 눌러야 반영됩니다.</strong>
+          <p>일반 직원은 본인 업무일지와 본인 자료 중심으로 사용하고, 대표 또는 위임자는 필요한 범위만 열람/승인 권한을 부여합니다.</p>
+        </div>
+        <div class="staff-permission-toggles staff-permission-modal-toggles">
+          ${permissionKeys.map(([key, label]) => `
+            <label>
+              <input type="checkbox" data-staff-permission-modal-toggle="${escapeAttr(key)}" ${draft?.permissions?.[key] ? "checked" : ""} />
+              <span>${escapeHtml(label)}</span>
+            </label>
+          `).join("")}
+        </div>
+        <footer class="staff-permission-modal-footer">
+          <button type="button" class="staff-permission-reset" data-staff-permission-modal-reset>기본값</button>
+          <div>
+            <button type="button" class="staff-permission-cancel" data-staff-permission-modal-close>취소</button>
+            <button type="button" class="staff-permission-confirm" data-staff-permission-save>권한 확정</button>
+          </div>
+        </footer>
+      </article>
+    </div>
+  `;
+}
+
+function refreshStaffPermissionModal() {
+  if (!staffPermissionDraft) return;
+  const overlay = document.getElementById("staffPermissionOverlay");
+  const row = getEmployeeMasterRows().find((item) => item.id === staffPermissionDraft.employeeId);
+  if (!overlay || !row) return;
+  overlay.innerHTML = renderStaffPermissionModal(row);
+}
+
+function openStaffPermissionModal(employeeId) {
+  const row = getEmployeeMasterRows().find((item) => item.id === employeeId);
+  if (!row) return;
+  staffPermissionDraft = createStaffPermissionDraft(employeeId);
+  document.getElementById("staffPermissionOverlay")?.remove();
+  const overlay = document.createElement("div");
+  overlay.id = "staffPermissionOverlay";
+  overlay.innerHTML = renderStaffPermissionModal(row);
+  document.body.appendChild(overlay);
+}
+
+function closeStaffPermissionModal() {
+  staffPermissionDraft = null;
+  document.getElementById("staffPermissionOverlay")?.remove();
+}
+
+function saveStaffPermissionDraft() {
+  if (!staffPermissionDraft) return;
+  const employeeId = staffPermissionDraft.employeeId;
+  const normalized = normalizeStaffPermissionOverride(employeeId, staffPermissionDraft);
+  if (!normalized) return;
+  state.employeePermissions ||= {};
+  if (normalized.hasCustom) {
+    state.employeePermissions[employeeId] = normalized.override;
+  } else {
+    delete state.employeePermissions[employeeId];
+  }
+  saveState();
+  closeStaffPermissionModal();
+  renderStaffMaster();
 }
 
 function getManualTemplateForEmployee(employee) {
@@ -11254,9 +11404,11 @@ function renderStaffMaster() {
       <div class="staff-permission-matrix">
         <div class="staff-permission-guide">
           <strong>권한은 직원 원장에서 관리합니다.</strong>
-          <p>가입승인에서는 1차 권한을 정하고, 이후 이 화면에서 메뉴별/사업장별 접근권한을 조정합니다. 일반 직원은 본인 업무일지와 본인 노무만 수정할 수 있습니다.</p>
+          <p>목록에서 직원을 선택하면 권한 편집 팝업이 열립니다. 프리셋과 메뉴별 권한을 확인한 뒤 하단의 권한 확정 버튼으로 저장합니다.</p>
         </div>
-        ${rows.map((row) => renderStaffPermissionRow(row)).join("")}
+        <div class="staff-permission-list">
+          ${rows.map((row) => renderStaffPermissionListItem(row)).join("")}
+        </div>
       </div>
     </section>
     <section class="staff-master-panel">
@@ -13992,6 +14144,11 @@ document.getElementById("staffMasterGrid")?.addEventListener("change", (event) =
   }
 });
 document.getElementById("staffMasterGrid")?.addEventListener("click", (event) => {
+  const permissionButton = event.target.closest("[data-staff-permission-open]");
+  if (permissionButton) {
+    openStaffPermissionModal(permissionButton.dataset.staffPermissionOpen);
+    return;
+  }
   const detailButton = event.target.closest("[data-staff-detail-id]");
   if (detailButton) {
     openStaffDetail(detailButton.dataset.staffDetailId);
@@ -14021,6 +14178,46 @@ document.addEventListener("click", (event) => {
   if (closeTarget.classList.contains("staff-detail-backdrop") && event.target !== closeTarget) return;
   closeStaffDetail();
 });
+document.addEventListener("change", (event) => {
+  const presetSelect = event.target.closest("[data-staff-permission-modal-preset]");
+  if (presetSelect && staffPermissionDraft) {
+    const preset = normalizePermissionPresetKey(presetSelect.value);
+    staffPermissionDraft.preset = preset;
+    staffPermissionDraft.permissions = { ...buildPermissionSet(preset, {}).permissions };
+    refreshStaffPermissionModal();
+    return;
+  }
+  const toggle = event.target.closest("[data-staff-permission-modal-toggle]");
+  if (toggle && staffPermissionDraft) {
+    staffPermissionDraft.permissions ||= {};
+    staffPermissionDraft.permissions[toggle.dataset.staffPermissionModalToggle] = Boolean(toggle.checked);
+    refreshStaffPermissionModal();
+  }
+});
+document.addEventListener("click", (event) => {
+  const saveButton = event.target.closest("[data-staff-permission-save]");
+  if (saveButton) {
+    event.preventDefault();
+    event.stopPropagation();
+    saveStaffPermissionDraft();
+    return;
+  }
+  const resetButton = event.target.closest("[data-staff-permission-modal-reset]");
+  if (resetButton && staffPermissionDraft) {
+    event.preventDefault();
+    event.stopPropagation();
+    const row = getEmployeeMasterRows().find((item) => item.id === staffPermissionDraft.employeeId);
+    const preset = getRecommendedPermissionPresetForEmployee(row || {});
+    staffPermissionDraft.preset = preset;
+    staffPermissionDraft.permissions = { ...buildPermissionSet(preset, {}).permissions };
+    refreshStaffPermissionModal();
+    return;
+  }
+  const closeTarget = event.target.closest("[data-staff-permission-modal-close]");
+  if (!closeTarget) return;
+  if (closeTarget.classList.contains("staff-permission-modal-backdrop") && event.target !== closeTarget) return;
+  closeStaffPermissionModal();
+});
 document.getElementById("mainMenuPopover")?.addEventListener("click", (event) => event.stopPropagation());
 document.addEventListener("click", () => {
   closeMainMenuPopover();
@@ -14029,6 +14226,7 @@ document.addEventListener("click", () => {
 document.addEventListener("keydown", (event) => {
   if (event.key === "Escape") closeMainMenuPopover();
   if (event.key === "Escape") closeStaffDetail();
+  if (event.key === "Escape") closeStaffPermissionModal();
 });
 document.getElementById("closeAuthButton").onclick = () => switchView("worklog");
 document.querySelectorAll("[data-auth-tab]").forEach((button) => {
