@@ -12520,8 +12520,8 @@ function refreshOpenReportDetail() {
 function getReportArchiveSettings() {
   state.reportArchive = {
     dateKey: todayKey,
-    site: "all",
-    type: "all",
+    site: "fitness",
+    type: "fitness",
     selectedId: "",
     ...(state.reportArchive || {}),
   };
@@ -12529,6 +12529,24 @@ function getReportArchiveSettings() {
     state.reportArchive.dateKey = getActiveDateKey();
   }
   return state.reportArchive;
+}
+
+function setDailyReportArchiveDefaults() {
+  const settings = getReportArchiveSettings();
+  settings.dateKey = getActiveDateKey();
+  settings.selectedId = "";
+  if (isRepresentativeProfile()) {
+    settings.site = "fitness";
+    settings.type = "fitness";
+    return settings;
+  }
+  const employee = getProfileMappedEmployeeId()
+    ? getEmployeeOptions().find((item) => item.id === getProfileMappedEmployeeId()) || getProfileEmployee()
+    : getSelectedEmployee();
+  const siteId = getReportArchiveSiteId(employee);
+  settings.site = siteId === "fitness" ? "fitness" : siteId || "all";
+  settings.type = siteId === "fitness" ? "fitness" : "employee";
+  return settings;
 }
 
 function getReportArchiveSiteOptions() {
@@ -12679,6 +12697,7 @@ function buildEmployeeArchiveReport(employee, dateKey) {
     submitted,
     canSubmit: canSubmitWorklogReport(employee.id),
     html,
+    kindLabel: isFitness ? "직원 업무일지" : "개인 업무보고",
     text: [
       `< ${title} >`,
       `기준일: ${formatFormalKoreanDate(dateKey)}`,
@@ -12726,6 +12745,7 @@ function buildSiteArchiveReport(site, dateKey) {
     countLabel: `${taskTotal}/${scheduleTotal}`,
     empty: !employeesForSite.length,
     html: site.id === "fitness" ? renderFitnessReportTemplate(buildFitnessReportModel({ dateKey, isCenter: true })) : "",
+    kindLabel: site.id === "fitness" ? "센터 운영현황" : "사업장 보고",
     text: [
       `< ${title} >`,
       `기준일: ${formatFormalKoreanDate(dateKey)}`,
@@ -12792,7 +12812,7 @@ function renderReportArchive() {
   listNode.innerHTML = items.length
     ? items.map((item) => `
       <button type="button" class="${item.id === settings.selectedId ? "is-active" : ""}" data-report-archive-id="${escapeHtml(item.id)}">
-        <span>${escapeHtml(item.eyebrow)}</span>
+        <span><i>${escapeHtml(item.kindLabel || (item.kind === "site" ? "사업장 보고" : "직원 보고"))}</i>${escapeHtml(item.eyebrow)}</span>
         <strong>${escapeHtml(item.title)}</strong>
         <em>${escapeHtml(item.meta)} · 업무/일정 ${escapeHtml(item.countLabel)}</em>
       </button>
@@ -12814,7 +12834,7 @@ function renderReportArchive() {
   previewNode.innerHTML = `
     <div class="report-archive-preview-actions">
       <div>
-        <span>${escapeHtml(selected.eyebrow)}</span>
+        <span>${escapeHtml(selected.kindLabel || (selected.kind === "site" ? "사업장 보고" : "직원 보고"))} · ${escapeHtml(selected.eyebrow)}</span>
         <strong>${escapeHtml(selected.title)}</strong>
         ${statusLabel ? `<em>${escapeHtml(statusLabel)}</em>` : ""}
       </div>
@@ -14347,15 +14367,7 @@ document.querySelectorAll("[data-section-shortcut]").forEach((button) => {
     if (action === "report" || action === "daily-report" || action === "communication" || action === "backup" || action === "innovation") {
       switchView("report");
       if (action === "daily-report") {
-        const employee = getProfileMappedEmployeeId()
-          ? getEmployeeOptions().find((item) => item.id === getProfileMappedEmployeeId()) || getProfileEmployee()
-          : getSelectedEmployee();
-        const siteId = getReportArchiveSiteId(employee);
-        const settings = getReportArchiveSettings();
-        settings.dateKey = getActiveDateKey();
-        settings.site = siteId === "fitness" ? "fitness" : siteId || "all";
-        settings.type = siteId === "fitness" ? "fitness" : "employee";
-        settings.selectedId = "";
+        setDailyReportArchiveDefaults();
         saveState({ fastSave: true });
         renderReportArchive();
       }

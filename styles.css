@@ -13467,6 +13467,26 @@ body[data-layout-mode="phone"] #view-today .ai-section-button {
   white-space: nowrap;
 }
 
+.report-archive-list span {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.report-archive-list span i {
+  flex: 0 0 auto;
+  display: inline-grid;
+  place-items: center;
+  min-height: 20px;
+  border-radius: 999px;
+  background: rgba(16, 75, 54, 0.08);
+  color: #104b36;
+  padding: 0 7px;
+  font-size: 10px;
+  font-style: normal;
+  font-weight: 950;
+}
+
 .report-archive-list strong {
   display: block;
   overflow: hidden;
