@@ -4732,7 +4732,7 @@ function renderApprovalAccess() {
     if (resetList) resetList.innerHTML = `<p class="empty-note">대표 또는 승인 권한자만 비밀번호 재설정 요청을 확인할 수 있습니다.</p>`;
     return;
   }
-  loadApprovalRequests();
+  loadApprovalRequests({ repair: !authState.approvalRowsLoaded });
   loadPasswordResetRequests();
 }
 
@@ -4763,10 +4763,7 @@ async function refreshApprovalNotification() {
     renderApprovalNotification();
     return;
   }
-  if (!authState.approvalRepairTried) {
-    authState.approvalRepairTried = true;
-    await repairApprovalQueue({ silent: true });
-  }
+  await runApprovalQueueRepair({ manual: false });
   const { data, error } = await supabaseClient
     .from("profiles")
     .select("id, approval_status, pending_profile_changes");
@@ -4821,6 +4818,14 @@ async function repairApprovalQueue({ silent = true } = {}) {
   }
 }
 
+async function runApprovalQueueRepair(options = {}) {
+  if (!supabaseClient || !authState.user || !hasApprovalAuthority()) return false;
+  const shouldRun = Boolean(options.force || options.manual || !authState.approvalRepairTried);
+  if (!shouldRun) return false;
+  authState.approvalRepairTried = true;
+  return repairApprovalQueue({ silent: !options.manual });
+}
+
 async function fetchApprovalProfileRows() {
   return supabaseClient
     .from("profiles")
@@ -4836,15 +4841,18 @@ async function loadApprovalRequests(options = {}) {
     return;
   }
   list.innerHTML = `<p class="empty-note">직원등록 신청을 불러오는 중입니다...</p>`;
+  const repairedBeforeFetch = options.repair === true || options.manual
+    ? await runApprovalQueueRepair({ force: true, manual: options.manual })
+    : false;
   let { data, error } = await fetchApprovalProfileRows();
   if (error) {
     list.innerHTML = `<p class="empty-note">직원등록 신청을 불러오지 못했습니다. 승인 데이터 구조를 적용했는지 확인해주세요.<br>${escapeHtml(error.message)}</p>`;
     return;
   }
   let rows = getVisibleApprovalRows(data || []);
-  if (!rows.length && options.repair !== false && !authState.approvalRepairTried) {
-    authState.approvalRepairTried = true;
-    const repaired = await repairApprovalQueue({ silent: !options.manual });
+  let collections = getApprovalQueueCollections(rows);
+  if ((!rows.length || !collections.actionRows.length) && options.repair !== false && !repairedBeforeFetch && !authState.approvalRepairTried) {
+    const repaired = await runApprovalQueueRepair({ manual: options.manual });
     if (repaired) {
       ({ data, error } = await fetchApprovalProfileRows());
       if (error) {
@@ -4852,6 +4860,7 @@ async function loadApprovalRequests(options = {}) {
         return;
       }
       rows = getVisibleApprovalRows(data || []);
+      collections = getApprovalQueueCollections(rows);
     }
   }
   authState.approvalRows = rows;
@@ -4869,7 +4878,6 @@ async function loadApprovalRequests(options = {}) {
     return;
   }
   if (!rows.some((row) => row.id === authState.selectedApprovalId)) {
-    const collections = getApprovalQueueCollections(rows);
     authState.selectedApprovalId = collections.actionRows[0]?.id || rows[0].id;
   }
   renderApprovalQueue();
@@ -4877,10 +4885,7 @@ async function loadApprovalRequests(options = {}) {
 
 async function refreshStaffApprovalRows() {
   if (!supabaseClient || !authState.user || !hasApprovalAuthority()) return;
-  if (!authState.approvalRepairTried) {
-    authState.approvalRepairTried = true;
-    await repairApprovalQueue({ silent: true });
-  }
+  await runApprovalQueueRepair({ manual: false });
   const { data, error } = await fetchApprovalProfileRows();
   if (error) return;
   authState.approvalRows = getVisibleApprovalRows(data || []);

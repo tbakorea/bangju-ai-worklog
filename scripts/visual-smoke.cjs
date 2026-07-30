@@ -2079,6 +2079,132 @@ async function checkFitnessNewEmployeeRegistrationFlow(browser) {
   }
 }
 
+async function checkApprovalRepairRevealsPendingFitnessSignup(browser) {
+  const page = await browser.newPage({ viewport: { width: 390, height: 844 } });
+  const errors = [];
+  page.on("pageerror", (error) => errors.push(error.message));
+  await page.route("https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2", async (route) => {
+    await route.fulfill({
+      contentType: "application/javascript",
+      body: `
+        (() => {
+          const ownerRow = {
+            id: "owner-user",
+            email: "j3010@ymail.com",
+            name: "정찬훈",
+            nickname: "Benny",
+            org: "(주)방주",
+            workplace: "본사",
+            role: "대표",
+            primary_work: "기획/관리",
+            work_hours: "08:00-18:00",
+            employment_type: "관리자",
+            approval_status: "approved",
+            updated_at: "2026-07-30T00:00:00.000Z"
+          };
+          const hongTrainerRow = {
+            id: "hong-trainer-user",
+            email: "pjhong0@naver.com",
+            name: "홍현규",
+            nickname: "현규",
+            org: "(주)비욘드컴퍼니",
+            workplace: "비욘드 피트니스",
+            role: "직원",
+            primary_work: "",
+            secondary_work: "",
+            work_hours: "06:00-24:00",
+            employment_type: "직원",
+            approval_status: "pending",
+            updated_at: "2026-07-30T00:02:00.000Z"
+          };
+          let repaired = false;
+          window.__approvalRepairCalls = 0;
+          window.supabase = {
+            createClient() {
+              return {
+                rpc(name) {
+                  if (name === "repair_profile_approval_queue") {
+                    repaired = true;
+                    window.__approvalRepairCalls += 1;
+                    return Promise.resolve({ data: 1, error: null });
+                  }
+                  return Promise.resolve({ data: null, error: { message: "unknown rpc " + name } });
+                },
+                auth: {
+                  getSession: () => Promise.resolve({ data: { session: null } }),
+                  onAuthStateChange: () => ({ data: { subscription: { unsubscribe() {} } } }),
+                  signOut: () => Promise.resolve({ error: null }),
+                },
+                from(table) {
+                  const chain = {
+                    select() { return this; },
+                    eq() { return this; },
+                    in() { return this; },
+                    order() {
+                      if (table === "profiles") return Promise.resolve({ data: repaired ? [hongTrainerRow, ownerRow] : [ownerRow], error: null });
+                      return Promise.resolve({ data: [], error: null });
+                    },
+                    update() { return this; },
+                    maybeSingle: () => Promise.resolve({ data: null, error: null }),
+                    insert: () => Promise.resolve({ data: null, error: null }),
+                    upsert: () => Promise.resolve({ data: null, error: null }),
+                  };
+                  return chain;
+                },
+              };
+            },
+          };
+        })();
+      `,
+    });
+  });
+  await page.addInitScript(() => localStorage.clear());
+  await page.goto(target, { waitUntil: "domcontentloaded" });
+  await page.evaluate(async () => {
+    await window.eval(`(async () => {
+      authState.user = { id: "owner-user", email: "j3010@ymail.com" };
+      authState.approvalRows = [];
+      authState.approvalRowsLoaded = false;
+      authState.approvalRepairTried = false;
+      authState.selectedApprovalId = "";
+      state.profile = {
+        ...state.profile,
+        email: "j3010@ymail.com",
+        name: "정찬훈",
+        nickname: "Benny",
+        org: "(주)방주",
+        workplace: "본사",
+        role: "대표",
+        primaryWork: "기획/관리",
+        approvalStatus: "approved",
+        accessPreset: "owner",
+        permissions: {}
+      };
+      switchView("settings");
+      switchSettingsTab("approval");
+      await loadApprovalRequests({ repair: true, manual: true });
+    })()`);
+  });
+  await page.waitForTimeout(200);
+  const metrics = await page.evaluate(() => ({
+    repairCalls: window.__approvalRepairCalls || 0,
+    pendingCount: document.querySelector(".approval-queue-group[data-status='pending'] header span")?.textContent?.trim() || "",
+    hasHong: document.querySelector("#approvalRequestList")?.textContent?.includes("홍현규") || false,
+    hasFitness: document.querySelector("#approvalRequestList")?.textContent?.includes("비욘드 피트니스") || false,
+    selectedTitle: document.querySelector(".approval-request-title")?.textContent?.replace(/\s+/g, " ").trim() || "",
+    actionCount: document.querySelector("[data-status='action'] strong")?.textContent?.trim() || "",
+  }));
+  if (metrics.repairCalls < 1) fail("approval queue should run repair before fetching pending signups", JSON.stringify(metrics));
+  if (!metrics.hasHong || !metrics.hasFitness || metrics.actionCount !== "1") {
+    fail("approval queue should reveal pending fitness signup after repair", JSON.stringify(metrics));
+  }
+  if (!metrics.selectedTitle.includes("홍현규")) {
+    fail("pending fitness signup should be selected for representative review", JSON.stringify(metrics));
+  }
+  if (errors.length) fail("approval repair queue page errors", errors.join(" | "));
+  await page.close();
+}
+
 (async () => {
   const browser = await chromium.launch({
     headless: true,
@@ -2100,6 +2226,7 @@ async function checkFitnessNewEmployeeRegistrationFlow(browser) {
     await checkReportArchiveFitnessSubmission(browser);
     await checkRealDeviceRegressionLayouts(browser);
     await checkFitnessNewEmployeeRegistrationFlow(browser);
+    await checkApprovalRepairRevealsPendingFitnessSignup(browser);
     await checkRepresentativeProfileSeparation(browser);
     await checkNonControlRoleTextDoesNotBecomeRepresentative(browser);
     await checkKimSungminAccountIsEmployeeOnly(browser);
