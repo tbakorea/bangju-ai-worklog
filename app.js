@@ -17,6 +17,8 @@ const worklogViewAliases = {
 };
 const attendanceEnabledViews = new Set(["worklog", "fitness-log", "bangju-log", "beyond-log", "today"]);
 const controlTowerEmails = new Set(["j3010@ymail.com"]);
+const activeFitnessManagerEmail = "pjhong1@naver.com";
+const retiredFitnessManagerEmails = new Set(["pjhong0@naver.com", "pjhong9@naver.com"]);
 let activeView = "fitness-log";
 let attendancePromptLastAt = 0;
 let todayPageMode = "daily";
@@ -289,6 +291,20 @@ const defaultProfile = {
 };
 
 const profilePlacementOverrides = {
+  [activeFitnessManagerEmail]: {
+    org: "(주)방주 / 비욘드 피트니스 지사",
+    workplace: "비욘드 피트니스",
+    role: "센터장",
+    name: "박주홍",
+    nickname: "박주홍",
+    primaryWork: "비욘드 피트니스 운영총괄, PT 수업",
+    secondaryWork: "센터 운영관리",
+    employmentType: "직원",
+    workHours: "06:00-24:00",
+    accessPreset: "site_manager",
+    permissions: {},
+    mappedEmployeeId: "beyond-fitness-manager",
+  },
   "projch@naver.com": {
     org: "(주)방주 / 비욘드 피트니스 지사",
     workplace: "비욘드 피트니스",
@@ -319,13 +335,26 @@ const profilePlacementOverrides = {
   },
 };
 
+function normalizeEmailValue(value = "") {
+  return String(value || "").trim().toLowerCase();
+}
+
+function isActiveFitnessManagerEmail(email = "") {
+  return normalizeEmailValue(email) === activeFitnessManagerEmail;
+}
+
+function isRetiredFitnessManagerEmail(email = "") {
+  return retiredFitnessManagerEmails.has(normalizeEmailValue(email));
+}
+
 function getProfilePlacementOverride(email = "") {
-  const key = String(email || state?.profile?.email || authState.user?.email || "").trim().toLowerCase();
+  const key = normalizeEmailValue(email || state?.profile?.email || authState.user?.email || "");
   return key ? profilePlacementOverrides[key] : null;
 }
 
 function applyProfilePlacementOverride(profile = {}) {
-  const email = String(profile.email || authState.user?.email || "").trim().toLowerCase();
+  const email = normalizeEmailValue(profile.email || authState.user?.email || "");
+  if (isRetiredFitnessManagerEmail(email)) return profile;
   const override = getProfilePlacementOverride(email);
   if (!override) return profile;
   return {
@@ -1273,6 +1302,8 @@ function getFitnessOwnIdentity(employee = employees.find((item) => item.id === s
 function syncFitnessWritableEmployeeFromProfile() {
   const profile = state.profile || {};
   if (isRepresentativeProfile()) return;
+  const email = normalizeEmailValue(profile.email || authState.user?.email || "");
+  if (isRetiredFitnessManagerEmail(email)) return;
   const source = `${profile.org || ""} ${profile.workplace || ""} ${profile.primaryWork || ""} ${profile.role || ""} ${profile.name || ""} ${profile.nickname || ""}`.toLowerCase();
   if (!/피트니스|fitness/.test(source)) return;
   let id = fitnessEmployeeIds.includes(getProfileMappedEmployeeId(profile)) ? getProfileMappedEmployeeId(profile) : "profile-user";
@@ -1281,7 +1312,7 @@ function syncFitnessWritableEmployeeFromProfile() {
   else if (/토요|토요일/.test(role)) id = "fitness-saturday-info";
   else if (/일요|일요일/.test(role)) id = "fitness-sunday-info";
   else if (/인포|데스크|front|프론트|주중/.test(role)) id = "fitness-weekday-info";
-  else if (/박주홍|센터장|총괄|manager/.test(role)) id = "beyond-fitness-manager";
+  else if (isActiveFitnessManagerEmail(email) || (!email && /박주홍|센터장|총괄|manager/.test(role))) id = "beyond-fitness-manager";
   state.fitnessWritableEmployeeId = id;
   state.selectedEmployeeId = id;
   state.fitnessLogPage = 1;
@@ -1440,15 +1471,16 @@ function toggleFitnessCenterReportConfirmation(dateKey = getActiveDateKey()) {
 }
 
 function getProfileMappedEmployeeId(profile = state.profile || {}) {
-  const profileEmail = String(profile.email || "").trim().toLowerCase();
-  const email = profileEmail || String(authState.user?.email || "").trim().toLowerCase();
+  const profileEmail = normalizeEmailValue(profile.email || "");
+  const email = profileEmail || normalizeEmailValue(authState.user?.email || "");
+  if (isRetiredFitnessManagerEmail(email)) return "";
   const source = `${profile.org || ""} ${profile.workplace || ""} ${profile.role || ""} ${profile.name || ""} ${profile.nickname || ""} ${profile.primaryWork || ""}`.toLowerCase();
   const overrideMappedEmployeeId = getProfilePlacementOverride(email)?.mappedEmployeeId;
   if (overrideMappedEmployeeId) return overrideMappedEmployeeId;
   if (controlTowerEmails.has(email) || /대표|owner|ceo/.test(source)) return "";
   if (/이소미/.test(source) || (!/비제이|종합건설|건설|bj|construction/.test(source) && /재무\s*대리|finance\s*assistant/.test(source))) return "bangju-finance-assistant";
   if (/재무\s*과장|finance\s*manager/.test(source)) return "bangju-finance-manager";
-  if (/박주홍/.test(source) || /센터장|피트니스.*총괄|fitness.*manager/.test(source)) return "beyond-fitness-manager";
+  if (isActiveFitnessManagerEmail(email) || (!email && (/박주홍/.test(source) || /센터장|피트니스.*총괄|fitness.*manager/.test(source)))) return "beyond-fitness-manager";
   if (/홍현규|트레이너|trainer|pt|피티/.test(source)) return "fitness-trainer-1";
   if (/토요|토요일/.test(source)) return "fitness-saturday-info";
   if (/일요|일요일/.test(source)) return "fitness-sunday-info";

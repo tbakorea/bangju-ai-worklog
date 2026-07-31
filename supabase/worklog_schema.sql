@@ -238,6 +238,29 @@ set approval_status = 'approved',
 where lower(coalesce(email, '')) in ('j3010@ymail.com', 'tbakorea@gmail.com')
 ;
 
+update public.profiles
+set org = '(주)방주 / 비욘드 피트니스 지사',
+    role = '센터장',
+    name = '박주홍',
+    workplace = '비욘드 피트니스',
+    primary_work = '비욘드 피트니스 운영총괄, PT 수업',
+    secondary_work = '센터 운영관리',
+    employment_type = '직원',
+    work_hours = '06:00-24:00',
+    approval_status = 'approved',
+    approval_note = '',
+    approved_at = coalesce(approved_at, now()),
+    updated_at = now()
+where lower(coalesce(email, '')) = 'pjhong1@naver.com'
+;
+
+update public.profiles
+set approval_status = 'rejected',
+    approval_note = '박주홍 센터장 계정은 pjhong1@naver.com만 사용합니다. 이 계정은 비활성 처리되었습니다.',
+    updated_at = now()
+where lower(coalesce(email, '')) in ('pjhong0@naver.com', 'pjhong9@naver.com')
+;
+
 create table if not exists public.worklog_states (
   id uuid primary key default gen_random_uuid(),
   user_id uuid not null references auth.users(id) on delete cascade,
