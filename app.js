@@ -731,9 +731,8 @@ function loadState() {
 function resetStartupDateToToday() {
   state.selectedDateKey = todayKey;
   calendarViewDate = parseDateKey(todayKey);
-  if (!/^\d{4}-\d{2}$/.test(String(state.fitnessCenterMonth || ""))) {
-    state.fitnessCenterMonth = todayKey.slice(0, 7);
-  }
+  state.fitnessCenterMonth = todayKey.slice(0, 7);
+  state.fitnessCenterMonthSourceDateKey = todayKey;
 }
 
 function createState() {
@@ -763,6 +762,7 @@ function createState() {
     worklogReportSubmissions: {},
     fitnessLogPage: 1,
     fitnessCenterMonth: todayKey.slice(0, 7),
+    fitnessCenterMonthSourceDateKey: todayKey,
     fitnessWritableEmployeeId: "beyond-fitness-manager",
     employeePermissions: {},
     employeeDirectoryOverrides: {},
@@ -860,6 +860,9 @@ function normalizeState() {
   state.fitnessLogPage = Number.isFinite(Number(state.fitnessLogPage)) ? Number(state.fitnessLogPage) : 1;
   if (!/^\d{4}-\d{2}$/.test(String(state.fitnessCenterMonth || ""))) {
     state.fitnessCenterMonth = getActiveDateKey().slice(0, 7);
+  }
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(String(state.fitnessCenterMonthSourceDateKey || ""))) {
+    state.fitnessCenterMonthSourceDateKey = getActiveDateKey();
   }
   const mappedFitnessEmployeeId = getMappedProfileEmployeeId();
   const isMappedFitnessEmployee = mappedFitnessEmployeeId && fitnessEmployeeIds.includes(mappedFitnessEmployeeId);
@@ -7702,6 +7705,7 @@ function applyCurrentWorklogPermissionState(viewName = activeView) {
 function renderFitnessCenterDaily() {
   const panel = document.getElementById("fitnessCenterDailyPanel");
   if (!panel) return;
+  syncFitnessCenterMonthToActiveDate();
   renderDagymOpsFields();
   renderFitnessCenterMonthNav();
   const centerMonth = getFitnessCenterMonth();
@@ -7818,9 +7822,19 @@ function getFitnessCenterMonth() {
   return state.fitnessCenterMonth;
 }
 
+function syncFitnessCenterMonthToActiveDate() {
+  const activeDateKey = getActiveDateKey();
+  const activeMonth = activeDateKey.slice(0, 7);
+  if (state.fitnessCenterMonthSourceDateKey !== activeDateKey) {
+    state.fitnessCenterMonth = activeMonth;
+    state.fitnessCenterMonthSourceDateKey = activeDateKey;
+  }
+}
+
 function setFitnessCenterMonth(month) {
   if (!/^\d{4}-\d{2}$/.test(String(month || ""))) return;
   state.fitnessCenterMonth = month;
+  state.fitnessCenterMonthSourceDateKey = getActiveDateKey();
   saveState();
   renderFitnessCenterDaily();
 }
