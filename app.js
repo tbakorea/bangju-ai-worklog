@@ -764,6 +764,8 @@ function createState() {
     fitnessCenterMonth: todayKey.slice(0, 7),
     fitnessCenterMonthSourceDateKey: todayKey,
     fitnessWritableEmployeeId: "beyond-fitness-manager",
+    staffMasterTab: "staff-list",
+    staffMasterSite: "all",
     employeePermissions: {},
     employeeDirectoryOverrides: {},
     companyCommonWeeks: {},
@@ -858,6 +860,10 @@ function normalizeState() {
   }
   state.selectedDateKey ||= todayKey;
   state.fitnessLogPage = Number.isFinite(Number(state.fitnessLogPage)) ? Number(state.fitnessLogPage) : 1;
+  state.staffMasterTab = ["staff-list", "approval", "permission", "manual", "growth"].includes(state.staffMasterTab)
+    ? state.staffMasterTab
+    : "staff-list";
+  state.staffMasterSite ||= "all";
   if (!/^\d{4}-\d{2}$/.test(String(state.fitnessCenterMonth || ""))) {
     state.fitnessCenterMonth = getActiveDateKey().slice(0, 7);
   }
@@ -12511,6 +12517,264 @@ function getManualTemplateForEmployee(employee) {
   return fitnessManualTemplates.manager;
 }
 
+const staffMasterTabs = [
+  ["staff-list", "직원명부", "소속·직함·권한 원장"],
+  ["approval", "승인요청", "직원등록·정보변경 검토"],
+  ["permission", "권한관리", "메뉴·사업장 접근 통제"],
+  ["manual", "역할 매뉴얼", "직함별 업무 기준"],
+  ["growth", "성장기록", "역량·온보딩 추적"],
+];
+
+function normalizeStaffMasterTab(value) {
+  return staffMasterTabs.some(([key]) => key === value) ? value : "staff-list";
+}
+
+function getStaffMasterTabMeta(value = state.staffMasterTab) {
+  return staffMasterTabs.find(([key]) => key === normalizeStaffMasterTab(value)) || staffMasterTabs[0];
+}
+
+function getStaffMasterSiteKey(row = {}) {
+  const text = `${row.site || ""} ${row.org || ""} ${row.workplace || ""} ${row.primaryWork || ""} ${row.role || ""}`;
+  if (/피트니스|fitness/i.test(text)) return "fitness";
+  if (/비제이|종합건설|건설|현장/i.test(text)) return "bj";
+  if (/비욘드\s*컴퍼니|공유|TBA|티비에이|워크베이스|워크박스|beyond/i.test(text)) return "beyond";
+  if (/방주/.test(text)) return "bangju";
+  return "other";
+}
+
+function getStaffMasterSiteLabel(key) {
+  return {
+    all: "전체",
+    bangju: "(주)방주",
+    beyond: "(주)비욘드컴퍼니",
+    fitness: "비욘드 피트니스",
+    bj: "(주)비제이종합건설",
+    other: "기타",
+  }[key] || "기타";
+}
+
+function getStaffMasterSites(rows = []) {
+  const counts = rows.reduce((acc, row) => {
+    const key = getStaffMasterSiteKey(row);
+    acc[key] = (acc[key] || 0) + 1;
+    return acc;
+  }, { all: rows.length });
+  return ["all", "bangju", "beyond", "fitness", "bj", "other"]
+    .filter((key) => key === "all" || counts[key])
+    .map((key) => ({ key, label: getStaffMasterSiteLabel(key), count: counts[key] || 0 }));
+}
+
+function getFilteredStaffRows(rows = []) {
+  if (!state.staffMasterSite || state.staffMasterSite === "all") return rows;
+  return rows.filter((row) => getStaffMasterSiteKey(row) === state.staffMasterSite);
+}
+
+function renderStaffSiteFilters(rows = []) {
+  const sites = getStaffMasterSites(rows);
+  return `
+    <nav class="staff-site-filter" aria-label="사업장별 직원 보기">
+      ${sites.map((site) => `
+        <button type="button" class="${site.key === state.staffMasterSite ? "is-active" : ""}" data-staff-site-filter="${escapeAttr(site.key)}">
+          <span>${escapeHtml(site.label)}</span>
+          <small>${escapeHtml(`${site.count}명`)}</small>
+        </button>
+      `).join("")}
+    </nav>
+  `;
+}
+
+function renderStaffSectionTabbar() {
+  return `
+    <nav class="section-command-strip staff-section-tabbar" aria-label="직원 섹션 보기">
+      ${staffMasterTabs.map(([key, label, caption], index) => `
+        <button type="button" class="${key === state.staffMasterTab ? "is-active" : ""}" data-staff-tab="${escapeAttr(key)}">
+          <span>${String(index + 1).padStart(2, "0")}</span>
+          <strong>${escapeHtml(label)}</strong>
+          <small>${escapeHtml(caption)}</small>
+        </button>
+      `).join("")}
+    </nav>
+  `;
+}
+
+function renderStaffMasterStats(rows = []) {
+  const stats = [
+    ["직원", `${rows.length}명`],
+    ["권한관리", `${rows.filter((row) => row.access.permissions.staffManage || row.access.permissions.staffApproval).length}명`],
+    ["온보딩 완료", `${rows.filter((row) => row.onboarding.done === row.onboarding.total).length}명`],
+    ["오늘 작성", `${rows.filter((row) => row.tasks.length).length}명`],
+    ["노무 기록", `${rows.filter((row) => row.labor.recordedDays).length}명`],
+    ["유료 PT", `${rows.reduce((sum, row) => sum + Number(row.labor.settlementPtCount || 0), 0)}건`],
+  ];
+  return `
+    <section class="staff-master-summary">
+      ${stats.map(([label, value]) => `<article><span>${escapeHtml(label)}</span><strong>${escapeHtml(value)}</strong></article>`).join("")}
+    </section>
+  `;
+}
+
+function renderStaffMasterTable(rows = []) {
+  return `
+    <section class="staff-master-panel">
+      <header>
+        <div>
+          <span>Master Data</span>
+          <h3>전체 직원 명부</h3>
+        </div>
+        <p class="staff-master-hint">목록에서 직원을 선택하면 세부 정보와 권한, 온보딩 상태를 한 명씩 확인합니다.</p>
+      </header>
+      ${rows.length ? `
+        <div class="staff-master-table-wrap">
+          <table class="staff-master-table">
+            <thead>
+              <tr><th>직원</th><th>소속/사업장</th><th>직무</th><th>권한</th><th>근무시간</th><th>오늘 업무</th><th>온보딩</th><th>상세</th></tr>
+            </thead>
+            <tbody>
+              ${rows.map((row) => `
+                <tr data-staff-detail-id="${escapeAttr(row.id)}" tabindex="0">
+                  <td><b>${escapeHtml(row.name || "")}</b><span>${escapeHtml(row.email || row.employeeCode)}</span></td>
+                  <td><b>${escapeHtml(row.site)}</b><span>${escapeHtml(row.org || "")}</span></td>
+                  <td><b>${escapeHtml(row.role || "직원")}</b><span>${escapeHtml(row.primaryWork || row.employmentType || "직무 확인")}</span></td>
+                  <td><b>${escapeHtml(row.access.role)}</b><span>${escapeHtml(row.access.worklog)} · ${escapeHtml(row.access.labor)}</span></td>
+                  <td>${escapeHtml(row.workHours || defaultProfile.workHours)}</td>
+                  <td>${escapeHtml(`${row.completed}/${row.tasks.length || 0}`)}</td>
+                  <td>${escapeHtml(`${row.onboarding.done}/${row.onboarding.total}`)}</td>
+                  <td><button type="button" class="staff-detail-open" data-staff-detail-id="${escapeAttr(row.id)}">열기</button></td>
+                </tr>
+              `).join("")}
+            </tbody>
+          </table>
+        </div>
+      ` : `<div class="staff-empty-panel">선택한 사업장에 표시할 직원이 없습니다.</div>`}
+    </section>
+  `;
+}
+
+function renderStaffApprovalFocus(rows = []) {
+  const approvals = Array.isArray(authState.approvalRows) ? authState.approvalRows : [];
+  const pending = approvals.filter((row) => (row.approval_status || "pending") === "pending").length;
+  const approved = approvals.filter((row) => (row.approval_status || "") === "approved").length;
+  const rejected = approvals.filter((row) => (row.approval_status || "") === "rejected").length;
+  const changes = rows.filter((row) => row.approvalStatus === "change_requested" || row.pendingProfileChanges || row.hasPendingProfileChange).length;
+  const stats = [
+    ["신규 승인", `${pending}명`, "직원등록 신청"],
+    ["변경 요청", `${changes}건`, "직원정보 변경"],
+    ["사용 가능", `${approved}명`, "승인 완료"],
+    ["반려", `${rejected}건`, "보완 요청"],
+  ];
+  return `
+    <section class="staff-master-panel">
+      <header>
+        <div>
+          <span>Approval Queue</span>
+          <h3>직원 승인요청</h3>
+        </div>
+      </header>
+      <div class="staff-approval-focus-grid">
+        ${stats.map(([label, value, caption]) => `<article><span>${escapeHtml(label)}</span><strong>${escapeHtml(value)}</strong><small>${escapeHtml(caption)}</small></article>`).join("")}
+      </div>
+      <div class="staff-approval-action">
+        <div>
+          <strong>승인은 별도 검토 화면에서 한 명씩 처리합니다.</strong>
+          <p>직원등록, 정보변경, 대표 직권수정 내역을 비교하고 승인/반려 사유를 남깁니다.</p>
+        </div>
+        <button type="button" data-staff-open-approval>승인요청 열기</button>
+      </div>
+    </section>
+  `;
+}
+
+function renderStaffPermissionFocus(rows = []) {
+  return `
+    <section class="staff-master-panel">
+      <header>
+        <div>
+          <span>Permission Matrix</span>
+          <h3>권한 체계</h3>
+        </div>
+        <p class="staff-master-hint">권한은 직원을 클릭해 팝업에서 조정하고, 권한 확정 버튼으로 저장합니다.</p>
+      </header>
+      <div class="staff-permission-matrix">
+        <div class="staff-permission-guide">
+          <strong>최소 권한 원칙</strong>
+          <p>일반 직원은 본인 업무와 본인 노무만, 관리자에게는 필요한 사업장 범위만 부여합니다.</p>
+        </div>
+        <div class="staff-permission-list">
+          ${rows.length ? rows.map((row) => renderStaffPermissionListItem(row)).join("") : `<div class="staff-empty-panel">선택한 사업장에 표시할 직원이 없습니다.</div>`}
+        </div>
+      </div>
+    </section>
+  `;
+}
+
+function renderStaffManualFocus(rows = []) {
+  const groups = rows.reduce((acc, row) => {
+    const manual = getManualTemplateForEmployee(row);
+    const title = manual?.title || "역할 매뉴얼";
+    acc[title] ||= { title, rows: [], manual };
+    acc[title].rows.push(row);
+    return acc;
+  }, {});
+  const items = Object.values(groups);
+  return `
+    <section class="staff-master-panel">
+      <header>
+        <div>
+          <span>Role Manual</span>
+          <h3>역할 매뉴얼</h3>
+        </div>
+        <button type="button" class="staff-panel-action" data-section-shortcut="manual">매뉴얼 편집</button>
+      </header>
+      <div class="staff-manual-focus-grid">
+        ${items.length ? items.map((item) => `
+          <article>
+            <span>${escapeHtml(`${item.rows.length}명 적용`)}</span>
+            <strong>${escapeHtml(item.title)}</strong>
+            <p>${escapeHtml(item.rows.map((row) => row.name || row.email || "직원").slice(0, 4).join(" · "))}${item.rows.length > 4 ? " 외" : ""}</p>
+          </article>
+        `).join("") : `<div class="staff-empty-panel">선택한 사업장에 연결된 매뉴얼이 없습니다.</div>`}
+      </div>
+    </section>
+  `;
+}
+
+function renderStaffGrowthFocus(rows = []) {
+  return `
+    <section class="staff-master-panel">
+      <header>
+        <div>
+          <span>Growth Records</span>
+          <h3>성장기록</h3>
+        </div>
+      </header>
+      <div class="staff-growth-compact">
+        ${rows.length ? rows.map((row) => {
+          const manual = getManualTemplateForEmployee(row);
+          return `
+            <article>
+              <span>${escapeHtml(row.site || row.org || "직원")}</span>
+              <strong>${escapeHtml(`${row.role || "직원"} ${row.name || ""}`.trim())}</strong>
+              <p>${escapeHtml(manual?.title || "역할 매뉴얼")} · 업무 ${escapeHtml(`${row.completed}/${row.tasks.length || 0}`)} · 노무 ${escapeHtml(String(row.labor.recordedDays))}일</p>
+              <div class="staff-growth-checks">
+                ${row.onboarding.checks.map(([label, ok]) => `<em class="${ok ? "is-done" : ""}">${escapeHtml(label)}</em>`).join("")}
+              </div>
+            </article>
+          `;
+        }).join("") : `<div class="staff-empty-panel">선택한 사업장에 표시할 성장기록이 없습니다.</div>`}
+      </div>
+    </section>
+  `;
+}
+
+function renderStaffMasterActivePanel(rows = []) {
+  const tab = normalizeStaffMasterTab(state.staffMasterTab);
+  if (tab === "approval") return renderStaffApprovalFocus(rows);
+  if (tab === "permission") return renderStaffPermissionFocus(rows);
+  if (tab === "manual") return renderStaffManualFocus(rows);
+  if (tab === "growth") return renderStaffGrowthFocus(rows);
+  return renderStaffMasterTable(rows);
+}
+
 function renderStaffMaster() {
   const grid = document.getElementById("staffMasterGrid");
   const approvalButton = document.getElementById("staffOpenApprovalButton");
@@ -12528,106 +12792,24 @@ function renderStaffMaster() {
     return;
   }
   const rows = getEmployeeMasterRows();
-  const stats = [
-    ["전체 직원", `${rows.length}명`],
-    ["사업장", `${getWorklogSiteGroups().length}개`],
-    ["권한관리", `${rows.filter((row) => row.access.permissions.staffManage || row.access.permissions.staffApproval).length}명`],
-    ["온보딩 완료", `${rows.filter((row) => row.onboarding.done === row.onboarding.total).length}명`],
-    ["오늘 작성", `${rows.filter((row) => row.tasks.length).length}명`],
-    ["노무 기록", `${rows.filter((row) => row.labor.recordedDays).length}명`],
-  ];
+  state.staffMasterTab = normalizeStaffMasterTab(state.staffMasterTab);
+  state.staffMasterSite ||= "all";
+  if (!getStaffMasterSites(rows).some((site) => site.key === state.staffMasterSite)) state.staffMasterSite = "all";
+  const filteredRows = getFilteredStaffRows(rows);
+  const [, tabLabel, tabCaption] = getStaffMasterTabMeta();
   grid.innerHTML = `
-    <section class="staff-master-panel">
-      <header>
-        <div>
-          <span>Master Data</span>
-          <h3>전체 직원 명부</h3>
-        </div>
-        <p class="staff-master-hint">직원을 선택하면 세부 정보와 권한, 온보딩 상태를 한 명씩 확인합니다.</p>
-      </header>
-      <div class="staff-master-table-wrap">
-        <table class="staff-master-table">
-          <thead>
-            <tr><th>직원</th><th>소속/사업장</th><th>직무</th><th>권한</th><th>근무시간</th><th>오늘 업무</th><th>온보딩</th><th>상세</th></tr>
-          </thead>
-          <tbody>
-            ${rows.map((row) => `
-              <tr data-staff-detail-id="${escapeAttr(row.id)}" tabindex="0">
-                <td><b>${escapeHtml(row.name || "")}</b><span>${escapeHtml(row.email || row.employeeCode)}</span></td>
-                <td><b>${escapeHtml(row.site)}</b><span>${escapeHtml(row.org || "")}</span></td>
-                <td><b>${escapeHtml(row.role || "직원")}</b><span>${escapeHtml(row.primaryWork || row.employmentType || "직무 확인")}</span></td>
-                <td><b>${escapeHtml(row.access.role)}</b><span>${escapeHtml(row.access.worklog)} · ${escapeHtml(row.access.labor)}</span></td>
-                <td>${escapeHtml(row.workHours || defaultProfile.workHours)}</td>
-                <td>${escapeHtml(`${row.completed}/${row.tasks.length || 0}`)}</td>
-                <td>${escapeHtml(`${row.onboarding.done}/${row.onboarding.total}`)}</td>
-                <td><button type="button" class="staff-detail-open" data-staff-detail-id="${escapeAttr(row.id)}">열기</button></td>
-              </tr>
-            `).join("")}
-          </tbody>
-        </table>
+    ${renderStaffSiteFilters(rows)}
+    ${renderStaffSectionTabbar()}
+    <section class="staff-context-card">
+      <div>
+        <span>${escapeHtml(getStaffMasterSiteLabel(state.staffMasterSite))}</span>
+        <strong>${escapeHtml(tabLabel)}</strong>
+        <p>${escapeHtml(tabCaption)} · ${escapeHtml(`${filteredRows.length}명 표시`)}</p>
       </div>
+      <em>직원 원장</em>
     </section>
-    <section class="staff-master-summary">
-      ${stats.map(([label, value]) => `<article><span>${escapeHtml(label)}</span><strong>${escapeHtml(value)}</strong></article>`).join("")}
-    </section>
-    <section class="staff-master-panel">
-      <header>
-        <div>
-          <span>Permission Matrix</span>
-          <h3>권한 체계</h3>
-        </div>
-      </header>
-      <div class="staff-permission-matrix">
-        <div class="staff-permission-guide">
-          <strong>권한은 직원 원장에서 관리합니다.</strong>
-          <p>목록에서 직원을 선택하면 권한 편집 팝업이 열립니다. 프리셋과 메뉴별 권한을 확인한 뒤 하단의 권한 확정 버튼으로 저장합니다.</p>
-        </div>
-        <div class="staff-permission-list">
-          ${rows.map((row) => renderStaffPermissionListItem(row)).join("")}
-        </div>
-      </div>
-    </section>
-    <section class="staff-master-panel">
-      <header>
-        <div>
-          <span>Onboarding</span>
-          <h3>승인 이후 온보딩</h3>
-        </div>
-      </header>
-      <div class="staff-onboarding-list">
-        ${rows.map((row) => `
-          <article>
-            <header>
-              <strong>${escapeHtml(row.name || "")}</strong>
-              <span>${escapeHtml(`${row.onboarding.done}/${row.onboarding.total}`)}</span>
-            </header>
-            <div>
-              ${row.onboarding.checks.map(([label, ok]) => `<em class="${ok ? "is-done" : ""}">${escapeHtml(label)}</em>`).join("")}
-            </div>
-          </article>
-        `).join("")}
-      </div>
-    </section>
-    <section class="staff-master-panel">
-      <header>
-        <div>
-          <span>Growth Records</span>
-          <h3>직원별 매뉴얼/성장기록</h3>
-        </div>
-      </header>
-      <div class="staff-growth-grid">
-        ${rows.map((row) => {
-          const manual = getManualTemplateForEmployee(row);
-          return `
-            <article>
-              <b>${escapeHtml(row.name || "")}</b>
-              <strong>${escapeHtml(manual?.title || "역할 매뉴얼")}</strong>
-              <span>이번 달 노무 ${escapeHtml(String(row.labor.recordedDays))}일 · 유료PT ${escapeHtml(String(row.labor.settlementPtCount || 0))} · 업무 ${escapeHtml(`${row.completed}/${row.tasks.length || 0}`)}</span>
-            </article>
-          `;
-        }).join("")}
-      </div>
-    </section>
+    ${renderStaffMasterStats(filteredRows)}
+    ${renderStaffMasterActivePanel(filteredRows)}
   `;
 }
 
@@ -15358,6 +15540,20 @@ document.addEventListener("click", (event) => {
 document.querySelectorAll("[data-section-shortcut]").forEach((button) => {
   button.addEventListener("click", () => {
     const action = button.dataset.sectionShortcut;
+    if (action === "manual") {
+      switchView("settings");
+      switchSettingsTab("manual");
+      return;
+    }
+    const staffTabActions = new Set(staffMasterTabs.map(([key]) => key));
+    if (button.closest("#view-staff") && staffTabActions.has(action)) {
+      state.staffMasterTab = normalizeStaffMasterTab(action);
+      saveState({ fastSave: true });
+      switchView("staff");
+      renderStaffMaster();
+      document.getElementById("staffMasterGrid")?.scrollIntoView({ behavior: "smooth", block: "start" });
+      return;
+    }
     if (action === "approval") {
       openApprovalManagement();
       return;
@@ -15366,11 +15562,6 @@ document.querySelectorAll("[data-section-shortcut]").forEach((button) => {
       switchView("staff");
       const panel = document.querySelector(action === "permission" ? ".staff-permission-matrix" : ".staff-master-table-wrap");
       panel?.scrollIntoView({ behavior: "smooth", block: "start" });
-      return;
-    }
-    if (action === "manual") {
-      switchView("settings");
-      switchSettingsTab("manual");
       return;
     }
     if (action === "report" || action === "daily-report" || action === "communication" || action === "backup" || action === "innovation") {
@@ -15411,6 +15602,25 @@ document.getElementById("staffMasterGrid")?.addEventListener("change", (event) =
   }
 });
 document.getElementById("staffMasterGrid")?.addEventListener("click", (event) => {
+  const siteButton = event.target.closest("[data-staff-site-filter]");
+  if (siteButton) {
+    state.staffMasterSite = siteButton.dataset.staffSiteFilter || "all";
+    saveState({ fastSave: true });
+    renderStaffMaster();
+    return;
+  }
+  const tabButton = event.target.closest("[data-staff-tab]");
+  if (tabButton) {
+    state.staffMasterTab = normalizeStaffMasterTab(tabButton.dataset.staffTab);
+    saveState({ fastSave: true });
+    renderStaffMaster();
+    return;
+  }
+  const approvalFocusButton = event.target.closest("[data-staff-open-approval]");
+  if (approvalFocusButton) {
+    openApprovalManagement();
+    return;
+  }
   const permissionButton = event.target.closest("[data-staff-permission-open]");
   if (permissionButton) {
     openStaffPermissionModal(permissionButton.dataset.staffPermissionOpen);
