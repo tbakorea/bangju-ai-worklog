@@ -962,11 +962,54 @@ function saveState(options = {}) {
 }
 
 function getSelectedEmployee() {
-  return getEmployeeOptions().find((employee) => employee.id === state.selectedEmployeeId) || getProfileEmployee();
+  return getProfileEmployeeForMappedSlot(state.selectedEmployeeId)
+    || findEmployeeRecordById(state.selectedEmployeeId)
+    || getProfileEmployee();
 }
 
 function getEmployeeOptions() {
-  return [getProfileEmployee(), ...employees];
+  const profileEmployee = getProfileEmployee();
+  const approvedProfileEmployees = getApprovedProfileEmployeesForWorklogs();
+  const occupiedStaticIds = new Set(
+    approvedProfileEmployees
+      .map((employee) => employee.mappedEmployeeId)
+      .filter(Boolean),
+  );
+  const ordered = [
+    profileEmployee,
+    ...approvedProfileEmployees,
+    ...employees.filter((employee) => !occupiedStaticIds.has(employee.id)),
+  ];
+  const seen = new Set();
+  const merged = [];
+  ordered.forEach((employee) => {
+    if (!employee) return;
+    const keys = getEmployeeIdentityKeys(employee);
+    if (keys.some((key) => seen.has(key))) return;
+    merged.push(employee);
+    keys.forEach((key) => seen.add(key));
+  });
+  return merged;
+}
+
+function getApprovedProfileEmployeesForWorklogs() {
+  return (authState.approvalRows || [])
+    .filter((row) => normalizeApprovalStatus(row.approval_status || row.approvalStatus || "pending") === "approved")
+    .map((row) => approvalRowToStaffEmployee(row))
+    .filter(isAssignedWorklogEmployee);
+}
+
+function getEmployeeIdentityKeys(employee = {}) {
+  const email = normalizeEmailValue(employee.email || "");
+  const id = String(employee.id || "").trim();
+  const mappedId = String(employee.mappedEmployeeId || "").trim();
+  const person = `person:${employee.org || ""}|${employee.workplace || ""}|${employee.role || ""}|${employee.name || ""}`.toLowerCase();
+  return [
+    email ? `email:${email}` : "",
+    id ? `id:${id}` : "",
+    mappedId ? `id:${mappedId}` : "",
+    person,
+  ].filter(Boolean);
 }
 
 function getProfileEmployee() {
@@ -988,10 +1031,24 @@ function getProfileEmployee() {
     hourlyWage: profile.hourlyWage || "",
     dailyWage: profile.dailyWage || "",
     workHours: profile.workHours || defaultProfile.workHours,
+    mappedEmployeeId: getProfileMappedEmployeeId(profile),
     assignedMission: profile.assignedMission || "",
     assignedMissionVisible: profile.assignedMissionVisible !== false,
     assignedMissionUpdatedAt: profile.assignedMissionUpdatedAt || "",
     assignedMissionUpdatedBy: profile.assignedMissionUpdatedBy || "",
+  };
+}
+
+function getProfileEmployeeForMappedSlot(employeeId = "") {
+  const id = String(employeeId || "").trim();
+  if (!id) return null;
+  const profileEmployee = getProfileEmployee();
+  if (profileEmployee.mappedEmployeeId !== id) return null;
+  return {
+    ...profileEmployee,
+    id,
+    profileEmployeeId: "profile-user",
+    mappedEmployeeId: id,
   };
 }
 
@@ -1009,7 +1066,7 @@ function getEmployeeWorkHours(employeeId = state?.selectedEmployeeId, profile = 
   if (employeeId === "profile-user" || isEmployeeLinkedToProfile(employeeId)) {
     return profileHours || profile?.workHours || state?.profile?.workHours || defaultProfile.workHours;
   }
-  const employee = employees.find((item) => item.id === employeeId);
+  const employee = findEmployeeRecordById(employeeId);
   return employee?.workHours || defaultProfile.workHours;
 }
 
@@ -2495,7 +2552,7 @@ function getFitnessOverviewEmployeeIds() {
 function getOverviewGroupEmployeeEntries(group) {
   const source = group.id === "fitness"
     ? getFitnessEmployees()
-    : group.employeeIds.map((employeeId) => findEmployeeRecordById(employeeId)).filter(Boolean);
+    : getStaffDirectoryEmployees().filter((employee) => getStaffSiteGroupForEmployee(employee)?.id === group.id);
   const seen = new Set();
   return source
     .filter(isAssignedWorklogEmployee)
@@ -2914,6 +2971,15 @@ function renderWorklogOverview() {
       </article>
     `;
     return;
+  }
+  if (authState.user && hasApprovalAuthority() && !authState.approvalRowsLoaded && !authState.approvalRowsLoading) {
+    authState.approvalRowsLoading = true;
+    refreshStaffApprovalRows()
+      .catch(() => {})
+      .finally(() => {
+        authState.approvalRowsLoading = false;
+        if (activeView === "worklog-overview") renderWorklogOverview();
+      });
   }
   const dateKey = getActiveDateKey();
   const dateLabel = formatShortDate(dateKey);
@@ -5338,6 +5404,7 @@ async function loadApprovalRequests(options = {}) {
   authState.approvalRows = rows;
   authState.approvalRowsLoaded = true;
   authState.pendingApprovalCount = countApprovalActionItems(rows);
+  normalizeState();
   renderApprovalNotification();
   if (activeView === "staff") renderStaffMaster();
   if (!rows.length) {
@@ -5363,6 +5430,7 @@ async function refreshStaffApprovalRows() {
   authState.approvalRows = getVisibleApprovalRows(data || []);
   authState.approvalRowsLoaded = true;
   authState.pendingApprovalCount = countApprovalActionItems(authState.approvalRows);
+  normalizeState();
   renderApprovalNotification();
   if (activeView === "staff") renderStaffMaster();
 }
@@ -12932,11 +13000,14 @@ function getWorklogReportSubmission(employeeId = "", dateKey = getActiveDateKey(
 
 function hasSubmittableWorklogContent(log = {}) {
   const ops = { ...createFitnessOps(), ...(log.fitnessOps || {}) };
+  const taskHasContent = Array.isArray(log.tasks)
+    ? log.tasks.some((task) => isActiveTask(task) || String(task?.text || "").trim())
+    : getWorklogTaskRefs(log).some(({ task }) => isActiveTask(task));
   return Boolean(
     log.clockIn
     || log.clockOut
     || String(log.report || log.record || log.memo || "").trim()
-    || getWorklogTaskRefs(log).some(({ task }) => isActiveTask(task))
+    || taskHasContent
     || (log.schedule || []).some((entry) => String(getScheduleEntryText(entry) || "").trim())
     || Object.values(ops).some((value) => String(value || "").trim())
   );
@@ -12947,7 +13018,10 @@ function canSubmitWorklogReport(employeeId = "") {
 }
 
 function submitWorklogReport(employeeId = "", dateKey = getActiveDateKey()) {
-  const employee = getEmployeeOptions().find((item) => item.id === employeeId) || getProfileEmployee();
+  const employee = getProfileEmployeeForMappedSlot(employeeId)
+    || findEmployeeRecordById(employeeId)
+    || getEmployeeOptions().find((item) => item.id === employeeId)
+    || getProfileEmployee();
   const log = getReportArchiveEmployeeLog(employee, dateKey);
   if (!canSubmitWorklogReport(employeeId)) {
     showAppToast("본인 업무일지만 제출할 수 있습니다");

@@ -1469,8 +1469,10 @@ async function checkSectionAiWorklogActions(browser) {
         org: "(주)방주",
         approvalStatus: "approved"
       };
+      state.selectedDateKey = todayKey;
       state.selectedEmployeeId = "bangju-finance-manager";
       authState.user = { id: "qa-user", email: "finance@example.com" };
+      normalizeState();
     `);
     document.body.classList.add("physical-phone-device");
     document.body.dataset.layoutMode = "phone";
