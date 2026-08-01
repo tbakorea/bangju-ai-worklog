@@ -1686,6 +1686,8 @@ body[data-device-mode="narrow"] .os-mode-switch span[data-device-mode="narrow"] 
 
 .ai-section-button,
 .schedule-unit-button,
+.schedule-hours-button,
+.schedule-add-time-button,
 .mobile-focus-open,
 .mobile-focus-done {
   min-height: 30px;
@@ -1700,6 +1702,12 @@ body[data-device-mode="narrow"] .os-mode-switch span[data-device-mode="narrow"] 
 
 .ai-section-button {
   margin-left: auto;
+}
+
+.schedule-hours-button,
+.schedule-add-time-button {
+  padding-inline: 8px;
+  white-space: nowrap;
 }
 
 .mobile-focus-done {
@@ -6717,6 +6725,8 @@ textarea:focus-visible {
 .worklog-control-strip > button,
 .ai-section-button,
 .schedule-unit-button,
+.schedule-hours-button,
+.schedule-add-time-button,
 .mobile-focus-done,
 .today-jump,
 .worklog-pulse,
@@ -6739,6 +6749,8 @@ textarea:focus-visible {
 .worklog-control-strip > button:hover,
 .ai-section-button:hover,
 .schedule-unit-button:hover,
+.schedule-hours-button:hover,
+.schedule-add-time-button:hover,
 .mobile-focus-done:hover,
 .today-jump:hover,
 .worklog-pulse:hover,
@@ -20697,6 +20709,25 @@ body[data-layout-mode="phone"] #view-fitness-log.is-focus-schedule .fitness-appo
 body.physical-phone-device #view-fitness-log.is-focus-schedule .fitness-appointment-row,
 body[data-view-mode="ceo"] #view-fitness-log.is-focus-schedule .fitness-appointment-row {
   grid-template-columns: minmax(64px, 6.4ch) minmax(0, 1fr) 30px !important;
+}
+
+/* Off-day/overtime controls stay out of the cramped 50:50 mobile split.
+   They appear when the schedule panel is expanded, and remain visible on wider layouts. */
+body[data-layout-mode="phone"] #view-today .worklog-main:not(.is-focus-schedule) .schedule-hours-button,
+body[data-layout-mode="phone"] #view-today .worklog-main:not(.is-focus-schedule) .schedule-add-time-button,
+body.physical-phone-device #view-today .worklog-main:not(.is-focus-schedule) .schedule-hours-button,
+body.physical-phone-device #view-today .worklog-main:not(.is-focus-schedule) .schedule-add-time-button {
+  display: none !important;
+}
+
+body[data-layout-mode="phone"] #view-today .worklog-main.is-focus-schedule .schedule-hours-button,
+body[data-layout-mode="phone"] #view-today .worklog-main.is-focus-schedule .schedule-add-time-button,
+body.physical-phone-device #view-today .worklog-main.is-focus-schedule .schedule-hours-button,
+body.physical-phone-device #view-today .worklog-main.is-focus-schedule .schedule-add-time-button {
+  display: inline-flex !important;
+  min-height: 28px !important;
+  padding-inline: 7px !important;
+  font-size: 11px !important;
 }
 
 /* Keep this at the absolute end so page-specific display rules never stack

@@ -410,6 +410,7 @@ const profileApprovalFieldMeta = [
   ["hourlyWage", "시급", "hourly_wage", "number"],
 ];
 const profileApprovalFieldKeys = new Set(profileApprovalFieldMeta.map(([key]) => key));
+const profileImmediateWorkTimeKeys = new Set(["workHours", "weeklyWorkHours"]);
 const profileApprovalFieldByKey = Object.fromEntries(profileApprovalFieldMeta.map((meta) => [meta[0], meta]));
 const fitnessManualTemplates = {
   manager: {
@@ -801,6 +802,8 @@ function createEmployeeLog(employee = employees[0], profile = defaultProfile, da
     clockIn: "",
     clockOut: "",
     attendanceBreaks: [],
+    workHoursOverride: "",
+    manualScheduleSlots: [],
     tasks: Array.from({ length: 14 }, () => ({ priority: "?", text: "", status: "예정", done: false })),
     schedule: getScheduleTimes(workHours).map((time) => ({ time, text: "", status: "예정" })),
     scheduleUnit: "60",
@@ -928,6 +931,10 @@ function normalizeState() {
 function normalizeEmployeeLogRows(log, dateKey = getActiveDateKey()) {
   log.tasks ||= [];
   log.schedule ||= [];
+  log.workHoursOverride = normalizeWorkHoursText(log.workHoursOverride || "");
+  log.manualScheduleSlots = Array.isArray(log.manualScheduleSlots)
+    ? Array.from(new Set(log.manualScheduleSlots.map(normalizeScheduleTimeInput).filter(Boolean))).sort((a, b) => timeToMinutes(a) - timeToMinutes(b))
+    : [];
   log.tasks.forEach((task, index) => {
     task.id ||= `task-${Date.now()}-${index}-${Math.random().toString(36).slice(2, 7)}`;
     const isBlankDefaultTask = !String(task.text || "").trim()
@@ -1074,12 +1081,20 @@ function isEmployeeLinkedToProfile(employeeId) {
 }
 
 function getEmployeeWorkHours(employeeId = state?.selectedEmployeeId, profile = state?.profile, dateKey = getActiveDateKey()) {
+  const override = getEmployeeWorkHoursOverride(employeeId, dateKey);
+  if (override) return override;
   const profileHours = getProfileWorkHoursForDate(profile, dateKey);
   if (employeeId === "profile-user" || isEmployeeLinkedToProfile(employeeId)) {
     return profileHours || profile?.workHours || state?.profile?.workHours || defaultProfile.workHours;
   }
   const employee = findEmployeeRecordById(employeeId);
   return employee?.workHours || defaultProfile.workHours;
+}
+
+function getEmployeeWorkHoursOverride(employeeId = state?.selectedEmployeeId, dateKey = getActiveDateKey()) {
+  const id = String(employeeId || "").trim();
+  const override = String(state?.employeeLogs?.[dateKey]?.[id]?.workHoursOverride || "").trim();
+  return normalizeWorkHoursText(override);
 }
 
 function getProfileWorkHoursForDate(profile = state?.profile, dateKey = getActiveDateKey()) {
@@ -2035,8 +2050,8 @@ function promptAttendanceBeforeWorklogInput(log = getSelectedLog(), value = "") 
 }
 
 function getScheduleTimes(workHoursValue) {
-  const workHours = workHoursValue || state?.profile?.workHours || defaultProfile.workHours;
-  if (/휴무|off|closed|none|없음/i.test(String(workHours))) return [];
+  const workHours = normalizeWorkHoursText(workHoursValue || state?.profile?.workHours || defaultProfile.workHours);
+  if (isOffWorkHours(workHours)) return [];
   const match = workHours.match(/(\d{1,2}):(\d{2})\s*[-~]\s*(\d{1,2}):(\d{2})/);
   if (!match) return defaultScheduleTimes;
   const start = Number(match[1]) * 60 + Number(match[2]);
@@ -2049,6 +2064,36 @@ function getScheduleTimes(workHoursValue) {
     times.push(`${String(hour).padStart(2, "0")}:${String(min).padStart(2, "0")}`);
   }
   return times;
+}
+
+function isOffWorkHours(value = "") {
+  return /휴무|off|closed|none|없음/i.test(String(value || ""));
+}
+
+function normalizeWorkHoursText(value = "") {
+  const source = String(value || "").trim();
+  if (!source) return "";
+  if (isOffWorkHours(source)) return "휴무";
+  const match = source.match(/(\d{1,2})\s*[:시]\s*([0-5]\d)?\s*[-~–—]\s*(\d{1,2})\s*[:시]\s*([0-5]\d)?/);
+  if (!match) return source;
+  const startHour = Number(match[1]);
+  const startMinute = Number(match[2] || "00");
+  const endHour = Number(match[3]);
+  const endMinute = Number(match[4] || "00");
+  if (startHour < 0 || startHour > 24 || endHour < 0 || endHour > 24) return source;
+  return `${String(startHour).padStart(2, "0")}:${String(startMinute).padStart(2, "0")}-${String(endHour).padStart(2, "0")}:${String(endMinute).padStart(2, "0")}`;
+}
+
+function normalizeScheduleTimeInput(value = "") {
+  const source = String(value || "").trim();
+  const match = source.match(/^(\d{1,2})(?::|시\s*)?([0-5]\d)?$/);
+  if (!match) return "";
+  const hour = Number(match[1]);
+  const minute = Number(match[2] || "00");
+  if (!Number.isFinite(hour) || !Number.isFinite(minute)) return "";
+  if (hour < 0 || hour > 24 || minute < 0 || minute > 59) return "";
+  if (hour === 24 && minute !== 0) return "";
+  return `${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")}`;
 }
 
 function getActiveDateKey() {
@@ -5431,6 +5476,7 @@ function normalizeProfileApprovalValue(key, value) {
 
 function collectProfileChangeRequest(draft = {}) {
   return profileApprovalFieldMeta.reduce((changes, [key]) => {
+    if (profileImmediateWorkTimeKeys.has(key)) return changes;
     const before = normalizeProfileApprovalValue(key, state.profile?.[key]);
     const after = normalizeProfileApprovalValue(key, draft[key]);
     if (before !== after) changes[key] = draft[key];
@@ -5439,7 +5485,7 @@ function collectProfileChangeRequest(draft = {}) {
 }
 
 function applyImmediateSettingsProfileFields(draft = {}) {
-  ["nickname", "extra", "strengths", "weaknesses", "developmentGoals"].forEach((key) => {
+  ["nickname", "extra", "strengths", "weaknesses", "developmentGoals", "workHours", "weeklyWorkHours"].forEach((key) => {
     if (Object.prototype.hasOwnProperty.call(draft, key)) state.profile[key] = draft[key] || "";
   });
 }
@@ -7530,6 +7576,7 @@ function renderFitnessWorklog(log = getSelectedLog()) {
   }
   const unitButton = document.getElementById("fitnessScheduleUnitButton");
   if (unitButton) unitButton.textContent = log.scheduleUnit === "60" ? "1시간" : "30분";
+  updateWorklogScheduleControlLabels(log, "fitness");
   renderFitnessLogPager();
   renderFitnessCenterDaily();
   renderFitnessCoaching();
@@ -7640,6 +7687,8 @@ function applyCurrentWorklogPermissionState(viewName = activeView) {
       #worklogAppointmentList .schedule-item-delete,
       #worklogAppointmentList .appointment-merge-button,
       #scheduleUnitButton,
+      #worklogHoursButton,
+      #worklogAddTimeButton,
       #employeeReport,
       #employeeMemo
     `).forEach((control) => {
@@ -8065,8 +8114,72 @@ function renderWorklogSummary(log) {
   }
   const unitButton = document.getElementById("scheduleUnitButton");
   if (unitButton) unitButton.textContent = log.scheduleUnit === "60" ? "1시간" : "30분";
+  updateWorklogScheduleControlLabels(log, "worklog");
   renderWorklogEditLockBanner("worklog");
   applyTodayPageMode();
+}
+
+function updateWorklogScheduleControlLabels(log = getSelectedLog(), scope = "worklog") {
+  const hoursButton = document.getElementById(scope === "fitness" ? "fitnessHoursButton" : "worklogHoursButton");
+  const addButton = document.getElementById(scope === "fitness" ? "fitnessAddTimeButton" : "worklogAddTimeButton");
+  if (hoursButton) {
+    const effectiveHours = getEmployeeWorkHours(log?.employeeId, state?.profile, getActiveDateKey());
+    hoursButton.textContent = isOffWorkHours(effectiveHours) ? "휴무근무" : "시간";
+    hoursButton.title = log?.workHoursOverride
+      ? `이 날짜 근무시간: ${log.workHoursOverride}`
+      : `기본 근무시간: ${effectiveHours || defaultProfile.workHours}`;
+  }
+  if (addButton) {
+    addButton.textContent = "+시간";
+    addButton.title = "시간별일정에 시간대를 직접 추가";
+  }
+}
+
+function promptWorklogDayWorkHours(scope = "worklog") {
+  const view = scope === "fitness" ? "fitness-log" : activeView;
+  if (!guardWorklogEdit(view)) return;
+  const log = scope === "fitness" ? getSelectedLog() : getSelectedLog();
+  const current = log.workHoursOverride || getEmployeeWorkHours(log.employeeId, state.profile, getActiveDateKey()) || defaultProfile.workHours;
+  const input = prompt("이 날짜의 실제 근무시간을 입력하세요.\n예: 08:00-20:00 / 06:00-24:00 / 휴무", current);
+  if (input === null) return;
+  const normalized = normalizeWorkHoursText(input);
+  if (!normalized) {
+    log.workHoursOverride = "";
+  } else if (!isOffWorkHours(normalized) && !/^([01]\d|2[0-4]):[0-5]\d[-~]([01]\d|2[0-4]):[0-5]\d$/.test(normalized)) {
+    showAppToast("근무시간은 08:00-18:00 형식으로 입력해주세요");
+    return;
+  } else {
+    const [start, end] = normalized.split(/[-~]/);
+    if (!isOffWorkHours(normalized) && timeToMinutes(end) <= timeToMinutes(start)) {
+      showAppToast("종료시간은 시작시간보다 늦어야 합니다");
+      return;
+    }
+    log.workHoursOverride = normalized;
+  }
+  normalizeEmployeeLogRows(log);
+  saveState();
+  renderEntries();
+  showAppToast(log.workHoursOverride ? `이 날짜 근무시간 ${log.workHoursOverride} 적용` : "이 날짜 근무시간 변경을 해제했습니다");
+}
+
+function promptAddWorklogScheduleSlot(scope = "worklog") {
+  const view = scope === "fitness" ? "fitness-log" : activeView;
+  if (!guardWorklogEdit(view)) return;
+  const log = getSelectedLog();
+  const input = prompt("추가할 시간을 입력하세요.\n예: 20:30 / 23:00 / 24:00", "");
+  if (input === null) return;
+  const slot = normalizeScheduleTimeInput(input);
+  if (!slot) {
+    showAppToast("시간은 20:30 형식으로 입력해주세요");
+    return;
+  }
+  log.manualScheduleSlots = Array.isArray(log.manualScheduleSlots) ? log.manualScheduleSlots : [];
+  if (!log.manualScheduleSlots.includes(slot)) log.manualScheduleSlots.push(slot);
+  ensureWorklogAppointmentSlot(log, slot);
+  normalizeEmployeeLogRows(log);
+  saveState();
+  renderEntries();
+  showAppToast(`${slot} 시간대를 추가했습니다`);
 }
 
 function renderWorklogEditLockBanner(scope = "worklog") {
@@ -9420,6 +9533,9 @@ function findScheduleEntry(log, slot) {
 
 function normalizeWorklogSchedule(log) {
   const byTime = new Map((log.schedule || []).map((entry) => [entry.time, entry]));
+  log.manualScheduleSlots = Array.isArray(log.manualScheduleSlots)
+    ? Array.from(new Set(log.manualScheduleSlots.map(normalizeScheduleTimeInput).filter(Boolean))).sort((a, b) => timeToMinutes(a) - timeToMinutes(b))
+    : [];
   log.schedule = getWorklogScheduleSlots(log).map((time) => {
     const entry = byTime.get(time) || { time, text: "", status: "예정", mergeDown: false, items: [createScheduleItem()] };
     entry.time = time;
@@ -9433,13 +9549,16 @@ function normalizeWorklogSchedule(log) {
 function getWorklogScheduleSlots(log, dateKey = getActiveDateKey()) {
   const unit = log?.scheduleUnit === "60" ? 60 : 30;
   const baseTimes = getScheduleTimes(getEmployeeWorkHours(log?.employeeId, state?.profile, dateKey));
+  const manualTimes = (Array.isArray(log?.manualScheduleSlots) ? log.manualScheduleSlots : [])
+    .map(normalizeScheduleTimeInput)
+    .filter(Boolean);
   const scheduleTimes = (log?.schedule || [])
     .filter((entry) => getScheduleEntryText(entry))
     .map((entry) => entry.time)
     .filter(Boolean);
   const taskTimes = (log?.tasks || []).map((task) => extractWorklogTaskTimeHint(task.text)?.slot).filter(Boolean);
-  const allTimes = [...baseTimes, ...scheduleTimes, ...taskTimes];
-  if (!allTimes.length) return [];
+  const allTimes = [...baseTimes, ...manualTimes, ...scheduleTimes, ...taskTimes];
+  if (!allTimes.length) allTimes.push(...getScheduleTimes(defaultProfile.workHours));
   let start = Infinity;
   let end = -Infinity;
   allTimes.forEach((time) => {
@@ -15533,6 +15652,8 @@ document.getElementById("scheduleUnitButton").onclick = () => {
   saveState();
   renderEntries();
 };
+document.getElementById("worklogHoursButton")?.addEventListener("click", () => promptWorklogDayWorkHours("worklog"));
+document.getElementById("worklogAddTimeButton")?.addEventListener("click", () => promptAddWorklogScheduleSlot("worklog"));
 document.getElementById("fitnessScheduleUnitButton")?.addEventListener("click", () => {
   if (!guardWorklogEdit("fitness-log")) return;
   const log = getSelectedLog();
@@ -15541,6 +15662,8 @@ document.getElementById("fitnessScheduleUnitButton")?.addEventListener("click", 
   saveState();
   renderEntries();
 });
+document.getElementById("fitnessHoursButton")?.addEventListener("click", () => promptWorklogDayWorkHours("fitness"));
+document.getElementById("fitnessAddTimeButton")?.addEventListener("click", () => promptAddWorklogScheduleSlot("fitness"));
 document.getElementById("fitnessPrevDateButton")?.addEventListener("click", () => moveSelectedDate(-1));
 document.getElementById("fitnessNextDateButton")?.addEventListener("click", () => moveSelectedDate(1));
 document.getElementById("fitnessTodayButton")?.addEventListener("click", () => setSelectedDateKey(todayKey));
