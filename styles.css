@@ -15218,6 +15218,11 @@ body[data-view-mode="ceo"] .control-kpi-grid {
   overflow-x: auto;
   padding: 0 2px 12px;
   scroll-padding-inline: 12px;
+  scroll-snap-type: x mandatory;
+}
+
+.worklog-overview-grid.is-single-site {
+  overflow-x: hidden;
 }
 
 .worklog-overview-site {
@@ -15230,6 +15235,12 @@ body[data-view-mode="ceo"] .control-kpi-grid {
   border-radius: var(--brand-radius);
   background: var(--brand-panel);
   padding: 8px;
+  scroll-snap-align: start;
+}
+
+.worklog-overview-grid.is-single-site .worklog-overview-site {
+  width: 100%;
+  min-width: 0;
 }
 
 .worklog-overview-site[data-overview-site="bangju"] {
@@ -15274,11 +15285,32 @@ body[data-view-mode="ceo"] .control-kpi-grid {
   font-weight: 840;
 }
 
-.worklog-overview-site > div {
-  display: grid;
-  grid-auto-flow: column;
-  grid-auto-columns: 282px;
+.overview-site-carousel {
+  display: flex;
   gap: 8px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding: 1px 1px 8px;
+  scroll-padding-inline: 2px;
+  scroll-snap-type: x mandatory;
+  scrollbar-width: thin;
+}
+
+.overview-site-carousel::-webkit-scrollbar {
+  height: 7px;
+}
+
+.overview-site-carousel::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  background: rgba(15, 59, 46, 0.22);
+}
+
+.overview-site-carousel > .worklog-overview-employee-sheet {
+  flex: 0 0 282px;
+}
+
+.worklog-overview-grid.is-single-site .overview-site-carousel > .worklog-overview-employee-sheet {
+  flex-basis: min(380px, 100%);
 }
 
 .overview-sheet-body,
@@ -15577,6 +15609,123 @@ body[data-view-mode="ceo"] .control-kpi-grid {
   font-size: 15px;
   font-weight: 950;
   line-height: 1;
+}
+
+.overview-fitness-center-sheet {
+  grid-template-rows: auto auto minmax(0, 1fr);
+  background:
+    linear-gradient(180deg, rgba(231, 245, 237, 0.98), rgba(255, 254, 250, 0.82)),
+    var(--nordic-sheet);
+}
+
+.overview-center-kpis {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 5px;
+  border: 1px solid rgba(15, 83, 64, 0.13);
+  border-radius: 13px;
+  background: rgba(15, 83, 64, 0.07);
+  padding: 7px;
+}
+
+.overview-center-kpis span {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+  border-radius: 10px;
+  background: rgba(255, 254, 250, 0.72);
+  padding: 6px 5px;
+}
+
+.overview-center-kpis b {
+  overflow: hidden;
+  color: rgba(38, 50, 56, 0.62);
+  font-size: 9px;
+  font-weight: 900;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.overview-center-kpis strong {
+  color: var(--fitness-green);
+  font-size: 18px;
+  font-weight: 950;
+  line-height: 1;
+}
+
+.overview-fitness-roster {
+  display: grid;
+  gap: 7px;
+  min-height: 0;
+  border: 1px solid rgba(15, 83, 64, 0.12);
+  border-radius: 13px;
+  background: rgba(255, 254, 250, 0.68);
+  padding: 8px;
+}
+
+.overview-fitness-roster header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.overview-fitness-roster header span {
+  color: rgba(15, 83, 64, 0.7);
+  font-size: 10px;
+  font-weight: 950;
+  letter-spacing: 0.04em;
+}
+
+.overview-fitness-roster header strong {
+  border-radius: 999px;
+  background: rgba(15, 83, 64, 0.08);
+  color: var(--fitness-green);
+  padding: 2px 7px;
+  font-size: 10px;
+  font-weight: 950;
+}
+
+.overview-fitness-roster > div {
+  display: grid;
+  gap: 5px;
+  max-height: 390px;
+  overflow: auto;
+}
+
+.overview-fitness-roster article {
+  display: grid;
+  gap: 3px;
+  border-radius: 10px;
+  background: rgba(244, 247, 240, 0.72);
+  padding: 7px;
+}
+
+.overview-fitness-roster article div {
+  display: grid;
+  gap: 1px;
+}
+
+.overview-fitness-roster b {
+  overflow: hidden;
+  color: var(--ink);
+  font-size: 12px;
+  font-weight: 950;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.overview-fitness-roster em,
+.overview-fitness-roster p,
+.overview-fitness-roster small {
+  overflow: hidden;
+  margin: 0;
+  color: rgba(38, 50, 56, 0.66);
+  font-size: 10px;
+  font-style: normal;
+  font-weight: 800;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .overview-directive-panel {
@@ -17474,6 +17623,29 @@ body[data-layout-mode="phone"][data-active-view="worklog-overview"] .overview-da
   font-size: clamp(14px, 4vw, 16px);
   line-height: 1;
   text-overflow: clip;
+}
+
+.worklog-overview-site > .overview-site-carousel,
+body[data-layout-mode="phone"][data-active-view="worklog-overview"] .worklog-overview-site > .overview-site-carousel {
+  display: flex;
+  grid-auto-flow: initial;
+  grid-auto-columns: auto;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scroll-snap-type: x mandatory;
+}
+
+body[data-layout-mode="phone"][data-active-view="worklog-overview"] .worklog-overview-grid.is-single-site {
+  overflow-x: hidden;
+}
+
+body[data-layout-mode="phone"][data-active-view="worklog-overview"] .overview-site-carousel > .worklog-overview-employee-sheet {
+  flex: 0 0 min(360px, 86vw);
+  width: auto;
+}
+
+body[data-layout-mode="phone"][data-active-view="worklog-overview"] .overview-center-kpis {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
 /* Explicit focus controls: worklog panels expand only from the title button. */

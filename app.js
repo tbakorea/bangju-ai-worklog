@@ -2464,8 +2464,34 @@ function getWorklogOverviewGroups() {
   return [
     { id: "bangju", label: "방주", title: "(주)방주", view: "bangju-log", employeeIds: getAssignedWorklogEmployeeIds(bangjuWorklogEmployeeIds) },
     { id: "beyond", label: "비욘드 컴퍼니", title: "(주)비욘드컴퍼니", view: "beyond-log", employeeIds: getAssignedWorklogEmployeeIds(beyondWorklogEmployeeIds) },
-    { id: "fitness", label: "피트니스", title: "비욘드 피트니스", view: "fitness-log", employeeIds: getAssignedWorklogEmployeeIds(fitnessEmployeeIds) },
+    { id: "fitness", label: "피트니스", title: "비욘드 피트니스", view: "fitness-log", employeeIds: getFitnessOverviewEmployeeIds() },
   ];
+}
+
+function getFitnessOverviewEmployeeIds() {
+  const seen = new Set();
+  return getFitnessEmployees()
+    .map((employee) => employee.id)
+    .filter((employeeId) => {
+      if (!employeeId || seen.has(employeeId)) return false;
+      seen.add(employeeId);
+      return true;
+    });
+}
+
+function getOverviewGroupEmployeeEntries(group) {
+  const source = group.id === "fitness"
+    ? getFitnessEmployees()
+    : group.employeeIds.map((employeeId) => findEmployeeRecordById(employeeId)).filter(Boolean);
+  const seen = new Set();
+  return source
+    .filter(isAssignedWorklogEmployee)
+    .map((employee) => ({ employeeId: employee.id, employee }))
+    .filter(({ employeeId }) => {
+      if (!employeeId || seen.has(employeeId)) return false;
+      seen.add(employeeId);
+      return true;
+    });
 }
 
 function getActiveWorklogOverviewScope() {
@@ -2488,8 +2514,9 @@ function updateWorklogOverviewModebar() {
 }
 
 function getOverviewSiteSummary(group, dateKey) {
-  const employeeCount = group.employeeIds.length;
-  const logs = group.employeeIds.map((employeeId) => state.employeeLogs?.[dateKey]?.[employeeId]).filter(Boolean);
+  const entries = getOverviewGroupEmployeeEntries(group);
+  const employeeCount = entries.length;
+  const logs = entries.map(({ employeeId }) => state.employeeLogs?.[dateKey]?.[employeeId]).filter(Boolean);
   const reportCount = logs.filter((log) => getOverviewReportText(log)).length;
   const attendanceSignals = logs.filter((log) => /결석|지각|조퇴|미기록/.test(formatAttendanceSummary(log) || log.attendanceStatus || "")).length;
   if (group.id === "fitness") {
@@ -2691,6 +2718,70 @@ function renderOverviewFitnessSummary(log) {
   `;
 }
 
+function renderOverviewFitnessCenterSheet({ group, dateKey, dateLabel }) {
+  const entries = getOverviewGroupEmployeeEntries(group);
+  const rows = entries.map(({ employeeId, employee }, index) => {
+    const log = getEmployeeLogForDate(employeeId, dateKey);
+    const { ops, paidPt, freePt, contract, marketing } = getOverviewFitnessOps(log);
+    return {
+      index,
+      employee,
+      attendance: formatAttendanceSummary(log) || log.attendanceStatus || "출결 미기록",
+      clock: `${log.clockIn || "--"} ~ ${log.clockOut || "--"}`,
+      paidPt,
+      freePt,
+      consultation: numberValue(ops.consultation),
+      contract,
+      marketing,
+      note: ops.specialReport || ops.shiftNote || getOverviewReportText(log) || "기록 대기",
+    };
+  });
+  const totals = rows.reduce((sum, row) => ({
+    paidPt: sum.paidPt + row.paidPt,
+    freePt: sum.freePt + row.freePt,
+    consultation: sum.consultation + row.consultation,
+    contract: sum.contract + row.contract,
+    marketing: sum.marketing + row.marketing,
+  }), { paidPt: 0, freePt: 0, consultation: 0, contract: 0, marketing: 0 });
+  return `
+    <article class="worklog-overview-employee-sheet overview-fitness-center-sheet is-fitness-sheet" data-overview-site="${escapeAttr(group.id)}">
+      <header class="overview-sheet-head">
+        <div>
+          <span>${escapeHtml(dateLabel)} · 센터운영현황</span>
+          <h3>비욘드 피트니스 운영일지</h3>
+          <p>센터 전체 현황을 첫 장으로 확인합니다.</p>
+        </div>
+        <button type="button" data-overview-fitness-center>열기</button>
+      </header>
+      <section class="overview-center-kpis" aria-label="피트니스 센터 운영 합계">
+        <span><b>유료PT</b><strong>${totals.paidPt}</strong></span>
+        <span><b>무료PT</b><strong>${totals.freePt}</strong></span>
+        <span><b>상담</b><strong>${totals.consultation}</strong></span>
+        <span><b>계약</b><strong>${totals.contract}</strong></span>
+        <span><b>홍보</b><strong>${totals.marketing}</strong></span>
+      </section>
+      <section class="overview-fitness-roster" aria-label="피트니스 직원 운영 취합">
+        <header>
+          <span>전직원 취합</span>
+          <strong>${rows.length}명</strong>
+        </header>
+        <div>
+          ${rows.map((row) => `
+            <article>
+              <div>
+                <b>${escapeHtml(getEmployeeAdminLabel(row.employee))}</b>
+                <em>${escapeHtml(row.attendance)} · ${escapeHtml(row.clock)}</em>
+              </div>
+              <p>유료PT ${row.paidPt} · 무료PT ${row.freePt} · 상담 ${row.consultation} · 계약 ${row.contract}</p>
+              <small>${escapeHtml(row.note)}</small>
+            </article>
+          `).join("")}
+        </div>
+      </section>
+    </article>
+  `;
+}
+
 function renderOverviewEmployeeSheet({ group, employee, employeeId, index, dayLog, context }) {
   const isFitness = group.id === "fitness";
   const activeTasks = getOverviewActiveTasks(dayLog);
@@ -2757,10 +2848,10 @@ function renderWorklogOverview() {
   const dateLabel = formatShortDate(dateKey);
   const activeScope = getActiveWorklogOverviewScope();
   const groups = getFilteredWorklogOverviewGroups();
+  grid.classList.toggle("is-single-site", activeScope !== "all");
   grid.innerHTML = groups.map((group) => {
-    const employeeCards = group.employeeIds.map((employeeId, index) => {
-      const employee = employees.find((item) => item.id === employeeId);
-      if (!employee) return "";
+    const centerCard = group.id === "fitness" ? renderOverviewFitnessCenterSheet({ group, dateKey, dateLabel }) : "";
+    const employeeCards = getOverviewGroupEmployeeEntries(group).map(({ employeeId, employee }, index) => {
       const dayLog = getEmployeeLogForDate(employeeId, dateKey);
       const tasks = (dayLog.tasks || []).filter(isActiveTask);
       const done = tasks.filter((task) => task.done || task.status === "완료").length;
@@ -2777,10 +2868,17 @@ function renderWorklogOverview() {
           <h3>${escapeHtml(group.title)}</h3>
           <p>${escapeHtml(getOverviewSiteSummary(group, dateKey))}</p>
         </header>
-        <div>${employeeCards}</div>
+        <div class="overview-site-carousel">${centerCard}${employeeCards}</div>
       </section>
     `;
   }).join("");
+  grid.querySelectorAll("[data-overview-fitness-center]").forEach((button) => {
+    button.addEventListener("click", () => {
+      state.fitnessLogPage = 0;
+      saveState({ fastSave: true });
+      switchView("fitness-log");
+    });
+  });
   grid.querySelectorAll("[data-overview-employee]").forEach((button) => {
     button.addEventListener("click", () => {
       state.selectedEmployeeId = button.dataset.overviewEmployee;
@@ -2804,7 +2902,7 @@ function renderWorklogOverview() {
   grid.querySelectorAll("[data-overview-directive-suggest]").forEach((button) => {
     button.addEventListener("click", () => {
       const employeeId = button.dataset.overviewDirectiveSuggest;
-      const employee = employees.find((item) => item.id === employeeId);
+      const employee = findEmployeeRecordById(employeeId);
       if (!employee) return;
       const log = getEmployeeLogForDate(employeeId, dateKey);
       const tasks = (log.tasks || []).filter(isActiveTask);
