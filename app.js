@@ -17,8 +17,8 @@ const worklogViewAliases = {
 };
 const attendanceEnabledViews = new Set(["worklog", "fitness-log", "bangju-log", "beyond-log", "today"]);
 const controlTowerEmails = new Set(["j3010@ymail.com"]);
-const activeFitnessManagerEmail = "pjhong0@naver.com";
-const retiredFitnessManagerEmails = new Set(["pjhong1@naver.com", "pjhong9@naver.com"]);
+const activeFitnessManagerEmail = "pinong0@naver.com";
+const retiredFitnessManagerEmails = new Set(["pjhong0@naver.com", "pjhong1@naver.com", "pjhong9@naver.com"]);
 let activeView = "fitness-log";
 let attendancePromptLastAt = 0;
 let todayPageMode = "daily";

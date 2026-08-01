@@ -251,14 +251,14 @@ set org = '(주)방주 / 비욘드 피트니스 지사',
     approval_note = '',
     approved_at = coalesce(approved_at, now()),
     updated_at = now()
-where lower(coalesce(email, '')) = 'pjhong0@naver.com'
+where lower(coalesce(email, '')) = 'pinong0@naver.com'
 ;
 
 update public.profiles
 set approval_status = 'rejected',
-    approval_note = '박주홍 센터장 계정은 pjhong0@naver.com만 사용합니다. 이 계정은 비활성 처리되었습니다.',
+    approval_note = '박주홍 센터장 계정은 pinong0@naver.com만 사용합니다. 이 계정은 비활성 처리되었습니다.',
     updated_at = now()
-where lower(coalesce(email, '')) in ('pjhong1@naver.com', 'pjhong9@naver.com')
+where lower(coalesce(email, '')) in ('pjhong0@naver.com', 'pjhong1@naver.com', 'pjhong9@naver.com')
 ;
 
 create table if not exists public.worklog_states (
