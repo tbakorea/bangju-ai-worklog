@@ -801,7 +801,7 @@ async function checkFitnessManagerCanEditOwnWorklog(browser) {
       fitnessWritableEmployeeId: "fitness-weekday-info",
       fitnessLogPage: 2,
       profile: {
-        email: "pjhong1@naver.com",
+        email: "pjhong0@naver.com",
         role: "센터장",
         name: "박주홍",
         nickname: "박주홍",
@@ -823,7 +823,7 @@ async function checkFitnessManagerCanEditOwnWorklog(browser) {
     document.body.dataset.layoutMode = "phone";
     document.body.dataset.viewMode = "ceo";
     window.eval(`
-      authState.user = { id: "park-juhong-user", email: "pjhong1@naver.com" };
+      authState.user = { id: "park-juhong-user", email: "pjhong0@naver.com" };
       normalizeState();
       switchView(getInitialLandingView());
     `);
@@ -1700,11 +1700,11 @@ async function checkFitnessCenterReportConfirmation(browser) {
   const { page, errors } = await openPage(browser, { width: 390, height: 844 });
   await page.evaluate(() => {
     window.eval(`
-      authState.user = { id: "fitness-manager-auth", email: "pjhong1@naver.com" };
+      authState.user = { id: "fitness-manager-auth", email: "pjhong0@naver.com" };
       state.profile = {
         ...state.profile,
         authUserId: "fitness-manager-auth",
-        email: "pjhong1@naver.com",
+        email: "pjhong0@naver.com",
         role: "센터장",
         name: "박주홍",
         nickname: "센터장",
@@ -1808,7 +1808,7 @@ async function checkReportArchiveFitnessSubmission(browser) {
       fitnessWritableEmployeeId: "beyond-fitness-manager",
       profile: {
         authUserId: "fitness-manager-auth",
-        email: "pjhong1@naver.com",
+        email: "pjhong0@naver.com",
         role: "센터장",
         name: "박주홍",
         nickname: "센터장",
@@ -1840,7 +1840,7 @@ async function checkReportArchiveFitnessSubmission(browser) {
   await page.reload({ waitUntil: "domcontentloaded" });
   await page.evaluate(() => {
     window.eval(`
-      authState.user = { id: "fitness-manager-auth", email: "pjhong1@naver.com" };
+      authState.user = { id: "fitness-manager-auth", email: "pjhong0@naver.com" };
       document.body.classList.add("physical-phone-device");
       document.body.dataset.layoutMode = "phone";
       document.body.dataset.viewMode = "ceo";
