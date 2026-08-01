@@ -675,6 +675,7 @@ const authState = {
   approvalRows: [],
   approvalRowsLoaded: false,
   approvalRepairTried: false,
+  approvalRepairUnavailable: false,
   passwordResetRows: [],
   selectedApprovalId: "",
   approvalTimer: null,
@@ -4977,15 +4978,24 @@ async function repairApprovalQueue({ silent = true } = {}) {
   try {
     const { data, error } = await supabaseClient.rpc("repair_profile_approval_queue");
     if (error) {
+      if (isMissingApprovalRepairRpcError(error)) {
+        markApprovalRepairRpcUnavailable(error);
+        return false;
+      }
       if (!silent) showAppToast(`승인요청 동기화 실패: ${error.message}`);
       return false;
     }
+    authState.approvalRepairUnavailable = false;
     if (!silent) {
       const count = Number(data || 0);
       showAppToast(count > 0 ? `승인요청 ${count}건을 동기화했습니다` : "승인요청 목록을 확인했습니다");
     }
     return true;
   } catch (error) {
+    if (isMissingApprovalRepairRpcError(error)) {
+      markApprovalRepairRpcUnavailable(error);
+      return false;
+    }
     if (!silent) showAppToast(`승인요청 동기화 실패: ${error.message}`);
     return false;
   }
@@ -4993,10 +5003,22 @@ async function repairApprovalQueue({ silent = true } = {}) {
 
 async function runApprovalQueueRepair(options = {}) {
   if (!supabaseClient || !authState.user || !hasApprovalAuthority()) return false;
+  if (authState.approvalRepairUnavailable && !options.manual) return false;
   const shouldRun = Boolean(options.force || options.manual || !authState.approvalRepairTried);
   if (!shouldRun) return false;
   authState.approvalRepairTried = true;
   return repairApprovalQueue({ silent: !options.manual });
+}
+
+function isMissingApprovalRepairRpcError(error) {
+  const message = [error?.message, error?.details, error?.hint].filter(Boolean).join(" ");
+  return /repair_profile_approval_queue/i.test(message)
+    && /(schema cache|could not find the function|function .* does not exist|pgrst202)/i.test(message);
+}
+
+function markApprovalRepairRpcUnavailable(error) {
+  authState.approvalRepairUnavailable = true;
+  console.warn("Approval repair RPC is not available; falling back to direct profile query.", error);
 }
 
 async function fetchApprovalProfileRows() {

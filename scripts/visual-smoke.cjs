@@ -2267,6 +2267,135 @@ async function checkApprovalRepairRevealsPendingFitnessSignup(browser) {
   await page.close();
 }
 
+async function checkApprovalRepairMissingRpcFallsBack(browser) {
+  const page = await browser.newPage({ viewport: { width: 390, height: 844 } });
+  const errors = [];
+  page.on("pageerror", (error) => errors.push(error.message));
+  await page.route("https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2", async (route) => {
+    await route.fulfill({
+      contentType: "application/javascript",
+      body: `
+        (() => {
+          const ownerRow = {
+            id: "owner-user",
+            email: "j3010@ymail.com",
+            name: "정찬훈",
+            nickname: "Benny",
+            org: "(주)방주",
+            workplace: "본사",
+            role: "대표",
+            primary_work: "기획/관리",
+            work_hours: "08:00-18:00",
+            employment_type: "관리자",
+            approval_status: "approved",
+            updated_at: "2026-07-30T00:00:00.000Z"
+          };
+          const pendingRow = {
+            id: "pending-user",
+            email: "fallback@example.com",
+            name: "대기직원",
+            nickname: "대기",
+            org: "(주)비욘드컴퍼니",
+            workplace: "비욘드 피트니스",
+            role: "직원",
+            primary_work: "",
+            secondary_work: "",
+            work_hours: "16:00-20:00",
+            employment_type: "직원",
+            approval_status: "pending",
+            updated_at: "2026-07-30T00:02:00.000Z"
+          };
+          window.__approvalRepairCalls = 0;
+          window.supabase = {
+            createClient() {
+              return {
+                rpc(name) {
+                  if (name === "repair_profile_approval_queue") {
+                    window.__approvalRepairCalls += 1;
+                    return Promise.resolve({
+                      data: null,
+                      error: {
+                        code: "PGRST202",
+                        message: "Could not find the function public.repair_profile_approval_queue without parameters in the schema cache"
+                      }
+                    });
+                  }
+                  return Promise.resolve({ data: null, error: { message: "unknown rpc " + name } });
+                },
+                auth: {
+                  getSession: () => Promise.resolve({ data: { session: null } }),
+                  onAuthStateChange: () => ({ data: { subscription: { unsubscribe() {} } } }),
+                  signOut: () => Promise.resolve({ error: null }),
+                },
+                from(table) {
+                  const chain = {
+                    select() { return this; },
+                    eq() { return this; },
+                    in() { return this; },
+                    order() {
+                      if (table === "profiles") return Promise.resolve({ data: [pendingRow, ownerRow], error: null });
+                      return Promise.resolve({ data: [], error: null });
+                    },
+                    update() { return this; },
+                    maybeSingle: () => Promise.resolve({ data: null, error: null }),
+                    insert: () => Promise.resolve({ data: null, error: null }),
+                    upsert: () => Promise.resolve({ data: null, error: null }),
+                  };
+                  return chain;
+                },
+              };
+            },
+          };
+        })();
+      `,
+    });
+  });
+  await page.addInitScript(() => localStorage.clear());
+  await page.goto(target, { waitUntil: "domcontentloaded" });
+  await page.evaluate(async () => {
+    await window.eval(`(async () => {
+      authState.user = { id: "owner-user", email: "j3010@ymail.com" };
+      authState.approvalRows = [];
+      authState.approvalRowsLoaded = false;
+      authState.approvalRepairTried = false;
+      authState.approvalRepairUnavailable = false;
+      authState.selectedApprovalId = "";
+      state.profile = {
+        ...state.profile,
+        email: "j3010@ymail.com",
+        name: "정찬훈",
+        nickname: "Benny",
+        org: "(주)방주",
+        workplace: "본사",
+        role: "대표",
+        primaryWork: "기획/관리",
+        approvalStatus: "approved",
+        accessPreset: "owner",
+        permissions: {}
+      };
+      switchView("settings");
+      switchSettingsTab("approval");
+      await loadApprovalRequests({ repair: true, manual: true });
+    })()`);
+  });
+  await page.waitForTimeout(200);
+  const metrics = await page.evaluate(() => ({
+    repairCalls: window.__approvalRepairCalls || 0,
+    hasFallbackEmployee: document.querySelector("#approvalRequestList")?.textContent?.includes("대기직원") || false,
+    actionCount: document.querySelector("[data-status='action'] strong")?.textContent?.trim() || "",
+    toast: document.querySelector("#appToast")?.textContent?.trim() || "",
+  }));
+  if (metrics.repairCalls < 1) fail("missing approval repair rpc should be attempted once", JSON.stringify(metrics));
+  if (!metrics.hasFallbackEmployee || metrics.actionCount !== "1") {
+    fail("missing approval repair rpc should fall back to visible approval rows", JSON.stringify(metrics));
+  }
+  if (/승인요청 동기화 실패|schema cache|repair_profile_approval_queue/i.test(metrics.toast)) {
+    fail("missing approval repair rpc should not show a scary sync failure toast", JSON.stringify(metrics));
+  }
+  if (errors.length) fail("missing approval repair rpc fallback page errors", errors.join(" | "));
+  await page.close();
+}
+
 (async () => {
   const browser = await chromium.launch({
     headless: true,
@@ -2289,6 +2418,7 @@ async function checkApprovalRepairRevealsPendingFitnessSignup(browser) {
     await checkRealDeviceRegressionLayouts(browser);
     await checkFitnessNewEmployeeRegistrationFlow(browser);
     await checkApprovalRepairRevealsPendingFitnessSignup(browser);
+    await checkApprovalRepairMissingRpcFallsBack(browser);
     await checkRepresentativeProfileSeparation(browser);
     await checkNonControlRoleTextDoesNotBecomeRepresentative(browser);
     await checkKimSungminAccountIsEmployeeOnly(browser);
