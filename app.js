@@ -542,6 +542,7 @@ const employees = [
   { id: "beyond-spare-1", name: "비욘드 예비", org: "(주)비욘드컴퍼니", role: "예비", primaryWork: "공통 지원" },
 ];
 const fitnessEmployeeIds = ["beyond-fitness-manager", "fitness-trainer-1", "fitness-weekday-info", "fitness-weekday-info-idabin", "fitness-saturday-info", "fitness-sunday-info", "fitness-spare-1"];
+const fitnessPlaceholderEmployeeIds = new Set(["fitness-weekday-info", "fitness-saturday-info", "fitness-sunday-info", "fitness-spare-1"]);
 const bangjuWorklogEmployeeIds = ["bangju-finance-manager", "bangju-finance-assistant", "construction-finance-assistant", "bangju-spare-1"];
 const beyondWorklogEmployeeIds = ["beyond-company-leader", "beyond-shared-manager", "beyond-spare-1"];
 
@@ -1252,10 +1253,11 @@ function getFitnessEmployees() {
   const profile = state.profile || {};
   const merged = new Map();
   const add = (employee, priority = 0) => {
+    if (!isVisibleFitnessRosterEmployee(employee)) return;
     const normalized = normalizeFitnessEmployeeForWorklog(employee);
-    if (!isAssignedWorklogEmployee(normalized) || !isFitnessEmployeeRecord(normalized)) return;
     const emailKey = normalizeEmailValue(normalized.email || "");
-    const key = emailKey ? `email:${emailKey}` : normalized.id ? `id:${normalized.id}` : `${normalized.role || ""}:${normalized.name || ""}`;
+    const rosterSlot = getFitnessRosterSlotId(normalized);
+    const key = rosterSlot ? `slot:${rosterSlot}` : emailKey ? `email:${emailKey}` : normalized.id ? `id:${normalized.id}` : `${normalized.role || ""}:${normalized.name || ""}`;
     const current = merged.get(key);
     if (!current || current.priority <= priority) merged.set(key, { employee: normalized, priority });
   };
@@ -1286,6 +1288,35 @@ function isFitnessEmployeeRecord(employee = {}) {
     || /피트니스|fitness/.test(source);
 }
 
+function isClearlyNonFitnessEmployeeRecord(employee = {}) {
+  const source = `${employee.id || ""} ${employee.org || ""} ${employee.workplace || ""} ${employee.primaryWork || ""} ${employee.secondaryWork || ""} ${employee.role || ""}`.toLowerCase();
+  return /재무|공유사업부|공유오피스|공유창고|워크베이스|워크박스|tba|studio|비제이|종합건설|건설/.test(source)
+    && !/피트니스|fitness/.test(source);
+}
+
+function getFitnessRosterSlotId(employee = {}) {
+  const mappedId = String(employee.mappedEmployeeId || "").trim();
+  const id = String(employee.id || "").trim();
+  if (fitnessEmployeeIds.includes(mappedId)) return mappedId;
+  if (fitnessEmployeeIds.includes(id)) return id;
+  return "";
+}
+
+function isVisibleFitnessRosterEmployee(employee = {}) {
+  if (!isAssignedWorklogEmployee(employee) || !isFitnessEmployeeRecord(employee)) return false;
+  if (!getFitnessRosterSlotId(employee) && isClearlyNonFitnessEmployeeRecord(employee)) return false;
+  const id = String(employee.id || "").trim();
+  const slotId = getFitnessRosterSlotId(employee);
+  const email = normalizeEmailValue(employee.email || "");
+  const name = String(employee.name || employee.nickname || "").trim();
+  const source = `${id} ${slotId} ${name} ${employee.role || ""} ${employee.org || ""} ${employee.workplace || ""}`.toLowerCase();
+  if (!name || /이름\s*미입력|미배정|unassigned/.test(source)) return false;
+  if (/예비|spare/.test(source)) return false;
+  const isStaticSeed = Boolean(id && employees.some((item) => item.id === id));
+  const isUnclaimedPlaceholder = isStaticSeed && fitnessPlaceholderEmployeeIds.has(slotId || id) && !email && !employee.isRemoteProfile;
+  return !isUnclaimedPlaceholder;
+}
+
 function normalizeFitnessEmployeeForWorklog(employee = {}) {
   if (!employee) return employee;
   const mappedId = fitnessEmployeeIds.includes(employee.mappedEmployeeId) ? employee.mappedEmployeeId : "";
@@ -1299,11 +1330,11 @@ function normalizeFitnessEmployeeForWorklog(employee = {}) {
     };
   }
   const base = employees.find((item) => item.id === canonicalId) || {};
-  const isProfileBackedEmployee = Boolean(employee.email || (employee.id && !fitnessEmployeeIds.includes(employee.id)));
   return {
     ...base,
     ...employee,
-    id: isProfileBackedEmployee ? (employee.id || `profile:${normalizeEmailValue(employee.email || "")}`) : canonicalId,
+    id: canonicalId,
+    profileEmployeeId: employee.id && employee.id !== canonicalId ? employee.id : employee.profileEmployeeId || "",
     mappedEmployeeId: employee.mappedEmployeeId || canonicalId,
     name: employee.name || base.name,
     nickname: employee.nickname || base.nickname || "",
@@ -1320,7 +1351,7 @@ function collectFitnessLogEmployees() {
   Object.values(state.employeeLogs || {}).forEach((logsByEmployee) => {
     Object.entries(logsByEmployee || {}).forEach(([employeeId, log]) => {
       const base = employees.find((item) => item.id === employeeId) || {};
-      const employee = normalizeFitnessEmployeeForWorklog({
+      const sourceEmployee = {
         ...base,
         id: employeeId,
         org: log?.org || base.org || "",
@@ -1329,8 +1360,10 @@ function collectFitnessLogEmployees() {
         workplace: log?.workplace || base.workplace || "",
         primaryWork: log?.primaryWork || base.primaryWork || "",
         workHours: base.workHours || defaultProfile.workHours,
-      });
-      if (isFitnessEmployeeRecord(employee)) seen.set(employee.id, employee);
+      };
+      if (!isVisibleFitnessRosterEmployee(sourceEmployee)) return;
+      const employee = normalizeFitnessEmployeeForWorklog(sourceEmployee);
+      seen.set(employee.id, employee);
     });
   });
   return [...seen.values()];
@@ -1478,8 +1511,12 @@ function getFitnessPagerTitle() {
 
 function getFitnessLogPages() {
   const fitnessEmployees = getFitnessEmployees();
-  const writableEmployee = fitnessEmployees.find((employee) => employee.id === state.fitnessWritableEmployeeId) || fitnessEmployees[0];
-  const coworkerEmployees = fitnessEmployees.filter((employee) => employee.id !== writableEmployee?.id);
+  const writableEmployee = fitnessEmployees.find((employee) => (
+    employee.id === state.fitnessWritableEmployeeId
+    || employee.mappedEmployeeId === state.fitnessWritableEmployeeId
+  )) || fitnessEmployees[0];
+  const writableKeys = new Set(getEmployeeIdentityKeys(writableEmployee || {}));
+  const coworkerEmployees = fitnessEmployees.filter((employee) => !getEmployeeIdentityKeys(employee).some((key) => writableKeys.has(key)));
   return [{ type: "center", id: "fitness-center", title: "센터 운영현황" }, ...[writableEmployee, ...coworkerEmployees].filter(Boolean).map((employee) => ({
     type: "employee",
     id: employee.id,
@@ -1544,10 +1581,10 @@ function hasFitnessWorkedOnDate(employeeId = "", dateKey = getActiveDateKey()) {
 
 function getCurrentFitnessActorEmployee() {
   const mappedId = getProfileMappedEmployeeId();
-  const mappedEmployee = getFitnessEmployees().find((employee) => employee.id === mappedId);
-  if (mappedEmployee && isEmployeeLinkedToProfile(mappedEmployee.id)) return mappedEmployee;
+  const mappedEmployee = getFitnessEmployees().find((employee) => employee.id === mappedId || employee.mappedEmployeeId === mappedId);
+  if (mappedEmployee) return mappedEmployee;
   const writableEmployee = getFitnessEmployees().find((employee) => employee.id === state.fitnessWritableEmployeeId);
-  if (writableEmployee && isOwnFitnessEmployeeId(writableEmployee.id)) return writableEmployee;
+  if (writableEmployee && (isOwnFitnessEmployeeId(writableEmployee.id) || writableEmployee.id === mappedId || writableEmployee.mappedEmployeeId === mappedId)) return writableEmployee;
   return null;
 }
 
@@ -7426,7 +7463,7 @@ function buildFitnessCenterEmployeeMonthRow(employee, monthPrefix) {
   let absenceCount = 0;
   const notes = [];
   getMonthDateKeys(monthPrefix).forEach((dateKey) => {
-    const log = state.employeeLogs?.[dateKey]?.[employee.id];
+    const log = getFitnessEmployeeLogForDate(employee, dateKey);
     if (!log) return;
     syncFitnessOpsFromSchedule(log);
     if (dateKey === getActiveDateKey()) syncAttendanceRecordFromLog(employee, log);
@@ -7473,6 +7510,49 @@ function buildFitnessCenterEmployeeMonthRow(employee, monthPrefix) {
     breakSummary: breakCount ? `${breakCount}건` : "-",
     notes,
   };
+}
+
+function getFitnessEmployeeLogForDate(employee = {}, dateKey = getActiveDateKey()) {
+  const logsByEmployee = state.employeeLogs?.[dateKey] || {};
+  const ids = getFitnessEmployeeLogCandidateIds(employee);
+  const candidateLogs = ids.map((id) => logsByEmployee[id]).filter(Boolean);
+  const filledCandidate = candidateLogs.find(hasFitnessEmployeeLogContent);
+  if (filledCandidate) return filledCandidate;
+  if (candidateLogs[0]) return candidateLogs[0];
+  const email = normalizeEmailValue(employee.email || "");
+  if (email) {
+    const emailMatchedLogs = Object.entries(logsByEmployee).filter(([employeeId]) => {
+      const staff = getStaffDirectoryEmployees().find((item) => item.id === employeeId || item.mappedEmployeeId === employeeId);
+      return normalizeEmailValue(staff?.email || "") === email;
+    }).map(([, log]) => log);
+    const filledEmailLog = emailMatchedLogs.find(hasFitnessEmployeeLogContent);
+    if (filledEmailLog) return filledEmailLog;
+    if (emailMatchedLogs[0]) return emailMatchedLogs[0];
+  }
+  return null;
+}
+
+function hasFitnessEmployeeLogContent(log = {}) {
+  if (!log) return false;
+  const ops = { ...createFitnessOps(), ...(log.fitnessOps || {}) };
+  return Boolean(
+    String(log.clockIn || log.clockOut || log.attendanceStatus || "").trim()
+    || (Array.isArray(log.attendanceBreaks) && log.attendanceBreaks.some((record) => record?.start || record?.end))
+    || String(log.report || log.memo || log.record || "").trim()
+    || getWorklogTaskRefs(log).some(({ task }) => isActiveTask(task))
+    || (Array.isArray(log.schedule) && log.schedule.some((entry) => String(getScheduleEntryText(entry) || "").trim()))
+    || Object.values(ops).some((value) => String(value || "").trim())
+  );
+}
+
+function getFitnessEmployeeLogCandidateIds(employee = {}) {
+  const ids = [employee.id, employee.mappedEmployeeId, getFitnessRosterSlotId(employee)].filter(Boolean);
+  const source = `${employee.id || ""} ${employee.mappedEmployeeId || ""} ${employee.name || ""} ${employee.nickname || ""} ${employee.role || ""} ${employee.primaryWork || ""}`.toLowerCase();
+  if (/이다빈|weekday-info-idabin/.test(source)) ids.push("fitness-weekday-info-idabin", "fitness-weekday-info");
+  if (/주중|인포|데스크|front|프론트/.test(source)) ids.push("fitness-weekday-info", "fitness-weekday-info-idabin");
+  if (/홍현규|트레이너|trainer|pt|피티/.test(source)) ids.push("fitness-trainer-1");
+  if (/박주홍|센터장|운영총괄|manager/.test(source)) ids.push("beyond-fitness-manager");
+  return [...new Set(ids)];
 }
 
 function renderDagymOpsFields() {
@@ -13622,7 +13702,7 @@ function getFitnessReportLogEntries(dateKey, isCenter, employee) {
   if (isCenter) {
     return getFitnessEmployees().map((item) => ({
       employee: item,
-      log: getEmployeeLogForDate(item.id, dateKey),
+      log: getFitnessEmployeeLogForDate(item, dateKey) || getEmployeeLogForDate(item.id, dateKey),
     }));
   }
   return [{

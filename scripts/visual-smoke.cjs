@@ -1753,11 +1753,22 @@ async function checkFitnessCenterReportConfirmation(browser) {
     pageTitle: document.querySelector("#fitnessLogPageTitle")?.textContent?.trim() || "",
     disabled: document.querySelector("[data-fitness-center-report-confirm]")?.disabled ?? true,
     text: document.querySelector("#fitnessCenterConfirmPanel")?.textContent?.trim() || "",
+    centerRows: [...document.querySelectorAll("#fitnessCenterDailyBody tr")].map((row) => row.textContent.replace(/\s+/g, " ").trim()),
   }));
   if (before.activeView !== "fitness-log" || !before.pageTitle.includes("센터")) {
     fail("fitness center report confirmation should start on center page", JSON.stringify(before));
   }
   if (before.disabled) fail("fitness center manager should be able to confirm the center report", JSON.stringify(before));
+  ["재무과장", "재무 대리", "공유사업부 매니저", "김성민", "피트니스 예비", "토요 인포", "일요 인포"].forEach((label) => {
+    if (before.centerRows.some((row) => row.includes(label))) {
+      fail("fitness center roster should only show assigned fitness staff", `${label} leaked into ${JSON.stringify(before.centerRows)}`);
+    }
+  });
+  ["박주홍", "홍현규", "이다빈"].forEach((label) => {
+    if (!before.centerRows.some((row) => row.includes(label))) {
+      fail("fitness center roster should include active fitness staff", `${label} missing from ${JSON.stringify(before.centerRows)}`);
+    }
+  });
   await page.click("[data-fitness-center-report-confirm]");
   await page.waitForTimeout(220);
   const confirmed = await page.evaluate(() => {
