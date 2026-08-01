@@ -15756,6 +15756,221 @@ body[data-view-mode="ceo"] .control-kpi-grid {
   min-height: 64px;
 }
 
+.is-fitness-native-projection {
+  grid-template-rows: auto auto auto auto auto;
+  gap: 10px;
+  min-height: 0;
+  border-radius: 18px;
+  background:
+    linear-gradient(180deg, rgba(238, 248, 241, 0.98), rgba(255, 254, 250, 0.88)),
+    var(--nordic-sheet);
+  padding: 10px;
+}
+
+.overview-fitness-native-head {
+  min-height: 74px;
+  border: 1px solid rgba(15, 83, 64, 0.12);
+  border-radius: 18px;
+  background: rgba(255, 254, 250, 0.74);
+  padding: 10px 11px;
+}
+
+.overview-fitness-native-head h3 {
+  color: var(--fitness-green);
+  font-size: 21px;
+}
+
+.overview-fitness-native-head p {
+  font-size: 12px;
+}
+
+.is-fitness-native-projection .overview-fitness-summary {
+  gap: 11px;
+  border-radius: 22px;
+  background: rgba(255, 254, 250, 0.8);
+  padding: 14px;
+}
+
+.is-fitness-native-projection .overview-fitness-summary header span {
+  color: #101917;
+  font-size: 22px;
+  font-weight: 950;
+  letter-spacing: 0;
+}
+
+.is-fitness-native-projection .overview-fitness-summary > div {
+  gap: 6px;
+  border: 1px solid rgba(15, 83, 64, 0.1);
+  border-radius: 18px;
+  background: rgba(239, 247, 241, 0.6);
+  padding: 8px;
+}
+
+.is-fitness-native-projection .overview-fitness-summary > div span {
+  min-height: 58px;
+  border-radius: 14px;
+  background: rgba(255, 254, 250, 0.82);
+  padding: 8px 6px;
+}
+
+.is-fitness-native-projection .overview-fitness-summary b {
+  color: rgba(38, 50, 56, 0.58);
+  font-size: 10px;
+}
+
+.is-fitness-native-projection .overview-fitness-summary strong {
+  color: #07110e;
+  font-size: 22px;
+}
+
+.overview-fitness-native-panel {
+  overflow: hidden;
+  border: 1px solid rgba(15, 83, 64, 0.12);
+  border-radius: 22px;
+  background: rgba(255, 254, 250, 0.8);
+}
+
+.overview-fitness-native-panel > header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 56px;
+  border-bottom: 1px solid rgba(15, 83, 64, 0.08);
+  padding: 10px 12px;
+}
+
+.overview-fitness-native-panel > header > div {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+  margin-right: auto;
+}
+
+.overview-fitness-native-panel i {
+  display: inline-block;
+  width: 5px;
+  height: 28px;
+  flex: 0 0 5px;
+  border-radius: 999px;
+  background: var(--fitness-green);
+}
+
+.overview-fitness-schedule-native i {
+  background: #306dff;
+}
+
+.overview-fitness-native-panel h4 {
+  overflow: hidden;
+  margin: 0;
+  color: #101917;
+  font-size: 18px;
+  font-weight: 950;
+  line-height: 1.1;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.overview-fitness-native-panel em {
+  margin-left: 4px;
+  color: rgba(38, 50, 56, 0.6);
+  font-size: 12px;
+  font-style: normal;
+  font-weight: 920;
+}
+
+.overview-fitness-native-panel ul {
+  display: grid;
+  gap: 0;
+  margin: 0;
+  padding: 0 14px 12px;
+  list-style: none;
+}
+
+.overview-fitness-native-panel .overview-task-mini,
+.overview-fitness-native-panel .overview-schedule-mini {
+  min-height: 38px;
+  border-bottom: 1px solid rgba(15, 83, 64, 0.09);
+  border-radius: 0;
+  background: transparent;
+  padding: 0;
+}
+
+.overview-fitness-native-panel .overview-task-mini p,
+.overview-fitness-native-panel .overview-schedule-mini p {
+  color: rgba(38, 50, 56, 0.66);
+  font-size: 14px;
+  font-weight: 820;
+}
+
+.overview-fitness-native-panel .overview-schedule-mini time {
+  color: rgba(38, 50, 56, 0.76);
+  font-size: 15px;
+}
+
+.overview-fitness-open-button {
+  position: relative;
+  width: 38px;
+  min-width: 38px;
+  height: 38px;
+  min-height: 38px;
+  border: 1px solid rgba(15, 83, 64, 0.12);
+  border-radius: 999px;
+  background: rgba(255, 254, 250, 0.92);
+  color: var(--fitness-green);
+  box-shadow: 0 8px 18px rgba(15, 83, 64, 0.08);
+  font-size: 0;
+}
+
+.overview-fitness-open-button::before {
+  content: "+";
+  position: absolute;
+  left: 8px;
+  top: 7px;
+  display: grid;
+  width: 18px;
+  height: 18px;
+  place-items: center;
+  border: 2px solid currentColor;
+  border-radius: 50%;
+  font-size: 16px;
+  font-weight: 950;
+  line-height: 1;
+}
+
+.overview-fitness-open-button::after {
+  content: "";
+  position: absolute;
+  left: 24px;
+  top: 25px;
+  width: 8px;
+  height: 3px;
+  border-radius: 999px;
+  background: currentColor;
+  transform: rotate(45deg);
+  transform-origin: left center;
+}
+
+.overview-native-ai,
+.overview-native-unit {
+  display: inline-grid;
+  min-width: 42px;
+  min-height: 38px;
+  place-items: center;
+  border: 1px solid rgba(15, 59, 46, 0.16);
+  border-radius: 13px;
+  background: rgba(255, 254, 250, 0.86);
+  color: #10261f;
+  padding: 0 9px;
+  font-size: 12px;
+  font-weight: 950;
+  white-space: nowrap;
+}
+
+.overview-native-ai:disabled {
+  opacity: 1;
+}
+
 .overview-directive-panel {
   display: grid;
   gap: 6px;

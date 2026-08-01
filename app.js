@@ -533,6 +533,7 @@ const employees = [
   { id: "beyond-fitness-manager", name: "박주홍", nickname: "센터장", org: "(주)방주 / 비욘드 피트니스 지사", role: "센터장", workHours: "06:00-24:00", primaryWork: "운영총괄, PT 수업" },
   { id: "fitness-trainer-1", name: "홍현규", nickname: "홍트", org: "(주)방주 / 비욘드 피트니스 지사", role: "트레이너", workHours: "06:00-24:00", primaryWork: "PT 수업", employmentType: "프리랜서" },
   { id: "fitness-weekday-info", name: "주중 인포", nickname: "주중인포", org: "(주)방주 / 비욘드 피트니스 지사", role: "인포데스크", workHours: "16:00-20:00", primaryWork: "고객응대, 센터관리" },
+  { id: "fitness-weekday-info-idabin", name: "이다빈", nickname: "이다빈", org: "(주)방주 / 비욘드 피트니스 지사", role: "인포데스크", workHours: "16:00-20:00", primaryWork: "고객응대, 센터관리" },
   { id: "fitness-saturday-info", name: "토요 인포", nickname: "토요인포", org: "(주)방주 / 비욘드 피트니스 지사", role: "토요 인포", workHours: "10:00-18:00", primaryWork: "토요일 고객응대, 센터관리" },
   { id: "fitness-sunday-info", name: "일요 인포", nickname: "일요인포", org: "(주)방주 / 비욘드 피트니스 지사", role: "일요 인포", workHours: "10:00-18:00", primaryWork: "일요일 고객응대, 센터관리" },
   { id: "fitness-spare-1", name: "피트니스 예비", nickname: "예비", org: "(주)방주 / 비욘드 피트니스 지사", role: "예비", workHours: "10:00-18:00", primaryWork: "운영 지원" },
@@ -540,7 +541,7 @@ const employees = [
   { id: "beyond-shared-manager", name: "공유사업부 매니저", org: "(주)비욘드컴퍼니 / 공유사업부", role: "공유사업부 매니저", primaryWork: "공유오피스, 공유창고, 고객관리" },
   { id: "beyond-spare-1", name: "비욘드 예비", org: "(주)비욘드컴퍼니", role: "예비", primaryWork: "공통 지원" },
 ];
-const fitnessEmployeeIds = ["beyond-fitness-manager", "fitness-trainer-1", "fitness-weekday-info", "fitness-saturday-info", "fitness-sunday-info", "fitness-spare-1"];
+const fitnessEmployeeIds = ["beyond-fitness-manager", "fitness-trainer-1", "fitness-weekday-info", "fitness-weekday-info-idabin", "fitness-saturday-info", "fitness-sunday-info", "fitness-spare-1"];
 const bangjuWorklogEmployeeIds = ["bangju-finance-manager", "bangju-finance-assistant", "construction-finance-assistant", "bangju-spare-1"];
 const beyondWorklogEmployeeIds = ["beyond-company-leader", "beyond-shared-manager", "beyond-spare-1"];
 
@@ -1196,7 +1197,8 @@ function getFitnessEmployees() {
   const add = (employee, priority = 0) => {
     const normalized = normalizeFitnessEmployeeForWorklog(employee);
     if (!isAssignedWorklogEmployee(normalized) || !isFitnessEmployeeRecord(normalized)) return;
-    const key = normalized.id || normalizeEmailValue(normalized.email || "") || `${normalized.role || ""}:${normalized.name || ""}`;
+    const emailKey = normalizeEmailValue(normalized.email || "");
+    const key = emailKey ? `email:${emailKey}` : normalized.id ? `id:${normalized.id}` : `${normalized.role || ""}:${normalized.name || ""}`;
     const current = merged.get(key);
     if (!current || current.priority <= priority) merged.set(key, { employee: normalized, priority });
   };
@@ -1232,12 +1234,19 @@ function normalizeFitnessEmployeeForWorklog(employee = {}) {
   const mappedId = fitnessEmployeeIds.includes(employee.mappedEmployeeId) ? employee.mappedEmployeeId : "";
   const directId = fitnessEmployeeIds.includes(employee.id) ? employee.id : "";
   const canonicalId = mappedId || directId;
-  if (!canonicalId) return employee;
+  if (!canonicalId) {
+    return {
+      ...employee,
+      workplace: employee.workplace || "비욘드 피트니스",
+      workHours: employee.workHours || defaultProfile.workHours,
+    };
+  }
   const base = employees.find((item) => item.id === canonicalId) || {};
+  const isProfileBackedEmployee = Boolean(employee.email || (employee.id && !fitnessEmployeeIds.includes(employee.id)));
   return {
     ...base,
     ...employee,
-    id: canonicalId,
+    id: isProfileBackedEmployee ? (employee.id || `profile:${normalizeEmailValue(employee.email || "")}`) : canonicalId,
     mappedEmployeeId: employee.mappedEmployeeId || canonicalId,
     name: employee.name || base.name,
     nickname: employee.nickname || base.nickname || "",
@@ -1271,7 +1280,9 @@ function collectFitnessLogEmployees() {
 }
 
 function getFitnessEmployeeSortKey(employee = {}) {
-  const order = fitnessEmployeeIds.indexOf(employee.id);
+  const directOrder = fitnessEmployeeIds.indexOf(employee.id);
+  const mappedOrder = fitnessEmployeeIds.indexOf(employee.mappedEmployeeId);
+  const order = directOrder >= 0 ? directOrder : mappedOrder;
   const slot = order >= 0 ? String(order).padStart(2, "0") : "99";
   return `${slot}|${employee.role || ""}|${employee.name || ""}|${employee.email || ""}`;
 }
@@ -1385,6 +1396,7 @@ function syncFitnessWritableEmployeeFromProfile() {
   let id = fitnessEmployeeIds.includes(getProfileMappedEmployeeId(profile)) ? getProfileMappedEmployeeId(profile) : "profile-user";
   const role = source;
   if (/홍현규|트레이너|trainer|pt|피티/.test(role)) id = "fitness-trainer-1";
+  else if (/이다빈/.test(role)) id = "fitness-weekday-info-idabin";
   else if (/토요|토요일/.test(role)) id = "fitness-saturday-info";
   else if (/일요|일요일/.test(role)) id = "fitness-sunday-info";
   else if (/인포|데스크|front|프론트|주중/.test(role)) id = "fitness-weekday-info";
@@ -1558,6 +1570,7 @@ function getProfileMappedEmployeeId(profile = state.profile || {}) {
   if (/재무\s*과장|finance\s*manager/.test(source)) return "bangju-finance-manager";
   if (isActiveFitnessManagerEmail(email) || (!email && (/박주홍/.test(source) || /센터장|피트니스.*총괄|fitness.*manager/.test(source)))) return "beyond-fitness-manager";
   if (/홍현규|트레이너|trainer|pt|피티/.test(source)) return "fitness-trainer-1";
+  if (/이다빈/.test(source)) return "fitness-weekday-info-idabin";
   if (/토요|토요일/.test(source)) return "fitness-saturday-info";
   if (/일요|일요일/.test(source)) return "fitness-sunday-info";
   if (/인포|데스크|front|프론트|주중/.test(source)) return "fitness-weekday-info";
@@ -2698,13 +2711,21 @@ function renderOverviewScheduleMini(item) {
   `;
 }
 
+function renderOverviewFitnessOpenButton(employeeId, view, label = "열기") {
+  return `
+    <button type="button" class="overview-fitness-open-button" data-overview-employee="${escapeAttr(employeeId)}" data-overview-view="${escapeAttr(view)}" aria-label="${escapeAttr(label)}">
+      <span>+</span>
+    </button>
+  `;
+}
+
 function renderOverviewFitnessSummary(log) {
   const { ops, paidPt, freePt, contract, marketing } = getOverviewFitnessOps(log);
   const memoState = ops.shiftNote || ops.specialReport ? "메모 있음" : "메모 없음";
   return `
-    <section class="overview-fitness-summary" aria-label="피트니스 운영요약">
+    <section class="overview-fitness-summary" aria-label="업무요약">
       <header>
-        <span>피트니스 운영요약</span>
+        <span>업무요약</span>
         <strong>${escapeHtml(memoState)}</strong>
       </header>
       <div>
@@ -2787,12 +2808,12 @@ function renderOverviewFitnessEmployeeSheet({ group, employee, employeeId, index
   const scheduleRows = getOverviewScheduleRows(dayLog);
   const visibleTasks = activeTasks.length
     ? activeTasks
-    : Array.from({ length: 5 }, () => ({ priority: "?", text: "업무 내용", status: "예정" }));
+    : Array.from({ length: 3 }, () => ({ priority: "?", text: "업무 내용", status: "예정" }));
   const visibleSchedule = scheduleRows.length ? scheduleRows : getWorklogScheduleSlots(dayLog).map((time) => ({ time, text: "일정" }));
   const fitnessSummary = renderOverviewFitnessSummary(dayLog);
   return `
-    <article class="worklog-overview-employee-sheet projected-worklog-sheet is-fitness-sheet is-fitness-projection" data-overview-site="${escapeAttr(group.id)}">
-      <header class="overview-sheet-head">
+    <article class="worklog-overview-employee-sheet projected-worklog-sheet is-fitness-sheet is-fitness-projection is-fitness-native-projection" data-overview-site="${escapeAttr(group.id)}">
+      <header class="overview-sheet-head overview-fitness-native-head">
         <div>
           <span>피트니스 ${index + 1}</span>
           <h3>${escapeHtml(getEmployeeAdminLabel(employee))}</h3>
@@ -2800,25 +2821,36 @@ function renderOverviewFitnessEmployeeSheet({ group, employee, employeeId, index
         </div>
         <button type="button" data-overview-employee="${escapeAttr(employeeId)}" data-overview-view="${escapeAttr(group.view)}">열기</button>
       </header>
-      <div class="overview-fitness-form-label">
-        <span>FITNESS WORKLOG</span>
-        <strong>수업 · 상담 · 계약 · 운영기록</strong>
-      </div>
       ${fitnessSummary}
-      <div class="overview-sheet-body overview-fitness-worklog-body">
-        <section class="projected-task-panel">
-          <h4>오늘의 우선업무 <em>${context.done}/${context.tasks.length || 0}</em></h4>
+      <section class="overview-fitness-native-panel overview-fitness-task-native">
+        <header>
+          <div>
+            <i aria-hidden="true"></i>
+            <h4>오늘의 우선업무</h4>
+            <em>${context.done}/${context.tasks.length || 0}</em>
+          </div>
+          ${renderOverviewFitnessOpenButton(employeeId, group.view, "오늘의 우선업무 열기")}
+          <button type="button" class="overview-native-ai" aria-label="AI 코칭" disabled>AI</button>
+        </header>
           <ul>
             ${visibleTasks.slice(0, 8).map(renderOverviewTaskMini).join("")}
           </ul>
-        </section>
-        <section class="projected-fitness-schedule-panel">
-          <h4>시간별 수업·운영 <em>${context.scheduleCount}</em></h4>
+      </section>
+      <section class="overview-fitness-native-panel overview-fitness-schedule-native">
+        <header>
+          <div>
+            <i aria-hidden="true"></i>
+            <h4>시간별일정</h4>
+            <em>${context.scheduleCount}</em>
+          </div>
+          ${renderOverviewFitnessOpenButton(employeeId, group.view, "시간별일정 열기")}
+          <span class="overview-native-unit">1시간</span>
+          <button type="button" class="overview-native-ai" aria-label="AI 코칭" disabled>AI</button>
+        </header>
           <ul>
-            ${visibleSchedule.slice(0, 12).map(renderOverviewScheduleMini).join("")}
+            ${visibleSchedule.slice(0, 14).map(renderOverviewScheduleMini).join("")}
           </ul>
-        </section>
-      </div>
+      </section>
       <section class="overview-report-panel overview-fitness-report-panel">
         <span>업무보고</span>
         <p>${escapeHtml(context.reportText || "오늘 보고 내용이 아직 없습니다.")}</p>
