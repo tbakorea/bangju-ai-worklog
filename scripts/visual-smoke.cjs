@@ -1715,10 +1715,29 @@ async function checkFitnessCenterReportConfirmation(browser) {
       state.selectedDateKey = "2026-07-24";
       state.fitnessWritableEmployeeId = "beyond-fitness-manager";
       state.fitnessLogPage = 0;
+      authState.approvalRows = [{
+        id: "remote-dabin",
+        email: "dabin@example.com",
+        name: "이다빈",
+        nickname: "다빈",
+        org: "(주)비욘드컴퍼니",
+        role: "인포데스크",
+        workplace: "비욘드 피트니스",
+        primary_work: "고객응대, 센터관리",
+        employment_type: "직원",
+        work_hours: "16:00-20:00",
+        approval_status: "approved"
+      }];
+      authState.approvalRowsLoaded = true;
       const log = getEmployeeLogForDate("beyond-fitness-manager", "2026-07-24");
       log.clockIn = "06:00";
       log.clockOut = "12:00";
       log.fitnessOps = { ...createFitnessOps(), ptRegular: "2", consultation: "1" };
+      const dabinLog = getEmployeeLogForDate("fitness-weekday-info", "2026-07-24");
+      dabinLog.clockIn = "16:00";
+      dabinLog.clockOut = "20:00";
+      dabinLog.fitnessOps = { ...createFitnessOps(), ptRegular: "1", ptFree: "1", consultation: "2", inbound: "1" };
+      dabinLog.fitnessOps.specialReport = "마감 정리 완료";
       saveState({ fastSave: true });
       document.body.classList.add("physical-phone-device");
       document.body.dataset.layoutMode = "phone";
@@ -1762,6 +1781,11 @@ async function checkFitnessCenterReportConfirmation(browser) {
   ["명일 예정업무", "전체 직원 운영기록", "유료PT", "무료PT", "기타PT", "신규", "재등록", "상담", "아웃바운드", "인바운드", "특이사항", "오늘의 기록", "담당", "팀장", "센터장"].forEach((label) => {
     if (!reportState.previewText.includes(label)) {
       fail("fitness center report should preserve handwritten report fields", `${label} missing`);
+    }
+  });
+  ["이다빈", "16:00", "20:00", "마감 정리 완료"].forEach((label) => {
+    if (!reportState.previewText.includes(label)) {
+      fail("fitness center report should include approved staff attendance records", `${label} missing`);
     }
   });
   ["출결현황 / PT수업", "계약현황 / 고객관리", "시간별 세부업무", "근태"].forEach((label) => {

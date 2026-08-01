@@ -1192,13 +1192,88 @@ function refreshWeatherForScope(scope = activeView) {
 
 function getFitnessEmployees() {
   const profile = state.profile || {};
-  const source = `${profile.org || ""} ${profile.workplace || ""} ${profile.primaryWork || ""} ${profile.role || ""}`.toLowerCase();
-  const includeProfileEmployee = !isRepresentativeProfile()
-    && (state.fitnessWritableEmployeeId === "profile-user" || (!getProfileMappedEmployeeId() && /피트니스|fitness/.test(source)));
-  const list = fitnessEmployeeIds
+  const merged = new Map();
+  const add = (employee, priority = 0) => {
+    const normalized = normalizeFitnessEmployeeForWorklog(employee);
+    if (!isAssignedWorklogEmployee(normalized) || !isFitnessEmployeeRecord(normalized)) return;
+    const key = normalized.id || normalizeEmailValue(normalized.email || "") || `${normalized.role || ""}:${normalized.name || ""}`;
+    const current = merged.get(key);
+    if (!current || current.priority <= priority) merged.set(key, { employee: normalized, priority });
+  };
+
+  fitnessEmployeeIds
     .map((id) => employees.find((employee) => employee.id === id))
-    .filter(isAssignedWorklogEmployee);
-  return includeProfileEmployee ? [getProfileEmployee(), ...list] : list;
+    .forEach((employee) => add(employee, 10));
+
+  getStaffDirectoryEmployees()
+    .filter(isFitnessEmployeeRecord)
+    .forEach((employee) => add(employee, 30));
+
+  const profileEmployee = getProfileEmployee();
+  const profileSource = `${profile.org || ""} ${profile.workplace || ""} ${profile.primaryWork || ""} ${profile.role || ""}`.toLowerCase();
+  if (!isRepresentativeProfile() && /피트니스|fitness/.test(profileSource)) add(profileEmployee, 40);
+
+  collectFitnessLogEmployees().forEach((employee) => add(employee, 20));
+
+  return [...merged.values()]
+    .map((entry) => entry.employee)
+    .sort((a, b) => getFitnessEmployeeSortKey(a).localeCompare(getFitnessEmployeeSortKey(b), "ko"));
+}
+
+function isFitnessEmployeeRecord(employee = {}) {
+  const source = `${employee.id || ""} ${employee.org || ""} ${employee.workplace || ""} ${employee.primaryWork || ""} ${employee.secondaryWork || ""} ${employee.role || ""}`.toLowerCase();
+  return fitnessEmployeeIds.includes(employee.id)
+    || fitnessEmployeeIds.includes(employee.mappedEmployeeId)
+    || /피트니스|fitness/.test(source);
+}
+
+function normalizeFitnessEmployeeForWorklog(employee = {}) {
+  if (!employee) return employee;
+  const mappedId = fitnessEmployeeIds.includes(employee.mappedEmployeeId) ? employee.mappedEmployeeId : "";
+  const directId = fitnessEmployeeIds.includes(employee.id) ? employee.id : "";
+  const canonicalId = mappedId || directId;
+  if (!canonicalId) return employee;
+  const base = employees.find((item) => item.id === canonicalId) || {};
+  return {
+    ...base,
+    ...employee,
+    id: canonicalId,
+    mappedEmployeeId: employee.mappedEmployeeId || canonicalId,
+    name: employee.name || base.name,
+    nickname: employee.nickname || base.nickname || "",
+    org: employee.org || base.org,
+    role: employee.role || base.role,
+    primaryWork: employee.primaryWork || base.primaryWork || "",
+    workplace: employee.workplace || base.workplace || "비욘드 피트니스",
+    workHours: employee.workHours || base.workHours || defaultProfile.workHours,
+  };
+}
+
+function collectFitnessLogEmployees() {
+  const seen = new Map();
+  Object.values(state.employeeLogs || {}).forEach((logsByEmployee) => {
+    Object.entries(logsByEmployee || {}).forEach(([employeeId, log]) => {
+      const base = employees.find((item) => item.id === employeeId) || {};
+      const employee = normalizeFitnessEmployeeForWorklog({
+        ...base,
+        id: employeeId,
+        org: log?.org || base.org || "",
+        role: log?.role || base.role || "",
+        name: log?.employeeName || base.name || "",
+        workplace: log?.workplace || base.workplace || "",
+        primaryWork: log?.primaryWork || base.primaryWork || "",
+        workHours: base.workHours || defaultProfile.workHours,
+      });
+      if (isFitnessEmployeeRecord(employee)) seen.set(employee.id, employee);
+    });
+  });
+  return [...seen.values()];
+}
+
+function getFitnessEmployeeSortKey(employee = {}) {
+  const order = fitnessEmployeeIds.indexOf(employee.id);
+  const slot = order >= 0 ? String(order).padStart(2, "0") : "99";
+  return `${slot}|${employee.role || ""}|${employee.name || ""}|${employee.email || ""}`;
 }
 
 function getEmployeeAdminLabel(employee = getSelectedEmployee()) {
@@ -1744,7 +1819,7 @@ function getSelectedLog() {
 }
 
 function getEmployeeLogForDate(employeeId, key = getActiveDateKey()) {
-  const employee = getEmployeeOptions().find((item) => item.id === employeeId) || employees.find((item) => item.id === employeeId) || getSelectedEmployee();
+  const employee = findEmployeeRecordById(employeeId) || getSelectedEmployee();
   state.employeeLogs ||= {};
   state.employeeLogs[key] ||= {};
   state.employeeLogs[key][employee.id] ||= createEmployeeLog(employee, state.profile, key);
@@ -1753,6 +1828,15 @@ function getEmployeeLogForDate(employeeId, key = getActiveDateKey()) {
     : [];
   normalizeEmployeeLogRows(state.employeeLogs[key][employee.id], key);
   return state.employeeLogs[key][employee.id];
+}
+
+function findEmployeeRecordById(employeeId) {
+  const id = String(employeeId || "").trim();
+  if (!id) return null;
+  return getEmployeeOptions().find((item) => item.id === id)
+    || employees.find((item) => item.id === id)
+    || getStaffDirectoryEmployees().find((item) => item.id === id || item.mappedEmployeeId === id)
+    || null;
 }
 
 function getWorklogEditLockInfo(employeeId = getCurrentWorklogEmployeeId(), dateKey = getActiveDateKey()) {
