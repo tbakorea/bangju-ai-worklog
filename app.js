@@ -663,10 +663,12 @@ const beyondModules = [
   ["AI 코칭", "직원, 사업장, 대표 코칭과 실행 추적", "운영"],
 ];
 const benchmarkSystems = [
-  ["Microsoft Dynamics 365", "CRM·ERP·Finance·Field Service·Project Operations를 분리 앱으로 제공하고 AI/Agent를 각 업무 흐름에 붙이는 구조"],
-  ["Procore", "건설 프로젝트 전 생애주기, 품질·안전·재무·문서·협업을 하나의 플랫폼과 500+ 통합으로 연결"],
-  ["Odoo", "업무 앱을 모듈식으로 쌓는 ERP 방식. CRM, 회계, POS, 프로젝트, 재고 등으로 확장"],
-  ["Yardi", "부동산 운영에서 자산, 임대, 회계, CRM을 통합하는 산업 특화 플랫폼 접근"],
+  ["Asana · ClickUp", "업무, 담당자, 목표, AI 제안을 하나의 그래프로 연결해 오늘 할 일과 조직 목표를 같은 화면에서 추적"],
+  ["monday.com", "대시보드와 자동화를 업무 흐름에 붙여 미작성, 지연, 승인 필요 같은 상태 변화를 즉시 행동으로 전환"],
+  ["BambooHR · Rippling", "직원 원장, 온보딩, 권한, 근무·급여 기준을 분리해 가입승인 이후에도 데이터 품질을 유지"],
+  ["SafetyCulture · Procore", "현장 점검, 이슈, 시정조치, 증빙 사진을 반복 체크리스트와 책임자 기반으로 관리"],
+  ["Microsoft Viva · Lattice", "OKR, 역량, 피드백, 성장 기록을 업무 데이터와 연결해 개인별 코칭을 누적"],
+  ["Yardi · Industry ERP", "부동산·시설·임대·매출 데이터를 사업장 단위로 묶어 운영 점수와 투자 판단으로 연결"],
 ];
 const operatingRisks = [
   ["공간", "루클라쎄 2차 209~212호 보류 공간의 활용 시나리오 필요", "중"],
@@ -3520,6 +3522,97 @@ function buildPremiumQualityChecks({
   };
 }
 
+function getBenchmarkOperatingLayers({
+  staffRows = [],
+  issueRows = [],
+  missingLogs = [],
+  laborSignals = 0,
+  taskTotal = 0,
+  completedTotal = 0,
+  salesActions = 0,
+  missionQueue = [],
+  fitnessOps = {},
+} = {}) {
+  const assignedStaff = getEmployeeOptions().filter(isAssignedWorklogEmployee);
+  const approvedStaff = assignedStaff.filter((employee) => employee.id !== "profile-user" || isProfileApproved());
+  const profile = state.profile || {};
+  const profileReady = Boolean(profile.org && profile.role && profile.workplace && profile.workHours);
+  const backupReady = Boolean(String(state.backupSettings?.recipientEmail || "").trim());
+  const fitnessActionCount = Number(fitnessOps.ptRegular || 0) + Number(fitnessOps.ptFree || 0) + Number(fitnessOps.consultation || 0) + Number(fitnessOps.customerRenewal || 0);
+  const completionRate = taskTotal ? Math.round((completedTotal / Math.max(1, taskTotal)) * 100) : 0;
+  return [
+    {
+      title: "직원 원장·권한",
+      benchmark: "BambooHR · Rippling",
+      metric: `${approvedStaff.length}/${assignedStaff.length || 0}명`,
+      status: approvedStaff.length && profileReady ? "ready" : "attention",
+      view: hasApprovalAuthority() ? "staff" : "settings",
+      text: "가입승인, 소속, 직책, 근무시간, 권한을 직원 원장으로 통합해 디바이스마다 다른 직원 정보가 생기지 않게 합니다.",
+      action: profileReady ? "직원 원장 유지" : "직원 기본정보 확정",
+    },
+    {
+      title: "목표·업무 연결",
+      benchmark: "Asana · Microsoft Viva",
+      metric: taskTotal ? `${completionRate}%` : "입력 대기",
+      status: taskTotal && completionRate >= 60 ? "ready" : "build",
+      view: "worklog",
+      text: "오늘 업무가 월 목표, PT·상담·계약, 대표 지시와 연결되어 업무일지가 실행관리판으로 작동합니다.",
+      action: taskTotal ? "미완료 업무 추적" : "오늘 우선업무 입력",
+    },
+    {
+      title: "자동화·승인",
+      benchmark: "monday.com · ClickUp",
+      metric: `${(authState.pendingApprovalCount || 0) + (authState.pendingPasswordResetCount || 0)}건`,
+      status: (authState.pendingApprovalCount || 0) + (authState.pendingPasswordResetCount || 0) ? "attention" : "ready",
+      view: hasApprovalAuthority() ? "settings" : "worklog",
+      text: "직원등록, 정보변경, 비밀번호 재설정, 업무 확정 상태를 알림과 승인 큐로 묶습니다.",
+      action: hasApprovalAuthority() ? "승인 큐 확인" : "내 요청 상태 확인",
+    },
+    {
+      title: "현장 점검·시정",
+      benchmark: "SafetyCulture · Procore",
+      metric: `${issueRows.length}건`,
+      status: issueRows.length ? "attention" : "ready",
+      view: "control",
+      text: "근태 신호, 미작성 업무, 시설·청결·고객 이슈를 대표 관제에서 바로 시정조치로 전환합니다.",
+      action: issueRows.length ? "관제 신호 처리" : "정상 신호 유지",
+    },
+    {
+      title: "수익 행동·고객",
+      benchmark: "CRM · Fitness Ops",
+      metric: `${salesActions + fitnessActionCount}건`,
+      status: salesActions + fitnessActionCount ? "ready" : "build",
+      view: "worklog",
+      text: "유료PT, 무료PT, 상담, 재등록, 홍보 행동을 업무일지와 운영보고서에 동시에 반영합니다.",
+      action: salesActions + fitnessActionCount ? "후속업무 연결" : "고객 행동 기록",
+    },
+    {
+      title: "노무·보고 증빙",
+      benchmark: "Rippling · Payroll Ops",
+      metric: backupReady ? "보존 준비" : `${laborSignals}건 확인`,
+      status: backupReady && laborSignals === 0 ? "ready" : "attention",
+      view: canOpenLaborSection() ? "attendance" : "report",
+      text: "출결, 근무시간, 수업 집계, 보고서 백업을 월마감과 노무 제출자료로 이어지게 합니다.",
+      action: backupReady ? "월마감 검증" : "백업·노무 기준 보완",
+    },
+  ];
+}
+
+function renderBenchmarkOperatingLayerCards(layers = [], { compact = false } = {}) {
+  return layers.map((layer, index) => `
+    <button type="button" class="benchmark-layer-card is-${escapeAttr(layer.status)} ${compact ? "is-compact" : ""}" data-benchmark-jump="${escapeAttr(layer.view)}">
+      <em>${String(index + 1).padStart(2, "0")}</em>
+      <div>
+        <span>${escapeHtml(layer.benchmark)}</span>
+        <strong>${escapeHtml(layer.title)}</strong>
+        <p>${escapeHtml(layer.text)}</p>
+      </div>
+      <b>${escapeHtml(layer.metric)}</b>
+      <small>${escapeHtml(layer.action)}</small>
+    </button>
+  `).join("");
+}
+
 function getControlBriefingItems({ staffRows, siteRows, fitnessOps, issueCount, taskTotal, completedTotal }) {
   const incomplete = Math.max(0, taskTotal - completedTotal);
   const salesActions = fitnessOps.consultation + fitnessOps.outbound + fitnessOps.outsideSales;
@@ -4010,6 +4103,19 @@ function renderAiCoach() {
   const growth = buildPersonalGrowthModel(getSelectedEmployee(), log);
   const personalProposals = getMissionProposalsForEmployee(getSelectedEmployee(), log);
   const queue = canAccessWorklogOverview() ? getMissionProposalQueue(6) : [];
+  const coachingStaffRows = isAdminMode ? getControlStaffRows() : [];
+  const coachingFitnessOps = isAdminMode ? getFitnessOpsSummary() : {};
+  const benchmarkLayers = isAdminMode ? getBenchmarkOperatingLayers({
+    staffRows: coachingStaffRows,
+    issueRows: coachingStaffRows.filter((row) => row.aiSignal !== "정상"),
+    missingLogs: coachingStaffRows.filter((row) => row.taskCount === 0),
+    laborSignals: coachingStaffRows.filter((row) => row.attendanceStatus === "미기록" || row.attendanceStatus.includes("결석")).length,
+    taskTotal: coachingStaffRows.reduce((sum, row) => sum + row.taskCount, 0),
+    completedTotal: coachingStaffRows.reduce((sum, row) => sum + row.completedCount, 0),
+    salesActions: Number(coachingFitnessOps.consultation || 0) + Number(coachingFitnessOps.outbound || 0) + Number(coachingFitnessOps.outsideSales || 0) + Number(coachingFitnessOps.customerNew || 0) + Number(coachingFitnessOps.customerRenewal || 0),
+    missionQueue: queue,
+    fitnessOps: coachingFitnessOps,
+  }) : [];
   const strengths = String(state.profile?.strengths || "").trim();
   const weaknesses = String(state.profile?.weaknesses || "").trim();
   const developmentGoals = String(state.profile?.developmentGoals || "").trim();
@@ -4061,6 +4167,17 @@ function renderAiCoach() {
       <strong>가시적 성장 기준</strong>
       <p>점수는 업무 입력량이 아니라 완료율, 시간배치, 회고 품질, 출결 기록, 역할별 핵심 행동을 함께 반영합니다. 매일 3분만 기록해도 주간 성장 변화가 보이도록 설계했습니다.</p>
     </article>
+    ${isAdminMode ? `
+      <article class="growth-benchmark-card">
+        <header>
+          <span>Global Benchmark</span>
+          <strong>상위 앱 기준으로 본 다음 보강점</strong>
+        </header>
+        <div>
+          ${renderBenchmarkOperatingLayerCards(benchmarkLayers.slice(0, 4), { compact: true })}
+        </div>
+      </article>
+    ` : ""}
     ${!isAdminMode ? `
       <article class="growth-coaching-card">
         <strong>나에게 맞는 기록 방식</strong>
@@ -4101,6 +4218,9 @@ function renderAiCoach() {
       </article>
     `).join("")}
   `;
+  node.querySelectorAll("[data-benchmark-jump]").forEach((button) => {
+    button.addEventListener("click", () => switchView(button.dataset.benchmarkJump || "premium"));
+  });
 }
 
 function buildPremiumOperatingModel() {
@@ -4123,6 +4243,7 @@ function buildPremiumOperatingModel() {
   const automationScore = clampScore((authState.remoteReady ? 22 : 8) + (authState.user ? 22 : 8) + 16 + (missionQueue.length ? 18 : 8) + (state.backupSettings ? 14 : 8));
   const readinessScore = clampScore((operatingScore * 0.22) + (dataCaptureScore * 0.2) + (peopleScore * 0.18) + (revenueScore * 0.16) + (laborScore * 0.12) + (automationScore * 0.12));
   const quality = buildPremiumQualityChecks({ staffRows, issueRows, missingLogs, laborSignals, taskTotal, completedTotal, salesActions, missionQueue });
+  const benchmarkLayers = getBenchmarkOperatingLayers({ staffRows, issueRows, missingLogs, laborSignals, taskTotal, completedTotal, salesActions, missionQueue, fitnessOps });
   const growthModels = getEmployeeOptions()
     .filter(isAssignedWorklogEmployee)
     .slice(0, 8)
@@ -4173,7 +4294,7 @@ function buildPremiumOperatingModel() {
     ["4단계", "대표 개입 최소화", "위험 신호, 칭찬 신호, 위임 후보를 매일 10분 보고서로 압축합니다.", peopleScore],
     ["5단계", "월 500만원 패키지", "운영진단, 노무자료, 직원성장, 매출행동, 백업을 월간 컨설팅 산출물로 제공합니다.", readinessScore],
   ];
-  return { readinessScore, proofItems, agentLanes, roadmap, missionQueue, growthModels, weakestGrowth, quality };
+  return { readinessScore, proofItems, agentLanes, roadmap, missionQueue, growthModels, weakestGrowth, quality, benchmarkLayers };
 }
 
 function renderPremiumOperatingSystem() {
@@ -4216,6 +4337,19 @@ function renderPremiumOperatingSystem() {
           <small>${escapeHtml(lane.action)}</small>
         </button>
       `).join("")}
+    </section>
+    <section class="premium-benchmark-card" id="premium-benchmark">
+      <header>
+        <div>
+          <span>Global Benchmark Overlay</span>
+          <strong>상위 운영앱 대비 설계 기준</strong>
+          <p>상위 기업용 앱들의 강점을 방주그룹 현장 운영 방식에 맞게 재조합했습니다. 각 항목은 바로 실행 섹션으로 연결됩니다.</p>
+        </div>
+        <b>${model.benchmarkLayers.filter((layer) => layer.status === "ready").length}/${model.benchmarkLayers.length}</b>
+      </header>
+      <div class="premium-benchmark-grid">
+        ${renderBenchmarkOperatingLayerCards(model.benchmarkLayers)}
+      </div>
     </section>
     <section class="premium-quality-console" id="premium-quality">
       <header>
@@ -4290,6 +4424,9 @@ function renderPremiumOperatingSystem() {
   `;
   node.querySelectorAll("[data-premium-jump]").forEach((button) => {
     button.addEventListener("click", () => switchView(button.dataset.premiumJump || "control"));
+  });
+  node.querySelectorAll("[data-benchmark-jump]").forEach((button) => {
+    button.addEventListener("click", () => switchView(button.dataset.benchmarkJump || "premium"));
   });
 }
 

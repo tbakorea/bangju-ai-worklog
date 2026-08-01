@@ -18609,7 +18609,7 @@ body[data-active-view="control"] .control-tower-hero-actions .main-menu-popover[
 }
 
 .premium-command-strip {
-  grid-template-columns: repeat(5, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(126px, 1fr));
 }
 
 .premium-operating-grid {
@@ -18755,6 +18755,169 @@ body[data-active-view="control"] .control-tower-hero-actions .main-menu-popover[
     linear-gradient(180deg, rgba(255, 254, 250, 0.96), rgba(246, 248, 243, 0.82));
   padding: 14px;
   box-shadow: 0 16px 34px rgba(15, 59, 46, 0.07);
+}
+
+.premium-benchmark-card,
+.growth-benchmark-card {
+  display: grid;
+  gap: 12px;
+  border: 1px solid rgba(15, 59, 46, 0.11);
+  border-radius: 22px;
+  background:
+    linear-gradient(180deg, rgba(255, 254, 250, 0.97), rgba(246, 248, 243, 0.86));
+  padding: 14px;
+  box-shadow: 0 16px 34px rgba(15, 59, 46, 0.07);
+}
+
+.premium-benchmark-card header,
+.growth-benchmark-card header {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: center;
+}
+
+.premium-benchmark-card header span,
+.growth-benchmark-card header span {
+  display: block;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 950;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.premium-benchmark-card header strong,
+.growth-benchmark-card header strong {
+  display: block;
+  margin-top: 3px;
+  color: var(--ink);
+  font-size: 22px;
+  font-weight: 950;
+}
+
+.premium-benchmark-card header p {
+  margin: 4px 0 0;
+  color: rgba(38, 50, 56, 0.68);
+  font-size: 13px;
+  font-weight: 780;
+  line-height: 1.45;
+}
+
+.premium-benchmark-card header > b {
+  display: grid;
+  place-items: center;
+  min-width: 70px;
+  min-height: 52px;
+  border-radius: 18px;
+  background: rgba(15, 59, 46, 0.1);
+  color: var(--fitness-green);
+  font-size: 24px;
+  font-weight: 950;
+}
+
+.premium-benchmark-grid,
+.growth-benchmark-card > div {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.benchmark-layer-card {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 8px 10px;
+  align-items: start;
+  min-width: 0;
+  border: 1px solid rgba(15, 59, 46, 0.09);
+  border-radius: 18px;
+  background: rgba(255, 254, 250, 0.82);
+  padding: 12px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.benchmark-layer-card em {
+  display: grid;
+  place-items: center;
+  width: 34px;
+  min-height: 34px;
+  border-radius: 12px;
+  background: rgba(15, 59, 46, 0.08);
+  color: var(--fitness-green);
+  font-size: 12px;
+  font-style: normal;
+  font-weight: 950;
+}
+
+.benchmark-layer-card span {
+  display: block;
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 950;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.benchmark-layer-card strong {
+  display: block;
+  margin-top: 3px;
+  color: var(--ink);
+  font-size: 16px;
+  font-weight: 950;
+}
+
+.benchmark-layer-card p {
+  margin: 5px 0 0;
+  color: rgba(38, 50, 56, 0.68);
+  font-size: 12px;
+  font-weight: 780;
+  line-height: 1.38;
+}
+
+.benchmark-layer-card > b,
+.benchmark-layer-card > small {
+  grid-column: 1 / -1;
+  justify-self: start;
+  border-radius: 999px;
+  padding: 5px 9px;
+  font-size: 12px;
+  font-weight: 950;
+}
+
+.benchmark-layer-card > b {
+  background: rgba(15, 59, 46, 0.08);
+  color: var(--fitness-green);
+}
+
+.benchmark-layer-card > small {
+  margin-top: -2px;
+  background: rgba(170, 83, 36, 0.08);
+  color: #744019;
+}
+
+.benchmark-layer-card.is-attention {
+  border-color: rgba(170, 83, 36, 0.24);
+  background: rgba(255, 246, 236, 0.82);
+}
+
+.benchmark-layer-card.is-build {
+  border-color: rgba(151, 120, 52, 0.2);
+  background: rgba(255, 250, 235, 0.78);
+}
+
+.benchmark-layer-card:hover,
+.benchmark-layer-card:focus-visible {
+  border-color: rgba(15, 59, 46, 0.28);
+  transform: translateY(-1px);
+}
+
+.benchmark-layer-card.is-compact {
+  padding: 10px;
+}
+
+.benchmark-layer-card.is-compact p {
+  display: none;
 }
 
 .premium-quality-console header {
@@ -19033,7 +19196,13 @@ body.physical-phone-device .premium-agent-grid {
 
 body[data-layout-mode="phone"] .premium-quality-grid,
 body[data-view-mode="ceo"] .premium-quality-grid,
-body.physical-phone-device .premium-quality-grid {
+body.physical-phone-device .premium-quality-grid,
+body[data-layout-mode="phone"] .premium-benchmark-grid,
+body[data-view-mode="ceo"] .premium-benchmark-grid,
+body.physical-phone-device .premium-benchmark-grid,
+body[data-layout-mode="phone"] .growth-benchmark-card > div,
+body[data-view-mode="ceo"] .growth-benchmark-card > div,
+body.physical-phone-device .growth-benchmark-card > div {
   grid-template-columns: minmax(0, 1fr);
 }
 
@@ -19051,6 +19220,8 @@ body.physical-phone-device .premium-operator-layout {
   .premium-proof-grid,
   .premium-agent-grid,
   .premium-quality-grid,
+  .premium-benchmark-grid,
+  .growth-benchmark-card > div,
   .premium-score-card,
   .premium-operator-layout {
     grid-template-columns: minmax(0, 1fr);
