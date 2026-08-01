@@ -544,6 +544,8 @@ const employees = [
   { id: "fitness-trainer-1", name: "홍현규", nickname: "홍트", org: "(주)방주 / 비욘드 피트니스 지사", role: "트레이너", workHours: "06:00-24:00", primaryWork: "PT 수업", employmentType: "프리랜서" },
   { id: "fitness-weekday-info", name: "주중 인포", nickname: "주중인포", org: "(주)방주 / 비욘드 피트니스 지사", role: "인포데스크", workHours: "16:00-20:00", primaryWork: "고객응대, 센터관리" },
   { id: "fitness-weekday-info-idabin", name: "이다빈", nickname: "이다빈", org: "(주)방주 / 비욘드 피트니스 지사", role: "인포데스크", workHours: "16:00-20:00", primaryWork: "고객응대, 센터관리" },
+  { id: "fitness-info-kimyoungchae", name: "김영채", nickname: "김영채", email: "yckim1558@naver.com", org: "(주)방주 / 비욘드 피트니스 지사", role: "인포데스크", workHours: "10:00-18:00", primaryWork: "고객응대, 센터관리" },
+  { id: "fitness-info-shinsemin", name: "신세민", nickname: "신세민", email: "tpals2990@naver.com", org: "(주)방주 / 비욘드 피트니스 지사", role: "인포데스크", workHours: "10:00-18:00", primaryWork: "고객응대, 센터관리" },
   { id: "fitness-saturday-info", name: "토요 인포", nickname: "토요인포", org: "(주)방주 / 비욘드 피트니스 지사", role: "토요 인포", workHours: "10:00-18:00", primaryWork: "토요일 고객응대, 센터관리" },
   { id: "fitness-sunday-info", name: "일요 인포", nickname: "일요인포", org: "(주)방주 / 비욘드 피트니스 지사", role: "일요 인포", workHours: "10:00-18:00", primaryWork: "일요일 고객응대, 센터관리" },
   { id: "fitness-spare-1", name: "피트니스 예비", nickname: "예비", org: "(주)방주 / 비욘드 피트니스 지사", role: "예비", workHours: "10:00-18:00", primaryWork: "운영 지원" },
@@ -551,7 +553,7 @@ const employees = [
   { id: "beyond-shared-manager", name: "공유사업부 매니저", org: "(주)비욘드컴퍼니 / 공유사업부", role: "공유사업부 매니저", primaryWork: "공유오피스, 공유창고, 고객관리" },
   { id: "beyond-spare-1", name: "비욘드 예비", org: "(주)비욘드컴퍼니", role: "예비", primaryWork: "공통 지원" },
 ];
-const fitnessEmployeeIds = ["beyond-fitness-manager", "fitness-trainer-1", "fitness-weekday-info", "fitness-weekday-info-idabin", "fitness-saturday-info", "fitness-sunday-info", "fitness-spare-1"];
+const fitnessEmployeeIds = ["beyond-fitness-manager", "fitness-trainer-1", "fitness-weekday-info", "fitness-weekday-info-idabin", "fitness-info-kimyoungchae", "fitness-info-shinsemin", "fitness-saturday-info", "fitness-sunday-info", "fitness-spare-1"];
 const fitnessPlaceholderEmployeeIds = new Set(["fitness-weekday-info", "fitness-saturday-info", "fitness-sunday-info", "fitness-spare-1"]);
 const bangjuWorklogEmployeeIds = ["bangju-finance-manager", "bangju-finance-assistant", "construction-finance-assistant", "bangju-spare-1"];
 const beyondWorklogEmployeeIds = ["beyond-company-leader", "beyond-shared-manager", "beyond-spare-1"];
@@ -1391,11 +1393,11 @@ function normalizeFitnessRosterGenericLabel(name = "", role = "") {
 }
 
 function getFitnessCenterEmployeeKey(employee = {}) {
+  const email = normalizeEmailValue(employee.email || "");
+  if (email) return `email:${email}`;
   const name = getFitnessCenterComparableName(employee);
   const role = getFitnessCenterComparableRole(employee.role || "");
   if (name) return `person:${role}|${name}`;
-  const email = normalizeEmailValue(employee.email || "");
-  if (email) return `email:${email}`;
   return `id:${employee.id || employee.mappedEmployeeId || ""}`;
 }
 
@@ -1647,6 +1649,8 @@ function syncFitnessWritableEmployeeFromProfile() {
   const role = source;
   if (/홍현규|트레이너|trainer|pt|피티/.test(role)) id = "fitness-trainer-1";
   else if (/이다빈/.test(role)) id = "fitness-weekday-info-idabin";
+  else if (/김영채|yckim1558/.test(role)) id = "fitness-info-kimyoungchae";
+  else if (/신세민|tpals2990/.test(role)) id = "fitness-info-shinsemin";
   else if (/토요|토요일/.test(role)) id = "fitness-saturday-info";
   else if (/일요|일요일/.test(role)) id = "fitness-sunday-info";
   else if (/인포|데스크|front|프론트|주중/.test(role)) id = "fitness-weekday-info";
@@ -1825,6 +1829,8 @@ function getProfileMappedEmployeeId(profile = state.profile || {}) {
   if (isActiveFitnessManagerEmail(email) || (!email && (/박주홍/.test(source) || /센터장|피트니스.*총괄|fitness.*manager/.test(source)))) return "beyond-fitness-manager";
   if (/홍현규|트레이너|trainer|pt|피티/.test(source)) return "fitness-trainer-1";
   if (/이다빈/.test(source)) return "fitness-weekday-info-idabin";
+  if (/김영채|yckim1558/.test(source)) return "fitness-info-kimyoungchae";
+  if (/신세민|tpals2990/.test(source)) return "fitness-info-shinsemin";
   if (/토요|토요일/.test(source)) return "fitness-saturday-info";
   if (/일요|일요일/.test(source)) return "fitness-sunday-info";
   if (/인포|데스크|front|프론트|주중/.test(source)) return "fitness-weekday-info";

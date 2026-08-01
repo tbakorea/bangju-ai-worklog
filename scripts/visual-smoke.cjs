@@ -757,11 +757,11 @@ async function checkUnclassifiedFitnessEmployeeCanEditOwnProfileWorklog(browser)
   })`));
   const parsed = JSON.parse(metrics);
   if (parsed.activeView !== "fitness-log") fail("unclassified fitness employee should land on fitness worklog", metrics);
-  if (parsed.selectedEmployeeId !== "profile-user" || parsed.fitnessWritableEmployeeId !== "profile-user") {
-    fail("unclassified fitness employee should use own profile worklog slot", metrics);
+  if (parsed.selectedEmployeeId !== "fitness-info-shinsemin" || parsed.fitnessWritableEmployeeId !== "fitness-info-shinsemin") {
+    fail("named fitness employee should use the canonical Shin Semin worklog slot", metrics);
   }
-  if (parsed.ownEditableEmployeeId !== "profile-user" || !parsed.canEdit || parsed.taskDisabled) {
-    fail("unclassified fitness employee own worklog should be editable", metrics);
+  if (parsed.ownEditableEmployeeId !== "fitness-info-shinsemin" || !parsed.canEdit || parsed.taskDisabled) {
+    fail("named fitness employee own worklog should be editable", metrics);
   }
   if (!/신세민/.test(`${parsed.selectedEmployee} ${parsed.header} ${parsed.identityBadge}`)) {
     fail("unclassified fitness employee identity should be visible", metrics);
@@ -778,8 +778,8 @@ async function checkUnclassifiedFitnessEmployeeCanEditOwnProfileWorklog(browser)
     disabled: document.querySelector("#fitnessTaskBoard .task-text-input")?.disabled ?? true,
     value: document.querySelector("#fitnessTaskBoard .task-text-input")?.value || "",
     selectedDateKey: state.selectedDateKey,
-    savedText: state.employeeLogs?.[state.selectedDateKey]?.["profile-user"]?.tasks?.[0]?.text || "",
-    storageText: JSON.parse(localStorage.getItem("beyond-worklog-state-v1") || "{}").employeeLogs?.[state.selectedDateKey]?.["profile-user"]?.tasks?.[0]?.text || ""
+    savedText: state.employeeLogs?.[state.selectedDateKey]?.["fitness-info-shinsemin"]?.tasks?.[0]?.text || "",
+    storageText: JSON.parse(localStorage.getItem("beyond-worklog-state-v1") || "{}").employeeLogs?.[state.selectedDateKey]?.["fitness-info-shinsemin"]?.tasks?.[0]?.text || ""
   })`));
   const saved = JSON.parse(saveMetrics);
   if (saved.disabled) fail("unclassified fitness employee input should remain enabled", saveMetrics);

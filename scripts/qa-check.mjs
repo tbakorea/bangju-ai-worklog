@@ -102,6 +102,38 @@ check(
 );
 
 check(
+  "fitness canonical roster includes current named staff",
+  [
+    '"fitness-info-kimyoungchae"',
+    '"fitness-info-shinsemin"',
+    "김영채",
+    "신세민",
+    "yckim1558@naver.com",
+    "tpals2990@naver.com",
+  ].every((needle) => js.includes(needle)),
+  "center report roster must include 김영채 and 신세민 as canonical fitness employees"
+);
+
+check(
+  "fitness profile mapping includes current named staff",
+  /김영채\|yckim1558[\s\S]{0,120}fitness-info-kimyoungchae/.test(js)
+    && /신세민\|tpals2990[\s\S]{0,120}fitness-info-shinsemin/.test(js),
+  "approved profile records for 김영채 and 신세민 should map to their fitness worklog slots"
+);
+
+check(
+  "fitness center roster dedupes by email first",
+  /function getFitnessCenterEmployeeKey\(employee = \{\}\) \{[\s\S]{0,120}const email = normalizeEmailValue\(employee\.email \|\| ""\);[\s\S]{0,80}if \(email\) return `email:\$\{email\}`;[\s\S]{0,120}const name = getFitnessCenterComparableName/.test(js),
+  "email-first roster identity prevents role/name variants from hiding approved staff"
+);
+
+check(
+  "fitness center report uses canonical roster",
+  /function getFitnessReportLogEntries\(dateKey, isCenter, employee\) \{[\s\S]{0,80}if \(isCenter\) \{[\s\S]{0,80}return getFitnessCenterEmployees\(\)\.map/.test(js),
+  "center operating reports must use the same canonical roster as the center page"
+);
+
+check(
   "global attendance button requires editable worklog",
   /function updateGlobalAttendanceVisibility\(view = activeView\)[\s\S]{0,160}attendanceEnabledViews\.has\(view\) && canEditCurrentWorklog\(view\)/.test(js),
   "attendance controls must be hidden when viewing another employee"
