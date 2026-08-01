@@ -2782,21 +2782,62 @@ function renderOverviewFitnessCenterSheet({ group, dateKey, dateLabel }) {
   `;
 }
 
+function renderOverviewFitnessEmployeeSheet({ group, employee, employeeId, index, dayLog, context }) {
+  const activeTasks = getOverviewActiveTasks(dayLog);
+  const scheduleRows = getOverviewScheduleRows(dayLog);
+  const visibleTasks = activeTasks.length
+    ? activeTasks
+    : Array.from({ length: 5 }, () => ({ priority: "?", text: "업무 내용", status: "예정" }));
+  const visibleSchedule = scheduleRows.length ? scheduleRows : getWorklogScheduleSlots(dayLog).map((time) => ({ time, text: "일정" }));
+  const fitnessSummary = renderOverviewFitnessSummary(dayLog);
+  return `
+    <article class="worklog-overview-employee-sheet projected-worklog-sheet is-fitness-sheet is-fitness-projection" data-overview-site="${escapeAttr(group.id)}">
+      <header class="overview-sheet-head">
+        <div>
+          <span>피트니스 ${index + 1}</span>
+          <h3>${escapeHtml(getEmployeeAdminLabel(employee))}</h3>
+          <p>${escapeHtml(context.attendance)}</p>
+        </div>
+        <button type="button" data-overview-employee="${escapeAttr(employeeId)}" data-overview-view="${escapeAttr(group.view)}">열기</button>
+      </header>
+      <div class="overview-fitness-form-label">
+        <span>FITNESS WORKLOG</span>
+        <strong>수업 · 상담 · 계약 · 운영기록</strong>
+      </div>
+      ${fitnessSummary}
+      <div class="overview-sheet-body overview-fitness-worklog-body">
+        <section class="projected-task-panel">
+          <h4>오늘의 우선업무 <em>${context.done}/${context.tasks.length || 0}</em></h4>
+          <ul>
+            ${visibleTasks.slice(0, 8).map(renderOverviewTaskMini).join("")}
+          </ul>
+        </section>
+        <section class="projected-fitness-schedule-panel">
+          <h4>시간별 수업·운영 <em>${context.scheduleCount}</em></h4>
+          <ul>
+            ${visibleSchedule.slice(0, 12).map(renderOverviewScheduleMini).join("")}
+          </ul>
+        </section>
+      </div>
+      <section class="overview-report-panel overview-fitness-report-panel">
+        <span>업무보고</span>
+        <p>${escapeHtml(context.reportText || "오늘 보고 내용이 아직 없습니다.")}</p>
+      </section>
+    </article>
+  `;
+}
+
 function renderOverviewEmployeeSheet({ group, employee, employeeId, index, dayLog, context }) {
   const isFitness = group.id === "fitness";
+  if (isFitness) {
+    return renderOverviewFitnessEmployeeSheet({ group, employee, employeeId, index, dayLog, context });
+  }
   const activeTasks = getOverviewActiveTasks(dayLog);
   const scheduleRows = getOverviewScheduleRows(dayLog);
   const insightPanel = renderOverviewInsightPanel(employee, dayLog, context);
   const directivePanel = renderOverviewDirectivePanel(employee, dayLog, employeeId, context);
-  const fitnessPanel = isFitness ? renderOverviewFitnessSummary(dayLog) : "";
-  const fitnessFormLabel = isFitness ? `
-    <div class="overview-fitness-form-label">
-      <span>FITNESS WORKLOG</span>
-      <strong>수업 · 상담 · 계약 · 운영기록</strong>
-    </div>
-  ` : "";
   return `
-    <article class="worklog-overview-employee-sheet projected-worklog-sheet ${isFitness ? "is-fitness-sheet" : ""}" data-overview-site="${escapeAttr(group.id)}">
+    <article class="worklog-overview-employee-sheet projected-worklog-sheet" data-overview-site="${escapeAttr(group.id)}">
       <header class="overview-sheet-head">
         <div>
           <span>${escapeHtml(group.label)} ${index + 1}</span>
@@ -2805,9 +2846,7 @@ function renderOverviewEmployeeSheet({ group, employee, employeeId, index, dayLo
         </div>
         <button type="button" data-overview-employee="${escapeAttr(employeeId)}" data-overview-view="${escapeAttr(group.view)}">열기</button>
       </header>
-      ${fitnessFormLabel}
       ${insightPanel}
-      ${fitnessPanel}
       ${directivePanel}
       <section class="overview-report-panel">
         <span>업무보고</span>
@@ -2815,13 +2854,13 @@ function renderOverviewEmployeeSheet({ group, employee, employeeId, index, dayLo
       </section>
       <div class="overview-sheet-body">
         <section class="projected-task-panel">
-          <h4>${isFitness ? "오늘의 우선업무" : "주요업무"} <em>${context.done}/${context.tasks.length || 0}</em></h4>
+          <h4>주요업무 <em>${context.done}/${context.tasks.length || 0}</em></h4>
           <ul>
             ${(activeTasks.length ? activeTasks : [{ priority: "?", text: "업무 내용", status: "예정" }]).map(renderOverviewTaskMini).join("")}
           </ul>
         </section>
-        <section class="${isFitness ? "projected-fitness-schedule-panel" : "projected-schedule-panel"}">
-          <h4>${isFitness ? "시간별 수업·운영" : "시간별 일정"} <em>${context.scheduleCount}</em></h4>
+        <section class="projected-schedule-panel">
+          <h4>시간별 일정 <em>${context.scheduleCount}</em></h4>
           <ul>
             ${scheduleRows.map(renderOverviewScheduleMini).join("")}
           </ul>
