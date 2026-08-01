@@ -2860,6 +2860,9 @@ function renderOverviewFitnessCenterSheet({ group, dateKey, dateLabel }) {
       note: ops.specialReport || ops.shiftNote || getOverviewReportText(log) || "기록 대기",
     };
   });
+  const presentCount = rows.filter((row) => !/결석|미기록/.test(row.attendance)).length;
+  const reportReadyCount = rows.filter((row) => row.note && row.note !== "기록 대기").length;
+  const signalCount = rows.filter((row) => /결석|미기록|기록 대기|확인/.test(`${row.attendance} ${row.note}`)).length;
   const totals = rows.reduce((sum, row) => ({
     paidPt: sum.paidPt + row.paidPt,
     freePt: sum.freePt + row.freePt,
@@ -2868,26 +2871,26 @@ function renderOverviewFitnessCenterSheet({ group, dateKey, dateLabel }) {
     marketing: sum.marketing + row.marketing,
   }), { paidPt: 0, freePt: 0, consultation: 0, contract: 0, marketing: 0 });
   return `
-    <article class="worklog-overview-employee-sheet overview-fitness-center-sheet is-fitness-sheet" data-overview-site="${escapeAttr(group.id)}">
-      <header class="overview-sheet-head">
+    <article class="worklog-overview-employee-sheet overview-fitness-center-sheet overview-fitness-ops-compact is-fitness-sheet" data-overview-site="${escapeAttr(group.id)}">
+      <header class="overview-sheet-head overview-fitness-ops-head">
         <div>
           <span>${escapeHtml(dateLabel)} · 센터운영현황</span>
           <h3>비욘드 피트니스 운영일지</h3>
-          <p>센터 전체 현황을 첫 장으로 확인합니다.</p>
+          <p>출결 · 수업 · 상담 · 특이사항 취합</p>
         </div>
         <button type="button" data-overview-fitness-center>열기</button>
       </header>
-      <section class="overview-center-kpis" aria-label="피트니스 센터 운영 합계">
-        <span><b>유료PT</b><strong>${totals.paidPt}</strong></span>
-        <span><b>무료PT</b><strong>${totals.freePt}</strong></span>
-        <span><b>상담</b><strong>${totals.consultation}</strong></span>
-        <span><b>계약</b><strong>${totals.contract}</strong></span>
-        <span><b>홍보</b><strong>${totals.marketing}</strong></span>
+      <section class="overview-center-kpis overview-center-kpis-primary" aria-label="피트니스 센터 운영 합계">
+        <span><b>출결</b><strong>${presentCount}/${rows.length}</strong><em>기록 직원</em></span>
+        <span><b>유료PT</b><strong>${totals.paidPt}</strong><em>무료 ${totals.freePt}</em></span>
+        <span><b>고객</b><strong>${totals.consultation}</strong><em>상담</em></span>
+        <span><b>계약</b><strong>${totals.contract}</strong><em>전환</em></span>
+        <span><b>신호</b><strong>${signalCount}</strong><em>확인 필요</em></span>
       </section>
-      <section class="overview-fitness-roster" aria-label="피트니스 직원 운영 취합">
+      <section class="overview-fitness-roster overview-fitness-roster-compact" aria-label="피트니스 직원 운영 취합">
         <header>
-          <span>전직원 취합</span>
-          <strong>${rows.length}명</strong>
+          <span>전직원 운영 취합</span>
+          <strong>보고 ${reportReadyCount}/${rows.length}</strong>
         </header>
         <div>
           ${rows.map((row) => `
@@ -2896,7 +2899,7 @@ function renderOverviewFitnessCenterSheet({ group, dateKey, dateLabel }) {
                 <b>${escapeHtml(getEmployeeAdminLabel(row.employee))}</b>
                 <em>${escapeHtml(row.attendance)} · ${escapeHtml(row.clock)}</em>
               </div>
-              <p>유료PT ${row.paidPt} · 무료PT ${row.freePt} · 상담 ${row.consultation} · 계약 ${row.contract}</p>
+              <p><span>유료 ${row.paidPt}</span><span>무료 ${row.freePt}</span><span>상담 ${row.consultation}</span><span>계약 ${row.contract}</span></p>
               <small>${escapeHtml(row.note)}</small>
             </article>
           `).join("")}
@@ -14185,6 +14188,12 @@ function getFitnessReportExportCss() {
       padding: 48px !important;
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
     }
+    .fitness-report-page.is-center-report {
+      display: flex !important;
+      flex-direction: column !important;
+      gap: 12px !important;
+      padding: 44px !important;
+    }
     .fitness-paper-top {
       display: grid;
       grid-template-columns: minmax(0, 1.15fr) minmax(320px, 0.85fr);
@@ -14256,6 +14265,12 @@ function getFitnessReportExportCss() {
       grid-template-columns: repeat(2, minmax(0, 1fr));
       gap: 16px;
       margin-top: 16px;
+    }
+    .fitness-report-page.is-center-report .fitness-paper-summary,
+    .fitness-report-page.is-center-report .fitness-paper-wide-table,
+    .fitness-report-page.is-center-report .fitness-paper-footer-grid,
+    .fitness-report-page.is-center-report .fitness-paper-approval {
+      margin-top: 0 !important;
     }
     .fitness-paper-tasks,
     .fitness-paper-kpi,
@@ -14441,6 +14456,15 @@ function getFitnessReportExportCss() {
       text-align: left;
       white-space: normal;
     }
+    .fitness-report-page.is-center-report .fitness-paper-center-ops-table {
+      flex: 0 0 auto;
+    }
+    .fitness-report-page.is-center-report .fitness-paper-center-ops-table th,
+    .fitness-report-page.is-center-report .fitness-paper-center-ops-table td {
+      height: 30px;
+      padding: 6px 5px;
+      font-size: 14px;
+    }
     .fitness-paper-schedule th:nth-child(1),
     .fitness-paper-schedule td:nth-child(1) {
       width: 166px;
@@ -14462,6 +14486,14 @@ function getFitnessReportExportCss() {
       display: grid;
       grid-template-columns: minmax(0, 0.95fr) minmax(0, 1.05fr);
       gap: 16px;
+    }
+    .fitness-report-page.is-center-report .fitness-paper-footer-grid {
+      flex: 1 1 auto;
+      min-height: 150px;
+    }
+    .fitness-report-page.is-center-report .fitness-paper-footer-grid > div {
+      display: grid;
+      grid-template-rows: auto repeat(3, minmax(42px, 1fr));
     }
   `;
 }

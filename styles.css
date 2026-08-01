@@ -11352,6 +11352,13 @@ body[data-layout-mode="phone"] .fitness-log-schedule-panel .appointment-merge-bu
   padding: 8mm;
 }
 
+.fitness-report-page.is-center-report {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  padding: 7mm;
+}
+
 .fitness-paper-top {
   display: grid;
   grid-template-columns: minmax(0, 1.28fr) minmax(168px, 0.72fr);
@@ -11451,6 +11458,13 @@ body[data-layout-mode="phone"] .fitness-log-schedule-panel .appointment-merge-bu
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 8px;
   margin-top: 8px;
+}
+
+.fitness-report-page.is-center-report .fitness-paper-summary,
+.fitness-report-page.is-center-report .fitness-paper-wide-table,
+.fitness-report-page.is-center-report .fitness-paper-footer-grid,
+.fitness-report-page.is-center-report .fitness-paper-approval {
+  margin-top: 0;
 }
 
 .fitness-paper-tasks,
@@ -11634,6 +11648,17 @@ body[data-layout-mode="phone"] .fitness-log-schedule-panel .appointment-merge-bu
   word-break: keep-all;
 }
 
+.fitness-report-page.is-center-report .fitness-paper-center-ops-table {
+  flex: 0 0 auto;
+}
+
+.fitness-report-page.is-center-report .fitness-paper-center-ops-table th,
+.fitness-report-page.is-center-report .fitness-paper-center-ops-table td {
+  height: 18px;
+  padding: 3px 3px;
+  font-size: 8.8px;
+}
+
 .fitness-paper-center-ops-table th:nth-child(1),
 .fitness-paper-center-ops-table td:nth-child(1) {
   width: 24px;
@@ -11727,6 +11752,16 @@ body[data-layout-mode="phone"] .fitness-log-schedule-panel .appointment-merge-bu
   grid-template-columns: minmax(0, 0.95fr) minmax(0, 1.05fr);
   gap: 8px;
   margin-top: 8px;
+}
+
+.fitness-report-page.is-center-report .fitness-paper-footer-grid {
+  flex: 1 1 auto;
+  min-height: 74px;
+}
+
+.fitness-report-page.is-center-report .fitness-paper-footer-grid > div {
+  display: grid;
+  grid-template-rows: auto repeat(3, minmax(23px, 1fr));
 }
 
 @media (max-width: 760px) {
@@ -15761,6 +15796,23 @@ body[data-view-mode="ceo"] .control-kpi-grid {
     var(--nordic-sheet);
 }
 
+.overview-fitness-ops-compact {
+  gap: 8px;
+  min-height: 424px;
+  padding: 8px;
+}
+
+.overview-fitness-ops-head {
+  align-items: center;
+  border-radius: 14px;
+  background: rgba(255, 254, 250, 0.62);
+  padding: 8px 8px 8px 10px;
+}
+
+.overview-fitness-ops-head h3 {
+  font-size: 17px;
+}
+
 .overview-center-kpis {
   display: grid;
   grid-template-columns: repeat(5, minmax(0, 1fr));
@@ -15771,12 +15823,24 @@ body[data-view-mode="ceo"] .control-kpi-grid {
   padding: 7px;
 }
 
+.overview-center-kpis-primary {
+  gap: 4px;
+  border-radius: 12px;
+  padding: 6px;
+}
+
 .overview-center-kpis span {
   display: grid;
   gap: 2px;
   min-width: 0;
   border-radius: 10px;
   background: rgba(255, 254, 250, 0.72);
+  padding: 6px 5px;
+}
+
+.overview-center-kpis-primary span {
+  min-height: 54px;
+  align-content: center;
   padding: 6px 5px;
 }
 
@@ -15794,6 +15858,16 @@ body[data-view-mode="ceo"] .control-kpi-grid {
   font-size: 18px;
   font-weight: 950;
   line-height: 1;
+}
+
+.overview-center-kpis em {
+  overflow: hidden;
+  color: rgba(38, 50, 56, 0.54);
+  font-size: 8.5px;
+  font-style: normal;
+  font-weight: 850;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .overview-fitness-roster {
@@ -15836,12 +15910,43 @@ body[data-view-mode="ceo"] .control-kpi-grid {
   overflow: auto;
 }
 
+.overview-fitness-roster-compact {
+  gap: 6px;
+  padding: 7px;
+}
+
+.overview-fitness-roster-compact > div {
+  max-height: 246px;
+}
+
 .overview-fitness-roster article {
   display: grid;
   gap: 3px;
   border-radius: 10px;
   background: rgba(244, 247, 240, 0.72);
   padding: 7px;
+}
+
+.overview-fitness-roster-compact article {
+  grid-template-columns: minmax(0, 1fr);
+  gap: 5px;
+  padding: 7px 8px;
+}
+
+.overview-fitness-roster-compact article p {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 3px;
+}
+
+.overview-fitness-roster-compact article p span {
+  overflow: hidden;
+  border-radius: 999px;
+  background: rgba(15, 83, 64, 0.06);
+  color: rgba(15, 59, 46, 0.72);
+  padding: 2px 5px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .overview-fitness-roster article div {
