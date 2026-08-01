@@ -1017,15 +1017,15 @@
           </div>
           <section class="weekly-work-hours" aria-label="요일별 근무시간">
             <h3>요일별 근무시간</h3>
-            <p>요일별 시간이 비어 있으면 위의 기본 근무시간을 사용합니다. 쉬는 날은 휴무로 입력합니다.</p>
+            <p>근무하는 요일을 체크하고, 요일별 시간이 다르면 입력합니다. 비워두면 기본 근무시간을 사용합니다.</p>
             <div class="weekly-work-hours-grid">
-              <label>日 <input data-settings-work-hours-day="sun" type="text" placeholder="휴무" /></label>
-              <label>月 <input data-settings-work-hours-day="mon" type="text" placeholder="09:00-18:00" /></label>
-              <label>火 <input data-settings-work-hours-day="tue" type="text" placeholder="09:00-18:00" /></label>
-              <label>水 <input data-settings-work-hours-day="wed" type="text" placeholder="09:00-18:00" /></label>
-              <label>木 <input data-settings-work-hours-day="thu" type="text" placeholder="09:00-18:00" /></label>
-              <label>金 <input data-settings-work-hours-day="fri" type="text" placeholder="09:00-18:00" /></label>
-              <label>土 <input data-settings-work-hours-day="sat" type="text" placeholder="10:00-18:00" /></label>
+              <label><input data-settings-work-hours-check="sun" type="checkbox" /><span>日</span><input data-settings-work-hours-day="sun" type="text" placeholder="휴무" /></label>
+              <label><input data-settings-work-hours-check="mon" type="checkbox" /><span>月</span><input data-settings-work-hours-day="mon" type="text" placeholder="09:00-18:00" /></label>
+              <label><input data-settings-work-hours-check="tue" type="checkbox" /><span>火</span><input data-settings-work-hours-day="tue" type="text" placeholder="09:00-18:00" /></label>
+              <label><input data-settings-work-hours-check="wed" type="checkbox" /><span>水</span><input data-settings-work-hours-day="wed" type="text" placeholder="09:00-18:00" /></label>
+              <label><input data-settings-work-hours-check="thu" type="checkbox" /><span>木</span><input data-settings-work-hours-day="thu" type="text" placeholder="09:00-18:00" /></label>
+              <label><input data-settings-work-hours-check="fri" type="checkbox" /><span>金</span><input data-settings-work-hours-day="fri" type="text" placeholder="09:00-18:00" /></label>
+              <label><input data-settings-work-hours-check="sat" type="checkbox" /><span>土</span><input data-settings-work-hours-day="sat" type="text" placeholder="10:00-18:00" /></label>
             </div>
           </section>
           <p id="settingsProfilePendingNote" class="profile-note settings-pending-note" hidden></p>
@@ -1226,15 +1226,15 @@
               </div>
               <div class="signup-weekly-hours">
                 <strong>근무요일 / 요일별 시간</strong>
-                <p>요일별 시간이 다르면 입력하세요. 비워두면 기본 근무시간을 사용하고, 쉬는 날은 휴무로 입력합니다.</p>
+                <p>근무하는 요일을 체크하세요. 요일별 시간이 다르면 입력하고, 비워두면 기본 근무시간을 사용합니다.</p>
                 <div>
-                  <label>日 <input data-profile-work-hours-day="sun" type="text" placeholder="휴무" /></label>
-                  <label>月 <input data-profile-work-hours-day="mon" type="text" placeholder="09:00-18:00" /></label>
-                  <label>火 <input data-profile-work-hours-day="tue" type="text" placeholder="09:00-18:00" /></label>
-                  <label>水 <input data-profile-work-hours-day="wed" type="text" placeholder="09:00-18:00" /></label>
-                  <label>木 <input data-profile-work-hours-day="thu" type="text" placeholder="09:00-18:00" /></label>
-                  <label>金 <input data-profile-work-hours-day="fri" type="text" placeholder="09:00-18:00" /></label>
-                  <label>土 <input data-profile-work-hours-day="sat" type="text" placeholder="10:00-18:00" /></label>
+                  <label><input data-profile-work-hours-check="sun" type="checkbox" /><span>日</span><input data-profile-work-hours-day="sun" type="text" placeholder="휴무" /></label>
+                  <label><input data-profile-work-hours-check="mon" type="checkbox" /><span>月</span><input data-profile-work-hours-day="mon" type="text" placeholder="09:00-18:00" /></label>
+                  <label><input data-profile-work-hours-check="tue" type="checkbox" /><span>火</span><input data-profile-work-hours-day="tue" type="text" placeholder="09:00-18:00" /></label>
+                  <label><input data-profile-work-hours-check="wed" type="checkbox" /><span>水</span><input data-profile-work-hours-day="wed" type="text" placeholder="09:00-18:00" /></label>
+                  <label><input data-profile-work-hours-check="thu" type="checkbox" /><span>木</span><input data-profile-work-hours-day="thu" type="text" placeholder="09:00-18:00" /></label>
+                  <label><input data-profile-work-hours-check="fri" type="checkbox" /><span>金</span><input data-profile-work-hours-day="fri" type="text" placeholder="09:00-18:00" /></label>
+                  <label><input data-profile-work-hours-check="sat" type="checkbox" /><span>土</span><input data-profile-work-hours-day="sat" type="text" placeholder="10:00-18:00" /></label>
                 </div>
               </div>
               <p class="profile-note">시급과 일당은 승인 과정에서 대표 또는 승인 권한자가 확정하며, 노무비 지급대장에 사용됩니다.</p>

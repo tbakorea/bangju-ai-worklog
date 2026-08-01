@@ -3734,6 +3734,83 @@ body[data-device-mode="narrow"] .os-mode-switch span[data-device-mode="narrow"] 
   font-weight: 850;
 }
 
+.staff-detail-weekly-hours {
+  display: grid;
+  grid-column: 1 / -1;
+  gap: 9px;
+  border: 1px solid rgba(33, 55, 45, 0.1);
+  border-radius: 15px;
+  background: rgba(255, 253, 248, 0.66);
+  padding: 11px;
+}
+
+.staff-detail-weekly-hours > div:first-child {
+  display: grid;
+  gap: 3px;
+}
+
+.staff-detail-weekly-hours strong {
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 950;
+}
+
+.staff-detail-weekly-hours span {
+  color: rgba(38, 50, 56, 0.62);
+  font-size: 11px;
+  font-weight: 820;
+  line-height: 1.35;
+}
+
+.staff-detail-weekly-grid {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 7px;
+}
+
+.staff-detail-weekly-grid label {
+  display: grid;
+  grid-template-columns: auto auto minmax(0, 1fr);
+  align-items: center;
+  gap: 5px;
+  border: 1px solid rgba(33, 55, 45, 0.08);
+  border-radius: 12px;
+  background: rgba(255, 253, 248, 0.58);
+  padding: 7px;
+  color: rgba(38, 50, 56, 0.62);
+  font-size: 11px;
+  font-weight: 900;
+}
+
+.staff-detail-weekly-grid label.is-workday {
+  border-color: rgba(15, 59, 46, 0.26);
+  background: rgba(15, 59, 46, 0.06);
+}
+
+.staff-detail-weekly-grid label span {
+  color: rgba(15, 59, 46, 0.82);
+  font-size: 13px;
+  font-weight: 950;
+}
+
+.staff-detail-weekly-grid input[type="checkbox"] {
+  width: 18px;
+  height: 18px;
+  accent-color: var(--fitness-green);
+}
+
+.staff-detail-weekly-grid input[type="text"] {
+  min-width: 0;
+  min-height: 38px;
+  border: 1px solid rgba(33, 55, 45, 0.13);
+  border-radius: 10px;
+  background: rgba(255, 253, 248, 0.92);
+  color: var(--ink);
+  padding: 8px;
+  font-size: 12px;
+  font-weight: 850;
+}
+
 .staff-detail-mission {
   display: grid;
   gap: 10px;
@@ -5015,13 +5092,36 @@ body[data-device-mode="narrow"] .os-mode-switch span[data-device-mode="narrow"] 
 
 .signup-weekly-hours label {
   display: grid;
+  grid-template-columns: auto auto minmax(0, 1fr);
+  align-items: center;
   gap: 5px;
+  border: 1px solid rgba(33, 55, 45, 0.08);
+  border-radius: 12px;
+  background: rgba(255, 253, 248, 0.54);
+  padding: 7px;
   color: var(--muted);
   font-size: 11px;
   font-weight: 900;
 }
 
-.signup-weekly-hours input {
+.signup-weekly-hours label.is-workday {
+  border-color: rgba(15, 59, 46, 0.26);
+  background: rgba(15, 59, 46, 0.06);
+}
+
+.signup-weekly-hours label span {
+  color: rgba(15, 59, 46, 0.82);
+  font-size: 13px;
+  font-weight: 950;
+}
+
+.signup-weekly-hours input[type="checkbox"] {
+  width: 18px;
+  height: 18px;
+  accent-color: var(--fitness-green);
+}
+
+.signup-weekly-hours input[type="text"] {
   min-width: 0;
   border: 1px solid var(--line);
   border-radius: 10px;
@@ -5777,13 +5877,36 @@ body[data-device-mode="narrow"] .os-mode-switch span[data-device-mode="narrow"] 
 
 .weekly-work-hours-grid label {
   display: grid;
+  grid-template-columns: auto auto minmax(0, 1fr);
+  align-items: center;
   gap: 5px;
+  border: 1px solid rgba(33, 55, 45, 0.08);
+  border-radius: 12px;
+  background: rgba(255, 253, 248, 0.54);
+  padding: 7px;
   color: var(--muted);
   font-size: 12px;
   font-weight: 900;
 }
 
-.weekly-work-hours-grid input {
+.weekly-work-hours-grid label.is-workday {
+  border-color: rgba(15, 59, 46, 0.26);
+  background: rgba(15, 59, 46, 0.06);
+}
+
+.weekly-work-hours-grid label span {
+  color: rgba(15, 59, 46, 0.82);
+  font-size: 13px;
+  font-weight: 950;
+}
+
+.weekly-work-hours-grid input[type="checkbox"] {
+  width: 18px;
+  height: 18px;
+  accent-color: var(--fitness-green);
+}
+
+.weekly-work-hours-grid input[type="text"] {
   min-width: 0;
   border: 1px solid var(--line);
   border-radius: 10px;
@@ -6468,6 +6591,10 @@ body[data-device-mode="narrow"] .os-mode-switch span[data-device-mode="narrow"] 
   }
 
   .weekly-work-hours-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .staff-detail-weekly-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 

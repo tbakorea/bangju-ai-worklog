@@ -238,6 +238,15 @@ const organizationPlacementOptions = {
 const registrationWorkplaceOptions = Object.fromEntries(
   Object.entries(organizationPlacementOptions).map(([org, config]) => [org, config.workplaces])
 );
+const weeklyWorkDayOptions = [
+  ["sun", "日"],
+  ["mon", "月"],
+  ["tue", "火"],
+  ["wed", "水"],
+  ["thu", "木"],
+  ["fri", "金"],
+  ["sat", "土"],
+];
 const siteWeatherAddressTargets = [
   { key: "비욘드 피트니스", label: "비욘드 피트니스", hint: "예: 울산광역시 남구 옥동 ..." },
   { key: "(주)방주 · 재무", label: "(주)방주 · 재무", hint: "본사 또는 재무팀 근무지 주소" },
@@ -4803,6 +4812,10 @@ function clearSignupProfileFields() {
     field.value = "";
   });
   updateRegistrationWorkplaceOptions({ preserve: false });
+  document.querySelectorAll("[data-profile-work-hours-check]").forEach((field) => {
+    field.checked = false;
+    field.closest("label")?.classList.remove("is-workday");
+  });
   document.querySelectorAll("[data-profile-work-hours-day]").forEach((field) => {
     field.value = "";
   });
@@ -4814,9 +4827,72 @@ function clearSignupProfileFields() {
 }
 
 function renderProfileWeeklyWorkHoursFields() {
-  document.querySelectorAll("[data-profile-work-hours-day]").forEach((field) => {
-    field.value = state.profile?.weeklyWorkHours?.[field.dataset.profileWorkHoursDay] || "";
+  syncWeeklyWorkHoursControls({
+    weeklyWorkHours: state.profile?.weeklyWorkHours,
+    defaultHours: state.profile?.workHours || defaultProfile.workHours,
+    checkSelector: "[data-profile-work-hours-check]",
+    inputSelector: "[data-profile-work-hours-day]",
+    checkDatasetKey: "profileWorkHoursCheck",
+    inputDatasetKey: "profileWorkHoursDay",
   });
+}
+
+function syncWeeklyWorkHoursControls({ weeklyWorkHours = {}, defaultHours = "", checkSelector, inputSelector, checkDatasetKey, inputDatasetKey, root = document } = {}) {
+  const normalized = weeklyWorkHours && typeof weeklyWorkHours === "object" ? weeklyWorkHours : {};
+  root.querySelectorAll(checkSelector).forEach((checkbox) => {
+    const key = checkbox.dataset[checkDatasetKey];
+    checkbox.checked = Object.prototype.hasOwnProperty.call(normalized, key);
+  });
+  root.querySelectorAll(inputSelector).forEach((field) => {
+    const key = field.dataset[inputDatasetKey];
+    const hasDay = Object.prototype.hasOwnProperty.call(normalized, key);
+    field.value = hasDay ? (normalized[key] || defaultHours || "") : "";
+    field.closest("label")?.classList.toggle("is-workday", hasDay);
+  });
+}
+
+function collectWeeklyWorkHoursFromControls({ checkSelector, inputSelector, checkDatasetKey, inputDatasetKey, defaultHours = "", root = document } = {}) {
+  const values = {};
+  root.querySelectorAll(inputSelector).forEach((field) => {
+    const key = field.dataset[inputDatasetKey];
+    const selectorKey = escapeSelectorAttr(key);
+    const checkbox = root.querySelector(`${checkSelector}[data-${kebabCase(checkDatasetKey)}="${selectorKey}"]`);
+    const value = field.value.trim();
+    if (checkbox?.checked || value) {
+      values[key] = value || defaultHours || defaultProfile.workHours;
+    }
+  });
+  return values;
+}
+
+function toggleWeeklyWorkHourControl(target) {
+  const profileInput = target.closest?.("[data-profile-work-hours-day]");
+  const settingsInput = target.closest?.("[data-settings-work-hours-day]");
+  const staffInput = target.closest?.("[data-staff-weekly-work-hours-day]");
+  const input = profileInput || settingsInput || staffInput;
+  if (input && input.value.trim()) {
+    const day = input.dataset.profileWorkHoursDay || input.dataset.settingsWorkHoursDay || input.dataset.staffWeeklyWorkHoursDay;
+    const root = input.closest("#staffDetailOverlay") || document;
+    const selectorDay = escapeSelectorAttr(day);
+    const checkSelector = profileInput
+      ? `[data-profile-work-hours-check="${selectorDay}"]`
+      : settingsInput
+        ? `[data-settings-work-hours-check="${selectorDay}"]`
+        : `[data-staff-weekly-work-hours-check="${selectorDay}"]`;
+    const checkbox = root.querySelector(checkSelector);
+    if (checkbox) checkbox.checked = true;
+    input.closest("label")?.classList.add("is-workday");
+  }
+  const checkbox = target.closest?.("[data-profile-work-hours-check], [data-settings-work-hours-check], [data-staff-weekly-work-hours-check]");
+  if (checkbox) checkbox.closest("label")?.classList.toggle("is-workday", checkbox.checked);
+}
+
+function kebabCase(value = "") {
+  return String(value).replace(/[A-Z]/g, (letter) => `-${letter.toLowerCase()}`);
+}
+
+function escapeSelectorAttr(value = "") {
+  return String(value).replace(/\\/g, "\\\\").replace(/"/g, '\\"');
 }
 
 function normalizePlacementOrg(value = "") {
@@ -4936,8 +5012,13 @@ function renderSettingsForm() {
     field.value = isPhoneField(field) ? formatPhoneNumber(value) : value;
   });
   updateSettingsPlacementOptions({ preserve: true });
-  document.querySelectorAll("[data-settings-work-hours-day]").forEach((field) => {
-    field.value = state.profile?.weeklyWorkHours?.[field.dataset.settingsWorkHoursDay] || "";
+  syncWeeklyWorkHoursControls({
+    weeklyWorkHours: state.profile?.weeklyWorkHours,
+    defaultHours: state.profile?.workHours || defaultProfile.workHours,
+    checkSelector: "[data-settings-work-hours-check]",
+    inputSelector: "[data-settings-work-hours-day]",
+    checkDatasetKey: "settingsWorkHoursCheck",
+    inputDatasetKey: "settingsWorkHoursDay",
   });
   renderManualSettings();
   renderApprovalAccess();
@@ -5066,11 +5147,12 @@ function collectSettingsProfileDraft() {
     draft[key] = key === "org" ? normalizePlacementOrg(value) : isPhoneField(field) ? formatPhoneNumber(value) : value;
     if (isPhoneField(field)) field.value = draft[key];
   });
-  draft.weeklyWorkHours = {};
-  document.querySelectorAll("[data-settings-work-hours-day]").forEach((field) => {
-    const key = field.dataset.settingsWorkHoursDay;
-    const value = field.value.trim();
-    if (value) draft.weeklyWorkHours[key] = value;
+  draft.weeklyWorkHours = collectWeeklyWorkHoursFromControls({
+    checkSelector: "[data-settings-work-hours-check]",
+    inputSelector: "[data-settings-work-hours-day]",
+    checkDatasetKey: "settingsWorkHoursCheck",
+    inputDatasetKey: "settingsWorkHoursDay",
+    defaultHours: draft.workHours || defaultProfile.workHours,
   });
   return draft;
 }
@@ -6014,12 +6096,12 @@ function applyProfileFields(selector, datasetKey) {
 }
 
 function applyProfileWeeklyWorkHoursFields() {
-  state.profile.weeklyWorkHours = { ...(state.profile.weeklyWorkHours || {}) };
-  document.querySelectorAll("[data-profile-work-hours-day]").forEach((field) => {
-    const key = field.dataset.profileWorkHoursDay;
-    const value = field.value.trim();
-    if (value) state.profile.weeklyWorkHours[key] = value;
-    else delete state.profile.weeklyWorkHours[key];
+  state.profile.weeklyWorkHours = collectWeeklyWorkHoursFromControls({
+    checkSelector: "[data-profile-work-hours-check]",
+    inputSelector: "[data-profile-work-hours-day]",
+    checkDatasetKey: "profileWorkHoursCheck",
+    inputDatasetKey: "profileWorkHoursDay",
+    defaultHours: state.profile?.workHours || defaultProfile.workHours,
   });
 }
 
@@ -12167,6 +12249,32 @@ function staffDetailEditField(row, key, label, type = "text") {
   `;
 }
 
+function staffDetailWeeklyWorkHoursEditor(row = {}) {
+  const weeklyWorkHours = row.weeklyWorkHours || row.weekly_work_hours || {};
+  const defaultHours = row.workHours || row.work_hours || defaultProfile.workHours;
+  return `
+    <section class="staff-detail-weekly-hours">
+      <div>
+        <strong>근무요일 / 요일별 시간</strong>
+        <span>체크한 요일만 근무일로 확정됩니다. 시간은 비워두면 기본 근무시간을 사용합니다.</span>
+      </div>
+      <div class="staff-detail-weekly-grid">
+        ${weeklyWorkDayOptions.map(([key, label]) => {
+          const checked = Object.prototype.hasOwnProperty.call(weeklyWorkHours || {}, key);
+          const value = checked ? (weeklyWorkHours[key] || defaultHours || "") : "";
+          return `
+            <label class="${checked ? "is-workday" : ""}">
+              <input data-staff-weekly-work-hours-check="${escapeAttr(key)}" type="checkbox" ${checked ? "checked" : ""} />
+              <span>${escapeHtml(label)}</span>
+              <input data-staff-weekly-work-hours-day="${escapeAttr(key)}" type="text" value="${escapeAttr(value)}" placeholder="${key === "sun" ? "휴무" : "09:00-18:00"}" />
+            </label>
+          `;
+        }).join("")}
+      </div>
+    </section>
+  `;
+}
+
 function staffDetailMissionEditor(row = {}) {
   const mission = getAssignedMissionForEmployee(row);
   return `
@@ -12200,6 +12308,14 @@ function collectStaffDetailEditFields() {
     fields[key] = key === "phone" ? formatPhoneNumber(value) : value;
     if (key === "phone") field.value = fields[key];
   });
+  fields.weeklyWorkHours = collectWeeklyWorkHoursFromControls({
+    checkSelector: "[data-staff-weekly-work-hours-check]",
+    inputSelector: "[data-staff-weekly-work-hours-day]",
+    checkDatasetKey: "staffWeeklyWorkHoursCheck",
+    inputDatasetKey: "staffWeeklyWorkHoursDay",
+    defaultHours: fields.workHours || defaultProfile.workHours,
+    root: card || document,
+  });
   return fields;
 }
 
@@ -12229,6 +12345,7 @@ function staffEditFieldsToRemotePayload(fields = {}, row = {}) {
   Object.entries(map).forEach(([localKey, remoteKey]) => {
     if (hasField(localKey)) payload[remoteKey] = fields[localKey] || "";
   });
+  if (hasField("weeklyWorkHours")) payload.weekly_work_hours = fields.weeklyWorkHours || {};
   if (hasField("hourlyWage")) payload.hourly_wage = numericOrNull(fields.hourlyWage);
   if (hasField("dailyWage")) payload.daily_wage = numericOrNull(fields.dailyWage);
   if (hasField("assignedMission")) {
@@ -12258,6 +12375,7 @@ function mergeStaffFieldsIntoApprovalRow(row = {}, fields = {}) {
     primary_work: fields.primaryWork ?? row.primary_work,
     secondary_work: fields.secondaryWork ?? row.secondary_work,
     work_hours: fields.workHours ?? row.work_hours,
+    weekly_work_hours: fields.weeklyWorkHours ?? row.weekly_work_hours,
     employment_type: fields.employmentType ?? row.employment_type,
     hourly_wage: fields.hourlyWage === "" ? null : (fields.hourlyWage ?? row.hourly_wage),
     daily_wage: fields.dailyWage === "" ? null : (fields.dailyWage ?? row.daily_wage),
@@ -12293,6 +12411,7 @@ function profileRowToEmployeeOverride(row = {}) {
     primaryWork: profile.primaryWork || "",
     secondaryWork: profile.secondaryWork || "",
     workHours: profile.workHours || defaultProfile.workHours,
+    weeklyWorkHours: profile.weeklyWorkHours || row.weekly_work_hours || {},
     employmentType: profile.employmentType || "직원",
     laborId: profile.laborId || "",
     address: profile.address || "",
@@ -12475,6 +12594,7 @@ function renderStaffDetailModal(row) {
               ${staffDetailEditField(row, "email", "이메일", "email")}
               ${staffDetailEditField(row, "employmentType", "고용형태")}
               ${staffDetailEditField(row, "workHours", "근무시간")}
+              ${staffDetailWeeklyWorkHoursEditor(row)}
               ${staffDetailEditField(row, "primaryWork", "주업무")}
               ${staffDetailEditField(row, "secondaryWork", "부업무")}
               ${staffDetailEditField(row, "hourlyWage", "시급", "number")}
@@ -14687,6 +14807,7 @@ document.getElementById("mainMenuWheelSelect")?.addEventListener("change", (even
 });
 document.addEventListener("input", (event) => {
   const field = event.target;
+  toggleWeeklyWorkHourControl(field);
   if (!(field instanceof HTMLInputElement) || !isPhoneField(field)) return;
   const nextValue = formatPhoneNumber(field.value);
   if (field.value === nextValue) return;
@@ -14898,6 +15019,7 @@ document.addEventListener("click", (event) => {
   closeStaffDetail();
 });
 document.addEventListener("change", (event) => {
+  toggleWeeklyWorkHourControl(event.target);
   const presetSelect = event.target.closest("[data-staff-permission-modal-preset]");
   if (presetSelect && staffPermissionDraft) {
     const preset = normalizePermissionPresetKey(presetSelect.value);
