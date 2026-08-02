@@ -356,6 +356,23 @@ function isRetiredFitnessManagerEmail(email = "") {
   return retiredFitnessManagerEmails.has(normalizeEmailValue(email));
 }
 
+function isRetiredFitnessManagerIdentity(employee = {}) {
+  const email = normalizeEmailValue(employee.email || "");
+  if (isRetiredFitnessManagerEmail(email)) return true;
+  const source = [
+    employee.id,
+    employee.mappedEmployeeId,
+    employee.profileEmployeeId,
+    employee.sourceProfileId,
+    employee.name,
+    employee.nickname,
+    employee.email,
+  ].filter(Boolean).join(" ").toLowerCase();
+  return [...retiredFitnessManagerEmails]
+    .map((item) => item.split("@")[0])
+    .some((alias) => alias && source.includes(alias));
+}
+
 function getProfilePlacementOverride(email = "") {
   const key = normalizeEmailValue(email || state?.profile?.email || authState.user?.email || "");
   return key ? profilePlacementOverrides[key] : null;
@@ -1293,8 +1310,9 @@ function getFitnessEmployees() {
     if (!isVisibleFitnessRosterEmployee(employee)) return;
     const normalized = normalizeFitnessEmployeeForWorklog(employee);
     const emailKey = normalizeEmailValue(normalized.email || "");
+    if (isRetiredFitnessManagerIdentity(normalized)) return;
     const rosterSlot = getFitnessRosterSlotId(normalized);
-    const key = rosterSlot ? `slot:${rosterSlot}` : emailKey ? `email:${emailKey}` : normalized.id ? `id:${normalized.id}` : `${normalized.role || ""}:${normalized.name || ""}`;
+    const key = getFitnessEmployeeRosterMergeKey(normalized, emailKey, rosterSlot);
     const current = merged.get(key);
     if (!current || current.priority <= priority) merged.set(key, { employee: normalized, priority });
   };
@@ -1318,6 +1336,17 @@ function getFitnessEmployees() {
     .sort((a, b) => getFitnessEmployeeSortKey(a).localeCompare(getFitnessEmployeeSortKey(b), "ko"));
 }
 
+function getFitnessEmployeeRosterMergeKey(employee = {}, emailKey = "", rosterSlot = "") {
+  if (isFitnessManagerRosterIdentity(employee) || getFitnessCenterComparableName(employee) === "박주홍") {
+    return "slot:beyond-fitness-manager";
+  }
+  if (rosterSlot && fitnessPlaceholderEmployeeIds.has(rosterSlot)) return `slot:${rosterSlot}`;
+  if (emailKey) return `email:${emailKey}`;
+  if (rosterSlot) return `slot:${rosterSlot}`;
+  if (employee.id) return `id:${employee.id}`;
+  return `${employee.role || ""}:${employee.name || ""}`;
+}
+
 function getFitnessCenterEmployees() {
   const bestByPerson = new Map();
   getFitnessEmployees()
@@ -1338,26 +1367,59 @@ function isConfirmedFitnessCenterEmployee(employee = {}) {
   if (!isVisibleFitnessRosterEmployee(employee)) return false;
   if (isClearlyNonFitnessEmployeeRecord(employee)) return false;
 
-  const sourceRecord = getFitnessEmployeeDirectorySource(employee);
-  if (sourceRecord && isClearlyNonFitnessEmployeeRecord(sourceRecord)) return false;
-
   const slotId = getFitnessRosterSlotId(employee);
   const email = normalizeEmailValue(employee.email || "");
   const name = String(employee.name || employee.nickname || "").trim();
   const role = String(employee.role || "").trim();
   const personName = getFitnessCenterComparableName(employee);
+  const hasAssignedIdentity = isAssignedFitnessRosterIdentity(employee);
+
+  if (!hasAssignedIdentity && !isUsableRosterEmail(email)) return false;
+  if (isRetiredFitnessManagerEmail(email)) return false;
+  if (isRetiredFitnessManagerIdentity(employee)) return false;
+  if (personName === "박주홍" && email && !isActiveFitnessManagerEmail(email)) return false;
+  if (!hasAssignedIdentity && !hasRealFitnessCenterIdentity(employee)) return false;
+
+  const sourceRecord = getFitnessEmployeeDirectorySource(employee);
+  if (sourceRecord && isClearlyNonFitnessEmployeeRecord(sourceRecord)) return false;
+
   const hasEvidence = hasFitnessRosterEvidence(employee);
   const isStaticPlaceholder = Boolean(slotId && fitnessPlaceholderEmployeeIds.has(slotId) && !hasEvidence);
   const genericLabel = normalizeFitnessRosterGenericLabel(name, role);
 
   if (!name || /이름\s*미입력|미배정|unassigned/i.test(name)) return false;
-  if (isRetiredFitnessManagerEmail(email)) return false;
-  if (personName === "박주홍" && email && !isActiveFitnessManagerEmail(email)) return false;
   if (isStaticPlaceholder) return false;
   if (genericLabel && !hasEvidence) return false;
 
   const source = `${employee.id || ""} ${employee.mappedEmployeeId || ""} ${employee.org || ""} ${employee.workplace || ""} ${employee.primaryWork || ""} ${employee.secondaryWork || ""} ${role}`.toLowerCase();
   return /피트니스|fitness/.test(source) || Boolean(slotId);
+}
+
+function isUsableRosterEmail(value = "") {
+  const email = normalizeEmailValue(value);
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+}
+
+function isAssignedFitnessRosterIdentity(employee = {}) {
+  const slotId = getFitnessRosterSlotId(employee);
+  if (!slotId || fitnessPlaceholderEmployeeIds.has(slotId)) return false;
+  const role = String(employee.role || "").trim();
+  const displayName = getFitnessCenterComparableName(employee) || String(employee.name || employee.nickname || "").trim();
+  if (!displayName || /이름\s*미입력|미배정|unassigned/i.test(displayName)) return false;
+  if (normalizeFitnessRosterGenericLabel(displayName, role)) return false;
+  return true;
+}
+
+function hasRealFitnessCenterIdentity(employee = {}) {
+  const email = normalizeEmailValue(employee.email || "");
+  const role = String(employee.role || "").trim();
+  const displayName = getFitnessCenterComparableName(employee) || String(employee.name || employee.nickname || "").trim();
+  if (!isUsableRosterEmail(email) && !isAssignedFitnessRosterIdentity(employee)) return false;
+  if (!displayName || /이름\s*미입력|미배정|unassigned/i.test(displayName)) return false;
+  if (normalizeFitnessRosterGenericLabel(displayName, role)) return false;
+  if (isRetiredFitnessManagerIdentity(employee)) return false;
+  if (displayName === "박주홍" && email && !isActiveFitnessManagerEmail(email)) return false;
+  return true;
 }
 
 function getFitnessEmployeeDirectorySource(employee = {}) {
@@ -1488,8 +1550,10 @@ function isVisibleFitnessRosterEmployee(employee = {}) {
   const email = normalizeEmailValue(employee.email || "");
   const name = String(employee.name || employee.nickname || "").trim();
   const source = `${id} ${slotId} ${name} ${employee.role || ""} ${employee.org || ""} ${employee.workplace || ""}`.toLowerCase();
+  if (isRetiredFitnessManagerIdentity(employee)) return false;
   if (!name || /이름\s*미입력|미배정|unassigned/.test(source)) return false;
   if (/예비|spare/.test(source)) return false;
+  if (!email && !slotId && normalizeFitnessRosterGenericLabel(name, employee.role || "")) return false;
   const isStaticSeed = Boolean(id && employees.some((item) => item.id === id));
   const isUnclaimedPlaceholder = isStaticSeed && fitnessPlaceholderEmployeeIds.has(slotId || id) && !email && !employee.isRemoteProfile;
   return !isUnclaimedPlaceholder;
@@ -1508,11 +1572,24 @@ function normalizeFitnessEmployeeForWorklog(employee = {}) {
     };
   }
   const base = employees.find((item) => item.id === canonicalId) || {};
+  const sourceId = String(employee.id || "").trim();
+  const email = normalizeEmailValue(employee.email || "");
+  const shouldKeepSourceId = Boolean(
+    email
+    && sourceId
+    && sourceId !== "profile-user"
+    && sourceId !== canonicalId
+    && !fitnessEmployeeIds.includes(sourceId)
+  );
   return {
     ...base,
     ...employee,
-    id: canonicalId,
-    profileEmployeeId: employee.id && employee.id !== canonicalId ? employee.id : employee.profileEmployeeId || "",
+    id: shouldKeepSourceId ? sourceId : canonicalId,
+    profileEmployeeId: shouldKeepSourceId
+      ? sourceId
+      : employee.id && employee.id !== canonicalId
+        ? employee.id
+        : employee.profileEmployeeId || "",
     mappedEmployeeId: employee.mappedEmployeeId || canonicalId,
     name: employee.name || base.name,
     nickname: employee.nickname || base.nickname || "",
@@ -1541,7 +1618,8 @@ function collectFitnessLogEmployees() {
       };
       if (!isVisibleFitnessRosterEmployee(sourceEmployee)) return;
       const employee = normalizeFitnessEmployeeForWorklog(sourceEmployee);
-      seen.set(employee.id, employee);
+      const key = normalizeEmailValue(employee.email || "") || employee.id;
+      seen.set(key, employee);
     });
   });
   return [...seen.values()];
