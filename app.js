@@ -1015,35 +1015,7 @@ function getSelectedEmployee() {
 }
 
 function getEmployeeOptions() {
-  const profileEmployee = getProfileEmployee();
-  const approvedProfileEmployees = getApprovedProfileEmployeesForWorklogs();
-  const occupiedStaticIds = new Set(
-    approvedProfileEmployees
-      .map((employee) => employee.mappedEmployeeId)
-      .filter(Boolean),
-  );
-  const ordered = [
-    profileEmployee,
-    ...approvedProfileEmployees,
-    ...employees.filter((employee) => !occupiedStaticIds.has(employee.id)),
-  ];
-  const seen = new Set();
-  const merged = [];
-  ordered.forEach((employee) => {
-    if (!employee) return;
-    const keys = getEmployeeIdentityKeys(employee);
-    if (keys.some((key) => seen.has(key))) return;
-    merged.push(employee);
-    keys.forEach((key) => seen.add(key));
-  });
-  return merged;
-}
-
-function getApprovedProfileEmployeesForWorklogs() {
-  return (authState.approvalRows || [])
-    .filter((row) => normalizeApprovalStatus(row.approval_status || row.approvalStatus || "pending") === "approved")
-    .map((row) => approvalRowToStaffEmployee(row))
-    .filter(isAssignedWorklogEmployee);
+  return getStaffDirectoryEmployees();
 }
 
 function getEmployeeIdentityKeys(employee = {}) {
@@ -1340,9 +1312,8 @@ function getFitnessEmployeeRosterMergeKey(employee = {}, emailKey = "", rosterSl
   if (isFitnessManagerRosterIdentity(employee) || getFitnessCenterComparableName(employee) === "박주홍") {
     return "slot:beyond-fitness-manager";
   }
-  if (rosterSlot && fitnessPlaceholderEmployeeIds.has(rosterSlot)) return `slot:${rosterSlot}`;
-  if (emailKey) return `email:${emailKey}`;
   if (rosterSlot) return `slot:${rosterSlot}`;
+  if (emailKey) return `email:${emailKey}`;
   if (employee.id) return `id:${employee.id}`;
   return `${employee.role || ""}:${employee.name || ""}`;
 }
@@ -7429,25 +7400,73 @@ async function loadRemoteWorklogForActiveDate() {
     renderAuthStatus(`원격 불러오기 대기: ${error.message}`);
     return;
   }
-  if (!data?.state) return;
   authState.applyingRemote = true;
-  state.backupSettings = { ...(state.backupSettings || {}), ...(data.state.backupSettings || {}) };
-  state.selectedEmployeeId = data.state.selectedEmployeeId || state.selectedEmployeeId;
-  state.profile = { ...state.profile, ...(data.state.profile || {}) };
-  state.profile = applyProfilePlacementOverride(state.profile);
-  normalizeProfilePlacementForAuth();
-  enforceAuthProfileBoundary();
-  state.employeeLogs = { ...(state.employeeLogs || {}), ...(data.state.employeeLogs || {}) };
-  state.attendance = { ...(state.attendance || {}), ...(data.state.attendance || {}) };
-  state.companyCommonWeeks = { ...(state.companyCommonWeeks || {}), ...(data.state.companyCommonWeeks || {}) };
-  state.fitnessCenterReports = { ...(state.fitnessCenterReports || {}), ...(data.state.fitnessCenterReports || {}) };
-  state.worklogReportSubmissions = { ...(state.worklogReportSubmissions || {}), ...(data.state.worklogReportSubmissions || {}) };
-  state.reportTone = data.state.reportTone || state.reportTone;
+  if (data?.state) {
+    state.backupSettings = { ...(state.backupSettings || {}), ...(data.state.backupSettings || {}) };
+    state.selectedEmployeeId = data.state.selectedEmployeeId || state.selectedEmployeeId;
+    state.profile = { ...state.profile, ...(data.state.profile || {}) };
+    state.profile = applyProfilePlacementOverride(state.profile);
+    normalizeProfilePlacementForAuth();
+    enforceAuthProfileBoundary();
+    state.employeeLogs = { ...(state.employeeLogs || {}), ...(data.state.employeeLogs || {}) };
+    state.attendance = { ...(state.attendance || {}), ...(data.state.attendance || {}) };
+    state.companyCommonWeeks = { ...(state.companyCommonWeeks || {}), ...(data.state.companyCommonWeeks || {}) };
+    state.fitnessCenterReports = { ...(state.fitnessCenterReports || {}), ...(data.state.fitnessCenterReports || {}) };
+    state.worklogReportSubmissions = { ...(state.worklogReportSubmissions || {}), ...(data.state.worklogReportSubmissions || {}) };
+    state.reportTone = data.state.reportTone || state.reportTone;
+  }
+  if (canAccessWorklogOverview()) await loadVisibleStaffWorklogsForDate(key);
   normalizeState();
   localStorage.setItem(storageKey, JSON.stringify(state));
   authState.applyingRemote = false;
   renderAll();
   renderAuthStatus();
+}
+
+async function loadVisibleStaffWorklogsForDate(dateKey = getActiveDateKey()) {
+  const { data, error } = await supabaseClient
+    .from("worklog_states")
+    .select("user_id,state")
+    .eq("log_date", dateKey)
+    .neq("user_id", authState.user.id)
+    .order("updated_at", { ascending: false });
+  if (error) {
+    renderAuthStatus(`직원 업무일지 불러오기 대기: ${error.message}`);
+    return;
+  }
+  mergeVisibleStaffWorklogStates(data || [], dateKey);
+}
+
+function mergeVisibleStaffWorklogStates(rows = [], dateKey = getActiveDateKey()) {
+  state.employeeLogs ||= {};
+  state.employeeLogs[dateKey] ||= {};
+  rows.forEach((row) => {
+    const remoteState = row?.state || {};
+    const profile = remoteState.profile || {};
+    const email = normalizeEmailValue(profile.email || "");
+    const mappedId = getProfileMappedEmployeeId(profile);
+    const employee = getStaffDirectoryEmployees().find((item) => (
+      (mappedId && (item.id === mappedId || item.mappedEmployeeId === mappedId))
+      || (email && normalizeEmailValue(item.email || "") === email)
+    )) || employees.find((item) => item.id === mappedId);
+    if (!employee || !isAssignedWorklogEmployee(employee)) return;
+
+    const logs = remoteState.employeeLogs?.[dateKey] || {};
+    const candidateIds = [...new Set([
+      employee.id,
+      employee.mappedEmployeeId,
+      mappedId,
+      remoteState.selectedEmployeeId,
+      "profile-user",
+    ].filter(Boolean))];
+    const candidateLogs = candidateIds.map((id) => logs[id]).filter(Boolean);
+    const employeeLog = candidateLogs.find(hasFitnessEmployeeLogContent) || candidateLogs[0];
+    if (!employeeLog) return;
+    const current = state.employeeLogs[dateKey][employee.id];
+    if (!current || hasFitnessEmployeeLogContent(employeeLog) || !hasFitnessEmployeeLogContent(current)) {
+      state.employeeLogs[dateKey][employee.id] = { ...employeeLog, employeeId: employee.id };
+    }
+  });
 }
 
 function profileToRemoteRow(options = {}) {
@@ -12451,6 +12470,7 @@ function getStaffDirectoryEmployees() {
   approvedProfileEmployees.forEach((employee) => add(employee, 30));
   employees
     .filter(isAssignedWorklogEmployee)
+    .filter((employee) => !fitnessPlaceholderEmployeeIds.has(employee.id))
     .filter((employee) => !occupiedStaticIds.has(employee.id))
     .forEach((employee) => add(employee, 10));
   const profileEmployee = getProfileEmployee();

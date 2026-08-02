@@ -531,10 +531,11 @@ using (public.is_profile_approver())
 with check (public.is_profile_approver());
 
 drop policy if exists "worklog_select_own" on public.worklog_states;
-create policy "worklog_select_own"
+drop policy if exists "worklog_select_visible" on public.worklog_states;
+create policy "worklog_select_visible"
 on public.worklog_states for select
 to authenticated
-using (auth.uid() = user_id);
+using (auth.uid() = user_id or public.is_profile_approver());
 
 drop policy if exists "worklog_insert_own" on public.worklog_states;
 create policy "worklog_insert_own"

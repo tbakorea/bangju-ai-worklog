@@ -1748,6 +1748,30 @@ async function checkFitnessCenterReportConfirmation(browser) {
       dabinLog.clockOut = "20:00";
       dabinLog.fitnessOps = { ...createFitnessOps(), ptRegular: "1", ptFree: "1", consultation: "2", inbound: "1" };
       dabinLog.fitnessOps.specialReport = "마감 정리 완료";
+      const kimLog = createEmployeeLog({
+        id: "profile-user",
+        name: "김영채",
+        email: "yckim1558@naver.com",
+        org: "(주)비욘드컴퍼니",
+        workplace: "비욘드 피트니스",
+        role: "인포데스크"
+      }, {}, "2026-07-24");
+      kimLog.schedule[0].text = "출근보고, 종이컵 채우기, 여자탈의실 청소";
+      mergeVisibleStaffWorklogStates([{
+        user_id: "kimyoungchae-auth",
+        state: {
+          profile: {
+            name: "김영채",
+            email: "yckim1558@naver.com",
+            org: "(주)비욘드컴퍼니",
+            workplace: "비욘드 피트니스",
+            role: "인포데스크",
+            approvalStatus: "approved"
+          },
+          selectedEmployeeId: "profile-user",
+          employeeLogs: { "2026-07-24": { "profile-user": kimLog } }
+        }
+      }], "2026-07-24");
       saveState({ fastSave: true });
       document.body.classList.add("physical-phone-device");
       document.body.dataset.layoutMode = "phone";
@@ -1762,6 +1786,11 @@ async function checkFitnessCenterReportConfirmation(browser) {
     disabled: document.querySelector("[data-fitness-center-report-confirm]")?.disabled ?? true,
     text: document.querySelector("#fitnessCenterConfirmPanel")?.textContent?.trim() || "",
     centerRows: [...document.querySelectorAll("#fitnessCenterDailyBody tr")].map((row) => row.textContent.replace(/\s+/g, " ").trim()),
+    pageTitles: getFitnessLogPages().map((page) => page.title),
+    kimLogText: getScheduleEntryText(getFitnessEmployeeLogForDate(
+      getFitnessCenterEmployees().find((employee) => employee.name === "김영채"),
+      "2026-07-24"
+    )?.schedule?.[0] || {}),
   }));
   if (before.activeView !== "fitness-log" || !before.pageTitle.includes("센터")) {
     fail("fitness center report confirmation should start on center page", JSON.stringify(before));
@@ -1780,6 +1809,12 @@ async function checkFitnessCenterReportConfirmation(browser) {
   const parkRows = before.centerRows.filter((row) => row.includes("박주홍"));
   if (parkRows.length !== 1) {
     fail("fitness center roster should show only one Park Ju-hong manager account", JSON.stringify(before.centerRows));
+  }
+  if (before.pageTitles.filter((title) => title === "이다빈").length !== 1) {
+    fail("fitness roster should show Lee Da-bin only once", JSON.stringify(before.pageTitles));
+  }
+  if (!before.kimLogText.includes("출근보고")) {
+    fail("representative fitness view should load Kim Young-chae's profile-user worklog", JSON.stringify(before));
   }
   ["pjhong0", "pjhong1", "pjhong9"].forEach((retiredEmailPrefix) => {
     if (before.centerRows.some((row) => row.includes(retiredEmailPrefix))) {
