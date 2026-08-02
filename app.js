@@ -1342,13 +1342,17 @@ function isConfirmedFitnessCenterEmployee(employee = {}) {
   if (sourceRecord && isClearlyNonFitnessEmployeeRecord(sourceRecord)) return false;
 
   const slotId = getFitnessRosterSlotId(employee);
+  const email = normalizeEmailValue(employee.email || "");
   const name = String(employee.name || employee.nickname || "").trim();
   const role = String(employee.role || "").trim();
+  const personName = getFitnessCenterComparableName(employee);
   const hasEvidence = hasFitnessRosterEvidence(employee);
   const isStaticPlaceholder = Boolean(slotId && fitnessPlaceholderEmployeeIds.has(slotId) && !hasEvidence);
   const genericLabel = normalizeFitnessRosterGenericLabel(name, role);
 
   if (!name || /이름\s*미입력|미배정|unassigned/i.test(name)) return false;
+  if (isRetiredFitnessManagerEmail(email)) return false;
+  if (personName === "박주홍" && email && !isActiveFitnessManagerEmail(email)) return false;
   if (isStaticPlaceholder) return false;
   if (genericLabel && !hasEvidence) return false;
 
@@ -1393,6 +1397,7 @@ function normalizeFitnessRosterGenericLabel(name = "", role = "") {
 }
 
 function getFitnessCenterEmployeeKey(employee = {}) {
+  if (isFitnessManagerRosterIdentity(employee)) return "person:센터장|박주홍";
   const email = normalizeEmailValue(employee.email || "");
   if (email) return `email:${email}`;
   const name = getFitnessCenterComparableName(employee);
@@ -1403,11 +1408,22 @@ function getFitnessCenterEmployeeKey(employee = {}) {
 
 function getFitnessCenterEmployeeScore(employee = {}) {
   let score = 0;
-  if (normalizeEmailValue(employee.email || "")) score += 100;
+  const email = normalizeEmailValue(employee.email || "");
+  if (email) score += 100;
+  if (isActiveFitnessManagerEmail(email)) score += 250;
   if (employee.isRemoteProfile || employee.sourceProfileId || employee.profileEmployeeId) score += 50;
   if (hasFitnessEmployeeAnyLog(employee)) score += 30;
   if (fitnessEmployeeIds.includes(employee.id)) score += 5;
   return score;
+}
+
+function isFitnessManagerRosterIdentity(employee = {}) {
+  const email = normalizeEmailValue(employee.email || "");
+  if (isActiveFitnessManagerEmail(email) || isRetiredFitnessManagerEmail(email)) return true;
+  if (employee.id === "beyond-fitness-manager" || employee.mappedEmployeeId === "beyond-fitness-manager") return true;
+  const personName = getFitnessCenterComparableName(employee);
+  const source = `${employee.role || ""} ${employee.nickname || ""} ${employee.primaryWork || ""} ${employee.workplace || ""} ${employee.org || ""}`.toLowerCase();
+  return personName === "박주홍" && /센터장|운영총괄|manager|피트니스|fitness/.test(source);
 }
 
 function getFitnessCenterComparableRole(role = "") {

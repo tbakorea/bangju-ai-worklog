@@ -122,9 +122,12 @@ check(
 );
 
 check(
-  "fitness center roster dedupes by email first",
-  /function getFitnessCenterEmployeeKey\(employee = \{\}\) \{[\s\S]{0,120}const email = normalizeEmailValue\(employee\.email \|\| ""\);[\s\S]{0,80}if \(email\) return `email:\$\{email\}`;[\s\S]{0,120}const name = getFitnessCenterComparableName/.test(js),
-  "email-first roster identity prevents role/name variants from hiding approved staff"
+  "fitness center roster keeps one active Park manager",
+  /const activeFitnessManagerEmail = "pinong0@naver\.com";/.test(js)
+    && /const retiredFitnessManagerEmails = new Set\(\["pjhong0@naver\.com", "pjhong1@naver\.com", "pjhong9@naver\.com"\]\);/.test(js)
+    && /function isConfirmedFitnessCenterEmployee\(employee = \{\}\)[\s\S]{0,900}isRetiredFitnessManagerEmail\(email\)[\s\S]{0,260}personName === "박주홍" && email && !isActiveFitnessManagerEmail\(email\)/.test(js)
+    && /function getFitnessCenterEmployeeKey\(employee = \{\}\) \{[\s\S]{0,120}isFitnessManagerRosterIdentity\(employee\)[\s\S]{0,80}return "person:센터장\|박주홍";/.test(js),
+  "retired pjhong accounts and role/name variants must collapse to the single active center-manager slot"
 );
 
 check(

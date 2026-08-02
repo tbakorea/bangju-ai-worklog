@@ -1769,6 +1769,15 @@ async function checkFitnessCenterReportConfirmation(browser) {
       fail("fitness center roster should include active fitness staff", `${label} missing from ${JSON.stringify(before.centerRows)}`);
     }
   });
+  const parkRows = before.centerRows.filter((row) => row.includes("박주홍"));
+  if (parkRows.length !== 1) {
+    fail("fitness center roster should show only one Park Ju-hong manager account", JSON.stringify(before.centerRows));
+  }
+  ["pjhong0", "pjhong1", "pjhong9"].forEach((retiredEmailPrefix) => {
+    if (before.centerRows.some((row) => row.includes(retiredEmailPrefix))) {
+      fail("fitness center roster should hide retired Park manager accounts", `${retiredEmailPrefix} leaked into ${JSON.stringify(before.centerRows)}`);
+    }
+  });
   await page.click("[data-fitness-center-report-confirm]");
   await page.waitForTimeout(220);
   const confirmed = await page.evaluate(() => {
