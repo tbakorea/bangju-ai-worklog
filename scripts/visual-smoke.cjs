@@ -326,14 +326,13 @@ async function checkOverviewCommandBoard(browser) {
       dateFits: dateTitle ? dateTitle.scrollWidth <= dateTitle.clientWidth + 2 : false,
       headerHeroGap: headerRect && heroRect ? heroRect.top - headerRect.bottom : 0,
       heroHeight: heroRect?.height || 0,
-      insightCount: document.querySelectorAll(".overview-insight-panel").length,
       scopeCount: document.querySelectorAll("[data-overview-scope]").length,
       activeScope: document.querySelector("[data-overview-scope].is-active")?.dataset.overviewScope || "",
-      siteHeaderCount: document.querySelectorAll(".overview-site-header").length,
-      fitnessSummaryCount: document.querySelectorAll(".overview-fitness-summary").length,
-      directivePanelCount: document.querySelectorAll(".overview-directive-panel").length,
+      allCommandCount: document.querySelectorAll(".overview-all-command").length,
+      businessBoardCount: document.querySelectorAll(".overview-all-business-board").length,
+      businessSnapshotCount: document.querySelectorAll(".overview-business-snapshot").length,
+      improvementCount: document.querySelectorAll(".overview-improvement-strip span").length,
       hiddenTaskChrome,
-      sheetCount: document.querySelectorAll(".worklog-overview-employee-sheet").length,
       hiddenReserveSheets: !/예비|미배정|spare/i.test(document.querySelector("#worklogOverviewGrid")?.textContent || ""),
     };
   });
@@ -347,25 +346,34 @@ async function checkOverviewCommandBoard(browser) {
   if (!metrics.dateFits) fail("overview date title is clipped", metrics.dateText);
   if (metrics.headerHeroGap < 10) fail("overview header overlaps command board", `${metrics.headerHeroGap}px`);
   if (metrics.heroHeight > 190) fail("overview hero is too tall on phone mode", `${metrics.heroHeight}px`);
-  if (!metrics.insightCount) fail("overview employee insight alerts are missing");
   if (metrics.scopeCount < 4 || metrics.activeScope !== "all") fail("overview scope selector is not initialized", JSON.stringify({ count: metrics.scopeCount, active: metrics.activeScope }));
-  if (!metrics.siteHeaderCount) fail("overview site headers are missing");
-  if (!metrics.fitnessSummaryCount) fail("fitness overview should render fitness-specific summary");
-  if (!metrics.directivePanelCount) fail("overview directive panels are missing");
+  if (!metrics.allCommandCount) fail("overview all-scope command board is missing");
+  if (!metrics.businessBoardCount || metrics.businessSnapshotCount < 3) fail("overview all-scope business snapshots are missing", JSON.stringify(metrics));
+  if (metrics.improvementCount < 10) fail("overview should show today's 10 improvements", String(metrics.improvementCount));
   if (!metrics.hiddenTaskChrome) fail("overview task markers/priorities should be hidden");
-  if (metrics.sheetCount < 3) fail("overview should render employee sheets", String(metrics.sheetCount));
   if (!metrics.hiddenReserveSheets) fail("overview should hide reserve/unassigned sheets");
   await page.click('[data-overview-scope="fitness"]');
   await page.waitForTimeout(150);
   const fitnessFilter = await page.evaluate(() => ({
     activeScope: document.querySelector("[data-overview-scope].is-active")?.dataset.overviewScope || "",
     siteText: document.querySelector("#worklogOverviewGrid")?.textContent || "",
+    centerSheets: document.querySelectorAll(".overview-fitness-center-sheet").length,
+    rosterCards: document.querySelectorAll(".overview-fitness-roster-compact article").length,
+    insightCount: document.querySelectorAll(".overview-insight-panel").length,
+    fitnessSummaryCount: document.querySelectorAll(".overview-fitness-summary").length,
+    directivePanelCount: document.querySelectorAll(".overview-directive-panel").length,
     fitnessSheets: document.querySelectorAll(".worklog-overview-employee-sheet.is-fitness-sheet").length,
     nonFitnessSheets: document.querySelectorAll('.worklog-overview-employee-sheet:not(.is-fitness-sheet)').length,
   }));
   if (fitnessFilter.activeScope !== "fitness") fail("overview fitness scope did not activate", fitnessFilter.activeScope);
   if (!/비욘드 피트니스/.test(fitnessFilter.siteText)) fail("overview fitness scope missing fitness label");
+  if (!fitnessFilter.centerSheets) fail("overview fitness scope should start with center operations sheet", JSON.stringify(fitnessFilter));
+  if (!fitnessFilter.rosterCards) fail("overview fitness center sheet should show fitness roster cards", JSON.stringify(fitnessFilter));
+  if (!fitnessFilter.insightCount) fail("overview employee insight alerts are missing");
+  if (!fitnessFilter.fitnessSummaryCount) fail("fitness overview should render fitness-specific summary");
+  if (!fitnessFilter.directivePanelCount) fail("overview directive panels are missing");
   if (!fitnessFilter.fitnessSheets || fitnessFilter.nonFitnessSheets) fail("overview fitness scope should show only fitness sheets", JSON.stringify(fitnessFilter));
+  if (/재무대리|재무과장|공유사업부|김성민/.test(fitnessFilter.siteText)) fail("overview fitness scope leaked non-fitness employees", fitnessFilter.siteText.slice(0, 500));
   if (errors.length) fail("overview page errors", errors.join(" | "));
   await page.close();
 }

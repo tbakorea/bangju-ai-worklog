@@ -3198,6 +3198,8 @@ function renderOverviewFitnessEmployeeSheet({ group, employee, employeeId, index
     : Array.from({ length: 3 }, () => ({ priority: "?", text: "업무 내용", status: "예정" }));
   const visibleSchedule = scheduleRows.length ? scheduleRows : getWorklogScheduleSlots(dayLog).map((time) => ({ time, text: "일정" }));
   const fitnessSummary = renderOverviewFitnessSummary(dayLog);
+  const insightPanel = renderOverviewInsightPanel(employee, dayLog, context);
+  const directivePanel = renderOverviewDirectivePanel(employee, dayLog, employeeId, context);
   return `
     <article class="worklog-overview-employee-sheet projected-worklog-sheet is-fitness-sheet is-fitness-projection is-fitness-native-projection" data-overview-site="${escapeAttr(group.id)}">
       <header class="overview-sheet-head overview-fitness-native-head">
@@ -3209,6 +3211,8 @@ function renderOverviewFitnessEmployeeSheet({ group, employee, employeeId, index
         <button type="button" data-overview-employee="${escapeAttr(employeeId)}" data-overview-view="${escapeAttr(group.view)}">열기</button>
       </header>
       ${fitnessSummary}
+      ${insightPanel}
+      ${directivePanel}
       <section class="overview-fitness-native-panel overview-fitness-task-native">
         <header>
           <div>
@@ -3289,6 +3293,206 @@ function renderOverviewEmployeeSheet({ group, employee, employeeId, index, dayLo
   `;
 }
 
+function getOverviewEmployeeSummaryModel(group, employeeId, employee, dateKey) {
+  const dayLog = getEmployeeLogForDate(employeeId, dateKey);
+  const tasks = (dayLog.tasks || []).filter(isActiveTask);
+  const done = tasks.filter((task) => task.done || task.status === "완료").length;
+  const scheduleCount = (dayLog.schedule || []).filter((item) => getScheduleEntryText(item)).length;
+  const attendance = formatAttendanceSummary(dayLog) || dayLog.attendanceStatus || "출결 미기록";
+  const reportText = getOverviewReportText(dayLog);
+  const ops = { ...createFitnessOps(), ...(dayLog.fitnessOps || {}) };
+  const paidPt = numberValue(ops.ptRegular) + numberValue(ops.ptOther);
+  const signalCount = [
+    /결석|지각|조퇴|미기록/.test(attendance),
+    !reportText,
+    tasks.length === 0,
+    scheduleCount === 0,
+  ].filter(Boolean).length;
+  return {
+    group,
+    employee,
+    employeeId,
+    dayLog,
+    tasks,
+    done,
+    scheduleCount,
+    attendance,
+    reportText,
+    paidPt,
+    signalCount,
+  };
+}
+
+function getOverviewSignalTone(model) {
+  if (model.signalCount >= 2) return "risk";
+  if (model.signalCount === 1) return "watch";
+  return "good";
+}
+
+function getOverviewSignalLabel(model) {
+  const tone = getOverviewSignalTone(model);
+  if (tone === "risk") return "확인";
+  if (tone === "watch") return "점검";
+  return "정상";
+}
+
+function renderOverviewBusinessSnapshot({ group, dateKey, dateLabel }) {
+  const models = getOverviewGroupEmployeeEntries(group).map(({ employeeId, employee }) => getOverviewEmployeeSummaryModel(group, employeeId, employee, dateKey));
+  const employeeCount = models.length;
+  const reportCount = models.filter((model) => model.reportText).length;
+  const riskCount = models.filter((model) => getOverviewSignalTone(model) === "risk").length;
+  const done = models.reduce((sum, model) => sum + model.done, 0);
+  const taskTotal = models.reduce((sum, model) => sum + model.tasks.length, 0);
+  const scheduleCount = models.reduce((sum, model) => sum + model.scheduleCount, 0);
+  const paidPt = models.reduce((sum, model) => sum + model.paidPt, 0);
+  const metricLabel = group.id === "fitness" ? "유료PT" : "일정";
+  const metricValue = group.id === "fitness" ? `${paidPt}건` : `${scheduleCount}건`;
+  const rows = models.map((model, index) => `
+    <li class="overview-person-row is-${escapeAttr(getOverviewSignalTone(model))}">
+      <span>${String(index + 1).padStart(2, "0")}</span>
+      <strong>${escapeHtml(getEmployeeAdminLabel(model.employee))}</strong>
+      <em>${escapeHtml(model.reportText ? "보고" : "미보고")}</em>
+      <em>${escapeHtml(model.attendance)}</em>
+      <button type="button" data-overview-employee="${escapeAttr(model.employeeId)}" data-overview-view="${escapeAttr(group.view)}">열기</button>
+    </li>
+  `).join("");
+  return `
+    <article class="overview-business-snapshot ${riskCount ? "is-risk" : "is-calm"}" data-overview-site="${escapeAttr(group.id)}">
+      <header class="overview-business-header">
+        <div>
+          <span>${escapeHtml(dateLabel)} · ${escapeHtml(group.label)}</span>
+          <h3>${escapeHtml(group.title)}</h3>
+          <p>${escapeHtml(getOverviewSiteSummary(group, dateKey))}</p>
+        </div>
+        <button type="button" class="overview-business-action" data-overview-filter-scope="${escapeAttr(group.id)}">사업장 보기</button>
+      </header>
+      <div class="overview-business-metrics">
+        <span><b>${employeeCount}</b><small>직원</small></span>
+        <span><b>${reportCount}/${employeeCount}</b><small>보고</small></span>
+        <span><b>${taskTotal ? `${done}/${taskTotal}` : "0/0"}</b><small>업무</small></span>
+        <span><b>${metricValue}</b><small>${metricLabel}</small></span>
+      </div>
+      <div class="overview-signal-line">
+        <strong>${riskCount ? `대표 확인 ${riskCount}명` : "운영 신호 정상"}</strong>
+        <span>${riskCount ? "미보고, 출결, 일정 공백을 먼저 확인하세요." : "직원 업무 흐름이 안정적으로 기록되고 있습니다."}</span>
+      </div>
+      <ul class="overview-person-list">
+        ${rows || `<li class="overview-person-empty">등록된 직원이 없습니다.</li>`}
+      </ul>
+    </article>
+  `;
+}
+
+function renderOverviewAllScopeBoard(groups, dateKey, dateLabel) {
+  const models = groups.flatMap((group) => getOverviewGroupEmployeeEntries(group).map(({ employeeId, employee }) => getOverviewEmployeeSummaryModel(group, employeeId, employee, dateKey)));
+  const totalEmployees = models.length;
+  const reportCount = models.filter((model) => model.reportText).length;
+  const riskCount = models.filter((model) => getOverviewSignalTone(model) === "risk").length;
+  const taskTotal = models.reduce((sum, model) => sum + model.tasks.length, 0);
+  const doneTotal = models.reduce((sum, model) => sum + model.done, 0);
+  const scheduleTotal = models.reduce((sum, model) => sum + model.scheduleCount, 0);
+  const paidPt = models.reduce((sum, model) => sum + model.paidPt, 0);
+  const improvements = [
+    "미보고 직원 먼저 확인",
+    "출결 미기록 즉시 보완",
+    "시간표 공백 업무지시",
+    "피트니스 PT 실적 추적",
+    "대표 개입사항만 선별",
+    "사업장별 담당자 확인",
+    "공통일정 이월 점검",
+    "업무보고 품질 확인",
+    "노무자료 누락 방지",
+    "내일 우선업무 예약",
+  ];
+  return `
+    <section class="overview-all-command">
+      <div>
+        <span>Executive Worklog Radar</span>
+        <h3>전사업장 오늘 현황</h3>
+        <p>${escapeHtml(dateLabel)} 기준 · 사업장별 직원 업무보고와 실행 신호를 한눈에 봅니다.</p>
+      </div>
+      <button type="button" data-view="executive">대표경영</button>
+    </section>
+    <section class="overview-all-kpis" aria-label="전사업장 핵심지표">
+      <article><span>전체 직원</span><strong>${totalEmployees}명</strong><em>승인·배정 기준</em></article>
+      <article><span>업무보고</span><strong>${reportCount}/${totalEmployees}</strong><em>오늘 작성</em></article>
+      <article class="${riskCount ? "is-alert" : ""}"><span>확인 신호</span><strong>${riskCount}명</strong><em>출결·공백·미보고</em></article>
+      <article><span>주요업무</span><strong>${doneTotal}/${taskTotal || 0}</strong><em>완료/전체</em></article>
+      <article><span>시간일정</span><strong>${scheduleTotal}건</strong><em>배치된 일정</em></article>
+      <article><span>피트니스</span><strong>${paidPt}건</strong><em>유료PT</em></article>
+    </section>
+    <section class="overview-improvement-strip" aria-label="오늘 개선 10">
+      <strong>오늘 개선 10</strong>
+      <div>${improvements.map((item, index) => `<span>${String(index + 1).padStart(2, "0")} ${escapeHtml(item)}</span>`).join("")}</div>
+    </section>
+    <section class="overview-all-business-board">
+      ${groups.map((group) => renderOverviewBusinessSnapshot({ group, dateKey, dateLabel })).join("")}
+    </section>
+  `;
+}
+
+function setupWorklogOverviewInteractions(grid, dateKey) {
+  grid.querySelectorAll("[data-overview-filter-scope]").forEach((button) => {
+    button.addEventListener("click", () => {
+      state.worklogOverviewScope = button.dataset.overviewFilterScope || "all";
+      saveState({ fastSave: true });
+      renderWorklogOverview();
+      updateWorklogOverviewModebar();
+    });
+  });
+  grid.querySelectorAll("[data-view]").forEach((button) => {
+    button.addEventListener("click", () => {
+      if (button.dataset.view) switchView(button.dataset.view);
+    });
+  });
+  grid.querySelectorAll("[data-overview-fitness-center]").forEach((button) => {
+    button.addEventListener("click", () => {
+      state.fitnessLogPage = 0;
+      saveState({ fastSave: true });
+      switchView("fitness-log");
+    });
+  });
+  grid.querySelectorAll("[data-overview-employee]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const employeeId = button.dataset.overviewEmployee;
+      const targetView = button.dataset.overviewView || "bangju-log";
+      state.selectedEmployeeId = employeeId;
+      if (targetView === "fitness-log") {
+        const targetPageIndex = getFitnessLogPages().findIndex((page) => page.type === "employee" && page.id === employeeId);
+        if (targetPageIndex >= 0) state.fitnessLogPage = targetPageIndex;
+      }
+      saveState({ fastSave: true });
+      switchView(targetView);
+    });
+  });
+  grid.querySelectorAll("[data-overview-directive-add]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const employeeId = button.dataset.overviewDirectiveAdd;
+      const input = button.closest(".overview-directive-panel")?.querySelector("[data-overview-directive-input]");
+      const text = String(input?.value || "").trim();
+      if (!text) return;
+      const log = getEmployeeLogForDate(employeeId, dateKey);
+      log.directives = Array.isArray(log.directives) ? log.directives : [];
+      log.directives.push({ id: `directive-${Date.now()}`, text, status: "지시", by: state.profile?.nickname || state.profile?.name || "대표", createdAt: new Date().toISOString() });
+      saveState();
+      renderWorklogOverview();
+    });
+  });
+  grid.querySelectorAll("[data-overview-directive-suggest]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const employeeId = button.dataset.overviewDirectiveSuggest;
+      const employee = findEmployeeRecordById(employeeId);
+      if (!employee) return;
+      const log = getEmployeeLogForDate(employeeId, dateKey);
+      const context = getOverviewEmployeeSummaryModel({ id: "" }, employeeId, employee, dateKey);
+      log.directives = Array.isArray(log.directives) ? log.directives : [];
+      log.directives.push({ id: `directive-${Date.now()}`, text: buildOverviewDirectiveSuggestion(employee, log, context), status: "AI 제안", by: "AI 업무지시 에이전트", createdAt: new Date().toISOString() });
+      saveState();
+      renderWorklogOverview();
+    });
+  });
+}
+
 function renderWorklogOverview() {
   const grid = document.getElementById("worklogOverviewGrid");
   if (!grid) return;
@@ -3314,19 +3518,21 @@ function renderWorklogOverview() {
   const dateKey = getActiveDateKey();
   const dateLabel = formatShortDate(dateKey);
   const activeScope = getActiveWorklogOverviewScope();
+  const allGroups = getWorklogOverviewGroups();
   const groups = getFilteredWorklogOverviewGroups();
   grid.classList.toggle("is-single-site", activeScope !== "all");
+  grid.classList.toggle("is-overview-all", activeScope === "all");
+  grid.classList.toggle("is-fitness-scope", activeScope === "fitness");
+  if (activeScope === "all") {
+    grid.innerHTML = renderOverviewAllScopeBoard(allGroups, dateKey, dateLabel);
+    setupWorklogOverviewInteractions(grid, dateKey);
+    return;
+  }
   grid.innerHTML = groups.map((group) => {
     const centerCard = group.id === "fitness" ? renderOverviewFitnessCenterSheet({ group, dateKey, dateLabel }) : "";
     const employeeCards = getOverviewGroupEmployeeEntries(group).map(({ employeeId, employee }, index) => {
-      const dayLog = getEmployeeLogForDate(employeeId, dateKey);
-      const tasks = (dayLog.tasks || []).filter(isActiveTask);
-      const done = tasks.filter((task) => task.done || task.status === "완료").length;
-      const scheduleCount = (dayLog.schedule || []).filter((item) => getScheduleEntryText(item)).length;
-      const attendance = formatAttendanceSummary(dayLog) || dayLog.attendanceStatus || "출결 미기록";
-      const reportText = getOverviewReportText(dayLog);
-      const context = { tasks, done, scheduleCount, attendance, reportText };
-      return renderOverviewEmployeeSheet({ group, employee, employeeId, index, dayLog, context });
+      const context = getOverviewEmployeeSummaryModel(group, employeeId, employee, dateKey);
+      return renderOverviewEmployeeSheet({ group, employee, employeeId, index, dayLog: context.dayLog, context });
     }).join("");
     return `
       <section class="worklog-overview-site ${activeScope === group.id ? "is-active-site" : ""}" data-overview-site="${escapeAttr(group.id)}">
@@ -3339,52 +3545,7 @@ function renderWorklogOverview() {
       </section>
     `;
   }).join("");
-  grid.querySelectorAll("[data-overview-fitness-center]").forEach((button) => {
-    button.addEventListener("click", () => {
-      state.fitnessLogPage = 0;
-      saveState({ fastSave: true });
-      switchView("fitness-log");
-    });
-  });
-  grid.querySelectorAll("[data-overview-employee]").forEach((button) => {
-    button.addEventListener("click", () => {
-      state.selectedEmployeeId = button.dataset.overviewEmployee;
-      saveState({ fastSave: true });
-      switchView(button.dataset.overviewView || "bangju-log");
-    });
-  });
-  grid.querySelectorAll("[data-overview-directive-add]").forEach((button) => {
-    button.addEventListener("click", () => {
-      const employeeId = button.dataset.overviewDirectiveAdd;
-      const input = button.closest(".overview-directive-panel")?.querySelector("[data-overview-directive-input]");
-      const text = String(input?.value || "").trim();
-      if (!text) return;
-      const log = getEmployeeLogForDate(employeeId, dateKey);
-      log.directives = Array.isArray(log.directives) ? log.directives : [];
-      log.directives.push({ id: `directive-${Date.now()}`, text, status: "지시", by: state.profile?.nickname || state.profile?.name || "대표", createdAt: new Date().toISOString() });
-      saveState();
-      renderWorklogOverview();
-    });
-  });
-  grid.querySelectorAll("[data-overview-directive-suggest]").forEach((button) => {
-    button.addEventListener("click", () => {
-      const employeeId = button.dataset.overviewDirectiveSuggest;
-      const employee = findEmployeeRecordById(employeeId);
-      if (!employee) return;
-      const log = getEmployeeLogForDate(employeeId, dateKey);
-      const tasks = (log.tasks || []).filter(isActiveTask);
-      const context = {
-        tasks,
-        scheduleCount: (log.schedule || []).filter((item) => getScheduleEntryText(item)).length,
-        reportText: getOverviewReportText(log),
-        attendance: formatAttendanceSummary(log) || log.attendanceStatus || "출결 미기록",
-      };
-      log.directives = Array.isArray(log.directives) ? log.directives : [];
-      log.directives.push({ id: `directive-${Date.now()}`, text: buildOverviewDirectiveSuggestion(employee, log, context), status: "AI 제안", by: "AI 업무지시 에이전트", createdAt: new Date().toISOString() });
-      saveState();
-      renderWorklogOverview();
-    });
-  });
+  setupWorklogOverviewInteractions(grid, dateKey);
 }
 
 function renderControlTower() {
