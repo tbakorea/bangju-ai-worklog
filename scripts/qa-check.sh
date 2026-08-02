@@ -17,3 +17,4 @@ fi
 
 cd "$ROOT_DIR"
 "$NODE_BIN" scripts/qa-check.mjs
+"$NODE_BIN" scripts/simulate-100-users-90-days.mjs
