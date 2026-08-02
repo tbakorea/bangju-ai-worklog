@@ -11838,6 +11838,17 @@ body[data-layout-mode="phone"] .fitness-log-schedule-panel .appointment-merge-bu
   font-weight: 950;
 }
 
+.fitness-paper-footer-grid small {
+  display: block;
+  min-height: 20px;
+  padding: 5px 7px 4px;
+  border-top: 1px solid rgba(18, 59, 45, 0.1);
+  color: rgba(17, 20, 17, 0.58);
+  font-size: 9px;
+  font-weight: 820;
+  line-height: 1.25;
+}
+
 .fitness-paper-tasks p,
 .fitness-paper-footer-grid p {
   display: grid;

@@ -14734,17 +14734,93 @@ function getFitnessReportTaskRows(logEntries = [], count = 3) {
   });
 }
 
-function getFitnessReportRecordRows(logEntries = []) {
+function getFitnessReportDirectRecordRows(logEntries = []) {
+  const seen = new Set();
   return logEntries
     .flatMap(({ employee, log }) => {
       const ops = { ...createFitnessOps(), ...(log.fitnessOps || {}) };
       return [ops.specialReport, ops.shiftNote, log.report, log.memo]
+        .map((text) => String(text || "").trim())
         .filter(Boolean)
         .map((text) => `${employee.name || getEmployeeOwnLabel(employee)}: ${text}`);
     })
-    .slice(0, 3)
+    .filter((row) => {
+      const key = row.replace(/\s+/g, " ").trim();
+      if (!key || seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+}
+
+function padFitnessReportRecordRows(rows = [], count = 3) {
+  return rows
+    .slice(0, count)
     .concat(Array(3).fill(""))
-    .slice(0, 3);
+    .slice(0, count);
+}
+
+function getFitnessCenterGeneratedRecordRows(logEntries = [], context = {}) {
+  const { totals = {}, weatherText = "" } = context;
+  const rows = [];
+  const add = (text) => {
+    const value = String(text || "").trim();
+    if (value && !rows.includes(value)) rows.push(value);
+  };
+  const paidPt = numberValue(totals.ptRegular);
+  const freePt = numberValue(totals.ptFree);
+  const consult = numberValue(totals.consultation);
+  const renewal = numberValue(totals.customerRenewal);
+  const newMembers = numberValue(totals.customerNew);
+  const outbound = numberValue(totals.outbound);
+  const inbound = numberValue(totals.inbound);
+  const attendanceReady = logEntries.filter(({ log }) => log?.clockIn || log?.clockOut).length;
+  const missingAttendance = logEntries.filter(({ log }) => !log?.clockIn && !log?.clockOut).length;
+
+  if (paidPt || freePt || consult || renewal || newMembers || outbound || inbound) {
+    add(`운영 집계: 유료PT ${paidPt}건, 무료PT ${freePt}건, 상담 ${consult}건, 신규 ${newMembers}건, 재등록 ${renewal}건, 아웃바운드 ${outbound}건, 인바운드 ${inbound}건.`);
+  }
+  if (attendanceReady || missingAttendance) {
+    add(`출결 확인: ${attendanceReady}명 기록, ${missingAttendance}명 미기록입니다. 마감 전 출퇴근 기록을 확인하세요.`);
+  }
+
+  const scheduleHighlights = logEntries.flatMap(({ employee, log }) => (log.schedule || [])
+    .filter((entry) => getScheduleEntryText(entry))
+    .slice(0, 2)
+    .map((entry) => `${employee.name || getEmployeeOwnLabel(employee)} ${entry.time || ""} ${getScheduleEntryText(entry)}`.trim()));
+  if (scheduleHighlights.length) add(`핵심 실행: ${scheduleHighlights.slice(0, 3).join(" / ")}`);
+  if (weatherText && !/미기록|주소 입력 필요/.test(weatherText)) {
+    add(`환경 기록: ${weatherText}. 현장 컨디션과 고객 응대 특이사항을 함께 확인하세요.`);
+  }
+  if (!rows.length) add("직원 업무보고와 운영기록을 입력하면 오늘의 기록이 자동으로 정리됩니다.");
+  return rows;
+}
+
+function getFitnessReportRecordRows(logEntries = [], context = {}) {
+  const directRows = getFitnessReportDirectRecordRows(logEntries);
+  if (!context.isCenter) return padFitnessReportRecordRows(directRows);
+  return padFitnessReportRecordRows([
+    ...directRows,
+    ...getFitnessCenterGeneratedRecordRows(logEntries, context),
+  ]);
+}
+
+function getFitnessReportIssueTitle(model = {}) {
+  return model.isCenter ? "오늘의 기록" : "특이사항 / 인수인계";
+}
+
+function getFitnessReportSourceNote(model = {}) {
+  return model.isCenter
+    ? "직원 업무보고, 운영기록, 시간표, 출결을 취합합니다."
+    : "개인 업무보고와 메모를 우선 반영합니다.";
+}
+
+function getFitnessReportIssueRowsHtml(model = {}) {
+  const rows = padFitnessReportRecordRows(model.issueRows || []);
+  return `
+    <h3>${escapeHtml(getFitnessReportIssueTitle(model))}</h3>
+    <small>${escapeHtml(getFitnessReportSourceNote(model))}</small>
+    ${rows.map((row, index) => `<p><b>${index + 1}</b><span>${escapeHtml(row || "")}</span></p>`).join("")}
+  `;
 }
 
 function buildFitnessReportModel(options = {}) {
@@ -14769,6 +14845,7 @@ function buildFitnessReportModel(options = {}) {
     : employee;
   const weatherSiteKey = getSiteWeatherKeyForEmployee(weatherEmployee);
   const weather = getWeatherRecordForSite(weatherSiteKey, dateKey);
+  const weatherText = formatWeatherSummary(weather, { compact: true });
   return {
     title,
     dateKey,
@@ -14781,7 +14858,7 @@ function buildFitnessReportModel(options = {}) {
     ownerLabel: isCenter ? "담당 : 센터 운영 취합" : `담당 : ${employee.role || "직원"} ${employee.name || getEmployeeOwnLabel(employee)}`,
     clock: isCenter ? "센터 취합" : `${sourceLog.clockIn || "-"} ~ ${sourceLog.clockOut || "-"}`,
     weather,
-    weatherText: formatWeatherSummary(weather, { compact: true }),
+    weatherText,
     weatherAddress: getSiteWeatherAddress(weatherSiteKey),
     weatherSiteKey,
     staffRows,
@@ -14801,7 +14878,7 @@ function buildFitnessReportModel(options = {}) {
       ["마케팅", `${numberValue(totals.outsideSales)}건`],
       ["일일권", `${numberValue(totals.dayPass)}건`],
     ],
-    issueRows: getFitnessReportRecordRows(logEntries),
+    issueRows: getFitnessReportRecordRows(logEntries, { isCenter, totals, weatherText }),
     coaching: getFitnessCoachingMessages(),
   };
 }
@@ -14915,8 +14992,7 @@ function renderFitnessReportTemplate(model = buildFitnessReportModel()) {
 
       <section class="fitness-paper-footer-grid">
         <div>
-          <h3>${model.isCenter ? "오늘의 기록" : "특이사항 / 인수인계"}</h3>
-          ${model.issueRows.map((row, index) => `<p><b>${index + 1}</b><span>${escapeHtml(row || "")}</span></p>`).join("")}
+          ${getFitnessReportIssueRowsHtml(model)}
         </div>
         <div>
           <h3>AI 코칭</h3>
@@ -15135,6 +15211,16 @@ function getFitnessReportExportCss() {
       padding: 12px 14px;
       font-size: 22px;
       font-weight: 950;
+    }
+    .fitness-paper-footer-grid small {
+      display: block;
+      min-height: 34px;
+      padding: 8px 12px 6px;
+      border-top: 2px solid rgba(18, 59, 45, 0.1);
+      color: rgba(17, 20, 17, 0.62);
+      font-size: 16px;
+      font-weight: 820;
+      line-height: 1.25;
     }
     .fitness-paper-tasks p,
     .fitness-paper-footer-grid p {
