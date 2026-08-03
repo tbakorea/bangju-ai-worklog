@@ -8543,9 +8543,13 @@ function applyCurrentWorklogPermissionState(viewName = activeView) {
 
 function updateWorklogOverviewExitButton(viewName = activeView) {
   const button = document.getElementById("returnToWorklogOverviewButton");
-  if (!button) return;
+  const fitnessButton = document.getElementById("returnToFitnessWorklogOverviewButton");
   const isEmployeeWorklog = ["bangju-log", "beyond-log", "today"].includes(viewName);
-  button.hidden = !(isEmployeeWorklog && canAccessWorklogOverview());
+  if (button) button.hidden = !(isEmployeeWorklog && canAccessWorklogOverview());
+  if (fitnessButton) {
+    const isFitnessEmployeeWorklog = viewName === "fitness-log" && getCurrentFitnessLogPage()?.type === "employee";
+    fitnessButton.hidden = !(isFitnessEmployeeWorklog && canAccessWorklogOverview());
+  }
 }
 
 function renderFitnessCenterDaily() {
@@ -8803,11 +8807,15 @@ function hasFitnessEmployeeLogContent(log = {}) {
 
 function getFitnessEmployeeLogCandidateIds(employee = {}) {
   const ids = [employee.id, employee.mappedEmployeeId, getFitnessRosterSlotId(employee)].filter(Boolean);
-  const source = `${employee.id || ""} ${employee.mappedEmployeeId || ""} ${employee.name || ""} ${employee.nickname || ""} ${employee.role || ""} ${employee.primaryWork || ""}`.toLowerCase();
-  if (/이다빈|weekday-info-idabin/.test(source)) ids.push("fitness-weekday-info-idabin", "fitness-weekday-info");
-  if (/주중|인포|데스크|front|프론트/.test(source)) ids.push("fitness-weekday-info", "fitness-weekday-info-idabin");
-  if (/홍현규|트레이너|trainer|pt|피티/.test(source)) ids.push("fitness-trainer-1");
-  if (/박주홍|센터장|운영총괄|manager/.test(source)) ids.push("beyond-fitness-manager");
+  const source = `${employee.id || ""} ${employee.mappedEmployeeId || ""} ${employee.email || ""} ${employee.name || ""} ${employee.nickname || ""} ${employee.role || ""} ${employee.primaryWork || ""}`.toLowerCase();
+  if (/fitness-info-shinsemin|신세민|tpals2990/.test(source)) ids.push("fitness-info-shinsemin");
+  else if (/fitness-info-kimyoungchae|김영채|yckim1558/.test(source)) ids.push("fitness-info-kimyoungchae");
+  else if (/fitness-weekday-info-idabin|이다빈/.test(source)) ids.push("fitness-weekday-info-idabin", "fitness-weekday-info");
+  else if (/fitness-saturday-info|토요|토요일/.test(source)) ids.push("fitness-saturday-info");
+  else if (/fitness-sunday-info|일요|일요일/.test(source)) ids.push("fitness-sunday-info");
+  else if (/fitness-weekday-info|주중/.test(source)) ids.push("fitness-weekday-info");
+  else if (/홍현규|트레이너|trainer|pt|피티/.test(source)) ids.push("fitness-trainer-1");
+  else if (/박주홍|센터장|운영총괄|manager/.test(source)) ids.push("beyond-fitness-manager");
   return [...new Set(ids)];
 }
 
@@ -9591,7 +9599,7 @@ function renderWorklogTaskBoard(log) {
   board.innerHTML = "";
   const list = document.createElement("section");
   list.className = "worklog-task-list";
-  getWorklogTaskRefs(log).forEach((ref) => {
+  getVisibleWorklogTaskRefs(log, { view: activeView }).forEach((ref) => {
     list.appendChild(renderWorklogTaskRow(ref, log));
   });
   const add = document.createElement("button");
@@ -9614,10 +9622,7 @@ function renderFitnessTaskBoard(log) {
   board.innerHTML = "";
   const list = document.createElement("section");
   list.className = "worklog-task-list fitness-task-list";
-  const refs = getWorklogTaskRefs(log);
-  const activeCount = refs.filter((ref) => isActiveTask(ref.task)).length;
-  const visibleCount = Math.min(refs.length, Math.max(3, activeCount + 1));
-  const visibleRefs = refs.slice(0, visibleCount);
+  const visibleRefs = getVisibleWorklogTaskRefs(log, { view: "fitness-log", compactEditable: true });
   visibleRefs.forEach((ref) => {
     list.appendChild(renderWorklogTaskRow(ref, log, { view: "fitness-log" }));
   });
@@ -9629,6 +9634,7 @@ function ensureFitnessTaskRowsVisible(log) {
   const list = board?.querySelector(".fitness-task-list");
   if (!list) return;
   const refs = getWorklogTaskRefs(log);
+  if (canAccessWorklogOverview() && !canEditCurrentWorklog("fitness-log")) return;
   const currentCount = list.querySelectorAll(".worklog-task-row").length;
   const activeCount = refs.filter((ref) => isActiveTask(ref.task)).length;
   const targetCount = Math.min(refs.length, Math.max(3, activeCount + 1));
@@ -9636,6 +9642,19 @@ function ensureFitnessTaskRowsVisible(log) {
   refs.slice(currentCount, targetCount).forEach((ref) => {
     list.appendChild(renderWorklogTaskRow(ref, log, { view: "fitness-log" }));
   });
+}
+
+function getVisibleWorklogTaskRefs(log, { view = activeView, compactEditable = false } = {}) {
+  const refs = getWorklogTaskRefs(log);
+  const activeRefs = refs.filter((ref) => isActiveTask(ref.task));
+  if (canAccessWorklogOverview() && !canEditCurrentWorklog(view)) {
+    const blankRefs = refs.filter((ref) => !isActiveTask(ref.task)).slice(0, Math.max(0, 3 - activeRefs.length));
+    const visible = new Set([...activeRefs, ...blankRefs]);
+    return refs.filter((ref) => visible.has(ref));
+  }
+  if (!compactEditable) return refs;
+  const visibleCount = Math.min(refs.length, Math.max(3, activeRefs.length + 1));
+  return refs.slice(0, visibleCount);
 }
 
 function createWorklogTask(priority = "?") {
@@ -17600,6 +17619,9 @@ document.getElementById("nextDateButton").onclick = () => moveSelectedDate(1);
 document.getElementById("todayJumpButton").onclick = () => setSelectedDateKey(todayKey);
 document.getElementById("returnToWorklogOverviewButton")?.addEventListener("click", () => {
   resetMobileDayFocusToSplit({ blur: true });
+  switchView("worklog-overview");
+});
+document.getElementById("returnToFitnessWorklogOverviewButton")?.addEventListener("click", () => {
   switchView("worklog-overview");
 });
 document.getElementById("calendarPrevYear").onclick = () => shiftCalendarYear(-1);

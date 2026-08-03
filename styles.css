@@ -23178,7 +23178,9 @@ body[data-view-mode="ceo"] #view-today .worklog-main.is-focus-schedule .day-sche
 }
 
 body[data-layout-mode="phone"] #view-today .worklog-overview-exit-button,
-body.physical-phone-device #view-today .worklog-overview-exit-button {
+body.physical-phone-device #view-today .worklog-overview-exit-button,
+body[data-layout-mode="phone"] #view-fitness-log .worklog-overview-exit-button,
+body.physical-phone-device #view-fitness-log .worklog-overview-exit-button {
   width: 100%;
   min-height: 34px;
   padding-inline: 8px;

@@ -605,6 +605,7 @@ async function checkOverviewCommandBoard(browser) {
       activeView: document.body.dataset.activeView || "",
       selectedEmployeeId: state.selectedEmployeeId,
       taskText,
+      taskRows: document.querySelectorAll("#worklogTaskBoard .worklog-task-row").length,
       scheduleText,
       exitVisible: Boolean(exitButton && !exitButton.hidden),
       commonFirst,
@@ -624,6 +625,7 @@ async function checkOverviewCommandBoard(browser) {
   if (overviewDetailMetrics.activeView !== "beyond-log"
     || overviewDetailMetrics.selectedEmployeeId !== "beyond-company-leader"
     || !overviewDetailMetrics.taskText
+    || overviewDetailMetrics.taskRows !== 3
     || !overviewDetailMetrics.scheduleText
     || !overviewDetailMetrics.exitVisible
     || !overviewDetailMetrics.commonFirst
@@ -794,6 +796,7 @@ async function checkRepresentativeProfileSeparation(browser) {
     const header = document.querySelector("#globalHeaderTitle")?.textContent?.trim() || "";
     const pager = document.querySelector("#fitnessLogPagerTitle")?.textContent?.trim() || "";
     const view = document.querySelector("#view-fitness-log");
+    const exitButton = document.querySelector("#returnToFitnessWorklogOverviewButton");
     return {
       header,
       pager,
@@ -801,6 +804,8 @@ async function checkRepresentativeProfileSeparation(browser) {
       permission: view?.dataset.fitnessPermission || "",
       pageType: view?.dataset.fitnessPageType || "",
       selectedEmployeeId: window.state?.selectedEmployeeId || "",
+      exitVisible: Boolean(exitButton && !exitButton.hidden),
+      taskRows: document.querySelectorAll("#fitnessTaskBoard .worklog-task-row").length,
     };
   });
   if (/정찬훈|베니|benny/i.test(metrics.header + metrics.pager + metrics.identityBadge)) {
@@ -811,6 +816,13 @@ async function checkRepresentativeProfileSeparation(browser) {
   }
   if (metrics.permission !== "readonly" || metrics.pageType !== "coworker") {
     fail("representative should only read the fitness manager sheet", `${metrics.permission}/${metrics.pageType}`);
+  }
+  if (!metrics.exitVisible || metrics.taskRows !== 3) {
+    fail("representative fitness detail should provide an overview exit and keep only three blank priority rows", JSON.stringify(metrics));
+  }
+  await page.click("#returnToFitnessWorklogOverviewButton");
+  if (await page.evaluate(() => document.body.dataset.activeView) !== "worklog-overview") {
+    fail("representative fitness detail exit should return to the employee worklog overview");
   }
   if (errors.length) fail("representative separation page errors", errors.join(" | "));
   await page.close();
@@ -2245,6 +2257,14 @@ async function checkFitnessCenterReportConfirmation(browser) {
       kimLog.record = "현장 실행기록 원문";
       kimLog.memo = "다음 근무자 인수인계 원문";
       kimLog.fitnessOps.specialReport = "피트니스 특이사항 원문";
+      const shinLog = getEmployeeLogForDate("fitness-info-shinsemin", "2026-07-24");
+      shinLog.tasks[0].text = "신세민 고객응대 우선업무";
+      shinLog.schedule[0].items[0].text = "신세민 센터 오픈 점검";
+      syncScheduleEntryText(shinLog.schedule[0]);
+      shinLog.report = "신세민 업무보고 원문";
+      shinLog.record = "신세민 실행기록 원문";
+      shinLog.memo = "신세민 인수인계 원문";
+      shinLog.fitnessOps.specialReport = "신세민 특이사항 원문";
       mergeVisibleStaffWorklogStates([{
         user_id: "kimyoungchae-auth",
         state: {
@@ -2290,6 +2310,14 @@ async function checkFitnessCenterReportConfirmation(browser) {
         reportHtml: html,
       };
     })(),
+    shinLog: (() => {
+      const employee = getFitnessCenterEmployees().find((item) => item.name === "신세민");
+      const model = buildFitnessReportModel({ employee, dateKey: "2026-07-24", isCenter: false });
+      return {
+        candidateIds: getFitnessEmployeeLogCandidateIds(employee),
+        reportHtml: renderFitnessReportTemplate(model),
+      };
+    })(),
   }));
   if (before.activeView !== "fitness-log" || !before.pageTitle.includes("센터")) {
     fail("fitness center report confirmation should start on center page", JSON.stringify(before));
@@ -2324,6 +2352,14 @@ async function checkFitnessCenterReportConfirmation(browser) {
   ["일요일 센터 청결 점검", "블로그 게시물 점검", "회원 문의 응대 기록", "비품 창고 정리", "금일 센터 운영 업무보고 원문", "현장 실행기록 원문", "다음 근무자 인수인계 원문", "피트니스 특이사항 원문"].forEach((label) => {
     if (!before.kimLog.reportHtml.includes(label)) {
       fail("personal fitness report should preserve all worklog source content", `${label} missing`);
+    }
+  });
+  if (before.shinLog.candidateIds.some((id) => id === "fitness-weekday-info" || id === "fitness-weekday-info-idabin")) {
+    fail("named fitness employees must not read another info employee's worklog", JSON.stringify(before.shinLog.candidateIds));
+  }
+  ["신세민 고객응대 우선업무", "신세민 센터 오픈 점검", "신세민 업무보고 원문", "신세민 실행기록 원문", "신세민 인수인계 원문", "신세민 특이사항 원문"].forEach((label) => {
+    if (!before.shinLog.reportHtml.includes(label)) {
+      fail("Shin Se-min's personal report should preserve every worklog source field", `${label} missing`);
     }
   });
   ["pjhong0", "pjhong1", "pjhong9"].forEach((retiredEmailPrefix) => {
