@@ -2469,6 +2469,12 @@ async function checkRealDeviceRegressionLayouts(browser) {
         laborPracticeCount: document.querySelectorAll("#view-attendance .labor-practice-card").length,
         laborCloseStepCount: document.querySelectorAll("#view-attendance .labor-close-step").length,
         laborIntegrationCount: document.querySelectorAll("#view-attendance [data-labor-route]").length,
+        laborWorkspaceTabCount: document.querySelectorAll("#view-attendance [data-labor-workspace-tab]").length,
+        laborWorkspaceSticky: getComputedStyle(document.querySelector("#laborWorkspaceNav") || document.body).position === "sticky",
+        laborEmployeeSelector: Boolean(document.querySelector("#laborEmployeeSelect")),
+        laborSinglePanel: Boolean(document.querySelector("#view-attendance .labor-ops-console"))
+          && !document.querySelector("#view-attendance #laborRegister")
+          && !document.querySelector("#view-attendance #payrollStatement"),
         laborHasLegalNote: Boolean(document.querySelector("#view-attendance .labor-legal-note")?.textContent.includes("공인노무사")),
         laborReportOption: Boolean(document.querySelector('#reportArchiveType option[value="labor"]')),
         controlHasLaborKpi: Boolean(document.querySelector("#controlKpiGrid")?.textContent.includes("노무 월 마감")),
@@ -2499,11 +2505,49 @@ async function checkRealDeviceRegressionLayouts(browser) {
     if (item.view === "attendance" && (metrics.laborIntegrationCount !== 6 || !metrics.laborReportOption || !metrics.controlHasLaborKpi)) {
       fail("labor operations must stay connected to six app sources, report archive, and control tower", JSON.stringify(metrics));
     }
+    if (item.view === "attendance" && (metrics.laborWorkspaceTabCount !== 4 || !metrics.laborWorkspaceSticky || !metrics.laborEmployeeSelector || !metrics.laborSinglePanel)) {
+      fail("labor workspace must provide a sticky four-tab employee and month navigator with one compact panel", JSON.stringify(metrics));
+    }
     if (item.view === "attendance" && (metrics.laborArchiveKind !== "labor" || !metrics.laborSnapshotProtectsPayroll || !metrics.laborPayDayConnected)) {
       fail("labor reports, protected payroll persistence, and employee pay dates must share one data flow", JSON.stringify(metrics));
     }
     if (item.view === "attendance" && metrics.futureAttendanceStatus !== "예정") {
       fail("future attendance rows must remain scheduled instead of becoming absence", JSON.stringify(metrics));
+    }
+    if (item.view === "attendance") {
+      const workspaceFlows = await page.evaluate(() => {
+        const previous = {
+          tab: state.laborWorkspaceTab,
+          site: state.laborSiteScope,
+          dateKey: state.selectedDateKey,
+        };
+        const current = parseDateKey(`${todayKey.slice(0, 7)}-01`);
+        current.setMonth(current.getMonth() - 1);
+        const pastMonth = `${current.getFullYear()}-${String(current.getMonth() + 1).padStart(2, "0")}`;
+        state.selectedDateKey = `${pastMonth}-01`;
+        state.laborWorkspaceTab = "register";
+        renderAttendance();
+        const archiveReady = document.querySelector("#laborMonthInput")?.value === pastMonth
+          && Boolean(document.querySelector("#laborRegister"))
+          && !document.querySelector(".labor-ops-console");
+        state.laborWorkspaceTab = "sites";
+        state.laborSiteScope = "all";
+        renderAttendance();
+        const siteSummaryCount = document.querySelectorAll(".labor-site-summary-grid [data-labor-site-scope]").length;
+        const firstSite = getLaborSiteGroupsForScope()[0]?.id || "";
+        state.laborSiteScope = firstSite;
+        renderAttendance();
+        const employeeCount = document.querySelectorAll("[data-labor-employee]").length;
+        const selectedSiteLedgerCount = document.querySelectorAll(".site-labor-ledger").length;
+        state.laborWorkspaceTab = previous.tab;
+        state.laborSiteScope = previous.site;
+        state.selectedDateKey = previous.dateKey;
+        renderAttendance();
+        return { archiveReady, siteSummaryCount, employeeCount, selectedSiteLedgerCount };
+      });
+      if (!workspaceFlows.archiveReady || workspaceFlows.siteSummaryCount < 1 || workspaceFlows.employeeCount < 1 || workspaceFlows.selectedSiteLedgerCount > 1) {
+        fail("labor workspace monthly archive and site-to-employee drilldown must stay compact and navigable", JSON.stringify(workspaceFlows));
+      }
     }
     if (metrics.dockOverlapsDate) fail("worklog menu dock overlaps the date band", JSON.stringify(metrics));
     if (metrics.dockOverlapsFitnessCoaching) fail("fitness menu overlaps the AI coaching band", JSON.stringify(metrics));
@@ -2706,6 +2750,64 @@ async function checkFitnessNewEmployeeRegistrationFlow(browser) {
     if (errors.length) fail("fitness registration flow page errors", `${viewport.label}: ${errors.join(" | ")}`);
     await page.close();
   }
+}
+
+async function checkSiteWeatherAndGeneralDailyReport(browser) {
+  const { page, errors } = await openPage(browser, { width: 390, height: 844 });
+  await page.evaluate(() => {
+    const employee = employees.find((item) => item.id === "bangju-finance-manager") || employees.find((item) => !/피트니스/i.test(`${item.org} ${item.workplace}`));
+    state.profile = { ...state.profile, approvalStatus: "approved", accessPreset: "owner", role: "대표" };
+    state.selectedEmployeeId = employee.id;
+    state.selectedDateKey = todayKey;
+    switchView("bangju-log");
+    const selectedEmployee = getSelectedEmployee();
+    const log = getEmployeeLogForDate(selectedEmployee.id, todayKey);
+    log.clockIn = "08:00";
+    log.clockOut = "18:00";
+    log.tasks[0] = { priority: "A", text: "월 마감 자료 검토", status: "완료", done: true };
+    log.schedule[0] = { time: "08:00", text: "재무 자료 취합", status: "완료" };
+    log.report = "월 마감 자료 검토와 증빙 취합을 완료했습니다.";
+    const siteKey = getSiteWeatherKeyForEmployee(selectedEmployee);
+    state.siteWeatherAddresses[siteKey] = "울산광역시 남구";
+    state.weatherCache[getWeatherCacheKey(siteKey, todayKey)] = {
+      siteKey,
+      dateKey: todayKey,
+      condition: "맑음",
+      temperature: 27,
+      humidity: 61,
+    };
+    renderEntries();
+  });
+  await page.click("#worklogReportMenuButton");
+  await page.waitForTimeout(220);
+  const metrics = await page.evaluate(() => {
+    const sheet = document.querySelector("#worklogReportSheet");
+    const preview = document.querySelector("#worklogReportPreview");
+    const employee = getSelectedEmployee();
+    const archive = buildEmployeeArchiveReport(employee, todayKey);
+    const pastUrl = buildWeatherRequestUrl({ latitude: 35.5, longitude: 129.3 }, "2026-07-31");
+    const futureUrl = buildWeatherRequestUrl({ latitude: 35.5, longitude: 129.3 }, "2026-08-31");
+    const snapshot = buildRemoteSnapshot();
+    return {
+      sheetOpen: !sheet.hidden && sheet.classList.contains("is-open"),
+      previewText: preview.textContent || "",
+      previewOverflow: preview.scrollHeight - preview.clientHeight,
+      archiveHasDesignedReport: archive.html.includes("worklog-daily-report-page"),
+      pastUsesArchive: pastUrl.includes("archive-api.open-meteo.com") && pastUrl.includes("start_date=2026-07-31"),
+      futureUsesForecast: pastUrl !== futureUrl && futureUrl.includes("api.open-meteo.com/v1/forecast") && futureUrl.includes("start_date=2026-08-31"),
+      snapshotHasWeather: Boolean(snapshot.siteWeatherAddresses && snapshot.weatherCache),
+      fitnessReportPreserved: Boolean(document.querySelector("#fitnessReportMenuButton") && document.querySelector("#fitnessReportSheet")),
+    };
+  });
+  ["업무 진행 현황", "시간대별 실행 내역", "이슈·리스크·지원 요청", "명일 계획·인수인계", "Bangju Action Brief", "맑음", "월 마감 자료 검토"].forEach((label) => {
+    if (!metrics.previewText.includes(label)) fail("general daily report should include corporate and Bangju report sections", `${label} missing`);
+  });
+  if (!metrics.sheetOpen || metrics.previewOverflow < 0) fail("general daily report sheet should open and remain scrollable", JSON.stringify(metrics));
+  if (!metrics.archiveHasDesignedReport || !metrics.pastUsesArchive || !metrics.futureUsesForecast || !metrics.snapshotHasWeather || !metrics.fitnessReportPreserved) {
+    fail("site weather and general report data flow should remain connected without changing fitness report", JSON.stringify(metrics));
+  }
+  if (errors.length) fail("site weather and general report page errors", errors.join(" | "));
+  await page.close();
 }
 
 async function checkApprovalRepairRevealsPendingFitnessSignup(browser) {
@@ -2982,6 +3084,7 @@ async function checkApprovalRepairMissingRpcFallsBack(browser) {
     await checkReportArchiveVault(browser);
     await checkFitnessCenterReportConfirmation(browser);
     await checkReportArchiveFitnessSubmission(browser);
+    await checkSiteWeatherAndGeneralDailyReport(browser);
     await checkRealDeviceRegressionLayouts(browser);
     await checkFitnessNewEmployeeRegistrationFlow(browser);
     await checkApprovalRepairRevealsPendingFitnessSignup(browser);

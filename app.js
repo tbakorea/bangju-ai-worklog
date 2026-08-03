@@ -740,6 +740,7 @@ const dailyEditingState = {
   composing: false,
 };
 const weatherRequestInFlight = new Set();
+const weatherBatchAttempted = new Set();
 
 function loadState() {
   try {
@@ -793,6 +794,8 @@ function createState() {
     employeeDirectoryOverrides: {},
     companyCommonWeeks: {},
     laborPayroll: {},
+    laborWorkspaceTab: "overview",
+    laborSiteScope: "all",
     communications: [],
     reportTone: "executive",
     reportArchive: {
@@ -808,6 +811,7 @@ function createState() {
     },
     siteWeatherAddresses: {},
     weatherCache: {},
+    weatherLocationCache: {},
     worklogCorrectionRequests: [],
     worklogCorrectionGrants: {},
     worklogCorrectionAudit: [],
@@ -854,8 +858,13 @@ function normalizeState() {
   state.employeeDirectoryOverrides = { ...(state.employeeDirectoryOverrides || {}) };
   state.companyCommonWeeks = { ...(state.companyCommonWeeks || {}) };
   state.laborPayroll = { ...(state.laborPayroll || {}) };
+  state.laborWorkspaceTab = ["overview", "register", "sites", "payroll"].includes(state.laborWorkspaceTab)
+    ? state.laborWorkspaceTab
+    : "overview";
+  state.laborSiteScope ||= "all";
   state.siteWeatherAddresses = { ...(state.siteWeatherAddresses || {}) };
   state.weatherCache = { ...(state.weatherCache || {}) };
+  state.weatherLocationCache = { ...(state.weatherLocationCache || {}) };
   state.communications = Array.isArray(state.communications) ? state.communications.slice(-300) : [];
   state.profile.manualSettings = {
     ...defaultProfile.manualSettings,
@@ -1204,9 +1213,12 @@ function getWeatherConditionLabel(code) {
 
 function formatWeatherSummary(record, { compact = false } = {}) {
   if (!record) return compact ? "날씨 미기록" : "사업장 주소 입력 후 날씨를 갱신하세요.";
+  const temperatureText = Number.isFinite(Number(record.temperatureMin)) && Number.isFinite(Number(record.temperatureMax))
+    ? `${Math.round(Number(record.temperatureMin))}~${Math.round(Number(record.temperatureMax))}°C`
+    : Number.isFinite(Number(record.temperature)) ? `${Math.round(Number(record.temperature))}°C` : "";
   const parts = [
     record.condition || getWeatherConditionLabel(record.weatherCode),
-    Number.isFinite(Number(record.temperature)) ? `${Math.round(Number(record.temperature))}°C` : "",
+    temperatureText,
     Number.isFinite(Number(record.humidity)) ? `습도 ${Math.round(Number(record.humidity))}%` : "",
     Number.isFinite(Number(record.precipitation)) && Number(record.precipitation) > 0 ? `강수 ${record.precipitation}mm` : "",
   ].filter(Boolean);
@@ -1226,6 +1238,7 @@ function getActiveWeatherEmployee(scope = activeView) {
 function renderWeatherWidgets() {
   renderWeatherWidget("worklog", getSelectedEmployee());
   renderWeatherWidget("fitness", getActiveWeatherEmployee("fitness-log"));
+  ensureWeatherRecordsForConfiguredSites(getActiveDateKey());
 }
 
 function renderWeatherWidget(scope, employee) {
@@ -1246,9 +1259,36 @@ function renderWeatherWidget(scope, employee) {
     : `${siteKey} 주소 입력 필요`;
   button.disabled = !address;
   button.textContent = record ? "날씨 새로고침" : "날씨 갱신";
-  if (address && !record && getActiveDateKey() === todayKey) {
+  if (address && !record) {
     requestWeatherForSite(siteKey, address, getActiveDateKey(), { silent: true, scope });
   }
+}
+
+function getConfiguredWeatherSites() {
+  return siteWeatherAddressTargets
+    .map(({ key }) => ({ siteKey: key, address: getSiteWeatherAddress(key) }))
+    .filter(({ address }) => address);
+}
+
+function ensureWeatherRecordsForConfiguredSites(dateKey = getActiveDateKey()) {
+  getConfiguredWeatherSites().forEach(({ siteKey, address }) => {
+    const requestKey = getWeatherCacheKey(siteKey, dateKey);
+    if (getWeatherRecordForSite(siteKey, dateKey) || weatherRequestInFlight.has(requestKey) || weatherBatchAttempted.has(requestKey)) return;
+    weatherBatchAttempted.add(requestKey);
+    requestWeatherForSite(siteKey, address, dateKey, { silent: true, scope: "" });
+  });
+}
+
+function buildWeatherRequestUrl(place, dateKey = getActiveDateKey()) {
+  const latitude = encodeURIComponent(place.latitude);
+  const longitude = encodeURIComponent(place.longitude);
+  if (dateKey === todayKey) {
+    return `https://api.open-meteo.com/v1/forecast?latitude=${latitude}&longitude=${longitude}&current=temperature_2m,relative_humidity_2m,precipitation,weather_code,wind_speed_10m&timezone=Asia%2FSeoul`;
+  }
+  const baseUrl = dateKey < todayKey
+    ? "https://archive-api.open-meteo.com/v1/archive"
+    : "https://api.open-meteo.com/v1/forecast";
+  return `${baseUrl}?latitude=${latitude}&longitude=${longitude}&start_date=${encodeURIComponent(dateKey)}&end_date=${encodeURIComponent(dateKey)}&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_sum,wind_speed_10m_max&timezone=Asia%2FSeoul`;
 }
 
 async function requestWeatherForSite(siteKey, address, dateKey = getActiveDateKey(), { silent = false, scope = "worklog" } = {}) {
@@ -1261,10 +1301,14 @@ async function requestWeatherForSite(siteKey, address, dateKey = getActiveDateKe
   if (weatherRequestInFlight.has(requestKey)) return state.weatherCache?.[requestKey] || null;
   weatherRequestInFlight.add(requestKey);
   try {
-    const geoUrl = `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(trimmedAddress)}&count=1&language=ko&format=json`;
-    const geoResponse = await fetch(geoUrl);
-    const geo = geoResponse.ok ? await geoResponse.json() : {};
-    let place = geo?.results?.[0]
+    let place = state.weatherLocationCache?.[siteKey]?.address === trimmedAddress
+      ? state.weatherLocationCache[siteKey]
+      : null;
+    if (!place) {
+      const geoUrl = `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(trimmedAddress)}&count=1&language=ko&format=json`;
+      const geoResponse = await fetch(geoUrl);
+      const geo = geoResponse.ok ? await geoResponse.json() : {};
+      place = geo?.results?.[0]
       ? {
           latitude: geo.results[0].latitude,
           longitude: geo.results[0].longitude,
@@ -1272,38 +1316,56 @@ async function requestWeatherForSite(siteKey, address, dateKey = getActiveDateKe
           admin1: geo.results[0].admin1,
         }
       : null;
-    if (!place) {
-      const fallbackGeoUrl = `https://nominatim.openstreetmap.org/search?format=json&limit=1&accept-language=ko&q=${encodeURIComponent(trimmedAddress)}`;
-      const fallbackResponse = await fetch(fallbackGeoUrl);
-      const fallbackGeo = fallbackResponse.ok ? await fallbackResponse.json() : [];
-      const fallbackPlace = Array.isArray(fallbackGeo) ? fallbackGeo[0] : null;
-      if (fallbackPlace) {
-        place = {
-          latitude: Number(fallbackPlace.lat),
-          longitude: Number(fallbackPlace.lon),
-          name: String(fallbackPlace.display_name || "").split(",")[0],
-          admin1: String(fallbackPlace.display_name || "").split(",").slice(1, 3).join(" ").trim(),
+      if (!place) {
+        const fallbackGeoUrl = `https://nominatim.openstreetmap.org/search?format=json&limit=1&accept-language=ko&q=${encodeURIComponent(trimmedAddress)}`;
+        const fallbackResponse = await fetch(fallbackGeoUrl);
+        const fallbackGeo = fallbackResponse.ok ? await fallbackResponse.json() : [];
+        const fallbackPlace = Array.isArray(fallbackGeo) ? fallbackGeo[0] : null;
+        if (fallbackPlace) {
+          place = {
+            latitude: Number(fallbackPlace.lat),
+            longitude: Number(fallbackPlace.lon),
+            name: String(fallbackPlace.display_name || "").split(",")[0],
+            admin1: String(fallbackPlace.display_name || "").split(",").slice(1, 3).join(" ").trim(),
+          };
+        }
+      }
+      if (place) {
+        state.weatherLocationCache = {
+          ...(state.weatherLocationCache || {}),
+          [siteKey]: { ...place, address: trimmedAddress },
         };
       }
     }
     if (!place) throw new Error("주소 좌표를 찾지 못했습니다.");
-    const weatherUrl = `https://api.open-meteo.com/v1/forecast?latitude=${encodeURIComponent(place.latitude)}&longitude=${encodeURIComponent(place.longitude)}&current=temperature_2m,relative_humidity_2m,precipitation,weather_code,wind_speed_10m&timezone=Asia%2FSeoul`;
+    const weatherUrl = buildWeatherRequestUrl(place, dateKey);
     const weatherResponse = await fetch(weatherUrl);
     if (!weatherResponse.ok) throw new Error("날씨 정보를 불러오지 못했습니다.");
     const weather = await weatherResponse.json();
     const current = weather?.current || {};
+    const daily = weather?.daily || {};
+    const weatherCode = current.weather_code ?? daily.weather_code?.[0];
+    const temperatureMax = daily.temperature_2m_max?.[0];
+    const temperatureMin = daily.temperature_2m_min?.[0];
+    const temperature = current.temperature_2m ?? (
+      Number.isFinite(Number(temperatureMax)) && Number.isFinite(Number(temperatureMin))
+        ? (Number(temperatureMax) + Number(temperatureMin)) / 2
+        : temperatureMax ?? temperatureMin
+    );
     const record = {
       siteKey,
       address: trimmedAddress,
       location: [place.name, place.admin1].filter(Boolean).join(" "),
       dateKey,
       fetchedAt: new Date().toISOString(),
-      temperature: current.temperature_2m,
+      temperature,
+      temperatureMax,
+      temperatureMin,
       humidity: current.relative_humidity_2m,
-      precipitation: current.precipitation,
-      wind: current.wind_speed_10m,
-      weatherCode: current.weather_code,
-      condition: getWeatherConditionLabel(current.weather_code),
+      precipitation: current.precipitation ?? daily.precipitation_sum?.[0],
+      wind: current.wind_speed_10m ?? daily.wind_speed_10m_max?.[0],
+      weatherCode,
+      condition: getWeatherConditionLabel(weatherCode),
     };
     state.weatherCache = { ...(state.weatherCache || {}), [requestKey]: record };
     saveState({ fastSave: true });
@@ -1312,6 +1374,7 @@ async function requestWeatherForSite(siteKey, address, dateKey = getActiveDateKe
       document.getElementById("fitnessReportPreview").innerHTML = renderFitnessReportTemplate(buildFitnessReportModel());
       fitFitnessReportPreview();
     }
+    if (document.getElementById("worklogReportSheet")?.classList.contains("is-open")) renderOpenWorklogReport();
     return record;
   } catch (error) {
     if (!silent) alert(error.message || "날씨 정보를 불러오지 못했습니다.");
@@ -7672,6 +7735,9 @@ function buildRemoteSnapshot() {
     fitnessCenterReports: state.fitnessCenterReports || {},
     worklogReportSubmissions: state.worklogReportSubmissions || {},
     reportTone: state.reportTone,
+    siteWeatherAddresses: state.siteWeatherAddresses || {},
+    weatherCache: state.weatherCache || {},
+    weatherLocationCache: state.weatherLocationCache || {},
   };
 }
 
@@ -7721,6 +7787,9 @@ async function loadRemoteWorklogForActiveDate() {
     state.fitnessCenterReports = { ...(state.fitnessCenterReports || {}), ...(data.state.fitnessCenterReports || {}) };
     state.worklogReportSubmissions = { ...(state.worklogReportSubmissions || {}), ...(data.state.worklogReportSubmissions || {}) };
     state.reportTone = data.state.reportTone || state.reportTone;
+    state.siteWeatherAddresses = { ...(state.siteWeatherAddresses || {}), ...(data.state.siteWeatherAddresses || {}) };
+    state.weatherCache = { ...(state.weatherCache || {}), ...(data.state.weatherCache || {}) };
+    state.weatherLocationCache = { ...(state.weatherLocationCache || {}), ...(data.state.weatherLocationCache || {}) };
   }
   await loadRemoteLaborPayrollDrafts();
   if (canAccessWorklogOverview()) await loadVisibleStaffWorklogsForDate(key);
@@ -10712,14 +10781,15 @@ function renderAttendance() {
   const labor = buildMonthlyLaborSummary(employeeId, employee);
   const ledger = buildLaborCostLedger(labor, employee);
   const payroll = buildPayrollStatement(labor, employee, ledger);
-  const leaderLaborOverview = canAccessSiteLabor() ? renderLeaderLaborOverviewMarkup() : "";
-  const companyLaborLedgers = canAccessLaborPayrollLedgers() ? renderCompanyLaborLedgersMarkup() : "";
-  list.innerHTML = `
-    ${leaderLaborOverview}
-    ${companyLaborLedgers}
-  `;
+  const groups = getLaborSiteGroupsForScope();
+  list.innerHTML = state.laborWorkspaceTab === "sites" && canAccessSiteLabor()
+    ? renderLaborSiteScopePanel(groups)
+    : "";
   dockGlobalHeaderActions("attendance");
-  document.getElementById("copyAllSiteLaborLedgersButton")?.addEventListener("click", copyAllSiteLaborLedgers);
+  document.getElementById("copyAllSiteLaborLedgersButton")?.addEventListener("click", () => {
+    if (state.laborSiteScope === "all") copyAllSiteLaborLedgers();
+    else copySiteLaborCostLedger(buildSiteLaborCostLedger(state.laborSiteScope));
+  });
   list.querySelectorAll("[data-labor-jump]").forEach((button) => {
     button.addEventListener("click", () => {
       const target = document.getElementById(button.dataset.laborJump);
@@ -10746,6 +10816,14 @@ function renderAttendance() {
         return;
       }
       state.selectedEmployeeId = employeeId;
+      state.laborWorkspaceTab = "register";
+      saveState({ fastSave: true });
+      renderAttendance();
+    });
+  });
+  list.querySelectorAll("[data-labor-site-scope]").forEach((button) => {
+    button.addEventListener("click", () => {
+      state.laborSiteScope = button.dataset.laborSiteScope || "all";
       saveState({ fastSave: true });
       renderAttendance();
     });
@@ -11355,9 +11433,119 @@ function canViewLaborEmployee(employeeId = "") {
   return getVisibleLaborEmployees().some((employee) => getLaborEmployeeLogId(employee) === employeeId || employee.id === employeeId);
 }
 
-function renderLeaderLaborOverviewMarkup() {
+function getLaborRealtimeSnapshot(selectedEmployee = getOwnLaborEmployee(), now = new Date()) {
+  const rows = getVisibleLaborEmployees().map((employee) => {
+    const employeeId = getLaborEmployeeLogId(employee);
+    const log = state.employeeLogs?.[todayKey]?.[employeeId] || createEmployeeLog({ ...employee, id: employeeId }, state.profile, todayKey);
+    const workHours = getEmployeeWorkHours(employeeId, getLaborProfileForEmployee(employee), todayKey);
+    const status = getWorkHoursDurationMinutes(workHours)
+      ? getAttendanceStatusForLog({ ...employee, workHours }, log, todayKey, now)
+      : "휴무";
+    return { employee, employeeId, log, status };
+  });
+  const selectedId = getLaborEmployeeLogId(selectedEmployee);
+  const selected = rows.find((row) => row.employeeId === selectedId) || rows[0];
+  return {
+    rows,
+    selected,
+    working: rows.filter((row) => row.log.clockIn && !row.log.clockOut).length,
+    finished: rows.filter((row) => Boolean(row.log.clockOut)).length,
+    issues: rows.filter((row) => /결석|지각|조퇴/.test(row.status)).length,
+    missing: rows.filter((row) => row.status === "미기록").length,
+  };
+}
+
+function renderLaborWorkspaceNav(labor, employee) {
+  const tab = state.laborWorkspaceTab;
+  const realtime = getLaborRealtimeSnapshot(employee);
+  const currentMonth = todayKey.slice(0, 7);
+  const isCurrentMonth = labor.month === currentMonth;
+  const selectedStatus = realtime.selected?.status || "미기록";
+  const employeeId = getLaborEmployeeLogId(employee);
+  const employeeOptions = getVisibleLaborEmployees();
+  const tabs = [
+    ["overview", "실시간 현황", "오늘"],
+    ["register", "월별 원장", labor.month.replace("-", ".")],
+    ["sites", "사업장·직원", `${getLaborSiteGroupsForScope().length}곳`],
+    ["payroll", "급여·출력", "초안"],
+  ];
+  return `
+    <section class="labor-workspace-nav" id="laborWorkspaceNav">
+      <div class="labor-live-line">
+        <div><i aria-hidden="true"></i><span>LIVE</span><strong>${escapeHtml(formatFormalKoreanDate(todayKey))}</strong><em>${escapeHtml(getEmployeeAdminLabel(employee))} · ${escapeHtml(selectedStatus)}</em></div>
+        <div class="labor-live-kpis">
+          <span><b>${realtime.working}</b>근무중</span>
+          <span><b>${realtime.finished}</b>퇴근</span>
+          <span class="${realtime.issues ? "is-alert" : ""}"><b>${realtime.issues}</b>확인</span>
+          <span><b>${realtime.missing}</b>미기록</span>
+        </div>
+      </div>
+      <div class="labor-workspace-controls">
+        <label>직원
+          <select id="laborEmployeeSelect" aria-label="노무 직원 선택">
+            ${employeeOptions.map((item) => {
+              const id = getLaborEmployeeLogId(item);
+              return `<option value="${escapeAttr(id)}" ${id === employeeId ? "selected" : ""}>${escapeHtml(getEmployeeAdminLabel(item))}</option>`;
+            }).join("")}
+          </select>
+        </label>
+        <div class="labor-month-stepper">
+          <button type="button" id="laborPrevMonthButton" aria-label="이전 월">‹</button>
+          <button type="button" id="laborMonthPickerButton" aria-label="${escapeAttr(formatLaborMonthHeading(labor.month))} 월 선택">${escapeHtml(formatLaborMonthHeading(labor.month))}</button>
+          <button type="button" id="laborNextMonthButton" aria-label="다음 월" ${isCurrentMonth ? "disabled" : ""}>›</button>
+          <button type="button" id="laborTodayButton" ${isCurrentMonth ? "hidden" : ""}>현재 월</button>
+          <input type="month" id="laborMonthInput" value="${escapeAttr(labor.month)}" max="${escapeAttr(currentMonth)}" aria-label="노무 기준 월 선택" />
+        </div>
+      </div>
+      <nav class="labor-workspace-tabs" aria-label="노무 화면 메뉴">
+        ${tabs.map(([key, label, meta]) => `<button type="button" class="${tab === key ? "is-active" : ""}" data-labor-workspace-tab="${escapeAttr(key)}"><span>${escapeHtml(label)}</span><em>${escapeHtml(meta)}</em></button>`).join("")}
+      </nav>
+    </section>
+  `;
+}
+
+function shiftLaborMonth(offset) {
+  const [year, month] = getActiveDateKey().slice(0, 7).split("-").map(Number);
+  const next = new Date(year, month - 1 + offset, 1);
+  const nextMonth = `${next.getFullYear()}-${String(next.getMonth() + 1).padStart(2, "0")}`;
+  if (nextMonth > todayKey.slice(0, 7)) return;
+  setSelectedDateKey(`${nextMonth}-01`);
+}
+
+function renderLaborSiteScopePanel(groups = getLaborSiteGroupsForScope()) {
+  const validScopes = new Set(["all", ...groups.map((group) => group.id)]);
+  if (!validScopes.has(state.laborSiteScope)) state.laborSiteScope = "all";
+  const selectedGroups = state.laborSiteScope === "all"
+    ? groups
+    : groups.filter((group) => group.id === state.laborSiteScope);
+  const summaries = getLaborSiteConsoleRows().filter((row) => selectedGroups.some((group) => group.id === row.id));
+  return `
+    <section class="labor-site-workspace">
+      <nav class="labor-site-scope-nav" aria-label="사업장 선택">
+        <button type="button" class="${state.laborSiteScope === "all" ? "is-active" : ""}" data-labor-site-scope="all">전 사업장</button>
+        ${groups.map((group) => `<button type="button" class="${state.laborSiteScope === group.id ? "is-active" : ""}" data-labor-site-scope="${escapeAttr(group.id)}">${escapeHtml(group.title)}</button>`).join("")}
+      </nav>
+      ${state.laborSiteScope === "all" ? `
+        <div class="labor-site-summary-grid">
+          ${summaries.map((row) => `
+            <button type="button" data-labor-site-scope="${escapeAttr(row.id)}">
+              <span>${escapeHtml(row.title)}</span>
+              <strong>${escapeHtml(`${row.recordedEmployees}/${row.employeeCount}명`)}</strong>
+              <em>${escapeHtml(`${formatMinutesAsHours(row.actualMinutes)} · 확인 ${row.issues} · 유료PT ${row.paidPt}`)}</em>
+            </button>
+          `).join("")}
+        </div>
+        <p class="labor-site-summary-note">사업장을 선택하면 직원별 월 현황과 해당 사업장의 지급대장을 한 화면에서 확인합니다.</p>
+      ` : `
+        ${renderLeaderLaborOverviewMarkup(selectedGroups)}
+        ${canAccessLaborPayrollLedgers() ? renderCompanyLaborLedgersMarkup(selectedGroups) : ""}
+      `}
+    </section>
+  `;
+}
+
+function renderLeaderLaborOverviewMarkup(groups = getLaborSiteGroupsForScope()) {
   const month = getActiveDateKey().slice(0, 7);
-  const groups = getLaborSiteGroupsForScope();
   const heading = canAccessAllLabor() ? "전 사업장 노무현황" : "소속 사업장 노무현황";
   const scopeText = canAccessAllLabor() ? "대표/권한자 전 사업장 열람" : "소속 사업장 직원 현황";
   return `
@@ -11390,8 +11578,8 @@ function renderLeaderLaborOverviewMarkup() {
   `;
 }
 
-function renderCompanyLaborLedgersMarkup() {
-  const ledgers = getLaborSiteGroupsForScope().map((group) => buildSiteLaborCostLedger(group.id));
+function renderCompanyLaborLedgersMarkup(groups = getLaborSiteGroupsForScope()) {
+  const ledgers = groups.map((group) => buildSiteLaborCostLedger(group.id));
   const monthLabel = getActiveDateKey().slice(0, 7).replace("-", ".");
   return `
     <section class="company-labor-ledgers" id="companyLaborLedgers">
@@ -11401,7 +11589,7 @@ function renderCompanyLaborLedgersMarkup() {
           <h3>${escapeHtml(monthLabel)} 사업장별 노무비 지급대장</h3>
           <p>노무신고용으로 일반적으로 사용하는 월간 출역·임금 지급대장 형식입니다.</p>
         </div>
-        <button type="button" id="copyAllSiteLaborLedgersButton">전체 대장 복사</button>
+        <button type="button" id="copyAllSiteLaborLedgersButton">${groups.length === 1 ? "사업장 대장 복사" : "전체 대장 복사"}</button>
       </header>
       ${ledgers.map(renderSiteLaborCostLedger).join("")}
     </section>
@@ -11513,10 +11701,13 @@ function openLaborIntegrationRoute(route, employeeId, month) {
   }
   state.selectedEmployeeId = employeeId;
   if (route === "attendance" || route === "payroll") {
-    const targetId = route === "payroll" ? "payrollStatement" : "laborRegister";
-    const target = document.getElementById(targetId);
-    if (target) target.scrollIntoView({ behavior: "smooth", block: "start" });
-    else showAppToast(route === "payroll" ? "급여·공제 항목은 노무 권한자만 확인할 수 있습니다." : "근태 원장을 불러오지 못했습니다.");
+    if (route === "payroll" && !canAccessLaborPayrollLedgers()) {
+      showAppToast("급여·공제 항목은 노무 권한자만 확인할 수 있습니다.");
+      return;
+    }
+    state.laborWorkspaceTab = route === "payroll" ? "payroll" : "register";
+    saveState({ fastSave: true });
+    renderAttendance();
     return;
   }
   if (route === "report") {
@@ -11616,55 +11807,38 @@ function renderWorkHistorySummary() {
   const labor = buildMonthlyLaborSummary(employeeId, employee);
   const ledger = buildLaborCostLedger(labor, employee);
   const payroll = buildPayrollStatement(labor, employee, ledger);
-  const monthHeading = formatLaborMonthHeading(labor.month);
+  const workspaceTab = state.laborWorkspaceTab;
   node.innerHTML = `
     <article class="work-history-hero">
       <div class="work-history-hero-copy">
         <span class="work-history-eyebrow">${escapeHtml(getEmployeeAdminLabel(employee))}</span>
         <b class="work-history-title">노무</b>
-        <em class="work-history-worktime">${escapeHtml(formatAttendanceSummary(log) || "출결 시간 미기록")}</em>
-        <strong>${escapeHtml(formatFormalKoreanDate(getActiveDateKey()))}</strong>
+        <em class="work-history-worktime">${escapeHtml(workspaceTab === "overview" ? (formatAttendanceSummary(log) || "실시간 출결 확인 중") : "과거 월별 기록")}</em>
+        <strong>${escapeHtml(workspaceTab === "overview" ? formatFormalKoreanDate(todayKey) : formatLaborMonthHeading(labor.month))}</strong>
         <div class="work-history-hero-meta">
           <b>월별 정산 준비</b>
           <em>${escapeHtml(`${labor.recordedDays}일 기록 · 실근무 ${formatMinutesAsHours(labor.actualMinutes)}`)}</em>
         </div>
       </div>
     </article>
-    <section class="labor-month-selector-card">
-      <header>
-        <div>
-          <span>Monthly Work Status</span>
-          <h3>
-            <button type="button" id="laborMonthPickerButton" aria-label="${escapeAttr(monthHeading)} 월 선택">
-              ${escapeHtml(monthHeading)}
-            </button>
-          </h3>
-          <p>${escapeHtml("월 제목을 누르면 다른 연도와 월의 근무현황으로 이동합니다.")}</p>
-        </div>
-        <input type="month" id="laborMonthInput" value="${escapeAttr(labor.month)}" aria-label="노무 기준 월 선택" />
-      </header>
-      <div class="labor-month-grid labor-month-grid-compact">
-        ${[
-          ["기록일", `${labor.recordedDays}일`],
-          ["소정근무", formatMinutesAsHours(labor.scheduledMinutes)],
-          ["실근무", formatMinutesAsHours(labor.actualMinutes)],
-          ["외출/복귀", `${labor.breakCount}건`],
-        ].map(([label, value]) => `<span><b>${escapeHtml(label)}</b><strong>${escapeHtml(value)}</strong></span>`).join("")}
-      </div>
-    </section>
-    ${renderLaborOperationsConsole(labor, employee, payroll)}
-    ${renderLaborMonthlyRegister(labor, employee)}
-    ${canAccessLaborPayrollLedgers() ? renderPayrollStatement(payroll) : ""}
-    <section class="labor-report-launch-card">
-      <header>
-        <div>
-          <span>Payroll Report</span>
-          <h3>출력</h3>
-          <p>급여명세서, 급여대장, 프리랜서 신고, PT수업 집계를 A4 보고서로 확인합니다.</p>
-        </div>
-        <button type="button" id="openLaborReportButton">출력</button>
-      </header>
-    </section>
+    ${renderLaborWorkspaceNav(labor, employee)}
+    <div class="labor-workspace-panel" data-labor-active-panel="${escapeAttr(workspaceTab)}">
+      ${workspaceTab === "overview" ? renderLaborOperationsConsole(labor, employee, payroll) : ""}
+      ${workspaceTab === "register" ? renderLaborMonthlyRegister(labor, employee) : ""}
+      ${workspaceTab === "payroll" && canAccessLaborPayrollLedgers() ? `
+        ${renderPayrollStatement(payroll)}
+        <section class="labor-report-launch-card">
+          <header>
+            <div>
+              <span>Payroll Report</span>
+              <h3>출력</h3>
+              <p>급여명세서, 급여대장, 프리랜서 신고, PT수업 집계를 A4 보고서로 확인합니다.</p>
+            </div>
+            <button type="button" id="openLaborReportButton">출력</button>
+          </header>
+        </section>
+      ` : ""}
+    </div>
   `;
   document.getElementById("laborMonthPickerButton")?.addEventListener("click", () => {
     const input = document.getElementById("laborMonthInput");
@@ -11672,7 +11846,39 @@ function renderWorkHistorySummary() {
     else input?.click();
   });
   document.getElementById("laborMonthInput")?.addEventListener("change", (event) => {
-    if (event.target.value) setSelectedDateKey(`${event.target.value}-01`);
+    if (!event.target.value) return;
+    state.laborWorkspaceTab = "register";
+    setSelectedDateKey(`${event.target.value}-01`);
+  });
+  document.getElementById("laborPrevMonthButton")?.addEventListener("click", () => {
+    state.laborWorkspaceTab = "register";
+    shiftLaborMonth(-1);
+  });
+  document.getElementById("laborNextMonthButton")?.addEventListener("click", () => {
+    state.laborWorkspaceTab = "register";
+    shiftLaborMonth(1);
+  });
+  document.getElementById("laborTodayButton")?.addEventListener("click", () => {
+    state.laborWorkspaceTab = "overview";
+    setSelectedDateKey(todayKey);
+  });
+  document.getElementById("laborEmployeeSelect")?.addEventListener("change", (event) => {
+    if (!canViewLaborEmployee(event.target.value)) return;
+    state.selectedEmployeeId = event.target.value;
+    saveState({ fastSave: true });
+    renderAttendance();
+  });
+  node.querySelectorAll("[data-labor-workspace-tab]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const nextTab = button.dataset.laborWorkspaceTab || "overview";
+      state.laborWorkspaceTab = nextTab;
+      if (nextTab === "overview" && getActiveDateKey() !== todayKey) {
+        setSelectedDateKey(todayKey);
+        return;
+      }
+      saveState({ fastSave: true });
+      renderAttendance();
+    });
   });
   node.querySelectorAll("[data-labor-jump]").forEach((button) => {
     button.addEventListener("click", () => {
@@ -14921,7 +15127,7 @@ function buildEmployeeArchiveReport(employee, dateKey) {
   const submitted = getWorklogReportSubmission(employee.id, dateKey);
   const html = isFitness
     ? renderFitnessReportTemplate(buildFitnessReportModel({ employee, dateKey, isCenter: false, log }))
-    : "";
+    : renderWorklogDailyReportTemplate(buildWorklogDailyReportModel({ employee, dateKey, log }));
   return {
     id: `employee:${employee.id}`,
     kind: "employee",
@@ -15675,6 +15881,200 @@ function getFitnessReportRecordRows(logEntries = [], context = {}) {
     ...directRows,
     ...getFitnessCenterGeneratedRecordRows(logEntries, context),
   ]);
+}
+
+function getWorklogReportTaskStatus(task = {}) {
+  if (task.done || task.status === "완료") return "완료";
+  return task.status || "예정";
+}
+
+function buildWorklogDailyReportModel(options = {}) {
+  const employee = options.employee || getSelectedEmployee();
+  const dateKey = options.dateKey || getActiveDateKey();
+  const log = options.log || getReportArchiveEmployeeLog(employee, dateKey);
+  const tasks = getReportArchiveTasks(log);
+  const schedule = getReportArchiveScheduleEntries(log);
+  const completed = tasks.filter((task) => task.done || task.status === "완료");
+  const pending = tasks.filter((task) => !task.done && !["완료", "취소", "위임"].includes(task.status));
+  const issueTasks = tasks.filter((task) => ["지원필요", "보류", "연기"].includes(task.status));
+  const tomorrowLog = getReportArchiveEmployeeLog(employee, getNextDateKey(dateKey));
+  const tomorrowTasks = getReportArchiveTasks(tomorrowLog);
+  const tomorrowSchedule = getReportArchiveScheduleEntries(tomorrowLog);
+  const siteKey = getSiteWeatherKeyForEmployee(employee);
+  const weather = getWeatherRecordForSite(siteKey, dateKey);
+  const reportText = String(log.report || log.record || "").trim();
+  const memoText = String(log.memo || "").trim();
+  const completionRate = tasks.length ? Math.round((completed.length / tasks.length) * 100) : 0;
+  const nextActions = [
+    ...pending.map((task) => task.text),
+    ...tomorrowTasks.map((task) => task.text),
+    ...tomorrowSchedule.map((entry) => `${entry.time || ""} ${getScheduleEntryText(entry)}`.trim()),
+  ].filter(Boolean).slice(0, 5);
+  return {
+    title: `< ${employee.org || "Bangju Group"} 일일 업무보고서 >`,
+    dateKey,
+    dateLabel: formatKoreanDate(dateKey),
+    employee,
+    writer: employee.name || getEmployeeOwnLabel(employee),
+    role: employee.role || "직원",
+    workplace: employee.workplace || siteKey,
+    siteKey,
+    address: getSiteWeatherAddress(siteKey),
+    weather,
+    weatherText: formatWeatherSummary(weather, { compact: true }),
+    clock: `${log.clockIn || "미기록"} ~ ${log.clockOut || "미기록"}`,
+    tasks: tasks.map((task) => ({ priority: task.priority || "?", text: task.text, status: getWorklogReportTaskStatus(task) })),
+    schedule: schedule.map((entry) => ({ time: entry.time || "--:--", text: getScheduleEntryText(entry), type: inferScheduleType(getScheduleEntryText(entry)) })),
+    reportText,
+    memoText,
+    issueRows: [
+      ...issueTasks.map((task) => `${task.text} · ${getWorklogReportTaskStatus(task)}`),
+      ...(memoText ? [memoText] : []),
+      ...(!issueTasks.length && !memoText ? ["기록된 이슈 또는 지원 요청이 없습니다."] : []),
+    ].slice(0, 5),
+    tomorrowRows: nextActions.length ? nextActions : ["명일 계획을 입력해주세요."],
+    completedCount: completed.length,
+    taskCount: tasks.length,
+    completionRate,
+    evidenceCount: schedule.length + (reportText ? 1 : 0),
+  };
+}
+
+function renderWorklogDailyReportTemplate(model = buildWorklogDailyReportModel()) {
+  const taskRows = model.tasks.length ? model.tasks : [{ priority: "-", text: "입력된 우선업무가 없습니다.", status: "대기" }];
+  const scheduleRows = model.schedule.length ? model.schedule : [{ time: "--:--", text: "입력된 시간별 일정이 없습니다.", type: "대기" }];
+  return `
+    <article class="worklog-daily-report-page">
+      <header class="worklog-report-paper-header">
+        <div>
+          <small>Bangju Operating Report · Daily Execution Record</small>
+          <h2>${escapeHtml(model.title)}</h2>
+          <p>${escapeHtml(model.workplace)} · ${escapeHtml(model.address || "사업장 주소 입력 필요")}</p>
+        </div>
+        <table aria-label="결재선"><thead><tr><th>작성</th><th>검토</th><th>승인</th></tr></thead><tbody><tr><td>${escapeHtml(model.writer)}</td><td></td><td></td></tr></tbody></table>
+      </header>
+      <dl class="worklog-report-meta">
+        <dt>작성일</dt><dd>${escapeHtml(model.dateLabel)}</dd>
+        <dt>작성자</dt><dd>${escapeHtml(model.writer)}</dd>
+        <dt>소속/직급</dt><dd>${escapeHtml(`${model.employee.org || "-"} / ${model.role}`)}</dd>
+        <dt>출퇴근</dt><dd>${escapeHtml(model.clock)}</dd>
+        <dt>사업장 날씨</dt><dd>${escapeHtml(model.weatherText)}</dd>
+      </dl>
+      <section class="worklog-report-executive">
+        <div><span>업무 완료</span><strong>${model.completedCount}/${model.taskCount}</strong></div>
+        <div><span>완료율</span><strong>${model.completionRate}%</strong></div>
+        <div><span>실행 근거</span><strong>${model.evidenceCount}건</strong></div>
+        <p><b>금일 핵심 성과</b>${escapeHtml(model.reportText || model.tasks.find((task) => task.status === "완료")?.text || "업무보고 내용을 입력해주세요.")}</p>
+      </section>
+      <section class="worklog-report-table-section">
+        <h3>1. 업무 진행 현황</h3>
+        <table><thead><tr><th>우선</th><th>업무내용</th><th>상태</th></tr></thead><tbody>${taskRows.map((task) => `<tr><td>${escapeHtml(task.priority)}</td><td>${escapeHtml(task.text)}</td><td>${escapeHtml(task.status)}</td></tr>`).join("")}</tbody></table>
+      </section>
+      <section class="worklog-report-table-section">
+        <h3>2. 시간대별 실행 내역</h3>
+        <table><thead><tr><th>시간</th><th>세부업무</th><th>분류</th></tr></thead><tbody>${scheduleRows.map((entry) => `<tr><td>${escapeHtml(entry.time)}</td><td>${escapeHtml(entry.text)}</td><td>${escapeHtml(entry.type)}</td></tr>`).join("")}</tbody></table>
+      </section>
+      <section class="worklog-report-bottom-grid">
+        <div><h3>3. 이슈·리스크·지원 요청</h3>${model.issueRows.map((row) => `<p>• ${escapeHtml(row)}</p>`).join("")}</div>
+        <div><h3>4. 명일 계획·인수인계</h3>${model.tomorrowRows.map((row) => `<p>• ${escapeHtml(row)}</p>`).join("")}</div>
+      </section>
+      <footer class="worklog-report-action-brief">
+        <b>Bangju Action Brief</b>
+        <span>업무일지 원문과 시간대별 기록을 근거로 자동 정리했습니다. 미완료 업무는 다음 실행계획에서 재확인합니다.</span>
+      </footer>
+    </article>
+  `;
+}
+
+function renderOpenWorklogReport() {
+  const preview = document.getElementById("worklogReportPreview");
+  if (!preview) return;
+  preview.innerHTML = renderWorklogDailyReportTemplate(buildWorklogDailyReportModel());
+  fitWorklogReportPreview();
+}
+
+function openWorklogReportSheet() {
+  const backdrop = document.getElementById("worklogReportBackdrop");
+  const sheet = document.getElementById("worklogReportSheet");
+  const subtitle = document.getElementById("worklogReportSubtitle");
+  if (!backdrop || !sheet) return;
+  if (subtitle) subtitle.textContent = `${formatKoreanDate(getActiveDateKey())} · ${getEmployeeAdminLabel(getSelectedEmployee())}`;
+  renderOpenWorklogReport();
+  backdrop.hidden = false;
+  sheet.hidden = false;
+  requestAnimationFrame(() => {
+    sheet.classList.add("is-open");
+    fitWorklogReportPreview();
+  });
+}
+
+function fitWorklogReportPreview() {
+  const preview = document.getElementById("worklogReportPreview");
+  const page = preview?.querySelector(".worklog-daily-report-page");
+  if (!preview || !page) return;
+  preview.style.removeProperty("--worklog-report-scale");
+  preview.style.removeProperty("height");
+  if (!window.matchMedia("(max-width: 760px)").matches) return;
+  const pageWidth = 760;
+  const scale = Math.min(1, Math.max(0.4, (preview.clientWidth - 2) / pageWidth));
+  preview.style.setProperty("--worklog-report-scale", String(scale));
+  preview.style.height = `${Math.ceil(page.offsetHeight * scale) + 4}px`;
+}
+
+function closeWorklogReportSheet() {
+  const backdrop = document.getElementById("worklogReportBackdrop");
+  const sheet = document.getElementById("worklogReportSheet");
+  sheet?.classList.remove("is-open");
+  window.setTimeout(() => {
+    if (backdrop) backdrop.hidden = true;
+    if (sheet) sheet.hidden = true;
+  }, 160);
+}
+
+function buildWorklogDailyReportLines(model = buildWorklogDailyReportModel()) {
+  return [
+    model.title,
+    `작성일: ${model.dateLabel}`,
+    `작성자: ${model.writer} / ${model.role}`,
+    `사업장: ${model.workplace}`,
+    `날씨: ${model.weatherText}${model.address ? ` (${model.address})` : ""}`,
+    `출퇴근: ${model.clock}`,
+    "", "[금일 핵심 성과]", model.reportText || "업무보고 내용 없음",
+    "", "[업무 진행 현황]", ...model.tasks.map((task) => `- ${task.priority} ${task.text} (${task.status})`),
+    "", "[시간대별 실행 내역]", ...model.schedule.map((entry) => `- ${entry.time} ${entry.text} (${entry.type})`),
+    "", "[이슈·리스크·지원 요청]", ...model.issueRows.map((row) => `- ${row}`),
+    "", "[명일 계획·인수인계]", ...model.tomorrowRows.map((row) => `- ${row}`),
+  ];
+}
+
+async function copyWorklogDailyReport() {
+  const text = buildWorklogDailyReportLines().join("\n");
+  try {
+    await navigator.clipboard?.writeText(text);
+    showAppToast("업무보고서를 복사했습니다");
+  } catch {
+    alert(text);
+  }
+}
+
+function openWorklogReportArchive() {
+  const employee = getSelectedEmployee();
+  state.reportArchive = {
+    ...(state.reportArchive || {}),
+    dateKey: getActiveDateKey(),
+    site: getReportArchiveSiteId(employee),
+    type: "employee",
+    selectedId: `employee:${employee.id}`,
+  };
+  closeWorklogReportSheet();
+  saveState({ fastSave: true });
+  switchView("report");
+}
+
+function printWorklogDailyReport() {
+  document.body.classList.add("is-printing-worklog-report");
+  window.print();
+  window.setTimeout(() => document.body.classList.remove("is-printing-worklog-report"), 500);
 }
 
 function getFitnessReportIssueTitle(model = {}) {
@@ -16875,6 +17275,7 @@ document.addEventListener("click", (event) => {
     }
     closeStaffDetail();
     state.selectedEmployeeId = employeeId;
+    state.laborWorkspaceTab = "overview";
     saveState({ fastSave: true });
     switchView("attendance");
     return;
@@ -17049,6 +17450,10 @@ document.getElementById("siteAddressList")?.addEventListener("input", (event) =>
   Object.keys(state.weatherCache || {}).forEach((cacheKey) => {
     if (cacheKey.endsWith(cacheSuffix)) delete state.weatherCache[cacheKey];
   });
+  delete state.weatherLocationCache?.[key];
+  Array.from(weatherBatchAttempted).forEach((requestKey) => {
+    if (requestKey.endsWith(cacheSuffix)) weatherBatchAttempted.delete(requestKey);
+  });
   saveState({ fastSave: true });
   renderWeatherWidgets();
 });
@@ -17218,6 +17623,12 @@ document.getElementById("fitnessReportImageButton")?.addEventListener("click", (
 document.getElementById("fitnessReportShareButton")?.addEventListener("click", () => {
   shareFitnessReport().catch(() => alert("공유 기능을 사용할 수 없어 보고서 미리보기를 확인해주세요."));
 });
+document.getElementById("worklogReportMenuButton")?.addEventListener("click", openWorklogReportSheet);
+document.getElementById("worklogReportCloseButton")?.addEventListener("click", closeWorklogReportSheet);
+document.getElementById("worklogReportBackdrop")?.addEventListener("click", closeWorklogReportSheet);
+document.getElementById("worklogReportCopyButton")?.addEventListener("click", copyWorklogDailyReport);
+document.getElementById("worklogReportArchiveButton")?.addEventListener("click", openWorklogReportArchive);
+document.getElementById("worklogReportPrintButton")?.addEventListener("click", printWorklogDailyReport);
 document.getElementById("fitnessCenterConfirmPanel")?.addEventListener("click", (event) => {
   if (event.target.closest("[data-fitness-center-report-confirm]")) toggleFitnessCenterReportConfirmation();
 });
@@ -17418,6 +17829,7 @@ document.getElementById("reportArchivePreview")?.addEventListener("click", (even
     state.selectedEmployeeId = employeeId;
     const month = getReportArchiveSettings().dateKey.slice(0, 7);
     state.selectedDateKey = `${month}-01`;
+    state.laborWorkspaceTab = "register";
     saveState({ fastSave: true });
     switchView("attendance");
     return;
