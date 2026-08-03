@@ -302,6 +302,7 @@ async function checkOverviewCommandBoard(browser) {
     document.body.classList.add("physical-phone-device");
     document.body.dataset.layoutMode = "phone";
     document.body.dataset.viewMode = "ceo";
+    window.setSelectedDateKey?.("2026-08-02");
     window.switchView?.("worklog-overview");
   });
   await page.waitForTimeout(350);
@@ -344,6 +345,7 @@ async function checkOverviewCommandBoard(browser) {
   if (metrics.titleHeight > 45) fail("overview title wrapped or became too tall", `${metrics.titleHeight}px`);
   if (metrics.subtitleCount) fail("overview subtitle should be removed", String(metrics.subtitleCount));
   if (!metrics.dateFits) fail("overview date title is clipped", metrics.dateText);
+  if (metrics.dateText !== "2026.08.02(日)") fail("overview date should keep year, month, day, and weekday", metrics.dateText);
   if (metrics.headerHeroGap < 10) fail("overview header overlaps command board", `${metrics.headerHeroGap}px`);
   if (metrics.heroHeight > 190) fail("overview hero is too tall on phone mode", `${metrics.heroHeight}px`);
   if (metrics.scopeCount < 4 || metrics.activeScope !== "all") fail("overview scope selector is not initialized", JSON.stringify({ count: metrics.scopeCount, active: metrics.activeScope }));
@@ -1756,7 +1758,9 @@ async function checkFitnessCenterReportConfirmation(browser) {
         workplace: "비욘드 피트니스",
         role: "인포데스크"
       }, {}, "2026-07-24");
+      kimLog.tasks[0].text = "일요일 센터 청결 점검";
       kimLog.schedule[0].text = "출근보고, 종이컵 채우기, 여자탈의실 청소";
+      kimLog.schedule[1].text = "세탁완료물 정리, 블로그 작성 및 업데이트";
       mergeVisibleStaffWorklogStates([{
         user_id: "kimyoungchae-auth",
         state: {
@@ -1787,10 +1791,16 @@ async function checkFitnessCenterReportConfirmation(browser) {
     text: document.querySelector("#fitnessCenterConfirmPanel")?.textContent?.trim() || "",
     centerRows: [...document.querySelectorAll("#fitnessCenterDailyBody tr")].map((row) => row.textContent.replace(/\s+/g, " ").trim()),
     pageTitles: getFitnessLogPages().map((page) => page.title),
-    kimLogText: getScheduleEntryText(getFitnessEmployeeLogForDate(
-      getFitnessCenterEmployees().find((employee) => employee.name === "김영채"),
-      "2026-07-24"
-    )?.schedule?.[0] || {}),
+    kimLog: (() => {
+      const log = getFitnessEmployeeLogForDate(
+        getFitnessCenterEmployees().find((employee) => employee.name === "김영채"),
+        "2026-07-24"
+      );
+      return {
+        task: log?.tasks?.[0]?.text || "",
+        schedule: (log?.schedule || []).map((entry) => entry.text || "").filter(Boolean),
+      };
+    })(),
   }));
   if (before.activeView !== "fitness-log" || !before.pageTitle.includes("센터")) {
     fail("fitness center report confirmation should start on center page", JSON.stringify(before));
@@ -1813,7 +1823,10 @@ async function checkFitnessCenterReportConfirmation(browser) {
   if (before.pageTitles.filter((title) => title === "이다빈").length !== 1) {
     fail("fitness roster should show Lee Da-bin only once", JSON.stringify(before.pageTitles));
   }
-  if (!before.kimLogText.includes("출근보고")) {
+  if (before.kimLog.task !== "일요일 센터 청결 점검"
+    || before.kimLog.schedule.length !== 2
+    || !before.kimLog.schedule[0].includes("출근보고, 종이컵 채우기, 여자탈의실 청소")
+    || !before.kimLog.schedule[1].includes("세탁완료물 정리, 블로그 작성 및 업데이트")) {
     fail("representative fitness view should load Kim Young-chae's profile-user worklog", JSON.stringify(before));
   }
   ["pjhong0", "pjhong1", "pjhong9"].forEach((retiredEmailPrefix) => {

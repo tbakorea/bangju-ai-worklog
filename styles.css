@@ -15616,12 +15616,21 @@ body[data-view-mode="ceo"] .control-kpi-grid {
 }
 
 .overview-date-nav #overviewDateTitle {
-  display: block;
-  overflow: hidden;
+  display: inline-grid;
+  grid-template-columns: auto auto;
+  align-items: baseline;
+  justify-content: center;
+  max-width: 100%;
   font-size: clamp(18px, 2.2vw, 24px);
   font-weight: 950;
-  text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.overview-date-nav #overviewDateYear,
+.overview-date-nav #overviewDateDay {
+  color: inherit;
+  font: inherit;
+  line-height: 1;
 }
 
 .overview-date-nav #worklogOverviewTodayButton.is-current-date {
@@ -21754,9 +21763,23 @@ body.physical-phone-device[data-active-view="worklog-overview"] .overview-date-n
 
 body[data-layout-mode="phone"][data-active-view="worklog-overview"] .overview-date-nav #overviewDateTitle,
 body.physical-phone-device[data-active-view="worklog-overview"] .overview-date-nav #overviewDateTitle {
-  font-size: clamp(18px, 5vw, 22px);
+  grid-template-columns: 1fr;
+  align-items: center;
+  font-size: 17px;
   line-height: 1;
-  text-overflow: ellipsis;
+  white-space: normal;
+}
+
+body[data-layout-mode="phone"][data-active-view="worklog-overview"] .overview-date-nav #overviewDateYear,
+body.physical-phone-device[data-active-view="worklog-overview"] .overview-date-nav #overviewDateYear {
+  font-size: 11px;
+  line-height: 0.9;
+}
+
+body[data-layout-mode="phone"][data-active-view="worklog-overview"] .overview-date-nav #overviewDateDay,
+body.physical-phone-device[data-active-view="worklog-overview"] .overview-date-nav #overviewDateDay {
+  font-size: 17px;
+  line-height: 1;
 }
 
 body[data-layout-mode="phone"][data-active-view="worklog-overview"] .overview-date-nav #worklogOverviewTodayButton,

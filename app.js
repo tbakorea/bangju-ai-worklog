@@ -707,6 +707,7 @@ const authState = {
   pendingPasswordResetCount: 0,
   approvalRows: [],
   approvalRowsLoaded: false,
+  visibleWorklogsLoading: false,
   approvalRepairTried: false,
   approvalRepairUnavailable: false,
   passwordResetRows: [],
@@ -4847,6 +4848,8 @@ function renderDateNav() {
   const todayJumpButton = document.getElementById("todayJumpButton");
   const overviewDateButton = document.getElementById("overviewDateButton");
   const overviewDateTitle = document.getElementById("overviewDateTitle");
+  const overviewDateYear = document.getElementById("overviewDateYear");
+  const overviewDateDay = document.getElementById("overviewDateDay");
   const overviewTodayButton = document.getElementById("worklogOverviewTodayButton");
   const executiveDateButton = document.getElementById("executiveDateButton");
   const executiveTodayButton = document.getElementById("executiveTodayButton");
@@ -4858,7 +4861,15 @@ function renderDateNav() {
   const isToday = activeDateKey === todayKey;
   calendarViewDate = parseDateKey(activeDateKey);
   if (dayTitle) dayTitle.textContent = formatKoreanDate(activeDateKey);
-  if (overviewDateTitle) overviewDateTitle.textContent = formatKoreanDate(activeDateKey);
+  if (overviewDateTitle) {
+    const activeDate = parseDateKey(activeDateKey);
+    if (overviewDateYear && overviewDateDay) {
+      overviewDateYear.textContent = String(activeDate.getFullYear());
+      overviewDateDay.textContent = `.${String(activeDate.getMonth() + 1).padStart(2, "0")}.${String(activeDate.getDate()).padStart(2, "0")}(${hanjaWeekdays[activeDate.getDay()]})`;
+    } else {
+      overviewDateTitle.textContent = formatKoreanDate(activeDateKey);
+    }
+  }
   if (executiveDateButton) {
     executiveDateButton.textContent = formatKoreanDate(activeDateKey);
     executiveDateButton.setAttribute("aria-label", `${formatFormalKoreanDate(activeDateKey)} 대표 경영페이지 기준일 선택`);
@@ -7047,6 +7058,7 @@ function clearAuthRuntimeState() {
   authState.approvalRepairTried = false;
   authState.passwordRecoveryMode = false;
   authState.applyingRemote = false;
+  authState.visibleWorklogsLoading = false;
   clearTimeout(authState.saveTimer);
   authState.saveTimer = null;
   clearInterval(authState.approvalTimer);
@@ -7437,6 +7449,21 @@ async function loadVisibleStaffWorklogsForDate(dateKey = getActiveDateKey()) {
   mergeVisibleStaffWorklogStates(data || [], dateKey);
 }
 
+async function refreshVisibleStaffWorklogsForActiveDate() {
+  if (!supabaseClient || !authState.user || !canAccessWorklogOverview() || authState.visibleWorklogsLoading) return;
+  authState.visibleWorklogsLoading = true;
+  try {
+    const dateKey = getActiveDateKey();
+    await loadVisibleStaffWorklogsForDate(dateKey);
+    if (dateKey !== getActiveDateKey()) return;
+    normalizeState();
+    localStorage.setItem(storageKey, JSON.stringify(state));
+    renderWorklogOverview();
+  } finally {
+    authState.visibleWorklogsLoading = false;
+  }
+}
+
 function mergeVisibleStaffWorklogStates(rows = [], dateKey = getActiveDateKey()) {
   state.employeeLogs ||= {};
   state.employeeLogs[dateKey] ||= {};
@@ -7460,11 +7487,14 @@ function mergeVisibleStaffWorklogStates(rows = [], dateKey = getActiveDateKey())
       "profile-user",
     ].filter(Boolean))];
     const candidateLogs = candidateIds.map((id) => logs[id]).filter(Boolean);
-    const employeeLog = candidateLogs.find(hasFitnessEmployeeLogContent) || candidateLogs[0];
+    const employeeLog = candidateLogs.find(hasSubmittableWorklogContent) || candidateLogs[0];
     if (!employeeLog) return;
     const current = state.employeeLogs[dateKey][employee.id];
-    if (!current || hasFitnessEmployeeLogContent(employeeLog) || !hasFitnessEmployeeLogContent(current)) {
-      state.employeeLogs[dateKey][employee.id] = { ...employeeLog, employeeId: employee.id };
+    if (!current || hasSubmittableWorklogContent(employeeLog) || !hasSubmittableWorklogContent(current)) {
+      state.employeeLogs[dateKey][employee.id] = {
+        ...cloneWorklogLogForAudit(employeeLog),
+        employeeId: employee.id,
+      };
     }
   });
 }
@@ -9872,7 +9902,9 @@ function getWorklogScheduleSlots(log, dateKey = getActiveDateKey()) {
   for (let minute = start; minute <= end; minute += unit) {
     slots.push(minutesToTime(minute));
   }
-  return slots;
+  return [...new Set([...slots, ...manualTimes, ...scheduleTimes, ...taskTimes])]
+    .filter(Boolean)
+    .sort((a, b) => timeToMinutes(a) - timeToMinutes(b));
 }
 
 function timeToMinutes(value) {
@@ -15653,6 +15685,7 @@ function switchView(view) {
   dockGlobalHeaderActions(panelView);
   applyCurrentWorklogPermissionState(view);
   if (view === "fitness-log") window.setTimeout(() => showFitnessPageToast(), 80);
+  if (view === "worklog-overview") refreshVisibleStaffWorklogsForActiveDate();
 }
 
 function getActiveViewPanel(panelView = worklogViewAliases[activeView] || activeView) {
