@@ -499,6 +499,48 @@ async function checkOverviewCommandBoard(browser) {
   if (allStaffSyncMetrics.failures.length) {
     fail("representative overview should synchronize every assigned employee through canonical worklog IDs", allStaffSync);
   }
+  const staleProfileSync = await page.evaluate(() => window.eval(`(() => {
+    authState.approvalRows = [
+      { id: "isomi-live-user", email: "isomi@example.com", name: "이소미", org: "(주)방주", role: "재무 대리", workplace: "본사", approval_status: "approved" },
+      { id: "youngchae-live-user", email: "yckim1558@naver.com", name: "김영채", org: "(주)방주 / 비욘드 피트니스 지사", role: "인포데스크", workplace: "비욘드 피트니스", approval_status: "approved" },
+      { id: "choosoyoung-live-user", email: "choo@example.com", name: "추소영", org: "(주)비욘드컴퍼니 / 공유사업부", role: "공유사업부 매니저", workplace: "공유사업부", approval_status: "approved" }
+    ];
+    authState.approvalRowsLoaded = true;
+    const rows = [
+      ["2026-07-31", "isomi-live-user", "bangju-finance-assistant", "이소미 7월31일 실제업무"],
+      ["2026-08-02", "youngchae-live-user", "fitness-info-kimyoungchae", "김영채 8월2일 실제업무"],
+      ["2026-08-03", "choosoyoung-live-user", "beyond-shared-manager", "추소영 오늘 실제업무"]
+    ].map(([dateKey, userId, expectedId, marker], index) => {
+      const log = createEmployeeLog({ id: "profile-user", name: "과거 프로필", org: "미분류", role: "직원" }, {}, dateKey);
+      log.tasks[0].text = marker;
+      return {
+        user_id: userId,
+        updated_at: "2026-08-02T1" + index + ":00:00.000Z",
+        state: {
+          profile: { name: "과거 프로필", email: "old-" + index + "@example.com", org: "미분류", role: "직원" },
+          selectedEmployeeId: "profile-user",
+          employeeLogs: { [dateKey]: { "profile-user": log } }
+        },
+        dateKey,
+        expectedId,
+        marker
+      };
+    });
+    rows.forEach((row) => {
+      state.employeeLogs[row.dateKey] = {};
+      mergeVisibleStaffWorklogStates([row], row.dateKey);
+    });
+    return JSON.stringify(rows.map(({ dateKey, expectedId, marker }) => ({
+      dateKey,
+      expectedId,
+      marker,
+      stored: state.employeeLogs[dateKey]?.[expectedId]?.tasks?.[0]?.text || ""
+    })));
+  })()`));
+  const staleProfileMetrics = JSON.parse(staleProfileSync);
+  if (staleProfileMetrics.some((item) => item.stored !== item.marker)) {
+    fail("representative overview should map historical worklogs by employee account UUID even when snapshot profiles are stale", staleProfileSync);
+  }
   if (errors.length) fail("overview page errors", errors.join(" | "));
   await page.close();
 }

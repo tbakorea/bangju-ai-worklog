@@ -7497,17 +7497,48 @@ async function loadRemoteWorklogForActiveDate() {
 }
 
 async function loadVisibleStaffWorklogsForDate(dateKey = getActiveDateKey()) {
-  const { data, error } = await supabaseClient
-    .from("worklog_states")
-    .select("user_id,state,updated_at")
-    .eq("log_date", dateKey)
-    .neq("user_id", authState.user.id)
-    .order("updated_at", { ascending: false });
+  await ensureWorklogDirectoryRows();
+  let { data, error } = await supabaseClient.rpc("get_visible_worklog_states", { target_date: dateKey });
+  if (error && /function|schema cache|get_visible_worklog_states|PGRST202/i.test(String(error.message || ""))) {
+    ({ data, error } = await supabaseClient
+      .from("worklog_states")
+      .select("user_id,state,updated_at")
+      .eq("log_date", dateKey)
+      .neq("user_id", authState.user.id)
+      .order("updated_at", { ascending: false }));
+  }
   if (error) {
     renderAuthStatus(`직원 업무일지 불러오기 대기: ${error.message}`);
     return;
   }
   mergeVisibleStaffWorklogStates(data || [], dateKey);
+}
+
+async function ensureWorklogDirectoryRows() {
+  if (authState.approvalRowsLoaded || !supabaseClient || !authState.user || !canAccessWorklogOverview()) return;
+  const { data, error } = await fetchApprovalProfileRows();
+  if (error) return;
+  authState.approvalRows = getVisibleApprovalRows(data || []);
+  authState.approvalRowsLoaded = true;
+  authState.pendingApprovalCount = countApprovalActionItems(authState.approvalRows);
+  renderApprovalNotification();
+}
+
+function resolveRemoteWorklogEmployee(row = {}) {
+  const remoteState = row?.state || {};
+  const profile = remoteState.profile || {};
+  const approvalRow = (authState.approvalRows || []).find((item) => String(item.id || "") === String(row.user_id || ""));
+  const approvalEmployee = approvalRow ? approvalRowToStaffEmployee(approvalRow) : null;
+  const email = normalizeEmailValue(profile.email || approvalRow?.email || "");
+  const mappedId = approvalEmployee?.mappedEmployeeId || getProfileMappedEmployeeId(profile);
+  return approvalEmployee
+    || getStaffDirectoryEmployees().find((item) => (
+      String(item.sourceProfileId || "") === String(row.user_id || "")
+      || (mappedId && (item.id === mappedId || item.mappedEmployeeId === mappedId))
+      || (email && normalizeEmailValue(item.email || "") === email)
+    ))
+    || employees.find((item) => item.id === mappedId)
+    || null;
 }
 
 async function refreshVisibleStaffWorklogsForActiveDate() {
@@ -7534,12 +7565,8 @@ function mergeVisibleStaffWorklogStates(rows = [], dateKey = getActiveDateKey())
     .forEach((row) => {
       const remoteState = row?.state || {};
       const profile = remoteState.profile || {};
-      const email = normalizeEmailValue(profile.email || "");
       const mappedId = getProfileMappedEmployeeId(profile);
-      const employee = getStaffDirectoryEmployees().find((item) => (
-        (mappedId && (item.id === mappedId || item.mappedEmployeeId === mappedId))
-        || (email && normalizeEmailValue(item.email || "") === email)
-      )) || employees.find((item) => item.id === mappedId);
+      const employee = resolveRemoteWorklogEmployee(row);
       if (!employee || !isAssignedWorklogEmployee(employee)) return;
       const employeeId = getEmployeeWorklogId(employee);
       if (!employeeId || mergedEmployeeIds.has(employeeId)) return;
@@ -7550,6 +7577,8 @@ function mergeVisibleStaffWorklogStates(rows = [], dateKey = getActiveDateKey())
         employee.id,
         employee.mappedEmployeeId,
         mappedId,
+        employee.sourceProfileId,
+        employee.profileEmployeeId,
         remoteState.ownerEmployeeId,
         remoteState.selectedEmployeeId,
         row?.user_id,
