@@ -13,6 +13,8 @@ create table if not exists public.profiles (
   address text not null default '',
   daily_wage numeric,
   hourly_wage numeric,
+  join_date date,
+  pay_day text not null default '',
   work_hours text not null default '12:00-19:00',
   weekly_work_hours jsonb not null default '{}'::jsonb,
   extra text not null default '',
@@ -37,6 +39,8 @@ alter table public.profiles add column if not exists labor_id text not null defa
 alter table public.profiles add column if not exists address text not null default '';
 alter table public.profiles add column if not exists daily_wage numeric;
 alter table public.profiles add column if not exists hourly_wage numeric;
+alter table public.profiles add column if not exists join_date date;
+alter table public.profiles add column if not exists pay_day text not null default '';
 alter table public.profiles add column if not exists weekly_work_hours jsonb not null default '{}'::jsonb;
 alter table public.profiles add column if not exists approval_status text not null default 'pending';
 alter table public.profiles add column if not exists approval_note text not null default '';
@@ -48,6 +52,43 @@ alter table public.profiles add column if not exists assigned_mission text not n
 alter table public.profiles add column if not exists assigned_mission_visible boolean not null default true;
 alter table public.profiles add column if not exists assigned_mission_updated_by uuid references auth.users(id);
 alter table public.profiles add column if not exists assigned_mission_updated_at timestamptz;
+
+create table if not exists public.labor_payroll_drafts (
+  user_id uuid not null references auth.users(id) on delete cascade,
+  employee_id text not null,
+  month_key text not null check (month_key ~ '^[0-9]{4}-[0-9]{2}$'),
+  organization text not null default '(주)방주',
+  draft jsonb not null default '{}'::jsonb,
+  updated_at timestamptz not null default now(),
+  primary key (user_id, employee_id, month_key)
+);
+
+alter table public.labor_payroll_drafts enable row level security;
+
+drop policy if exists "labor_payroll_drafts_select_own" on public.labor_payroll_drafts;
+create policy "labor_payroll_drafts_select_own"
+on public.labor_payroll_drafts for select
+to authenticated
+using (auth.uid() = user_id);
+
+drop policy if exists "labor_payroll_drafts_insert_own" on public.labor_payroll_drafts;
+create policy "labor_payroll_drafts_insert_own"
+on public.labor_payroll_drafts for insert
+to authenticated
+with check (auth.uid() = user_id);
+
+drop policy if exists "labor_payroll_drafts_update_own" on public.labor_payroll_drafts;
+create policy "labor_payroll_drafts_update_own"
+on public.labor_payroll_drafts for update
+to authenticated
+using (auth.uid() = user_id)
+with check (auth.uid() = user_id);
+
+drop policy if exists "labor_payroll_drafts_delete_own" on public.labor_payroll_drafts;
+create policy "labor_payroll_drafts_delete_own"
+on public.labor_payroll_drafts for delete
+to authenticated
+using (auth.uid() = user_id);
 
 create or replace function public.to_numeric_or_null(value text)
 returns numeric

@@ -2455,6 +2455,9 @@ async function checkRealDeviceRegressionLayouts(browser) {
         getNextDateKey(todayKey),
         new Date(todayKey + "T10:00:00")
       );
+      const laborEmployee = getOwnLaborEmployee();
+      const laborArchive = buildLaborArchiveReport(laborEmployee, todayKey);
+      const remoteSnapshot = buildRemoteSnapshot();
       return {
         activeView: document.body.dataset.activeView,
         horizontalOverflow: document.documentElement.scrollWidth - window.innerWidth,
@@ -2465,7 +2468,13 @@ async function checkRealDeviceRegressionLayouts(browser) {
         heroBeforeLabor: !hero || !laborConsole || hero.bottom <= laborConsole.top + 2,
         laborPracticeCount: document.querySelectorAll("#view-attendance .labor-practice-card").length,
         laborCloseStepCount: document.querySelectorAll("#view-attendance .labor-close-step").length,
+        laborIntegrationCount: document.querySelectorAll("#view-attendance [data-labor-route]").length,
         laborHasLegalNote: Boolean(document.querySelector("#view-attendance .labor-legal-note")?.textContent.includes("공인노무사")),
+        laborReportOption: Boolean(document.querySelector('#reportArchiveType option[value="labor"]')),
+        controlHasLaborKpi: Boolean(document.querySelector("#controlKpiGrid")?.textContent.includes("노무 월 마감")),
+        laborArchiveKind: laborArchive.kind,
+        laborSnapshotProtectsPayroll: !Object.prototype.hasOwnProperty.call(remoteSnapshot, "laborPayroll") && typeof saveRemoteLaborPayrollDraft === "function",
+        laborPayDayConnected: getPayrollPayDate({}, todayKey.slice(0, 7), { payDay: "15" }).endsWith("-15"),
         futureAttendanceStatus,
         dockOverlapsDate: overlaps(dock, todayDate),
         dockOverlapsFitnessCoaching: overlaps(dock, fitnessCoaching),
@@ -2486,6 +2495,12 @@ async function checkRealDeviceRegressionLayouts(browser) {
     if (!metrics.heroBeforeLabor) fail("labor hero overlaps the operations console", JSON.stringify(metrics));
     if (item.view === "attendance" && (metrics.laborPracticeCount !== 10 || metrics.laborCloseStepCount !== 5 || !metrics.laborHasLegalNote)) {
       fail("labor operations desk should expose ten review domains, five close steps, and a legal review note", JSON.stringify(metrics));
+    }
+    if (item.view === "attendance" && (metrics.laborIntegrationCount !== 6 || !metrics.laborReportOption || !metrics.controlHasLaborKpi)) {
+      fail("labor operations must stay connected to six app sources, report archive, and control tower", JSON.stringify(metrics));
+    }
+    if (item.view === "attendance" && (metrics.laborArchiveKind !== "labor" || !metrics.laborSnapshotProtectsPayroll || !metrics.laborPayDayConnected)) {
+      fail("labor reports, protected payroll persistence, and employee pay dates must share one data flow", JSON.stringify(metrics));
     }
     if (item.view === "attendance" && metrics.futureAttendanceStatus !== "예정") {
       fail("future attendance rows must remain scheduled instead of becoming absence", JSON.stringify(metrics));

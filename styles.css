@@ -2413,6 +2413,144 @@ body[data-device-mode="narrow"] .os-mode-switch span[data-device-mode="narrow"] 
   line-height: 1.35;
 }
 
+.labor-integration-rail {
+  display: grid;
+  gap: 9px;
+  border: 1px solid rgba(15, 59, 46, 0.11);
+  border-radius: 18px;
+  background: rgba(255, 254, 250, 0.76);
+  padding: 12px;
+}
+
+.labor-integration-rail > header {
+  display: grid;
+  grid-template-columns: minmax(0, auto) minmax(220px, 1fr);
+  gap: 14px;
+  align-items: end;
+}
+
+.labor-integration-rail > header span {
+  display: block;
+  color: rgba(15, 59, 46, 0.48);
+  font-size: 9px;
+  font-weight: 950;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.labor-integration-rail > header h3 {
+  margin: 2px 0 0;
+  color: var(--fitness-green);
+  font-size: 16px;
+  font-weight: 950;
+}
+
+.labor-integration-rail > header p {
+  margin: 0;
+  color: rgba(38, 50, 56, 0.58);
+  font-size: 11px;
+  font-weight: 780;
+  line-height: 1.4;
+  text-align: right;
+}
+
+.labor-integration-rail > div {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 7px;
+}
+
+.labor-integration-rail button {
+  position: relative;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 7px;
+  align-items: start;
+  min-width: 0;
+  min-height: 82px;
+  border: 1px solid rgba(15, 59, 46, 0.1);
+  border-radius: 14px;
+  background: rgba(241, 247, 241, 0.78);
+  padding: 9px;
+  color: var(--ink);
+  text-align: left;
+}
+
+.labor-integration-rail button:not(:last-child)::after {
+  position: absolute;
+  top: 50%;
+  right: -7px;
+  z-index: 2;
+  width: 14px;
+  border-radius: 50%;
+  background: #fffefa;
+  color: rgba(15, 59, 46, 0.48);
+  content: "›";
+  font-size: 16px;
+  font-weight: 950;
+  line-height: 14px;
+  text-align: center;
+  transform: translateY(-50%);
+}
+
+.labor-integration-rail button > i {
+  color: rgba(15, 59, 46, 0.4);
+  font-size: 9px;
+  font-style: normal;
+  font-weight: 950;
+}
+
+.labor-integration-rail button > span {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+}
+
+.labor-integration-rail button b {
+  overflow: hidden;
+  color: var(--fitness-green);
+  font-size: 11px;
+  font-weight: 950;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.labor-integration-rail button em {
+  display: -webkit-box;
+  overflow: hidden;
+  color: rgba(38, 50, 56, 0.57);
+  font-size: 9px;
+  font-style: normal;
+  font-weight: 760;
+  line-height: 1.35;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.labor-integration-rail button > strong {
+  border-radius: 999px;
+  background: rgba(15, 83, 64, 0.1);
+  color: var(--fitness-green);
+  padding: 3px 6px;
+  font-size: 9px;
+  font-weight: 950;
+  white-space: nowrap;
+}
+
+.labor-integration-rail button.is-check {
+  border-color: rgba(191, 72, 51, 0.18);
+  background: rgba(255, 244, 238, 0.72);
+}
+
+.labor-integration-rail button.is-check > strong {
+  background: rgba(191, 72, 51, 0.1);
+  color: #aa3f2c;
+}
+
+.labor-integration-rail button.is-manual {
+  background: rgba(255, 249, 232, 0.72);
+}
+
 .labor-agent-panel {
   display: grid;
   gap: 10px;
@@ -4474,6 +4612,24 @@ body[data-device-mode="narrow"] .os-mode-switch span[data-device-mode="narrow"] 
   align-items: center;
   justify-content: flex-end;
   gap: 10px;
+}
+
+.staff-detail-connected-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.staff-detail-connected-actions button {
+  min-height: 38px;
+  border: 1px solid rgba(15, 59, 46, 0.16);
+  border-radius: 999px;
+  background: rgba(15, 59, 46, 0.07);
+  color: var(--fitness-green);
+  padding: 8px 14px;
+  font-size: 12px;
+  font-weight: 950;
 }
 
 .staff-detail-edit-actions button {
@@ -20694,6 +20850,14 @@ body.physical-phone-device #view-attendance .labor-site-strip {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
+  #view-attendance .labor-integration-rail > div {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  #view-attendance .labor-integration-rail button:nth-child(3)::after {
+    display: none;
+  }
+
   #view-attendance .labor-close-flow {
     grid-template-columns: repeat(5, minmax(132px, 1fr));
     overflow-x: auto;
@@ -20721,6 +20885,44 @@ body[data-layout-mode="phone"] #view-attendance .labor-practice-grid,
 body.physical-phone-device #view-attendance .labor-practice-grid {
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 7px;
+}
+
+body[data-layout-mode="phone"] #view-attendance .labor-integration-rail,
+body.physical-phone-device #view-attendance .labor-integration-rail {
+  padding: 10px;
+}
+
+body[data-layout-mode="phone"] #view-attendance .labor-integration-rail > header,
+body.physical-phone-device #view-attendance .labor-integration-rail > header {
+  grid-template-columns: minmax(0, 1fr);
+  gap: 4px;
+}
+
+body[data-layout-mode="phone"] #view-attendance .labor-integration-rail > header p,
+body.physical-phone-device #view-attendance .labor-integration-rail > header p {
+  text-align: left;
+}
+
+body[data-layout-mode="phone"] #view-attendance .labor-integration-rail > div,
+body.physical-phone-device #view-attendance .labor-integration-rail > div {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+body[data-layout-mode="phone"] #view-attendance .labor-integration-rail button,
+body.physical-phone-device #view-attendance .labor-integration-rail button {
+  grid-template-columns: auto minmax(0, 1fr);
+  min-height: 88px;
+}
+
+body[data-layout-mode="phone"] #view-attendance .labor-integration-rail button > strong,
+body.physical-phone-device #view-attendance .labor-integration-rail button > strong {
+  grid-column: 2;
+  justify-self: start;
+}
+
+body[data-layout-mode="phone"] #view-attendance .labor-integration-rail button::after,
+body.physical-phone-device #view-attendance .labor-integration-rail button::after {
+  display: none;
 }
 
 body[data-layout-mode="phone"] #view-attendance .labor-practice-card,

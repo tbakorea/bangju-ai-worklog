@@ -271,6 +271,7 @@ const defaultProfile = {
   address: "",
   dailyWage: "",
   hourlyWage: "",
+  joinDate: "",
   payDay: "",
   workHours: "08:00-18:00",
   weeklyWorkHours: {},
@@ -425,6 +426,8 @@ const profileApprovalFieldMeta = [
   ["address", "주소", "address", "text"],
   ["dailyWage", "일당", "daily_wage", "number"],
   ["hourlyWage", "시급", "hourly_wage", "number"],
+  ["joinDate", "입사일", "join_date", "date"],
+  ["payDay", "임금지급일", "pay_day", "text"],
 ];
 const profileApprovalFieldKeys = new Set(profileApprovalFieldMeta.map(([key]) => key));
 const profileImmediateWorkTimeKeys = new Set(["workHours", "weeklyWorkHours"]);
@@ -1097,6 +1100,8 @@ function getProfileEmployee() {
     address: profile.address || "",
     hourlyWage: profile.hourlyWage || "",
     dailyWage: profile.dailyWage || "",
+    joinDate: profile.joinDate || "",
+    payDay: profile.payDay || "",
     workHours: profile.workHours || defaultProfile.workHours,
     mappedEmployeeId: getProfileMappedEmployeeId(profile),
     assignedMission: profile.assignedMission || "",
@@ -3781,6 +3786,7 @@ function renderControlTower() {
   const taskTotal = staffRows.reduce((sum, row) => sum + row.taskCount, 0);
   const completedTotal = staffRows.reduce((sum, row) => sum + row.completedCount, 0);
   const fitnessOps = getFitnessOpsSummary();
+  const laborControl = getLaborControlSummary();
   const operatingScore = calculateOperatingScore();
   const completionRate = taskTotal ? Math.round((completedTotal / taskTotal) * 100) : 0;
   const salesActions = fitnessOps.consultation + fitnessOps.outbound + fitnessOps.outsideSales;
@@ -3792,9 +3798,9 @@ function renderControlTower() {
     ["운영 사업장", `${activeSites}`, `전체 ${assetRows.length} 공간/호실`],
     ["직원 출결", `${presentCount}/${staffRows.length}`, issueCount ? `신호 ${issueCount}` : "정상 추적"],
     ["업무 기록", `${completedTotal}/${taskTotal || 0}`, taskTotal ? `${completionRate}% 완료` : "입력 대기"],
-    ["관제 신호", `${issueCount}건`, issueCount ? "확인 필요" : "정상"],
     ["피트니스 행동", `${salesActions}`, `유료PT ${fitnessOps.ptRegular + fitnessOps.ptOther}`],
-    ["운영 점수", `${operatingScore}점`, operatingScore < 75 ? "보강 필요" : "추적 중"],
+    ["노무 월 마감", `${laborControl.ready}/${laborControl.total}`, laborControl.issues ? `보완 ${laborControl.issues}건` : "원장 연결"],
+    ["운영 점수", `${operatingScore}점`, issueCount ? `관제 신호 ${issueCount}건` : operatingScore < 75 ? "보강 필요" : "추적 중"],
   ];
   document.getElementById("controlKpiGrid").innerHTML = kpis.map(([label, value, meta]) => `
     <article><span>${escapeHtml(label)}</span><strong>${escapeHtml(value)}</strong><em>${escapeHtml(meta)}</em></article>
@@ -3861,6 +3867,7 @@ function renderExecutiveManagement() {
   const staffRows = getControlStaffRows();
   const siteRows = getControlSiteRows(assetRows, staffRows);
   const fitnessOps = getFitnessOpsSummary();
+  const laborControl = getLaborControlSummary();
   const taskTotal = staffRows.reduce((sum, row) => sum + row.taskCount, 0);
   const completedTotal = staffRows.reduce((sum, row) => sum + row.completedCount, 0);
   const issueRows = staffRows.filter((row) => row.aiSignal !== "정상");
@@ -3925,7 +3932,7 @@ function renderExecutiveManagement() {
   document.getElementById("executiveFinanceSignals").innerHTML = [
     ["자금", "재무 업무일지에서 자금·입금·지출 태그를 매일 확인하고, 지급위험은 대표 결재로 올립니다.", "확인"],
     ["매출", salesActions ? `피트니스 고객행동 ${salesActions}건이 기록됐습니다. 계약 후속업무를 추적하세요.` : "상담·아웃바운드·재등록 기록이 비어 있습니다. 오늘 영업 행동을 지정하세요.", salesActions ? "추적" : "개입"],
-    ["노무", "근무이력은 월별 노무비 지급대장과 연결됩니다. 결석·조퇴·프리랜서 P/T 정산을 확인하세요.", "월마감"],
+    ["노무", laborControl.total ? `월 마감 준비 ${laborControl.ready}/${laborControl.total}명 · 보완 ${laborControl.issues}건입니다. 직원 원장, 업무일지, 출결, PT와 지급대장을 함께 확인하세요.` : "노무 대상 직원 원장을 먼저 확인하세요.", laborControl.issues ? "확인" : "월마감"],
     ["수익", "사업장별 매출·원가·고정비 입력이 쌓이면 영업이익과 운영점수를 자동 산정합니다.", "구축"],
   ].map(([title, text, tag]) => `<article><b>${escapeHtml(title)}</b><span>${escapeHtml(text)}</span><em>${escapeHtml(tag)}</em></article>`).join("");
 
@@ -4047,6 +4054,29 @@ function getControlStaffRows() {
       aiSignal,
     };
   });
+}
+
+function getLaborControlSummary() {
+  const month = getActiveDateKey().slice(0, 7);
+  const rows = getVisibleLaborEmployees().map((employee) => {
+    const labor = buildMonthlyLaborSummary(getLaborEmployeeLogId(employee), employee, month);
+    const profile = getLaborProfileForEmployee(employee);
+    const elapsedScheduled = labor.dayRows.filter((row) => row.dateKey <= todayKey && row.scheduled > 0);
+    const incomplete = elapsedScheduled.filter((row) => (row.clockIn && !row.clockOut) || (!row.clockIn && row.status !== "휴무" && row.status !== "예정"));
+    const profileReady = Boolean(
+      String(profile.employmentType || "").trim()
+      && String(profile.workplace || "").trim()
+      && String(profile.workHours || "").trim()
+      && (numberValue(profile.hourlyWage) || numberValue(profile.dailyWage))
+    );
+    const ready = Boolean(labor.recordedDays && !incomplete.length && profileReady);
+    return { ready, issues: incomplete.length + (profileReady ? 0 : 1) + (labor.recordedDays ? 0 : 1) };
+  });
+  return {
+    total: rows.length,
+    ready: rows.filter((row) => row.ready).length,
+    issues: rows.reduce((sum, row) => sum + row.issues, 0),
+  };
 }
 
 function getControlSiteRows(assetRows, staffRows) {
@@ -6294,6 +6324,24 @@ async function updateProfileRowWithSchemaFallback(id, payload = {}, client = sup
   return { error: lastError, payload: nextPayload, removedColumns };
 }
 
+async function upsertProfileRowWithSchemaFallback(payload = {}, client = supabaseClient) {
+  let nextPayload = { ...payload };
+  let lastError = null;
+  const removedColumns = [];
+  for (let attempt = 0; attempt < 10; attempt += 1) {
+    const { error } = await client.from("profiles").upsert(nextPayload);
+    if (!error) return { error: null, payload: nextPayload, removedColumns };
+    lastError = error;
+    const missingColumn = getMissingSchemaColumnFromError(error);
+    if (!missingColumn || !Object.prototype.hasOwnProperty.call(nextPayload, missingColumn)) {
+      return { error, payload: nextPayload, removedColumns };
+    }
+    delete nextPayload[missingColumn];
+    removedColumns.push(missingColumn);
+  }
+  return { error: lastError, payload: nextPayload, removedColumns };
+}
+
 async function loadApprovalRequests(options = {}) {
   const list = document.getElementById("approvalRequestList");
   if (!list) return;
@@ -7674,6 +7722,7 @@ async function loadRemoteWorklogForActiveDate() {
     state.worklogReportSubmissions = { ...(state.worklogReportSubmissions || {}), ...(data.state.worklogReportSubmissions || {}) };
     state.reportTone = data.state.reportTone || state.reportTone;
   }
+  await loadRemoteLaborPayrollDrafts();
   if (canAccessWorklogOverview()) await loadVisibleStaffWorklogsForDate(key);
   else await loadCoworkerWorklogsForDate(key);
   normalizeState();
@@ -7829,6 +7878,8 @@ function profileToRemoteRow(options = {}) {
     address: profile.address,
     daily_wage: profile.dailyWage || null,
     hourly_wage: profile.hourlyWage || null,
+    join_date: profile.joinDate || null,
+    pay_day: profile.payDay || "",
     work_hours: profile.workHours,
     weekly_work_hours: profile.weeklyWorkHours || {},
     extra: profile.extra,
@@ -7865,6 +7916,8 @@ function remoteRowToProfile(row) {
     address: row.address || "",
     dailyWage: row.daily_wage || "",
     hourlyWage: row.hourly_wage || "",
+    joinDate: row.join_date || "",
+    payDay: row.pay_day || "",
     workHours: row.work_hours,
     weeklyWorkHours: row.weekly_work_hours || {},
     extra: row.extra,
@@ -7891,19 +7944,14 @@ async function saveRemoteProfile(options = {}) {
     includeApprovalFields,
     includePendingProfileChangeFields: options.includePendingProfileChangeFields,
   });
-  const { error } = await supabaseClient.from("profiles").upsert(row);
-  if (!error) return;
-  if (/pending_profile_changes|profile_change_requested_at/i.test(error.message || "")) {
-    const fallbackRow = { ...row };
-    delete fallbackRow.pending_profile_changes;
-    delete fallbackRow.profile_change_requested_at;
-    const { error: fallbackError } = await supabaseClient.from("profiles").upsert(fallbackRow);
-    renderAuthStatus(fallbackError
-      ? `프로필 원격 저장 대기: ${fallbackError.message}`
-      : "프로필은 저장되었습니다. 직원정보 변경 승인 기능은 최신 SQL 적용 후 원격 반영됩니다.");
+  const { error, removedColumns } = await upsertProfileRowWithSchemaFallback(row);
+  if (error) {
+    renderAuthStatus(`프로필 원격 저장 대기: ${error.message}`);
     return;
   }
-  renderAuthStatus(`프로필 원격 저장 대기: ${error.message}`);
+  if (removedColumns.length) {
+    renderAuthStatus("프로필은 저장되었습니다. 일부 신규 노무항목은 최신 SQL 적용 후 원격 반영됩니다.");
+  }
 }
 
 async function loadRemoteProfile() {
@@ -10806,6 +10854,96 @@ function buildLaborPracticeReview(labor, employee, payroll) {
   return { items, readyCount, exceptions, incompleteRows, payrollReady };
 }
 
+function buildLaborIntegrationModel(labor, employee, payroll) {
+  const employeeId = getLaborEmployeeLogId(employee);
+  const profile = getLaborProfileForEmployee(employee);
+  const elapsedRows = labor.dayRows.filter((row) => row.dateKey <= todayKey);
+  const workedRows = elapsedRows.filter((row) => row.clockIn || row.clockOut || row.worked);
+  const completeAttendanceRows = workedRows.filter((row) => row.clockIn && row.clockOut);
+  const monthLogs = getMonthDateKeys(labor.month)
+    .map((dateKey) => ({ dateKey, log: state.employeeLogs?.[dateKey]?.[employeeId] }))
+    .filter(({ log }) => Boolean(log));
+  const worklogDays = monthLogs.filter(({ log }) => hasSubmittableWorklogContent(log)).length;
+  const submittedDays = monthLogs.filter(({ dateKey }) => Boolean(getWorklogReportSubmission(employeeId, dateKey)?.submittedAt)).length;
+  const contractFields = [profile.employmentType, profile.workplace, profile.workHours, profile.joinDate];
+  const contractReady = contractFields.filter((value) => String(value || "").trim()).length;
+  const payrollReady = payroll.checks.filter(([, ok]) => ok).length;
+  const isFitness = getReportArchiveSiteId(employee) === "fitness";
+  return {
+    employeeId,
+    sources: [
+      {
+        key: "staff",
+        label: "직원 원장",
+        value: `${contractReady}/${contractFields.length}`,
+        detail: "고용형태·근무지·근무시간·입사일",
+        status: contractReady === contractFields.length ? "ready" : "check",
+        route: "staff",
+      },
+      {
+        key: "worklog",
+        label: "업무일지",
+        value: `${worklogDays}일`,
+        detail: submittedDays ? `제출 ${submittedDays}일 · 월 증빙 연결` : "작성 내용이 월 증빙으로 연결됩니다.",
+        status: worklogDays ? "ready" : "check",
+        route: "worklog",
+      },
+      {
+        key: "attendance",
+        label: "출퇴근·휴게",
+        value: `${completeAttendanceRows.length}/${workedRows.length || 0}`,
+        detail: "출퇴근과 휴게기록이 근로시간 원장으로 합산됩니다.",
+        status: workedRows.length && completeAttendanceRows.length === workedRows.length ? "ready" : "check",
+        route: "attendance",
+      },
+      {
+        key: "fitness",
+        label: isFitness ? "피트니스 PT" : "성과 기록",
+        value: isFitness ? `${labor.settlementPtCount}/${labor.freePtCount}` : `${labor.recordedDays}일`,
+        detail: isFitness ? "유료 PT만 정산하고 무료 PT는 분리합니다." : "근무일과 업무 증빙을 함께 대조합니다.",
+        status: isFitness ? "ready" : "manual",
+        route: isFitness ? "fitness" : "worklog",
+      },
+      {
+        key: "payroll",
+        label: "급여·공제",
+        value: `${payrollReady}/${payroll.checks.length}`,
+        detail: "근태·임금단가·수당·공제를 급여명세 초안에 반영합니다.",
+        status: payrollReady === payroll.checks.length ? "ready" : "check",
+        route: "payroll",
+      },
+      {
+        key: "report",
+        label: "보고·보관",
+        value: `${submittedDays}건`,
+        detail: "업무 증빙과 노무 월 보고서를 날짜별 보관함에서 확인합니다.",
+        status: submittedDays || labor.recordedDays ? "ready" : "check",
+        route: "report",
+      },
+    ],
+  };
+}
+
+function renderLaborIntegrationRail(model, labor) {
+  return `
+    <section class="labor-integration-rail" aria-label="앱 기능 연결 현황">
+      <header>
+        <div><span>Connected Operations</span><h3>원장부터 보고까지 한 흐름</h3></div>
+        <p>각 섹션의 원본 기록을 다시 입력하지 않고 ${escapeHtml(labor.monthLabel)} 노무자료로 연결합니다.</p>
+      </header>
+      <div>
+        ${model.sources.map((source, index) => `
+          <button type="button" class="is-${escapeAttr(source.status)}" data-labor-route="${escapeAttr(source.route)}" data-labor-employee-id="${escapeAttr(model.employeeId)}" data-labor-month="${escapeAttr(labor.month)}">
+            <i>${String(index + 1).padStart(2, "0")}</i>
+            <span><b>${escapeHtml(source.label)}</b><em>${escapeHtml(source.detail)}</em></span>
+            <strong>${escapeHtml(source.value)}</strong>
+          </button>
+        `).join("")}
+      </div>
+    </section>
+  `;
+}
+
 function renderLaborOperationsConsole(labor, employee, payroll) {
   const siteRows = getLaborSiteConsoleRows();
   const siteRecorded = siteRows.reduce((sum, row) => sum + row.recordedEmployees, 0);
@@ -10814,6 +10952,7 @@ function renderLaborOperationsConsole(labor, employee, payroll) {
   const readyCount = payroll.checks.filter(([, ok]) => ok).length;
   const agentSignals = getLaborAgentSignals(labor, payroll);
   const practice = buildLaborPracticeReview(labor, employee, payroll);
+  const integration = buildLaborIntegrationModel(labor, employee, payroll);
   const readiness = Math.round((practice.readyCount / practice.items.length) * 100);
   const cards = [
     ["사업장별 근무기록", `${siteRecorded}/${siteEmployees}명`, "사업장별 출역·근무시간 원장", "companyLaborLedgers"],
@@ -10843,6 +10982,7 @@ function renderLaborOperationsConsole(labor, employee, payroll) {
           </button>
         `).join("")}
       </div>
+      ${renderLaborIntegrationRail(integration, labor)}
       <div class="labor-close-flow" aria-label="노무 월 마감 순서">
         ${[
           ["01", "근태 마감", practice.items.find((item) => item.title === "근태 원장")?.status === "ready", "출퇴근·휴게 누락 확인"],
@@ -10936,12 +11076,51 @@ function updateLaborPayrollField(employeeId, month, field, value) {
   const draft = getLaborPayrollDraft(employeeId, month);
   draft[field] = value;
   saveState();
+  saveRemoteLaborPayrollDraft(employeeId, month, draft);
   renderAttendance();
 }
 
-function getPayrollPayDate(draft, month) {
+function isMissingLaborPayrollTableError(error) {
+  const message = [error?.message, error?.details, error?.hint].filter(Boolean).join(" ");
+  return /labor_payroll_drafts|schema cache|relation .* does not exist|pgrst205/i.test(message);
+}
+
+async function saveRemoteLaborPayrollDraft(employeeId, month, draft) {
+  if (!supabaseClient || !authState.user || authState.applyingRemote) return;
+  const { error } = await supabaseClient.from("labor_payroll_drafts").upsert({
+    user_id: authState.user.id,
+    employee_id: employeeId,
+    month_key: month,
+    organization: state.profile?.org || "(주)방주",
+    draft: { ...draft },
+    updated_at: new Date().toISOString(),
+  }, { onConflict: "user_id,employee_id,month_key" });
+  if (error && !isMissingLaborPayrollTableError(error)) {
+    showAppToast("급여 초안의 원격 저장을 완료하지 못했습니다.");
+  }
+}
+
+async function loadRemoteLaborPayrollDrafts() {
+  if (!supabaseClient || !authState.user) return;
+  const { data, error } = await supabaseClient
+    .from("labor_payroll_drafts")
+    .select("employee_id,month_key,draft")
+    .eq("user_id", authState.user.id)
+    .order("updated_at", { ascending: false });
+  if (error) {
+    if (!isMissingLaborPayrollTableError(error)) console.warn("Labor payroll drafts could not be loaded.", error);
+    return;
+  }
+  state.laborPayroll ||= {};
+  (data || []).forEach((row) => {
+    const key = getLaborPayrollKey(row.employee_id, row.month_key);
+    state.laborPayroll[key] = { ...getLaborPayrollDraft(row.employee_id, row.month_key), ...(row.draft || {}) };
+  });
+}
+
+function getPayrollPayDate(draft, month, profile = state.profile || {}) {
   if (draft.payDate) return draft.payDate;
-  const profilePayDay = String(state.profile?.payDay || "").trim();
+  const profilePayDay = String(profile.payDay || "").trim();
   const [year, monthNumber] = month.split("-").map(Number);
   const lastDay = new Date(year, monthNumber, 0).getDate();
   if (/^\d{1,2}$/.test(profilePayDay)) {
@@ -11004,7 +11183,7 @@ function buildPayrollStatement(labor, employee, ledger) {
   const netPay = Math.max(0, grossPay - deductionTotal);
   const checks = [
     ["근로자 특정정보", Boolean(employee.name || profile.name) && Boolean(profile.laborId || employee.id)],
-    ["임금지급일", Boolean(getPayrollPayDate(draft, labor.month))],
+    ["임금지급일", Boolean(getPayrollPayDate(draft, labor.month, profile))],
     ["단가 기준", Boolean(dailyWage || hourlyWage)],
     ["출근일수/근로시간", labor.recordedDays > 0 || labor.actualMinutes > 0],
     ["연장·야간·휴일 시간", labor.overtimeMinutes || labor.nightMinutes || labor.holidayMinutes ? Boolean(hourlyWage) : true],
@@ -11014,7 +11193,7 @@ function buildPayrollStatement(labor, employee, ledger) {
     employeeId: laborEmployeeId,
     month: labor.month,
     monthLabel: labor.monthLabel,
-    payDate: getPayrollPayDate(draft, labor.month),
+    payDate: getPayrollPayDate(draft, labor.month, profile),
     workerName: employee.name || profile.name || "이름 미입력",
     workerId: profile.laborId || employee.id || "사원번호 미입력",
     org: profile.org || employee.org || "소속 미입력",
@@ -11315,11 +11494,61 @@ function getLaborProfileForEmployee(employee) {
     workplace: employee.workplace || "",
     laborId: employee.laborId || "",
     address: employee.address || "",
+    joinDate: employee.joinDate || employee.join_date || "",
+    payDay: employee.payDay || employee.pay_day || "",
     hourlyWage: employee.hourlyWage || "",
     dailyWage: employee.dailyWage || "",
     employmentType: employee.employmentType || "직원",
     workHours: employee.workHours || defaultProfile.workHours,
   };
+}
+
+function openLaborIntegrationRoute(route, employeeId, month) {
+  const employee = getVisibleLaborEmployees().find((item) => getLaborEmployeeLogId(item) === employeeId || item.id === employeeId)
+    || getEmployeeOptions().find((item) => getLaborEmployeeLogId(item) === employeeId || item.id === employeeId)
+    || getOwnLaborEmployee();
+  if (!canViewLaborEmployee(employeeId)) {
+    showAppToast("열람 권한이 없는 직원의 노무기록입니다.");
+    return;
+  }
+  state.selectedEmployeeId = employeeId;
+  if (route === "attendance" || route === "payroll") {
+    const targetId = route === "payroll" ? "payrollStatement" : "laborRegister";
+    const target = document.getElementById(targetId);
+    if (target) target.scrollIntoView({ behavior: "smooth", block: "start" });
+    else showAppToast(route === "payroll" ? "급여·공제 항목은 노무 권한자만 확인할 수 있습니다." : "근태 원장을 불러오지 못했습니다.");
+    return;
+  }
+  if (route === "report") {
+    const employeeSiteId = getReportArchiveSiteId(employee);
+    const archiveSiteId = getReportArchiveSiteOptions().some((site) => site.id === employeeSiteId) ? employeeSiteId : "all";
+    state.reportArchive = {
+      ...getReportArchiveSettings(),
+      dateKey: `${month || getActiveDateKey().slice(0, 7)}-01`,
+      site: archiveSiteId,
+      type: "labor",
+      selectedId: `labor:${employeeId}`,
+    };
+    saveState({ fastSave: true });
+    switchView("report");
+    renderReportArchive();
+    return;
+  }
+  if (route === "staff") {
+    state.staffMasterTab = "staff-list";
+    saveState({ fastSave: true });
+    switchView("staff");
+    window.setTimeout(() => {
+      const row = getEmployeeMasterRows().find((item) => item.id === employeeId || item.mappedEmployeeId === employeeId);
+      if (row) openStaffDetail(row.id);
+    }, 0);
+    return;
+  }
+  if (route === "fitness") {
+    switchView("fitness-log");
+    return;
+  }
+  switchView(canAccessWorklogOverview() ? "worklog-overview" : getUserWorklogView());
 }
 
 function renderSiteLaborCostLedger(ledger) {
@@ -11452,6 +11681,15 @@ function renderWorkHistorySummary() {
       else showAppToast("해당 항목은 노무 권한자 화면에서 확인할 수 있습니다.");
     });
   });
+  node.querySelectorAll("[data-labor-route]").forEach((button) => {
+    button.addEventListener("click", () => {
+      openLaborIntegrationRoute(
+        button.dataset.laborRoute || "attendance",
+        button.dataset.laborEmployeeId || employeeId,
+        button.dataset.laborMonth || labor.month,
+      );
+    });
+  });
   node.querySelectorAll("[data-labor-payroll-field]").forEach((field) => {
     field.addEventListener("change", () => {
       updateLaborPayrollField(employeeId, labor.month, field.dataset.laborPayrollField, field.value);
@@ -11501,9 +11739,8 @@ function formatMinutesAsHours(minutes) {
   return mins ? `${hours}시간 ${mins}분` : `${hours}시간`;
 }
 
-function buildMonthlyLaborSummary(employeeId, employee) {
+function buildMonthlyLaborSummary(employeeId, employee, monthPrefix = getActiveDateKey().slice(0, 7)) {
   employeeId = getEmployeeWorklogId(employee) || employeeId;
-  const monthPrefix = getActiveDateKey().slice(0, 7);
   const monthLabel = monthPrefix.replace("-", ".");
   const logs = [];
   const dayRows = [];
@@ -12882,10 +13119,7 @@ function buildLaborMonthArchives(employeeId, employee) {
   return [...months]
     .sort((a, b) => b.localeCompare(a))
     .map((month) => {
-      const originalDate = state.selectedDateKey;
-      state.selectedDateKey = `${month}-01`;
-      const labor = buildMonthlyLaborSummary(employeeId, employee);
-      state.selectedDateKey = originalDate;
+      const labor = buildMonthlyLaborSummary(employeeId, employee, month);
       return {
         month,
         monthLabel: month.replace("-", "."),
@@ -13067,6 +13301,8 @@ function approvalRowToStaffEmployee(row = {}) {
     address: profile.address || "",
     hourlyWage: profile.hourlyWage || "",
     dailyWage: profile.dailyWage || "",
+    joinDate: profile.joinDate || "",
+    payDay: profile.payDay || "",
     workHours: profile.workHours || base?.workHours || defaultProfile.workHours,
     weeklyWorkHours: profile.weeklyWorkHours || base?.weeklyWorkHours || {},
     approvalStatus: profile.approvalStatus || row.approval_status || "approved",
@@ -13749,6 +13985,8 @@ function staffEditFieldsToRemotePayload(fields = {}, row = {}) {
     secondaryWork: "secondary_work",
     workHours: "work_hours",
     employmentType: "employment_type",
+    joinDate: "join_date",
+    payDay: "pay_day",
   };
   Object.entries(map).forEach(([localKey, remoteKey]) => {
     if (hasField(localKey)) payload[remoteKey] = fields[localKey] || "";
@@ -13785,6 +14023,8 @@ function mergeStaffFieldsIntoApprovalRow(row = {}, fields = {}) {
     work_hours: fields.workHours ?? row.work_hours,
     weekly_work_hours: fields.weeklyWorkHours ?? row.weekly_work_hours,
     employment_type: fields.employmentType ?? row.employment_type,
+    join_date: fields.joinDate === "" ? null : (fields.joinDate ?? row.join_date),
+    pay_day: fields.payDay ?? row.pay_day,
     hourly_wage: fields.hourlyWage === "" ? null : (fields.hourlyWage ?? row.hourly_wage),
     daily_wage: fields.dailyWage === "" ? null : (fields.dailyWage ?? row.daily_wage),
     assigned_mission: fields.assignedMission ?? row.assigned_mission,
@@ -13821,6 +14061,8 @@ function profileRowToEmployeeOverride(row = {}) {
     workHours: profile.workHours || defaultProfile.workHours,
     weeklyWorkHours: profile.weeklyWorkHours || row.weekly_work_hours || {},
     employmentType: profile.employmentType || "직원",
+    joinDate: profile.joinDate || "",
+    payDay: profile.payDay || "",
     laborId: profile.laborId || "",
     address: profile.address || "",
     hourlyWage: profile.hourlyWage || "",
@@ -13967,6 +14209,10 @@ function renderStaffDetailModal(row) {
           <article><span>노무 기록</span><strong>${escapeHtml(`${row.labor.recordedDays || 0}일`)}</strong></article>
           <article><span>유료 PT</span><strong>${escapeHtml(`${row.labor.settlementPtCount || 0}건`)}</strong></article>
         </div>
+        <div class="staff-detail-connected-actions">
+          <button type="button" data-staff-open-worklog="${escapeAttr(row.mappedEmployeeId || row.id)}">업무일지 열기</button>
+          ${canOpenLaborSection() ? `<button type="button" data-staff-open-labor="${escapeAttr(row.mappedEmployeeId || row.id)}">노무 월 원장</button>` : ""}
+        </div>
         <dl class="staff-detail-list">
           <div><dt>소속</dt><dd>${escapeHtml(row.org || "-")}</dd></div>
           <div><dt>근무지</dt><dd>${escapeHtml(row.workplace || row.site || "-")}</dd></div>
@@ -14001,6 +14247,8 @@ function renderStaffDetailModal(row) {
               ${staffDetailEditField(row, "phone", "전화")}
               ${staffDetailEditField(row, "email", "이메일", "email")}
               ${staffDetailEditField(row, "employmentType", "고용형태")}
+              ${staffDetailEditField(row, "joinDate", "입사일", "date")}
+              ${staffDetailEditField(row, "payDay", "임금지급일(일)")}
               ${staffDetailEditField(row, "workHours", "근무시간")}
               ${staffDetailWeeklyWorkHoursEditor(row)}
               ${staffDetailEditField(row, "primaryWork", "주업무")}
@@ -14764,9 +15012,56 @@ function buildSiteArchiveReport(site, dateKey) {
   };
 }
 
+function buildLaborArchiveReport(employee, dateKey) {
+  const employeeId = getLaborEmployeeLogId(employee);
+  const month = String(dateKey || getActiveDateKey()).slice(0, 7);
+  const labor = buildMonthlyLaborSummary(employeeId, employee, month);
+  const ledger = buildLaborCostLedger(labor, employee);
+  const payroll = buildPayrollStatement(labor, employee, ledger);
+  const practice = buildLaborPracticeReview(labor, employee, payroll);
+  const payrollReady = payroll.checks.filter(([, ok]) => ok).length;
+  const issueCount = labor.lateCount + labor.earlyCount + labor.absenceCount;
+  return {
+    id: `labor:${employeeId}`,
+    kind: "labor",
+    employeeId,
+    siteId: getReportArchiveSiteId(employee),
+    title: `${getEmployeeAdminLabel(employee)} 노무 월 보고`,
+    eyebrow: `${labor.monthLabel} · ${employee.org || "소속 미정"}`,
+    meta: `${labor.recordedDays}일 · ${formatMinutesAsHours(labor.actualMinutes)} · 확인 ${practice.exceptions.length}건`,
+    countLabel: `${labor.recordedDays}/${payrollReady}`,
+    empty: !labor.recordedDays && !labor.actualMinutes,
+    kindLabel: "노무 월 보고",
+    text: [
+      `< ${getEmployeeAdminLabel(employee)} ${labor.monthLabel} 노무 월 보고 >`,
+      `소속/근무지: ${payroll.org} / ${payroll.workplace}`,
+      `고용형태: ${payroll.employmentType}`,
+      `근무일/실근무: ${labor.recordedDays}일 / ${formatMinutesAsHours(labor.actualMinutes)}`,
+      `연장/야간/휴일: ${formatMinutesAsHours(labor.overtimeMinutes)} / ${formatMinutesAsHours(labor.nightMinutes)} / ${formatMinutesAsHours(labor.holidayMinutes)}`,
+      `지각/조퇴/결근: ${labor.lateCount}/${labor.earlyCount}/${labor.absenceCount}`,
+      `유료 PT/무료 PT: ${labor.settlementPtCount}/${labor.freePtCount}`,
+      `급여명세 준비: ${payrollReady}/${payroll.checks.length}`,
+      `지급총액/차인지급액: ${formatCurrency(payroll.grossPay) || "계산 대기"} / ${formatCurrency(payroll.netPay) || "계산 대기"}`,
+      "",
+      "보완 대기",
+      ...practice.exceptions.map(([title, text]) => `- ${title}: ${text}`),
+      "",
+      issueCount ? `근태 예외 ${issueCount}건을 원장과 대조해야 합니다.` : "자동 점검상 근태 예외가 없습니다.",
+      "지급·신고·징계·퇴직 처리는 공인노무사 또는 관계기관 확인 후 확정합니다.",
+    ].join("\n"),
+  };
+}
+
 function buildReportArchiveItems(settings = getReportArchiveSettings()) {
   const sites = getReportArchiveSiteOptions().filter((site) => settings.site === "all" ? site.id !== "all" : site.id === settings.site);
   const items = [];
+  if (settings.type === "labor") {
+    if (!canOpenLaborSection()) return items;
+    getVisibleLaborEmployees()
+      .filter((employee) => settings.site === "all" || getReportArchiveSiteId(employee) === settings.site)
+      .forEach((employee) => items.push(buildLaborArchiveReport(employee, settings.dateKey)));
+    return items;
+  }
   if (settings.type === "all" || settings.type === "site" || settings.type === "fitness") {
     sites
       .filter((site) => settings.type !== "fitness" || site.id === "fitness")
@@ -14788,6 +15083,15 @@ function renderReportArchive() {
   if (!dateInput || !siteSelect || !typeSelect || !listNode || !previewNode) return;
 
   const settings = getReportArchiveSettings();
+  const laborOption = typeSelect.querySelector('option[value="labor"]');
+  if (laborOption) {
+    laborOption.hidden = !canOpenLaborSection();
+    laborOption.disabled = !canOpenLaborSection();
+  }
+  if (settings.type === "labor" && !canOpenLaborSection()) {
+    settings.type = "employee";
+    settings.selectedId = "";
+  }
   dateInput.value = settings.dateKey;
   const siteOptions = getReportArchiveSiteOptions();
   siteSelect.innerHTML = siteOptions.map((site) => `<option value="${site.id}" ${site.id === settings.site ? "selected" : ""}>${escapeHtml(site.label)}</option>`).join("");
@@ -14804,7 +15108,7 @@ function renderReportArchive() {
       <button type="button" class="${item.id === settings.selectedId ? "is-active" : ""}" data-report-archive-id="${escapeHtml(item.id)}">
         <span><i>${escapeHtml(item.kindLabel || (item.kind === "site" ? "사업장 보고" : "직원 보고"))}</i>${escapeHtml(item.eyebrow)}</span>
         <strong>${escapeHtml(item.title)}</strong>
-        <em>${escapeHtml(item.meta)} · 업무/일정 ${escapeHtml(item.countLabel)}</em>
+        <em>${escapeHtml(item.meta)} · ${item.kind === "labor" ? "근무일/명세준비" : "업무/일정"} ${escapeHtml(item.countLabel)}</em>
       </button>
     `).join("")
     : `<div class="report-archive-empty">해당 조건의 보고서가 없습니다.</div>`;
@@ -14831,6 +15135,7 @@ function renderReportArchive() {
       ${canSubmit ? `<button type="button" data-report-submit-worklog="${escapeHtml(selected.employeeId)}">업무일지 제출</button>` : ""}
       ${selected.submitted?.submittedAt ? `<b>제출 완료</b>` : ""}
       ${canConfirmCenter ? `<button type="button" data-report-confirm-center>${centerRecord?.confirmedAt ? "확정 취소" : "센터 보고 확정"}</button>` : ""}
+      ${selected.kind === "labor" ? `<button type="button" data-report-open-labor="${escapeAttr(selected.employeeId)}">노무 원장 열기</button>` : ""}
     </div>
     <div class="report-archive-paper-wrap">
       ${selected.html || `<pre>${escapeHtml(selected.text || "")}</pre>`}
@@ -16560,6 +16865,30 @@ document.getElementById("staffMasterGrid")?.addEventListener("keydown", (event) 
   openStaffDetail(row.dataset.staffDetailId);
 });
 document.addEventListener("click", (event) => {
+  const laborButton = event.target.closest("[data-staff-open-labor]");
+  if (laborButton) {
+    event.preventDefault();
+    const employeeId = laborButton.dataset.staffOpenLabor || "";
+    if (!canViewLaborEmployee(employeeId)) {
+      showAppToast("열람 권한이 없는 직원의 노무기록입니다.");
+      return;
+    }
+    closeStaffDetail();
+    state.selectedEmployeeId = employeeId;
+    saveState({ fastSave: true });
+    switchView("attendance");
+    return;
+  }
+  const worklogButton = event.target.closest("[data-staff-open-worklog]");
+  if (worklogButton) {
+    event.preventDefault();
+    const employeeId = worklogButton.dataset.staffOpenWorklog || "";
+    closeStaffDetail();
+    state.selectedEmployeeId = employeeId;
+    saveState({ fastSave: true });
+    switchView(canAccessWorklogOverview() ? "worklog-overview" : getUserWorklogView());
+    return;
+  }
   const saveButton = event.target.closest("[data-staff-profile-save]");
   if (saveButton) {
     event.preventDefault();
@@ -17079,6 +17408,20 @@ document.getElementById("reportArchiveList")?.addEventListener("click", (event) 
   renderReportArchive();
 });
 document.getElementById("reportArchivePreview")?.addEventListener("click", (event) => {
+  const laborButton = event.target.closest("[data-report-open-labor]");
+  if (laborButton) {
+    const employeeId = laborButton.dataset.reportOpenLabor || "";
+    if (!canViewLaborEmployee(employeeId)) {
+      showAppToast("열람 권한이 없는 직원의 노무기록입니다.");
+      return;
+    }
+    state.selectedEmployeeId = employeeId;
+    const month = getReportArchiveSettings().dateKey.slice(0, 7);
+    state.selectedDateKey = `${month}-01`;
+    saveState({ fastSave: true });
+    switchView("attendance");
+    return;
+  }
   const submitButton = event.target.closest("[data-report-submit-worklog]");
   if (submitButton) {
     submitWorklogReport(submitButton.dataset.reportSubmitWorklog || "", getReportArchiveSettings().dateKey);
