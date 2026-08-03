@@ -10782,6 +10782,24 @@ body.physical-phone-device #view-fitness-log .fitness-log-schedule-panel .fitnes
   transition: opacity 160ms ease, transform 160ms ease;
 }
 
+.fitness-coaching-sheet header {
+  padding-right: 42px;
+}
+
+#fitnessCoachingCloseButton {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  z-index: 2;
+  display: grid;
+  place-items: center;
+  width: 34px;
+  min-width: 34px;
+  height: 34px;
+  min-height: 34px;
+  padding: 0;
+}
+
 .fitness-coaching-sheet.is-open,
 .fitness-report-sheet.is-open {
   opacity: 1;

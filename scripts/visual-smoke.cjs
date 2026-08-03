@@ -947,6 +947,24 @@ async function checkUnclassifiedFitnessEmployeeCanEditOwnProfileWorklog(browser)
   if (parsed.scheduleTimes[0] !== "16:00" || parsed.scheduleTimes.at(-1) !== "20:00" || parsed.scheduleTimes.includes("08:00")) {
     fail("unclassified fitness employee schedule should follow profile work hours", metrics);
   }
+  await page.click("#fitnessCoachingTicker");
+  await page.waitForTimeout(120);
+  const coachingClosePlacement = await page.evaluate(() => {
+    const sheet = document.querySelector("#fitnessCoachingSheet");
+    const close = document.querySelector("#fitnessCoachingCloseButton");
+    const sheetRect = sheet?.getBoundingClientRect();
+    const closeRect = close?.getBoundingClientRect();
+    return {
+      visible: Boolean(sheet && !sheet.hidden && sheet.classList.contains("is-open")),
+      topGap: sheetRect && closeRect ? closeRect.top - sheetRect.top : 999,
+      rightGap: sheetRect && closeRect ? sheetRect.right - closeRect.right : 999,
+    };
+  });
+  if (!coachingClosePlacement.visible || coachingClosePlacement.topGap > 14 || coachingClosePlacement.rightGap > 14) {
+    fail("fitness coaching close button should stay at the sheet's upper-right corner", JSON.stringify(coachingClosePlacement));
+  }
+  await page.click("#fitnessCoachingCloseButton");
+  await page.waitForTimeout(180);
   await page.fill("#fitnessTaskBoard .task-text-input", "신세민 업무 입력 저장 확인");
   await page.waitForTimeout(350);
   const saveMetrics = await page.evaluate(() => window.eval(`JSON.stringify({
