@@ -385,10 +385,17 @@ async function checkOverviewCommandBoard(browser) {
     directivePanelCount: document.querySelectorAll(".overview-directive-panel").length,
     fitnessSheets: document.querySelectorAll(".worklog-overview-employee-sheet.is-fitness-sheet").length,
     nonFitnessSheets: document.querySelectorAll('.worklog-overview-employee-sheet:not(.is-fitness-sheet)').length,
+    firstCardIsCenter: document.querySelector('.worklog-overview-site[data-overview-site="fitness"] .overview-site-carousel')?.firstElementChild?.classList.contains("overview-fitness-center-sheet") || false,
+    employeeOrder: [...document.querySelectorAll('.worklog-overview-site[data-overview-site="fitness"] .overview-sheet-head > [data-overview-employee]')]
+      .map((button) => button.closest(".worklog-overview-employee-sheet")?.querySelector(".overview-sheet-head h3")?.textContent?.trim() || ""),
   }));
   if (fitnessFilter.activeScope !== "fitness") fail("overview fitness scope did not activate", fitnessFilter.activeScope);
   if (!/비욘드 피트니스/.test(fitnessFilter.siteText)) fail("overview fitness scope missing fitness label");
   if (!fitnessFilter.centerSheets) fail("overview fitness scope should start with center operations sheet", JSON.stringify(fitnessFilter));
+  if (!fitnessFilter.firstCardIsCenter) fail("overview fitness center status should be the first card", JSON.stringify(fitnessFilter));
+  if (fitnessFilter.employeeOrder.join("|") !== "센터장 박주홍|트레이너 홍현규|인포데스크 신세민|인포데스크 이다빈|인포데스크 김영채") {
+    fail("overview fitness employees should follow the fixed operating order", JSON.stringify(fitnessFilter.employeeOrder));
+  }
   if (!fitnessFilter.rosterCards) fail("overview fitness center sheet should show fitness roster cards", JSON.stringify(fitnessFilter));
   if (!fitnessFilter.insightCount) fail("overview employee insight alerts are missing");
   if (!fitnessFilter.fitnessSummaryCount) fail("fitness overview should render fitness-specific summary");
@@ -962,6 +969,63 @@ async function checkUnmappedEmployeeDoesNotInheritFitnessManager(browser) {
   if (saved.disabled) fail("Hong own fitness worklog input should be enabled", saveMetrics);
   if (saved.value !== "홍길동 업무 입력 저장 확인" || saved.savedText !== saved.value || saved.storageText !== saved.value) {
     fail("Hong own fitness worklog input should persist to weekday info log", saveMetrics);
+  }
+  const coworkerMetrics = await page.evaluate(() => window.eval(`(() => {
+    const dateKey = "2026-08-02";
+    state.selectedDateKey = dateKey;
+    state.employeeLogs[dateKey] = {};
+    const kimLog = createEmployeeLog({
+      id: "profile-user",
+      name: "김영채",
+      email: "yckim1558@naver.com",
+      org: "(주)방주 / 비욘드 피트니스 지사",
+      workplace: "비욘드 피트니스",
+      role: "인포데스크"
+    }, {}, dateKey);
+    kimLog.tasks[0].text = "김영채 8월2일 동료 공유 업무";
+    kimLog.schedule[0].text = "일요일 센터 오픈 점검";
+    mergeVisibleStaffWorklogStates([{
+      user_id: "kimyoungchae-auth",
+      updated_at: "2026-08-02T18:30:00.000Z",
+      state: {
+        profile: {
+          name: "김영채",
+          email: "yckim1558@naver.com",
+          org: "(주)방주 / 비욘드 피트니스 지사",
+          workplace: "비욘드 피트니스",
+          role: "인포데스크",
+          approvalStatus: "approved"
+        },
+        ownerEmployeeId: "fitness-info-kimyoungchae",
+        ownerWorklog: kimLog,
+        employeeLogs: { [dateKey]: { "profile-user": kimLog } }
+      }
+    }], dateKey);
+    normalizeState();
+    const pages = getFitnessLogPages();
+    const kimPageIndex = pages.findIndex((page) => page.employee?.name === "김영채");
+    state.fitnessLogPage = kimPageIndex;
+    state.selectedEmployeeId = pages[kimPageIndex]?.id || "";
+    renderEntries();
+    return JSON.stringify({
+      kimPageIndex,
+      pageType: document.querySelector("#view-fitness-log")?.dataset.fitnessPageType || "",
+      permission: document.querySelector("#view-fitness-log")?.dataset.fitnessPermission || "",
+      taskText: document.querySelector("#fitnessTaskBoard .task-text-input")?.value || "",
+      scheduleText: document.querySelector("#fitnessAppointmentList .fitness-appointment-summary")?.textContent?.trim() || "",
+      taskDisabled: document.querySelector("#fitnessTaskBoard .task-text-input")?.disabled ?? false,
+      remoteLoadIncludesCoworkers: String(loadRemoteWorklogForActiveDate).includes("loadCoworkerWorklogsForDate")
+    });
+  })()`));
+  const coworker = JSON.parse(coworkerMetrics);
+  if (coworker.kimPageIndex < 0
+    || coworker.pageType !== "coworker"
+    || coworker.permission !== "readonly"
+    || coworker.taskText !== "김영채 8월2일 동료 공유 업무"
+    || !coworker.scheduleText.includes("일요일 센터 오픈 점검")
+    || !coworker.taskDisabled
+    || !coworker.remoteLoadIncludesCoworkers) {
+    fail("Hong coworker view should load Kim Young-chae's August 2 remote worklog as read-only", coworkerMetrics);
   }
   if (errors.length) fail("Hong fitness identity regression page errors", errors.join(" | "));
   await page.close();

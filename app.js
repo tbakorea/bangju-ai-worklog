@@ -2917,9 +2917,24 @@ function getOverviewGroupEmployeeEntries(group) {
       return true;
     })
     .sort((a, b) => (
-      getOverviewRoleRank(a.employee) - getOverviewRoleRank(b.employee)
+      (group.id === "fitness" ? getOverviewFitnessEmployeeRank(a.employee) : getOverviewRoleRank(a.employee))
+      - (group.id === "fitness" ? getOverviewFitnessEmployeeRank(b.employee) : getOverviewRoleRank(b.employee))
       || getEmployeeAdminLabel(a.employee).localeCompare(getEmployeeAdminLabel(b.employee), "ko")
     ));
+}
+
+function getOverviewFitnessEmployeeRank(employee = {}) {
+  const source = `${employee.id || ""} ${employee.mappedEmployeeId || ""} ${employee.name || ""} ${employee.nickname || ""} ${employee.email || ""} ${employee.role || ""}`.toLowerCase();
+  if (/beyond-fitness-manager|박주홍|센터장/.test(source)) return 10;
+  if (/fitness-trainer-1|홍현규/.test(source)) return 20;
+  if (/fitness-info-shinsemin|신세민|tpals2990/.test(source)) return 30;
+  if (/fitness-weekday-info-idabin|이다빈/.test(source)) return 40;
+  if (/fitness-info-kimyoungchae|김영채|yckim1558/.test(source)) return 50;
+  if (/트레이너|trainer/.test(source)) return 25;
+  if (/주중/.test(source)) return 35;
+  if (/토요|토요일/.test(source)) return 45;
+  if (/일요|일요일/.test(source)) return 55;
+  return 90;
 }
 
 function getOverviewRoleRank(employee = {}) {
@@ -3699,7 +3714,7 @@ function renderWorklogOverview() {
     return;
   }
   grid.innerHTML = groups.map((group) => {
-    const commonCard = renderOverviewCommonSheet({ group, dateKey, dateLabel });
+    const commonCard = group.id === "fitness" ? "" : renderOverviewCommonSheet({ group, dateKey, dateLabel });
     const centerCard = group.id === "fitness" ? renderOverviewFitnessCenterSheet({ group, dateKey, dateLabel }) : "";
     const employeeCards = getOverviewGroupEmployeeEntries(group).map(({ employeeId, employee }, index) => {
       const context = getOverviewEmployeeSummaryModel(group, employeeId, employee, dateKey);
@@ -7576,7 +7591,7 @@ function buildRemoteSnapshot() {
     profile: snapshotProfile,
     ownerEmployeeId,
     ownerWorklog: ownerWorklog ? cloneWorklogLogForAudit(ownerWorklog) : null,
-    employeeLogs: { [key]: state.employeeLogs?.[key] || {} },
+    employeeLogs: { [key]: ownerWorklog ? { [ownerEmployeeId]: cloneWorklogLogForAudit(ownerWorklog) } : {} },
     attendance: { [key]: state.attendance?.[key] || [] },
     companyCommonWeeks: state.companyCommonWeeks || {},
     fitnessCenterReports: state.fitnessCenterReports || {},
@@ -7633,6 +7648,7 @@ async function loadRemoteWorklogForActiveDate() {
     state.reportTone = data.state.reportTone || state.reportTone;
   }
   if (canAccessWorklogOverview()) await loadVisibleStaffWorklogsForDate(key);
+  else await loadCoworkerWorklogsForDate(key);
   normalizeState();
   localStorage.setItem(storageKey, JSON.stringify(state));
   authState.applyingRemote = false;
@@ -7653,6 +7669,16 @@ async function loadVisibleStaffWorklogsForDate(dateKey = getActiveDateKey()) {
   }
   if (error) {
     renderAuthStatus(`직원 업무일지 불러오기 대기: ${error.message}`);
+    return;
+  }
+  mergeVisibleStaffWorklogStates(data || [], dateKey);
+}
+
+async function loadCoworkerWorklogsForDate(dateKey = getActiveDateKey()) {
+  if (!supabaseClient || !authState.user || !isProfileApproved()) return;
+  const { data, error } = await supabaseClient.rpc("get_coworker_worklog_states", { target_date: dateKey });
+  if (error) {
+    renderAuthStatus(`동료 업무일지 불러오기 대기: ${error.message}`);
     return;
   }
   mergeVisibleStaffWorklogStates(data || [], dateKey);
@@ -7695,6 +7721,21 @@ async function refreshVisibleStaffWorklogsForActiveDate() {
     normalizeState();
     localStorage.setItem(storageKey, JSON.stringify(state));
     renderWorklogOverview();
+  } finally {
+    authState.visibleWorklogsLoading = false;
+  }
+}
+
+async function refreshCoworkerWorklogsForActiveDate() {
+  if (!supabaseClient || !authState.user || canAccessWorklogOverview() || !isProfileApproved() || authState.visibleWorklogsLoading) return;
+  authState.visibleWorklogsLoading = true;
+  try {
+    const dateKey = getActiveDateKey();
+    await loadCoworkerWorklogsForDate(dateKey);
+    if (dateKey !== getActiveDateKey()) return;
+    normalizeState();
+    localStorage.setItem(storageKey, JSON.stringify(state));
+    renderEntries();
   } finally {
     authState.visibleWorklogsLoading = false;
   }
@@ -16019,6 +16060,7 @@ function switchView(view) {
   dockGlobalHeaderActions(panelView);
   applyCurrentWorklogPermissionState(view);
   if (view === "fitness-log") window.setTimeout(() => showFitnessPageToast(), 80);
+  if (view === "fitness-log" && authState.session) refreshCoworkerWorklogsForActiveDate();
   if (view === "worklog-overview") refreshVisibleStaffWorklogsForActiveDate();
 }
 
