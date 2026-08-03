@@ -2965,35 +2965,62 @@ function getOverviewScheduledWorkHours(employee = {}, dateKey = getActiveDateKey
   return normalizeWorkHoursText(weeklyHours[dayKey] || employee.workHours || defaultProfile.workHours);
 }
 
+function hasOverviewWorklogRecord(dayLog = {}) {
+  const ops = { ...createFitnessOps(), ...(dayLog.fitnessOps || {}) };
+  return Boolean(
+    String(dayLog.report || dayLog.memo || dayLog.record || "").trim()
+    || (dayLog.tasks || []).some(isActiveTask)
+    || (dayLog.schedule || []).some((entry) => String(getScheduleEntryText(entry) || "").trim())
+    || Object.entries(ops).some(([key, value]) => !["shiftNote", "specialReport"].includes(key) && numberValue(value))
+    || String(ops.shiftNote || ops.specialReport || "").trim()
+  );
+}
+
 function getOverviewWorkStatus(employee = {}, dayLog = {}, dateKey = getActiveDateKey(), now = new Date()) {
   const hours = getOverviewScheduledWorkHours(employee, dateKey, dayLog);
   const attendance = String(dayLog.attendanceStatus || "");
   const today = formatDateKey(now);
+  const hasAttendanceRecord = Boolean(
+    dayLog.clockIn
+    || dayLog.clockOut
+    || attendance
+    || (dayLog.attendanceBreaks || []).some((record) => record?.start || record?.end)
+  );
+  const hasWorklogRecord = hasOverviewWorklogRecord(dayLog);
   if (isOffWorkHours(hours) || /비번|휴무/.test(attendance)) return { key: "off", label: "비번", detail: "휴무" };
   if (/결근|결석/.test(attendance)) return { key: "absent", label: "결근", detail: hours || "근무시간 미정" };
+  if (dateKey < today) {
+    if (hasAttendanceRecord || hasWorklogRecord) {
+      const recordLabel = hasWorklogRecord ? "업무일지 작성" : "출결 기록";
+      return { key: "worked", label: "근무함", detail: `${hours || "근무시간 미정"} · ${recordLabel}` };
+    }
+    return { key: "unrecorded", label: "미기록", detail: `${hours || "근무시간 미정"} · 근무기록 없음` };
+  }
   if (/외출/.test(attendance) && dayLog.clockIn && !dayLog.clockOut) {
-    return dateKey === today
-      ? { key: "away", label: "외출중", detail: hours || "근무시간 미정" }
-      : { key: "done", label: "근무", detail: hours || "근무시간 미정" };
+    return { key: "away", label: "외출중", detail: hours || "근무시간 미정" };
   }
   if (dayLog.clockOut || /퇴근|조퇴/.test(attendance)) return { key: "done", label: /조퇴/.test(attendance) ? "조퇴" : "근무종료", detail: hours || "근무시간 미정" };
   if (dayLog.clockIn || /출근/.test(attendance)) {
-    return dateKey === today
-      ? { key: "working", label: "근무중", detail: hours || "근무시간 미정" }
-      : { key: "done", label: "근무", detail: hours || "근무시간 미정" };
+    return { key: "working", label: "근무중", detail: hours || "근무시간 미정" };
   }
   if (dateKey > today) return { key: "scheduled", label: "근무예정", detail: hours || "근무시간 미정" };
-  if (dateKey < today) return { key: "scheduled", label: "근무일", detail: hours || "근무시간 미정" };
   const match = String(hours || "").match(/(\d{2}):(\d{2})\s*[-~]\s*(\d{2}):(\d{2})/);
   if (match) {
     const currentMinutes = now.getHours() * 60 + now.getMinutes();
     const startMinutes = Number(match[1]) * 60 + Number(match[2]);
     const endMinutes = Number(match[3]) * 60 + Number(match[4]);
     if (currentMinutes < startMinutes) return { key: "scheduled", label: "근무예정", detail: hours };
-    if (currentMinutes <= endMinutes) return { key: "unconfirmed", label: "근무시간", detail: `${hours} · 출결 미기록` };
+    if (currentMinutes <= endMinutes) {
+      return hasWorklogRecord
+        ? { key: "working", label: "근무중", detail: `${hours} · 업무일지 작성 중` }
+        : { key: "unconfirmed", label: "근무시간", detail: `${hours} · 출결 미기록` };
+    }
+    if (hasWorklogRecord) return { key: "unconfirmed", label: "퇴근 미기록", detail: `${hours} · 업무일지 작성` };
     return { key: "unconfirmed", label: "출결 미기록", detail: hours };
   }
-  return { key: "scheduled", label: "근무일", detail: hours || "근무시간 미정" };
+  return hasWorklogRecord
+    ? { key: "working", label: "근무중", detail: "업무일지 작성 중" }
+    : { key: "scheduled", label: "근무일", detail: hours || "근무시간 미정" };
 }
 
 function renderOverviewWorkStatus(status = {}) {
@@ -3522,7 +3549,7 @@ function renderOverviewBusinessSnapshot({ group, dateKey, dateLabel }) {
       <span>${String(index + 1).padStart(2, "0")}</span>
       <strong>${escapeHtml(getEmployeeAdminLabel(model.employee))}</strong>
       <em>${escapeHtml(model.reportText ? "보고" : "미보고")}</em>
-      <em>${escapeHtml(model.attendance)}</em>
+      <em class="overview-person-shift" data-shift-status="${escapeAttr(model.workStatus.key)}" title="${escapeAttr(model.workStatus.detail)}">${escapeHtml(model.workStatus.label)}</em>
       <button type="button" data-overview-employee="${escapeAttr(model.employeeId)}" data-overview-view="${escapeAttr(group.view)}">열기</button>
     </li>
   `).join("");

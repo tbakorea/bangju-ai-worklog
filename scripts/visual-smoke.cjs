@@ -554,6 +554,24 @@ async function checkOverviewCommandBoard(browser) {
       todayKey,
       new Date(todayKey + "T10:00:00")
     );
+    const todayWrittenStatus = getOverviewWorkStatus(
+      { role: "실장", workHours: "09:00-18:00" },
+      { tasks: [{ text: "오늘 작성 업무", status: "예정" }], schedule: [] },
+      todayKey,
+      new Date(todayKey + "T10:00:00")
+    );
+    const pastWorkedStatus = getOverviewWorkStatus(
+      { role: "실장", workHours: "09:00-18:00" },
+      { tasks: [{ text: "과거 작성 업무", status: "완료" }], schedule: [], report: "업무 완료" },
+      getPreviousDateKey(todayKey),
+      new Date(todayKey + "T10:00:00")
+    );
+    const pastMissingStatus = getOverviewWorkStatus(
+      { role: "실장", workHours: "09:00-18:00" },
+      { tasks: [], schedule: [] },
+      getPreviousDateKey(todayKey),
+      new Date(todayKey + "T10:00:00")
+    );
     const openButton = document.querySelector('[data-overview-employee="beyond-company-leader"]');
     openButton?.click();
     const taskText = [...document.querySelectorAll("#worklogTaskBoard .task-text-input")]
@@ -574,6 +592,9 @@ async function checkOverviewCommandBoard(browser) {
       employeeOrder,
       statusLabels,
       liveStatus,
+      todayWrittenStatus,
+      pastWorkedStatus,
+      pastMissingStatus,
     };
     exitButton?.click();
     result.returnedView = document.body.dataset.activeView || "";
@@ -592,6 +613,12 @@ async function checkOverviewCommandBoard(browser) {
     || !overviewDetailMetrics.statusLabels.some((item) => item.key === "off" && item.text.includes("비번"))
     || overviewDetailMetrics.liveStatus?.key !== "working"
     || overviewDetailMetrics.liveStatus?.label !== "근무중"
+    || overviewDetailMetrics.todayWrittenStatus?.key !== "working"
+    || overviewDetailMetrics.todayWrittenStatus?.label !== "근무중"
+    || overviewDetailMetrics.pastWorkedStatus?.key !== "worked"
+    || overviewDetailMetrics.pastWorkedStatus?.label !== "근무함"
+    || overviewDetailMetrics.pastMissingStatus?.key !== "unrecorded"
+    || overviewDetailMetrics.pastMissingStatus?.label !== "미기록"
     || overviewDetailMetrics.returnedView !== "worklog-overview") {
     fail("representative employee detail should preserve the overview worklog and provide an exit", overviewDetailOpen);
   }

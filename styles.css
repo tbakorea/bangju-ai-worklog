@@ -16372,10 +16372,33 @@ body[data-view-mode="ceo"][data-active-view="worklog-overview"]:not(.physical-ph
   color: #58606c;
 }
 
+.overview-work-status[data-shift-status="worked"] b {
+  background: rgba(15, 83, 64, 0.12);
+  color: #0f533f;
+}
+
 .overview-work-status[data-shift-status="absent"] b,
-.overview-work-status[data-shift-status="unconfirmed"] b {
+.overview-work-status[data-shift-status="unconfirmed"] b,
+.overview-work-status[data-shift-status="unrecorded"] b {
   background: rgba(216, 56, 47, 0.11);
   color: #b92f28;
+}
+
+.overview-person-shift[data-shift-status="working"] {
+  color: #0f5f45;
+  font-weight: 950;
+}
+
+.overview-person-shift[data-shift-status="worked"] {
+  color: #315f51;
+  font-weight: 920;
+}
+
+.overview-person-shift[data-shift-status="unrecorded"],
+.overview-person-shift[data-shift-status="unconfirmed"],
+.overview-person-shift[data-shift-status="absent"] {
+  color: #b92f28;
+  font-weight: 950;
 }
 
 .overview-common-sheet {
