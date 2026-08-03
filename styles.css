@@ -12427,6 +12427,13 @@ body.physical-phone-device #view-fitness-log .fitness-log-schedule-panel .fitnes
     border-radius: 0;
   }
 
+  body.is-printing-fitness-report .fitness-report-page.is-personal-report {
+    height: auto !important;
+    min-height: 281mm;
+    max-height: none;
+    overflow: visible;
+  }
+
   body.is-printing-worklog-report .worklog-shell > *:not(.worklog-report-sheet) {
     display: none !important;
   }
@@ -12886,6 +12893,13 @@ body[data-layout-mode="phone"] .fitness-log-schedule-panel .appointment-merge-bu
   flex-direction: column;
   gap: 7px;
   padding: 7mm;
+}
+
+.fitness-report-page.is-personal-report {
+  min-height: 297mm;
+  height: auto;
+  aspect-ratio: auto;
+  overflow: visible;
 }
 
 .fitness-paper-top {

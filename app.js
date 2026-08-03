@@ -4683,7 +4683,8 @@ function getAiWorklogContextForCurrentView() {
     if (page?.type !== "employee") return null;
     return {
       employee: page.employee || getEmployeeOptions().find((item) => item.id === page.id) || getSelectedEmployee(),
-      log: getEmployeeLogForDate(page.id, getActiveDateKey()),
+      log: getFitnessEmployeeLogForDate(page.employee || { id: page.id }, getActiveDateKey())
+        || getEmployeeLogForDate(page.id, getActiveDateKey()),
       isFitness: true,
       canEdit: isCurrentFitnessLogEditable() && canEditCurrentWorklog("fitness-log"),
     };
@@ -8304,9 +8305,10 @@ function renderWorklogToday(log = getSelectedLog()) {
 
 function renderFitnessWorklog(log = getSelectedLog()) {
   const page = getCurrentFitnessLogPage();
-  if (page?.type === "employee" && page.id !== state.selectedEmployeeId) {
-    if (activeView === "fitness-log") state.selectedEmployeeId = page.id;
-    log = getEmployeeLogForDate(page.id, getActiveDateKey());
+  if (page?.type === "employee") {
+    if (page.id !== state.selectedEmployeeId && activeView === "fitness-log") state.selectedEmployeeId = page.id;
+    log = getFitnessEmployeeLogForDate(page.employee || { id: page.id }, getActiveDateKey())
+      || getEmployeeLogForDate(page.id, getActiveDateKey());
   }
   syncFitnessOpsFromSchedule(log);
   const title = document.getElementById("fitnessWorklogDate");
@@ -15018,8 +15020,21 @@ function getReportArchiveEmployees(siteId = "all") {
 
 function getReportArchiveEmployeeLog(employee, dateKey) {
   const employeeId = getEmployeeWorklogId(employee);
-  const stored = state.employeeLogs?.[dateKey]?.[employeeId];
-  const log = stored ? { ...stored } : createEmployeeLog({ ...employee, id: employeeId }, state.profile, dateKey);
+  const logsByEmployee = state.employeeLogs?.[dateKey] || {};
+  const aliases = getEmployeeWorklogAliases(employee);
+  const candidates = aliases.map((id) => logsByEmployee[id]).filter(Boolean);
+  const fitnessLog = getReportArchiveSiteId(employee) === "fitness"
+    ? getFitnessEmployeeLogForDate(employee, dateKey)
+    : null;
+  const stored = fitnessLog
+    || candidates.find(hasSubmittableWorklogContent)
+    || candidates[0]
+    || logsByEmployee[employeeId]
+    || null;
+  const log = stored
+    ? cloneWorklogLogForAudit(stored)
+    : createEmployeeLog({ ...employee, id: employeeId }, state.profile, dateKey);
+  log.employeeId ||= employeeId;
   normalizeEmployeeLogRows(log, dateKey);
   log.tasks = Array.isArray(log.tasks) ? log.tasks : [];
   log.schedule = Array.isArray(log.schedule) ? log.schedule : [];
@@ -15120,7 +15135,7 @@ function buildEmployeeArchiveReport(employee, dateKey) {
   const tasks = getReportArchiveTasks(log);
   const entries = getReportArchiveScheduleEntries(log);
   const completed = tasks.filter((task) => task.done || task.status === "완료");
-  const reportText = String(log.report || log.record || "").trim();
+  const reportText = [...new Set([log.report, log.record].map((text) => String(text || "").trim()).filter(Boolean))].join("\n");
   const isFitness = getReportArchiveSiteId(employee) === "fitness";
   const fitnessLines = isFitness ? formatFitnessOpsReport(log.fitnessOps) : [];
   const title = isFitness ? `${getEmployeeAdminLabel(employee)} 직원 업무일지 보고서` : `${getEmployeeAdminLabel(employee)} 개인 업무보고서`;
@@ -15699,7 +15714,7 @@ function buildFitnessReportLines() {
     ...model.topTasks.map((task) => `- ${task}`),
     "",
     "[시간별 세부업무]",
-    ...model.schedule.map((entry) => `- ${entry.time} ${entry.text || ""}`),
+    ...model.schedule.map((entry) => `- ${formatReportTime(entry.time)} ${entry.text || ""}`),
     "",
     "[운영 KPI]",
     ...model.kpis.map(([label, value]) => `- ${label}: ${value}`),
@@ -15742,12 +15757,12 @@ function getFitnessReportLogEntries(dateKey, isCenter, employee) {
   if (isCenter) {
     return getFitnessCenterEmployees().map((item) => ({
       employee: item,
-      log: getFitnessEmployeeLogForDate(item, dateKey) || getEmployeeLogForDate(item.id, dateKey),
+      log: getReportArchiveEmployeeLog(item, dateKey),
     }));
   }
   return [{
     employee,
-    log: getEmployeeLogForDate(employee.id, dateKey),
+    log: getReportArchiveEmployeeLog(employee, dateKey),
   }];
 }
 
@@ -15804,13 +15819,12 @@ function summarizeFitnessReportRows(logEntries = []) {
   return { rows, totals };
 }
 
-function getFitnessReportTaskRows(logEntries = [], count = 3) {
+function getFitnessReportTaskRows(logEntries = [], { limit = 3, minRows = 3 } = {}) {
   const tasks = logEntries.flatMap(({ log }) => getWorklogTaskRefs(log).map((ref) => ref.task).filter(isActiveTask));
-  return Array.from({ length: count }, (_, index) => {
-    const task = tasks[index];
-    if (!task) return "";
-    return `${task.priority || "?"} ${task.text || ""}${task.done || task.status === "완료" ? " (완료)" : ""}`.trim();
-  });
+  const selected = Number.isFinite(limit) ? tasks.slice(0, limit) : tasks;
+  const rows = selected.map((task) => `${task.priority || "?"} ${task.text || ""}${task.done || task.status === "완료" ? " (완료)" : ""}`.trim());
+  while (rows.length < minRows) rows.push("");
+  return rows;
 }
 
 function getFitnessReportDirectRecordRows(logEntries = []) {
@@ -15818,7 +15832,7 @@ function getFitnessReportDirectRecordRows(logEntries = []) {
   return logEntries
     .flatMap(({ employee, log }) => {
       const ops = { ...createFitnessOps(), ...(log.fitnessOps || {}) };
-      return [ops.specialReport, ops.shiftNote, log.report, log.memo]
+      return [ops.specialReport, ops.shiftNote, log.report, log.record, log.memo]
         .map((text) => String(text || "").trim())
         .filter(Boolean)
         .map((text) => `${employee.name || getEmployeeOwnLabel(employee)}: ${text}`);
@@ -15876,7 +15890,7 @@ function getFitnessCenterGeneratedRecordRows(logEntries = [], context = {}) {
 
 function getFitnessReportRecordRows(logEntries = [], context = {}) {
   const directRows = getFitnessReportDirectRecordRows(logEntries);
-  if (!context.isCenter) return padFitnessReportRecordRows(directRows);
+  if (!context.isCenter) return padFitnessReportRecordRows(directRows, Math.max(3, directRows.length));
   return padFitnessReportRecordRows([
     ...directRows,
     ...getFitnessCenterGeneratedRecordRows(logEntries, context),
@@ -15902,7 +15916,7 @@ function buildWorklogDailyReportModel(options = {}) {
   const tomorrowSchedule = getReportArchiveScheduleEntries(tomorrowLog);
   const siteKey = getSiteWeatherKeyForEmployee(employee);
   const weather = getWeatherRecordForSite(siteKey, dateKey);
-  const reportText = String(log.report || log.record || "").trim();
+  const reportText = [...new Set([log.report, log.record].map((text) => String(text || "").trim()).filter(Boolean))].join("\n");
   const memoText = String(log.memo || "").trim();
   const completionRate = tasks.length ? Math.round((completed.length / tasks.length) * 100) : 0;
   const nextActions = [
@@ -16088,7 +16102,8 @@ function getFitnessReportSourceNote(model = {}) {
 }
 
 function getFitnessReportIssueRowsHtml(model = {}) {
-  const rows = padFitnessReportRecordRows(model.issueRows || []);
+  const sourceRows = model.issueRows || [];
+  const rows = padFitnessReportRecordRows(sourceRows, Math.max(3, sourceRows.length));
   return `
     <h3>${escapeHtml(getFitnessReportIssueTitle(model))}</h3>
     <small>${escapeHtml(getFitnessReportSourceNote(model))}</small>
@@ -16104,10 +16119,9 @@ function buildFitnessReportModel(options = {}) {
     || page?.employee
     || employees.find((item) => item.id === state.fitnessWritableEmployeeId)
     || getSelectedEmployee();
-  const sourceLog = options.log
-    || (isCenter ? getEmployeeLogForDate(state.fitnessWritableEmployeeId, dateKey) : getEmployeeLogForDate(employee.id, dateKey));
   const logEntries = getFitnessReportLogEntries(dateKey, isCenter, employee);
   if (!isCenter && options.log) logEntries[0].log = options.log;
+  const sourceLog = options.log || logEntries[0]?.log || getReportArchiveEmployeeLog(employee, dateKey);
   const nextLogEntries = getFitnessReportLogEntries(getNextDateKey(dateKey), isCenter, employee);
   const entries = logEntries.flatMap(({ log }) => (log.schedule || []).filter((entry) => entry.time && (isCenter ? getScheduleEntryText(entry) : true)));
   const { rows: staffRows, totals } = summarizeFitnessReportRows(logEntries);
@@ -16137,10 +16151,10 @@ function buildFitnessReportModel(options = {}) {
     staffRows,
     totals,
     approvalColumns: ["담당", "팀장", "센터장"],
-    topTasks: getFitnessReportTaskRows(logEntries),
-    tomorrowTasks: getFitnessReportTaskRows(nextLogEntries),
+    topTasks: getFitnessReportTaskRows(logEntries, { limit: isCenter ? 3 : Infinity, minRows: 3 }),
+    tomorrowTasks: getFitnessReportTaskRows(nextLogEntries, { limit: isCenter ? 3 : Infinity, minRows: 3 }),
     schedule: entries.map((entry) => ({
-      time: formatReportTime(entry.time),
+      time: entry.time,
       text: getScheduleEntryText(entry),
     })),
     kpis: [
@@ -16280,10 +16294,10 @@ function getFitnessReportScheduleRows(schedule = []) {
   const baseTimes = ["06:00", "07:00", "08:00", "09:00", "10:00", "11:00", "12:00", "13:00", "14:00", "15:00", "16:00", "17:00", "18:00", "19:00", "20:00", "21:00", "22:00", "23:00", "00:00"];
   const filled = new Map((schedule || []).filter((entry) => entry.time).map((entry) => [entry.time, entry.text || ""]));
   const rows = baseTimes.map((time) => ({ time: formatReportTime(time), text: filled.get(time) || "" }));
-  const extraFilled = (schedule || []).filter((entry) => entry.text && !baseTimes.map(formatReportTime).includes(entry.time));
+  const extraFilled = (schedule || []).filter((entry) => entry.text && !baseTimes.includes(entry.time));
   extraFilled.slice(0, 3).forEach((entry, index) => {
     const target = rows[rows.length - 3 + index];
-    if (target && !target.text) target.text = `${entry.time} ${entry.text}`;
+    if (target && !target.text) target.text = `${formatReportTime(entry.time)} ${entry.text}`;
   });
   return rows;
 }
@@ -16350,7 +16364,14 @@ function getFitnessReportFileBase() {
   return `beyond-fitness-report-${getActiveDateKey()}`;
 }
 
-function getFitnessReportExportCss() {
+function getFitnessReportExportHeight(model = buildFitnessReportModel()) {
+  if (model.isCenter) return 1754;
+  const taskOverflow = Math.max(0, Math.max(model.topTasks?.length || 0, model.tomorrowTasks?.length || 0) - 3) * 50;
+  const issueOverflow = Math.max(0, (model.issueRows?.length || 0) - 3) * 50;
+  return 1754 + taskOverflow + issueOverflow;
+}
+
+function getFitnessReportExportCss(reportHeight = 1754) {
   return `
     * { box-sizing: border-box; }
     body { margin: 0; }
@@ -16362,8 +16383,8 @@ function getFitnessReportExportCss() {
     }
     .fitness-report-page {
       width: 1240px !important;
-      height: 1754px !important;
-      min-height: 1754px !important;
+      height: ${reportHeight}px !important;
+      min-height: ${reportHeight}px !important;
       aspect-ratio: auto !important;
       margin: 0 !important;
       border: 0 !important;
@@ -16697,11 +16718,12 @@ function getFitnessReportExportCss() {
 
 async function renderFitnessReportCanvas() {
   const width = 1240;
-  const height = 1754;
+  const model = buildFitnessReportModel();
+  const height = getFitnessReportExportHeight(model);
   const html = `
     <div xmlns="http://www.w3.org/1999/xhtml">
-      <style>${getFitnessReportExportCss()}</style>
-      ${renderFitnessReportTemplate(buildFitnessReportModel())}
+      <style>${getFitnessReportExportCss(height)}</style>
+      ${renderFitnessReportTemplate(model)}
     </div>
   `;
   const svg = `

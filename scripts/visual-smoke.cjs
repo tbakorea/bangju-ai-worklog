@@ -2193,8 +2193,18 @@ async function checkFitnessCenterReportConfirmation(browser) {
         role: "인포데스크"
       }, {}, "2026-07-24");
       kimLog.tasks[0].text = "일요일 센터 청결 점검";
+      kimLog.tasks[1].text = "회원 문의 회신";
+      kimLog.tasks[2].text = "비품 재고 확인";
+      kimLog.tasks[3].text = "마감 인수인계 작성";
+      kimLog.tasks[4].text = "블로그 게시물 점검";
       kimLog.schedule[0].text = "출근보고, 종이컵 채우기, 여자탈의실 청소";
       kimLog.schedule[1].text = "세탁완료물 정리, 블로그 작성 및 업데이트";
+      kimLog.schedule[2].text = "회원 문의 응대 기록";
+      kimLog.schedule[3].text = "비품 창고 정리";
+      kimLog.report = "금일 센터 운영 업무보고 원문";
+      kimLog.record = "현장 실행기록 원문";
+      kimLog.memo = "다음 근무자 인수인계 원문";
+      kimLog.fitnessOps.specialReport = "피트니스 특이사항 원문";
       mergeVisibleStaffWorklogStates([{
         user_id: "kimyoungchae-auth",
         state: {
@@ -2226,13 +2236,18 @@ async function checkFitnessCenterReportConfirmation(browser) {
     centerRows: [...document.querySelectorAll("#fitnessCenterDailyBody tr")].map((row) => row.textContent.replace(/\s+/g, " ").trim()),
     pageTitles: getFitnessLogPages().map((page) => page.title),
     kimLog: (() => {
-      const log = getFitnessEmployeeLogForDate(
-        getFitnessCenterEmployees().find((employee) => employee.name === "김영채"),
-        "2026-07-24"
-      );
+      const employee = getFitnessCenterEmployees().find((item) => item.name === "김영채");
+      const log = getFitnessEmployeeLogForDate(employee, "2026-07-24");
+      const model = buildFitnessReportModel({ employee, dateKey: "2026-07-24", isCenter: false });
+      const html = renderFitnessReportTemplate(model);
       return {
         task: log?.tasks?.[0]?.text || "",
         schedule: (log?.schedule || []).map((entry) => entry.text || "").filter(Boolean),
+        reportTaskCount: model.topTasks.filter(Boolean).length,
+        reportSchedule: getFitnessReportScheduleRows(model.schedule).map((entry) => entry.text).filter(Boolean),
+        reportIssues: model.issueRows.filter(Boolean),
+        reportExportHeight: getFitnessReportExportHeight(model),
+        reportHtml: html,
       };
     })(),
   }));
@@ -2258,11 +2273,19 @@ async function checkFitnessCenterReportConfirmation(browser) {
     fail("fitness roster should show Lee Da-bin only once", JSON.stringify(before.pageTitles));
   }
   if (before.kimLog.task !== "일요일 센터 청결 점검"
-    || before.kimLog.schedule.length !== 2
+    || before.kimLog.schedule.length !== 4
     || !before.kimLog.schedule[0].includes("출근보고, 종이컵 채우기, 여자탈의실 청소")
     || !before.kimLog.schedule[1].includes("세탁완료물 정리, 블로그 작성 및 업데이트")) {
     fail("representative fitness view should load Kim Young-chae's profile-user worklog", JSON.stringify(before));
   }
+  if (before.kimLog.reportTaskCount !== 5 || before.kimLog.reportSchedule.length !== 4 || before.kimLog.reportExportHeight <= 1754) {
+    fail("personal fitness report should include every recorded task and schedule row", JSON.stringify(before.kimLog));
+  }
+  ["일요일 센터 청결 점검", "블로그 게시물 점검", "회원 문의 응대 기록", "비품 창고 정리", "금일 센터 운영 업무보고 원문", "현장 실행기록 원문", "다음 근무자 인수인계 원문", "피트니스 특이사항 원문"].forEach((label) => {
+    if (!before.kimLog.reportHtml.includes(label)) {
+      fail("personal fitness report should preserve all worklog source content", `${label} missing`);
+    }
+  });
   ["pjhong0", "pjhong1", "pjhong9"].forEach((retiredEmailPrefix) => {
     if (before.centerRows.some((row) => row.includes(retiredEmailPrefix))) {
       fail("fitness center roster should hide retired Park manager accounts", `${retiredEmailPrefix} leaked into ${JSON.stringify(before.centerRows)}`);
@@ -2765,8 +2788,12 @@ async function checkSiteWeatherAndGeneralDailyReport(browser) {
     log.clockIn = "08:00";
     log.clockOut = "18:00";
     log.tasks[0] = { priority: "A", text: "월 마감 자료 검토", status: "완료", done: true };
+    log.tasks[1] = { priority: "B", text: "거래처 증빙 대조", status: "진행", done: false };
     log.schedule[0] = { time: "08:00", text: "재무 자료 취합", status: "완료" };
+    log.schedule[1] = { time: "09:00", text: "세금계산서 원장 대조", status: "진행" };
     log.report = "월 마감 자료 검토와 증빙 취합을 완료했습니다.";
+    log.record = "회계 원장 실행기록을 저장했습니다.";
+    log.memo = "명일 거래처 확인이 필요합니다.";
     const siteKey = getSiteWeatherKeyForEmployee(selectedEmployee);
     state.siteWeatherAddresses[siteKey] = "울산광역시 남구";
     state.weatherCache[getWeatherCacheKey(siteKey, todayKey)] = {
@@ -2799,7 +2826,7 @@ async function checkSiteWeatherAndGeneralDailyReport(browser) {
       fitnessReportPreserved: Boolean(document.querySelector("#fitnessReportMenuButton") && document.querySelector("#fitnessReportSheet")),
     };
   });
-  ["업무 진행 현황", "시간대별 실행 내역", "이슈·리스크·지원 요청", "명일 계획·인수인계", "Bangju Action Brief", "맑음", "월 마감 자료 검토"].forEach((label) => {
+  ["업무 진행 현황", "시간대별 실행 내역", "이슈·리스크·지원 요청", "명일 계획·인수인계", "Bangju Action Brief", "맑음", "월 마감 자료 검토", "거래처 증빙 대조", "재무 자료 취합", "세금계산서 원장 대조", "회계 원장 실행기록을 저장했습니다.", "명일 거래처 확인이 필요합니다."].forEach((label) => {
     if (!metrics.previewText.includes(label)) fail("general daily report should include corporate and Bangju report sections", `${label} missing`);
   });
   if (!metrics.sheetOpen || metrics.previewOverflow < 0) fail("general daily report sheet should open and remain scrollable", JSON.stringify(metrics));
