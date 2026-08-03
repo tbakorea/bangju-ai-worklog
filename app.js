@@ -861,7 +861,7 @@ function normalizeState() {
     missionsByEmployee: { ...(state.profile.manualSettings?.missionsByEmployee || {}) },
   };
   syncFitnessWritableEmployeeFromProfile();
-  if (isRepresentativeProfile() && (!getMappedProfileEmployeeId() || state.selectedEmployeeId === "beyond-fitness-manager")) {
+  if (isRepresentativeProfile() && state.selectedEmployeeId === "beyond-fitness-manager") {
     state.selectedEmployeeId = "profile-user";
   }
   if (state.profile.workHours === "12:00-19:00") state.profile.workHours = defaultProfile.workHours;
@@ -2915,7 +2915,131 @@ function getOverviewGroupEmployeeEntries(group) {
       if (!employeeId || seen.has(employeeId)) return false;
       seen.add(employeeId);
       return true;
-    });
+    })
+    .sort((a, b) => (
+      getOverviewRoleRank(a.employee) - getOverviewRoleRank(b.employee)
+      || getEmployeeAdminLabel(a.employee).localeCompare(getEmployeeAdminLabel(b.employee), "ko")
+    ));
+}
+
+function getOverviewRoleRank(employee = {}) {
+  const role = `${employee.role || ""} ${employee.position || ""} ${employee.primaryWork || ""}`.toLowerCase();
+  const ranks = [
+    [/대표|회장|사장|ceo|owner/, 10],
+    [/부사장|전무|상무|임원|이사/, 20],
+    [/본부장|총괄/, 30],
+    [/실장|센터장|소장/, 40],
+    [/부장/, 50],
+    [/차장/, 60],
+    [/과장/, 70],
+    [/팀장|매니저|manager/, 80],
+    [/대리/, 90],
+    [/주임|반장/, 100],
+    [/트레이너|trainer/, 110],
+    [/인포|데스크|front/, 120],
+  ];
+  return ranks.find(([pattern]) => pattern.test(role))?.[1] || 200;
+}
+
+function getOverviewScheduledWorkHours(employee = {}, dateKey = getActiveDateKey(), dayLog = {}) {
+  const override = normalizeWorkHoursText(dayLog?.workHoursOverride || "");
+  if (override) return override;
+  const weeklyHours = employee.weeklyWorkHours || employee.weekly_work_hours || {};
+  const dayKey = getWorkdayKey(dateKey);
+  if (Object.keys(weeklyHours).length && !Object.prototype.hasOwnProperty.call(weeklyHours, dayKey)) return "휴무";
+  return normalizeWorkHoursText(weeklyHours[dayKey] || employee.workHours || defaultProfile.workHours);
+}
+
+function getOverviewWorkStatus(employee = {}, dayLog = {}, dateKey = getActiveDateKey(), now = new Date()) {
+  const hours = getOverviewScheduledWorkHours(employee, dateKey, dayLog);
+  const attendance = String(dayLog.attendanceStatus || "");
+  const today = formatDateKey(now);
+  if (isOffWorkHours(hours) || /비번|휴무/.test(attendance)) return { key: "off", label: "비번", detail: "휴무" };
+  if (/결근|결석/.test(attendance)) return { key: "absent", label: "결근", detail: hours || "근무시간 미정" };
+  if (/외출/.test(attendance) && dayLog.clockIn && !dayLog.clockOut) {
+    return dateKey === today
+      ? { key: "away", label: "외출중", detail: hours || "근무시간 미정" }
+      : { key: "done", label: "근무", detail: hours || "근무시간 미정" };
+  }
+  if (dayLog.clockOut || /퇴근|조퇴/.test(attendance)) return { key: "done", label: /조퇴/.test(attendance) ? "조퇴" : "근무종료", detail: hours || "근무시간 미정" };
+  if (dayLog.clockIn || /출근/.test(attendance)) {
+    return dateKey === today
+      ? { key: "working", label: "근무중", detail: hours || "근무시간 미정" }
+      : { key: "done", label: "근무", detail: hours || "근무시간 미정" };
+  }
+  if (dateKey > today) return { key: "scheduled", label: "근무예정", detail: hours || "근무시간 미정" };
+  if (dateKey < today) return { key: "scheduled", label: "근무일", detail: hours || "근무시간 미정" };
+  const match = String(hours || "").match(/(\d{2}):(\d{2})\s*[-~]\s*(\d{2}):(\d{2})/);
+  if (match) {
+    const currentMinutes = now.getHours() * 60 + now.getMinutes();
+    const startMinutes = Number(match[1]) * 60 + Number(match[2]);
+    const endMinutes = Number(match[3]) * 60 + Number(match[4]);
+    if (currentMinutes < startMinutes) return { key: "scheduled", label: "근무예정", detail: hours };
+    if (currentMinutes <= endMinutes) return { key: "unconfirmed", label: "근무시간", detail: `${hours} · 출결 미기록` };
+    return { key: "unconfirmed", label: "출결 미기록", detail: hours };
+  }
+  return { key: "scheduled", label: "근무일", detail: hours || "근무시간 미정" };
+}
+
+function renderOverviewWorkStatus(status = {}) {
+  return `
+    <div class="overview-work-status" data-shift-status="${escapeAttr(status.key || "scheduled")}">
+      <b>${escapeHtml(status.label || "근무일")}</b>
+      <span>${escapeHtml(status.detail || "근무시간 미정")}</span>
+    </div>
+  `;
+}
+
+function getOverviewCommonCompanyKey(group = {}) {
+  return { bangju: "bangju", beyond: "beyond-company", fitness: "beyond-fitness" }[group.id] || "bangju";
+}
+
+function getOverviewCommonItems(group = {}, dateKey = getActiveDateKey()) {
+  const companyKey = getOverviewCommonCompanyKey(group);
+  const week = state.companyCommonWeeks?.[companyKey]?.[getActiveWeekKey(dateKey)] || {};
+  const sectionItems = ["departmentMonthly", "departmentWeekly"]
+    .flatMap((sectionId) => week.sections?.[sectionId] || []);
+  const dailyItems = week.days?.[dateKey] || [];
+  const seen = new Set();
+  return [...sectionItems, ...dailyItems]
+    .filter((item) => item?.text?.trim() && (!item.dateKey || item.dateKey === dateKey))
+    .filter((item) => {
+      const key = item.id || `${item.text}|${item.owner || ""}`;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    })
+    .sort((a, b) => Number(Boolean(a.done)) - Number(Boolean(b.done)) || String(a.text).localeCompare(String(b.text), "ko"));
+}
+
+function renderOverviewCommonSheet({ group, dateKey, dateLabel }) {
+  const items = getOverviewCommonItems(group, dateKey);
+  const done = items.filter((item) => item.done).length;
+  return `
+    <article class="worklog-overview-employee-sheet overview-common-sheet ${group.id === "fitness" ? "is-fitness-sheet" : ""}" data-overview-site="${escapeAttr(group.id)}">
+      <header class="overview-sheet-head overview-common-head">
+        <div>
+          <span>${escapeHtml(dateLabel)} · 맨 왼쪽 고정</span>
+          <h3>공통항목</h3>
+          <p>${escapeHtml(group.title)} · 완료 ${done}/${items.length}</p>
+        </div>
+        <button type="button" data-overview-common="${escapeAttr(group.id)}" data-overview-view="${escapeAttr(group.view)}">열기</button>
+      </header>
+      <section class="overview-common-summary">
+        <strong>사업장 공통 실행일정</strong>
+        <span>직원 개인 업무일지보다 먼저 확인합니다.</span>
+      </section>
+      <ul class="overview-common-list">
+        ${items.length ? items.slice(0, 12).map((item) => `
+          <li class="${item.done ? "is-done" : ""}">
+            <b>${item.done ? "완료" : item.eventStatus || "예정"}</b>
+            <span>${escapeHtml(item.text)}</span>
+            <em>${escapeHtml(item.owner || "담당 미정")}</em>
+          </li>
+        `).join("") : `<li class="is-empty"><span>등록된 공통항목이 없습니다.</span></li>`}
+      </ul>
+    </article>
+  `;
 }
 
 function getActiveWorklogOverviewScope() {
@@ -3231,8 +3355,9 @@ function renderOverviewFitnessEmployeeSheet({ group, employee, employeeId, index
     <article class="worklog-overview-employee-sheet projected-worklog-sheet is-fitness-sheet is-fitness-projection is-fitness-native-projection" data-overview-site="${escapeAttr(group.id)}">
       <header class="overview-sheet-head overview-fitness-native-head">
         <div>
-          <span>피트니스 ${index + 1}</span>
+          <span>${escapeHtml(employee.role || "직원")} · 직급순 ${index + 1}</span>
           <h3>${escapeHtml(getEmployeeAdminLabel(employee))}</h3>
+          ${renderOverviewWorkStatus(context.workStatus)}
           <p>${escapeHtml(context.attendance)}</p>
         </div>
         <button type="button" data-overview-employee="${escapeAttr(employeeId)}" data-overview-view="${escapeAttr(group.view)}">열기</button>
@@ -3290,8 +3415,9 @@ function renderOverviewEmployeeSheet({ group, employee, employeeId, index, dayLo
     <article class="worklog-overview-employee-sheet projected-worklog-sheet" data-overview-site="${escapeAttr(group.id)}">
       <header class="overview-sheet-head">
         <div>
-          <span>${escapeHtml(group.label)} ${index + 1}</span>
+          <span>${escapeHtml(employee.role || "직원")} · 직급순 ${index + 1}</span>
           <h3>${escapeHtml(getEmployeeAdminLabel(employee))}</h3>
+          ${renderOverviewWorkStatus(context.workStatus)}
           <p>${escapeHtml(context.attendance)}</p>
         </div>
         <button type="button" data-overview-employee="${escapeAttr(employeeId)}" data-overview-view="${escapeAttr(group.view)}">열기</button>
@@ -3326,6 +3452,7 @@ function getOverviewEmployeeSummaryModel(group, employeeId, employee, dateKey) {
   const done = tasks.filter((task) => task.done || task.status === "완료").length;
   const scheduleCount = (dayLog.schedule || []).filter((item) => getScheduleEntryText(item)).length;
   const attendance = formatAttendanceSummary(dayLog) || dayLog.attendanceStatus || "출결 미기록";
+  const workStatus = getOverviewWorkStatus(employee, dayLog, dateKey);
   const reportText = getOverviewReportText(dayLog);
   const ops = { ...createFitnessOps(), ...(dayLog.fitnessOps || {}) };
   const paidPt = numberValue(ops.ptRegular) + numberValue(ops.ptOther);
@@ -3344,6 +3471,7 @@ function getOverviewEmployeeSummaryModel(group, employeeId, employee, dateKey) {
     done,
     scheduleCount,
     attendance,
+    workStatus,
     reportText,
     paidPt,
     signalCount,
@@ -3479,10 +3607,25 @@ function setupWorklogOverviewInteractions(grid, dateKey) {
       switchView("fitness-log");
     });
   });
+  grid.querySelectorAll("[data-overview-common]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const group = getWorklogOverviewGroups().find((item) => item.id === button.dataset.overviewCommon);
+      const firstEmployeeId = getOverviewGroupEmployeeEntries(group || {})[0]?.employeeId;
+      if (firstEmployeeId) state.selectedEmployeeId = firstEmployeeId;
+      state.selectedDateKey = dateKey;
+      todayPageMode = "common";
+      saveState({ fastSave: true });
+      switchView(button.dataset.overviewView || group?.view || "bangju-log");
+      setTodayPageMode("common");
+    });
+  });
   grid.querySelectorAll("[data-overview-employee]").forEach((button) => {
     button.addEventListener("click", () => {
-      const employeeId = button.dataset.overviewEmployee;
+      const requestedEmployeeId = button.dataset.overviewEmployee;
       const targetView = button.dataset.overviewView || "bangju-log";
+      const employee = findEmployeeRecordById(requestedEmployeeId);
+      const employeeId = getEmployeeWorklogId(employee || { id: requestedEmployeeId }) || requestedEmployeeId;
+      state.selectedDateKey = dateKey;
       state.selectedEmployeeId = employeeId;
       if (targetView === "fitness-log") {
         const targetPageIndex = getFitnessLogPages().findIndex((page) => page.type === "employee" && page.id === employeeId);
@@ -3556,6 +3699,7 @@ function renderWorklogOverview() {
     return;
   }
   grid.innerHTML = groups.map((group) => {
+    const commonCard = renderOverviewCommonSheet({ group, dateKey, dateLabel });
     const centerCard = group.id === "fitness" ? renderOverviewFitnessCenterSheet({ group, dateKey, dateLabel }) : "";
     const employeeCards = getOverviewGroupEmployeeEntries(group).map(({ employeeId, employee }, index) => {
       const context = getOverviewEmployeeSummaryModel(group, employeeId, employee, dateKey);
@@ -3568,7 +3712,7 @@ function renderWorklogOverview() {
           <h3>${escapeHtml(group.title)}</h3>
           <p>${escapeHtml(getOverviewSiteSummary(group, dateKey))}</p>
         </header>
-        <div class="overview-site-carousel">${centerCard}${employeeCards}</div>
+        <div class="overview-site-carousel">${commonCard}${centerCard}${employeeCards}</div>
       </section>
     `;
   }).join("");
@@ -8087,6 +8231,7 @@ function applyFitnessLogPermissionState() {
 
 function applyCurrentWorklogPermissionState(viewName = activeView) {
   updateGlobalAttendanceVisibility(viewName);
+  updateWorklogOverviewExitButton(viewName);
   const generalView = document.getElementById("view-today");
   const isGeneralWorklog = ["bangju-log", "beyond-log", "today"].includes(viewName);
   if (generalView) {
@@ -8115,6 +8260,13 @@ function applyCurrentWorklogPermissionState(viewName = activeView) {
     });
   }
   if (viewName === "fitness-log") applyFitnessLogPermissionState();
+}
+
+function updateWorklogOverviewExitButton(viewName = activeView) {
+  const button = document.getElementById("returnToWorklogOverviewButton");
+  if (!button) return;
+  const isEmployeeWorklog = ["bangju-log", "beyond-log", "today"].includes(viewName);
+  button.hidden = !(isEmployeeWorklog && canAccessWorklogOverview());
 }
 
 function renderFitnessCenterDaily() {
@@ -12734,6 +12886,7 @@ function approvalRowToStaffEmployee(row = {}) {
     hourlyWage: profile.hourlyWage || "",
     dailyWage: profile.dailyWage || "",
     workHours: profile.workHours || base?.workHours || defaultProfile.workHours,
+    weeklyWorkHours: profile.weeklyWorkHours || base?.weeklyWorkHours || {},
     approvalStatus: profile.approvalStatus || row.approval_status || "approved",
     assignedMission: row.assigned_mission || profile.assignedMission || "",
     assignedMissionVisible: row.assigned_mission_visible !== false,
@@ -16408,6 +16561,10 @@ document.getElementById("selectedDateButton").onclick = (event) => {
 };
 document.getElementById("nextDateButton").onclick = () => moveSelectedDate(1);
 document.getElementById("todayJumpButton").onclick = () => setSelectedDateKey(todayKey);
+document.getElementById("returnToWorklogOverviewButton")?.addEventListener("click", () => {
+  resetMobileDayFocusToSplit({ blur: true });
+  switchView("worklog-overview");
+});
 document.getElementById("calendarPrevYear").onclick = () => shiftCalendarYear(-1);
 document.getElementById("calendarNextYear").onclick = () => shiftCalendarYear(1);
 document.getElementById("calendarMonthTitle").onclick = () => {

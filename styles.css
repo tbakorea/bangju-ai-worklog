@@ -16323,6 +16323,148 @@ body[data-view-mode="ceo"][data-active-view="worklog-overview"]:not(.physical-ph
   white-space: nowrap;
 }
 
+.overview-work-status {
+  display: flex;
+  gap: 5px;
+  align-items: center;
+  min-width: 0;
+  margin: 3px 0;
+}
+
+.overview-work-status b {
+  flex: 0 0 auto;
+  min-width: 48px;
+  border-radius: 999px;
+  background: rgba(15, 83, 64, 0.1);
+  color: var(--fitness-green);
+  padding: 3px 7px;
+  font-size: 10px;
+  font-weight: 950;
+  line-height: 1;
+  text-align: center;
+}
+
+.overview-work-status span {
+  overflow: hidden;
+  min-width: 0;
+  color: rgba(38, 50, 56, 0.68);
+  font-size: 10px;
+  font-weight: 850;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.overview-work-status[data-shift-status="working"] b {
+  background: #0f5f45;
+  color: #fffefa;
+  box-shadow: 0 0 0 3px rgba(15, 95, 69, 0.1);
+}
+
+.overview-work-status[data-shift-status="away"] b,
+.overview-work-status[data-shift-status="scheduled"] b {
+  background: rgba(36, 84, 255, 0.1);
+  color: #2149d8;
+}
+
+.overview-work-status[data-shift-status="off"] b,
+.overview-work-status[data-shift-status="done"] b {
+  background: rgba(77, 86, 98, 0.1);
+  color: #58606c;
+}
+
+.overview-work-status[data-shift-status="absent"] b,
+.overview-work-status[data-shift-status="unconfirmed"] b {
+  background: rgba(216, 56, 47, 0.11);
+  color: #b92f28;
+}
+
+.overview-common-sheet {
+  grid-template-rows: auto auto minmax(0, 1fr);
+  border-color: rgba(15, 59, 46, 0.24);
+  background:
+    linear-gradient(180deg, rgba(231, 241, 232, 0.96), rgba(255, 254, 250, 0.86));
+  box-shadow:
+    inset 6px 0 0 rgba(15, 83, 64, 0.88),
+    0 12px 26px rgba(15, 59, 46, 0.08);
+}
+
+.overview-common-head h3 {
+  color: var(--fitness-green);
+}
+
+.overview-common-summary {
+  display: grid;
+  gap: 2px;
+  border: 1px solid rgba(15, 83, 64, 0.12);
+  border-radius: 12px;
+  background: rgba(255, 254, 250, 0.68);
+  padding: 9px;
+}
+
+.overview-common-summary strong {
+  color: var(--fitness-green);
+  font-size: 13px;
+  font-weight: 950;
+}
+
+.overview-common-summary span {
+  color: rgba(38, 50, 56, 0.65);
+  font-size: 10px;
+  font-weight: 820;
+}
+
+.overview-common-list {
+  display: grid;
+  align-content: start;
+  gap: 5px;
+  overflow: hidden;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.overview-common-list li {
+  display: grid;
+  grid-template-columns: 38px minmax(0, 1fr) auto;
+  gap: 6px;
+  align-items: center;
+  min-height: 34px;
+  border-bottom: 1px solid rgba(15, 59, 46, 0.1);
+  padding: 4px 2px;
+}
+
+.overview-common-list li > b {
+  color: var(--fitness-green);
+  font-size: 10px;
+  font-weight: 950;
+}
+
+.overview-common-list li > span {
+  overflow: hidden;
+  color: var(--ink);
+  font-size: 12px;
+  font-weight: 850;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.overview-common-list li > em {
+  color: rgba(38, 50, 56, 0.58);
+  font-size: 9px;
+  font-style: normal;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.overview-common-list li.is-done > span {
+  color: rgba(38, 50, 56, 0.48);
+  text-decoration: line-through;
+}
+
+.overview-common-list li.is-empty {
+  grid-template-columns: minmax(0, 1fr);
+}
+
 .overview-sheet-head button {
   min-height: 34px;
   border: 1px solid rgba(15, 59, 46, 0.18);
@@ -21412,6 +21554,49 @@ body[data-view-mode="ceo"] #view-today .worklog-main.is-focus-schedule .worklog-
   width: 100% !important;
   max-width: 100% !important;
   overflow-x: hidden !important;
+}
+
+#view-today .worklog-main.is-focus-tasks .day-task-panel,
+#view-today .worklog-main.is-focus-schedule .day-schedule-panel,
+body[data-layout-mode="phone"] #view-today .worklog-main.is-focus-tasks .day-task-panel,
+body[data-layout-mode="phone"] #view-today .worklog-main.is-focus-schedule .day-schedule-panel,
+body.physical-phone-device #view-today .worklog-main.is-focus-tasks .day-task-panel,
+body.physical-phone-device #view-today .worklog-main.is-focus-schedule .day-schedule-panel,
+body[data-view-mode="ceo"] #view-today .worklog-main.is-focus-tasks .day-task-panel,
+body[data-view-mode="ceo"] #view-today .worklog-main.is-focus-schedule .day-schedule-panel {
+  max-height: none !important;
+  overflow: visible !important;
+}
+
+.representative-worklog-toolbar {
+  display: flex;
+  justify-content: flex-end;
+  min-height: 0;
+}
+
+.representative-worklog-toolbar:has(.worklog-overview-exit-button:not([hidden])) {
+  margin: 0 0 8px;
+}
+
+.worklog-overview-exit-button {
+  min-width: 0;
+  min-height: 38px;
+  border: 1px solid rgba(15, 59, 46, 0.24);
+  border-radius: 999px;
+  background: var(--fitness-green);
+  color: var(--nordic-sheet);
+  padding: 6px 12px;
+  font-size: 12px;
+  font-weight: 950;
+  white-space: nowrap;
+}
+
+body[data-layout-mode="phone"] #view-today .worklog-overview-exit-button,
+body.physical-phone-device #view-today .worklog-overview-exit-button {
+  width: 100%;
+  min-height: 34px;
+  padding-inline: 8px;
+  font-size: 11px;
 }
 
 #view-today .worklog-main.is-focus-tasks .task-row,

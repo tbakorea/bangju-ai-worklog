@@ -177,6 +177,25 @@ async function checkPhoneWorklog(browser) {
   const panelTapFocus = await page.evaluate(() => document.querySelector("#worklogMain")?.classList.contains("is-focus-tasks"));
   if (!panelTapFocus) fail("phone worklog task expand button should open focus mode");
 
+  const taskFocusScroll = await page.evaluate(() => {
+    const panel = document.querySelector(".day-task-panel");
+    const addButton = document.querySelector("#worklogTaskBoard .worklog-add-row");
+    const style = panel ? getComputedStyle(panel) : null;
+    return {
+      maxHeight: style?.maxHeight || "",
+      overflowY: style?.overflowY || "",
+      panelClientHeight: panel?.clientHeight || 0,
+      panelScrollHeight: panel?.scrollHeight || 0,
+      addButtonVisible: Boolean(addButton && getComputedStyle(addButton).display !== "none"),
+    };
+  });
+  if (taskFocusScroll.maxHeight !== "none"
+    || taskFocusScroll.overflowY !== "visible"
+    || taskFocusScroll.panelScrollHeight > taskFocusScroll.panelClientHeight + 2
+    || !taskFocusScroll.addButtonVisible) {
+    fail("phone worklog task focus should expose the full panel and add button", JSON.stringify(taskFocusScroll));
+  }
+
   const collapseIcon = await page.evaluate(() => {
     const button = document.querySelector(".day-task-panel [data-mobile-focus-close]");
     return {
@@ -478,6 +497,7 @@ async function checkOverviewCommandBoard(browser) {
       org: row.state.profile.org,
       role: row.state.profile.role,
       workplace: row.state.profile.workplace,
+      weekly_work_hours: row.state.profile.name === "추소영" ? { mon: "09:00-18:00" } : {},
       approval_status: "approved"
     }));
     authState.approvalRowsLoaded = true;
@@ -498,6 +518,75 @@ async function checkOverviewCommandBoard(browser) {
   const allStaffSyncMetrics = JSON.parse(allStaffSync);
   if (allStaffSyncMetrics.failures.length) {
     fail("representative overview should synchronize every assigned employee through canonical worklog IDs", allStaffSync);
+  }
+  const overviewDetailOpen = await page.evaluate(() => window.eval(`(() => {
+    state.companyCommonWeeks ||= {};
+    state.companyCommonWeeks["beyond-company"] ||= {};
+    state.companyCommonWeeks["beyond-company"][getActiveWeekKey(state.selectedDateKey)] = {
+      weekKey: getActiveWeekKey(state.selectedDateKey),
+      sections: {
+        departmentMonthly: [],
+        departmentWeekly: [{ id: "common-overview-test", text: "전 사업장 공통 보고", owner: "김성민", eventStatus: "확정", done: false }],
+        personalMonthly: [],
+        personalWeekly: []
+      },
+      days: {}
+    };
+    state.worklogOverviewScope = "beyond";
+    renderWorklogOverview();
+    const carousel = document.querySelector('.worklog-overview-site[data-overview-site="beyond"] .overview-site-carousel');
+    const employeeOrder = [...(carousel?.querySelectorAll("[data-overview-employee]") || [])]
+      .map((button) => button.dataset.overviewEmployee);
+    const statusLabels = [...(carousel?.querySelectorAll(".overview-work-status") || [])]
+      .map((item) => ({ key: item.dataset.shiftStatus, text: item.textContent.replace(/\\s+/g, " ").trim() }));
+    const commonFirst = Boolean(carousel?.firstElementChild?.classList.contains("overview-common-sheet"));
+    const commonText = carousel?.firstElementChild?.textContent?.replace(/\\s+/g, " ").trim() || "";
+    const liveStatus = getOverviewWorkStatus(
+      { role: "실장", workHours: "09:00-18:00" },
+      { clockIn: "09:00", attendanceStatus: "출근" },
+      todayKey,
+      new Date(todayKey + "T10:00:00")
+    );
+    const openButton = document.querySelector('[data-overview-employee="beyond-company-leader"]');
+    openButton?.click();
+    const taskText = [...document.querySelectorAll("#worklogTaskBoard .task-text-input")]
+      .map((input) => input.value)
+      .find((value) => value.includes("전직원동기화-beyond-company-leader")) || "";
+    const scheduleText = [...document.querySelectorAll("#worklogAppointmentList .schedule-text-input")]
+      .map((input) => input.value)
+      .find((value) => value.includes("시간표동기화-beyond-company-leader")) || "";
+    const exitButton = document.getElementById("returnToWorklogOverviewButton");
+    const result = {
+      activeView: document.body.dataset.activeView || "",
+      selectedEmployeeId: state.selectedEmployeeId,
+      taskText,
+      scheduleText,
+      exitVisible: Boolean(exitButton && !exitButton.hidden),
+      commonFirst,
+      commonText,
+      employeeOrder,
+      statusLabels,
+      liveStatus,
+    };
+    exitButton?.click();
+    result.returnedView = document.body.dataset.activeView || "";
+    return JSON.stringify(result);
+  })()`));
+  const overviewDetailMetrics = JSON.parse(overviewDetailOpen);
+  if (overviewDetailMetrics.activeView !== "beyond-log"
+    || overviewDetailMetrics.selectedEmployeeId !== "beyond-company-leader"
+    || !overviewDetailMetrics.taskText
+    || !overviewDetailMetrics.scheduleText
+    || !overviewDetailMetrics.exitVisible
+    || !overviewDetailMetrics.commonFirst
+    || !overviewDetailMetrics.commonText.includes("전 사업장 공통 보고")
+    || overviewDetailMetrics.employeeOrder[0] !== "beyond-company-leader"
+    || overviewDetailMetrics.employeeOrder[1] !== "beyond-shared-manager"
+    || !overviewDetailMetrics.statusLabels.some((item) => item.key === "off" && item.text.includes("비번"))
+    || overviewDetailMetrics.liveStatus?.key !== "working"
+    || overviewDetailMetrics.liveStatus?.label !== "근무중"
+    || overviewDetailMetrics.returnedView !== "worklog-overview") {
+    fail("representative employee detail should preserve the overview worklog and provide an exit", overviewDetailOpen);
   }
   const staleProfileSync = await page.evaluate(() => window.eval(`(() => {
     authState.approvalRows = [
