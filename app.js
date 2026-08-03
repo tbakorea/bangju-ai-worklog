@@ -741,6 +741,7 @@ const dailyEditingState = {
 };
 const weatherRequestInFlight = new Set();
 const weatherBatchAttempted = new Set();
+const siteWeatherAddressTimers = new Map();
 
 function loadState() {
   try {
@@ -1239,6 +1240,90 @@ function renderWeatherWidgets() {
   renderWeatherWidget("worklog", getSelectedEmployee());
   renderWeatherWidget("fitness", getActiveWeatherEmployee("fitness-log"));
   ensureWeatherRecordsForConfiguredSites(getActiveDateKey());
+  renderRepresentativeSiteWeatherBoards();
+}
+
+function getWeatherConditionIcon(record = {}) {
+  const code = Number(record.weatherCode);
+  if ([0, 1].includes(code)) return "☀";
+  if ([2, 3].includes(code)) return "☁";
+  if ([45, 48].includes(code)) return "≋";
+  if ([51, 53, 55, 56, 57, 61, 63, 65, 66, 67, 80, 81, 82].includes(code)) return "☂";
+  if ([71, 73, 75, 77, 85, 86].includes(code)) return "❄";
+  if ([95, 96, 99].includes(code)) return "ϟ";
+  return record.condition ? "◉" : "–";
+}
+
+function getSiteWeatherBoardRows(dateKey = getActiveDateKey()) {
+  return siteWeatherAddressTargets.map((target) => {
+    const address = getSiteWeatherAddress(target.key);
+    const record = getWeatherRecordForSite(target.key, dateKey);
+    const requestKey = getWeatherCacheKey(target.key, dateKey);
+    return {
+      ...target,
+      address,
+      record,
+      loading: Boolean(address && weatherRequestInFlight.has(requestKey)),
+    };
+  });
+}
+
+function renderSiteWeatherBoard(boardId, dateKey = getActiveDateKey()) {
+  const board = document.getElementById(boardId);
+  if (!board) return;
+  const allowed = canAccessWorklogOverview() || canAccessControlTower() || isRepresentativeProfile();
+  board.hidden = !allowed;
+  if (!allowed) return;
+  const rows = getSiteWeatherBoardRows(dateKey);
+  const recordedCount = rows.filter((row) => row.record).length;
+  const configuredCount = rows.filter((row) => row.address).length;
+  board.innerHTML = `
+    <header>
+      <div>
+        <span>Site Weather · ${escapeHtml(formatShortDate(dateKey))}</span>
+        <h3>사업장별 날씨</h3>
+        <p>대표 앱설정의 사업장 주소를 기준으로 기록합니다.</p>
+      </div>
+      <div>
+        <em>${recordedCount}/${configuredCount || 0} 기록</em>
+        <button type="button" data-site-weather-refresh-all ${configuredCount ? "" : "disabled"}>전체 새로고침</button>
+      </div>
+    </header>
+    <div class="site-weather-board-grid">
+      ${rows.map((row) => `
+        <article class="${row.record ? "has-weather" : row.address ? "is-pending" : "is-missing"}">
+          <div>
+            <span>${escapeHtml(row.label)}</span>
+            <i aria-hidden="true">${escapeHtml(getWeatherConditionIcon(row.record || {}))}</i>
+          </div>
+          <strong>${escapeHtml(row.loading ? "날씨 확인 중" : formatWeatherSummary(row.record, { compact: true }))}</strong>
+          <p title="${escapeAttr(row.address || "주소 미입력")}">${escapeHtml(row.record?.location || row.address || "앱설정에서 주소를 입력해주세요.")}</p>
+          <button type="button" data-site-weather-refresh="${escapeAttr(row.key)}" ${row.address && !row.loading ? "" : "disabled"}>${row.record ? "새로고침" : row.address ? "불러오기" : "주소 필요"}</button>
+        </article>
+      `).join("")}
+    </div>
+  `;
+  board.querySelector("[data-site-weather-refresh-all]")?.addEventListener("click", () => {
+    rows.filter((row) => row.address).forEach((row) => {
+      weatherBatchAttempted.delete(getWeatherCacheKey(row.key, dateKey));
+      requestWeatherForSite(row.key, row.address, dateKey, { silent: true, scope: "" });
+    });
+    renderRepresentativeSiteWeatherBoards();
+  });
+  board.querySelectorAll("[data-site-weather-refresh]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const siteKey = button.dataset.siteWeatherRefresh || "";
+      const address = getSiteWeatherAddress(siteKey);
+      weatherBatchAttempted.delete(getWeatherCacheKey(siteKey, dateKey));
+      requestWeatherForSite(siteKey, address, dateKey, { silent: false, scope: "" });
+      renderRepresentativeSiteWeatherBoards();
+    });
+  });
+}
+
+function renderRepresentativeSiteWeatherBoards(dateKey = getActiveDateKey()) {
+  renderSiteWeatherBoard("overviewSiteWeatherBoard", dateKey);
+  renderSiteWeatherBoard("controlSiteWeatherBoard", dateKey);
 }
 
 function renderWeatherWidget(scope, employee) {
@@ -1342,6 +1427,11 @@ async function requestWeatherForSite(siteKey, address, dateKey = getActiveDateKe
     const weatherResponse = await fetch(weatherUrl);
     if (!weatherResponse.ok) throw new Error("날씨 정보를 불러오지 못했습니다.");
     const weather = await weatherResponse.json();
+    if (getSiteWeatherAddress(siteKey) !== trimmedAddress) {
+      weatherBatchAttempted.delete(requestKey);
+      window.setTimeout(() => renderWeatherWidgets(), 0);
+      return null;
+    }
     const current = weather?.current || {};
     const daily = weather?.daily || {};
     const weatherCode = current.weather_code ?? daily.weather_code?.[0];
@@ -3786,6 +3876,7 @@ function renderWorklogOverview() {
     `;
     return;
   }
+  renderSiteWeatherBoard("overviewSiteWeatherBoard", getActiveDateKey());
   if (authState.user && hasApprovalAuthority() && !authState.approvalRowsLoaded && !authState.approvalRowsLoading) {
     authState.approvalRowsLoading = true;
     refreshStaffApprovalRows()
@@ -3839,6 +3930,7 @@ function renderControlTower() {
   body.hidden = !allowed;
   if (accessLabel) accessLabel.textContent = allowed ? "전 사업장 운영 현황 · 모니터링 중" : "대표·지정 관리자 전용";
   if (!allowed) return;
+  renderSiteWeatherBoard("controlSiteWeatherBoard", getActiveDateKey());
 
   const assetRows = getAssetRows();
   const staffRows = getControlStaffRows();
@@ -17467,7 +17559,9 @@ document.getElementById("siteAddressList")?.addEventListener("input", (event) =>
   if (!input) return;
   const key = input.dataset.siteWeatherAddress || "";
   state.siteWeatherAddresses ||= {};
-  state.siteWeatherAddresses[key] = input.value.trim();
+  const nextAddress = input.value.trim();
+  if (state.siteWeatherAddresses[key] === nextAddress) return;
+  state.siteWeatherAddresses[key] = nextAddress;
   const cacheSuffix = `::${key}`;
   Object.keys(state.weatherCache || {}).forEach((cacheKey) => {
     if (cacheKey.endsWith(cacheSuffix)) delete state.weatherCache[cacheKey];
@@ -17477,7 +17571,11 @@ document.getElementById("siteAddressList")?.addEventListener("input", (event) =>
     if (requestKey.endsWith(cacheSuffix)) weatherBatchAttempted.delete(requestKey);
   });
   saveState({ fastSave: true });
-  renderWeatherWidgets();
+  window.clearTimeout(siteWeatherAddressTimers.get(key));
+  siteWeatherAddressTimers.set(key, window.setTimeout(() => {
+    siteWeatherAddressTimers.delete(key);
+    renderWeatherWidgets();
+  }, 700));
 });
 document.getElementById("worklogWeatherRefreshButton")?.addEventListener("click", () => {
   refreshWeatherForScope("worklog");

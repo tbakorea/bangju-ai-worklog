@@ -322,7 +322,21 @@ async function checkOverviewCommandBoard(browser) {
     document.body.dataset.layoutMode = "phone";
     document.body.dataset.viewMode = "ceo";
     window.setSelectedDateKey?.("2026-08-02");
-    window.switchView?.("worklog-overview");
+    window.eval(`
+      siteWeatherAddressTargets.forEach((target, index) => {
+        state.siteWeatherAddresses[target.key] = "울산광역시 대표 설정 " + (index + 1);
+        state.weatherCache[getWeatherCacheKey(target.key, "2026-08-02")] = {
+          siteKey: target.key,
+          dateKey: "2026-08-02",
+          location: "울산 " + target.label,
+          condition: "맑음",
+          weatherCode: 0,
+          temperature: 25 + index,
+          humidity: 58
+        };
+      });
+      switchView("worklog-overview");
+    `);
   });
   await page.waitForTimeout(350);
 
@@ -347,6 +361,9 @@ async function checkOverviewCommandBoard(browser) {
       headerHeroGap: headerRect && heroRect ? heroRect.top - headerRect.bottom : 0,
       heroHeight: heroRect?.height || 0,
       scopeCount: document.querySelectorAll("[data-overview-scope]").length,
+      weatherCount: document.querySelectorAll("#overviewSiteWeatherBoard .site-weather-board-grid article").length,
+      weatherRecordedCount: document.querySelectorAll("#overviewSiteWeatherBoard .site-weather-board-grid article.has-weather").length,
+      weatherText: document.querySelector("#overviewSiteWeatherBoard")?.textContent?.replace(/\s+/g, " ").trim() || "",
       activeScope: document.querySelector("[data-overview-scope].is-active")?.dataset.overviewScope || "",
       allCommandCount: document.querySelectorAll(".overview-all-command").length,
       businessBoardCount: document.querySelectorAll(".overview-all-business-board").length,
@@ -368,6 +385,9 @@ async function checkOverviewCommandBoard(browser) {
   if (metrics.headerHeroGap < 10) fail("overview header overlaps command board", `${metrics.headerHeroGap}px`);
   if (metrics.heroHeight > 190) fail("overview hero is too tall on phone mode", `${metrics.heroHeight}px`);
   if (metrics.scopeCount < 4 || metrics.activeScope !== "all") fail("overview scope selector is not initialized", JSON.stringify({ count: metrics.scopeCount, active: metrics.activeScope }));
+  if (metrics.weatherCount !== 7 || metrics.weatherRecordedCount !== 7 || !metrics.weatherText.includes("사업장별 날씨") || !metrics.weatherText.includes("비욘드 피트니스")) {
+    fail("representative overview should show all configured site weather records", JSON.stringify(metrics));
+  }
   if (!metrics.allCommandCount) fail("overview all-scope command board is missing");
   if (!metrics.businessBoardCount || metrics.businessSnapshotCount < 3) fail("overview all-scope business snapshots are missing", JSON.stringify(metrics));
   if (metrics.improvementCount < 10) fail("overview should show today's 10 improvements", String(metrics.improvementCount));
@@ -690,7 +710,21 @@ async function checkControlTower(browser) {
     document.body.classList.remove("physical-phone-device");
     document.body.dataset.layoutMode = "classic";
     document.body.dataset.viewMode = "classic";
-    window.switchView?.("control");
+    window.eval(`
+      siteWeatherAddressTargets.forEach((target, index) => {
+        state.siteWeatherAddresses[target.key] = "울산광역시 사업장 " + (index + 1);
+        state.weatherCache[getWeatherCacheKey(target.key, todayKey)] = {
+          siteKey: target.key,
+          dateKey: todayKey,
+          location: "울산 " + target.label,
+          condition: index % 2 ? "흐림" : "맑음",
+          weatherCode: index % 2 ? 3 : 0,
+          temperature: 24 + index,
+          humidity: 55 + index
+        };
+      });
+      switchView("control");
+    `);
   });
   await page.waitForTimeout(350);
 
@@ -705,6 +739,9 @@ async function checkControlTower(browser) {
       kpiCount: document.querySelectorAll("#controlKpiGrid article").length,
       briefingCount: document.querySelectorAll("#controlBriefingList article").length,
       siteCount: document.querySelectorAll("#controlSiteGrid article").length,
+      weatherCount: document.querySelectorAll("#controlSiteWeatherBoard .site-weather-board-grid article").length,
+      weatherRecordedCount: document.querySelectorAll("#controlSiteWeatherBoard .site-weather-board-grid article.has-weather").length,
+      weatherText: document.querySelector("#controlSiteWeatherBoard")?.textContent?.replace(/\s+/g, " ").trim() || "",
       jumpCount: document.querySelectorAll("[data-control-jump]").length,
       titleText: document.querySelector(".control-tower-hero h2")?.textContent?.trim() || "",
     };
@@ -717,6 +754,9 @@ async function checkControlTower(browser) {
   if (metrics.kpiCount !== 6) fail("control tower should focus on six compact KPIs", String(metrics.kpiCount));
   if (metrics.briefingCount !== 3) fail("control tower briefing should show three signals", String(metrics.briefingCount));
   if (metrics.siteCount < 3) fail("control tower should show business site signals", String(metrics.siteCount));
+  if (metrics.weatherCount !== 7 || metrics.weatherRecordedCount !== 7 || !metrics.weatherText.includes("비욘드 피트니스") || !metrics.weatherText.includes("맑음")) {
+    fail("representative control tower should show weather for every configured site address", JSON.stringify(metrics));
+  }
   if (metrics.jumpCount !== 4) fail("control tower action shortcuts missing", String(metrics.jumpCount));
   if (errors.length) fail("control tower page errors", errors.join(" | "));
   await page.close();
