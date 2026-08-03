@@ -1,0 +1,48 @@
+name: Apply Supabase migrations
+
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "dry-run은 확인만, apply는 운영 DB에 적용합니다."
+        required: true
+        default: dry-run
+        type: choice
+        options:
+          - dry-run
+          - apply
+
+permissions:
+  contents: read
+
+concurrency:
+  group: bangju-worklog-production-database
+  cancel-in-progress: false
+
+jobs:
+  migrate:
+    runs-on: ubuntu-latest
+    environment: production
+    env:
+      SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: supabase/setup-cli@v1
+        with:
+          version: latest
+
+      - name: Check database secret
+        shell: bash
+        run: |
+          if [[ -z "$SUPABASE_DB_URL" ]]; then
+            echo "GitHub production environment에 SUPABASE_DB_URL secret을 등록해주세요."
+            exit 1
+          fi
+
+      - name: Preview migrations
+        run: supabase db push --db-url "$SUPABASE_DB_URL" --include-all --dry-run
+
+      - name: Apply migrations
+        if: ${{ inputs.mode == 'apply' }}
+        run: supabase db push --db-url "$SUPABASE_DB_URL" --include-all --yes
