@@ -1939,9 +1939,11 @@ body[data-device-mode="narrow"] .os-mode-switch span[data-device-mode="narrow"] 
 
 .task-row.done .task-text-input,
 .task-row.status-complete .task-text-input,
+.task-row.status-delegate .task-text-input,
 .task-row.status-postpone .task-text-input,
 .task-row.status-cancel .task-text-input,
 .task-row.marker-check .task-text-input,
+.task-row.marker-delegate .task-text-input,
 .task-row.marker-postpone .task-text-input,
 .task-row.marker-cancel .task-text-input {
   color: var(--muted);
@@ -1952,10 +1954,12 @@ body[data-device-mode="narrow"] .os-mode-switch span[data-device-mode="narrow"] 
 }
 
 .task-row.status-complete .task-text-cell::after,
+.task-row.status-delegate .task-text-cell::after,
 .task-row.status-postpone .task-text-cell::after,
 .task-row.status-cancel .task-text-cell::after,
 .task-row.done .task-text-cell::after,
 .task-row.marker-check .task-text-cell::after,
+.task-row.marker-delegate .task-text-cell::after,
 .task-row.marker-postpone .task-text-cell::after,
 .task-row.marker-cancel .task-text-cell::after {
   content: "";

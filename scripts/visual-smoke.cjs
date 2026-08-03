@@ -1161,6 +1161,77 @@ async function checkApprovedEmployeeWorklogEditMatrix(browser) {
   }
 }
 
+async function checkPriorityCarryoverAndDateRules(browser) {
+  const { page, errors } = await openPage(browser, { width: 390, height: 844 });
+  await seedApprovedBangjuEmployee(page);
+  const metrics = await page.evaluate(() => window.eval(`(() => {
+    const employee = findEmployeeRecordById("bangju-finance-manager");
+    const sourceDateKey = "2026-08-02";
+    const activeDateKey = "2026-08-03";
+    const sourceLog = createEmployeeLog(employee, state.profile, sourceDateKey);
+    sourceLog.tasks = [
+      { id: "open-task", priority: "A", text: "미처리 이월 업무", status: "미완료", done: false },
+      { id: "progress-task", priority: "B", text: "진행중 이월 업무", status: "진행중", done: false },
+      { id: "done-task", priority: "A", text: "완료 업무", status: "완료", done: true },
+      { id: "cancel-task", priority: "B", text: "취소 업무", status: "취소", done: false },
+      { id: "delegate-task", priority: "B", text: "위임 업무", status: "위임", done: false, delegate: "담당자" },
+      { id: "postpone-task", priority: "C", text: "연기 업무", status: "연기", done: false, postponeDate: "2026-08-10" }
+    ];
+    const currentLog = createEmployeeLog(employee, state.profile, activeDateKey);
+    state.selectedDateKey = activeDateKey;
+    state.selectedEmployeeId = "bangju-finance-manager";
+    state.employeeLogs = {
+      [sourceDateKey]: { "bangju-finance-manager": sourceLog },
+      [activeDateKey]: { "bangju-finance-manager": currentLog }
+    };
+    const refs = getWorklogTaskRefs(currentLog);
+    const carryovers = refs.filter((ref) => ref.isCarryover);
+    const openRef = carryovers.find((ref) => ref.task.id === "open-task");
+    const materialized = materializeWorklogCarryover(openRef, currentLog);
+    cycleWorklogTaskStatus(materialized.task);
+    const delegatedRow = renderWorklogTaskRow({
+      task: sourceLog.tasks.find((task) => task.id === "delegate-task"),
+      index: 4,
+      log: sourceLog,
+      sourceDateKey,
+      isCarryover: false,
+      isPostponedFromOtherDate: false
+    }, sourceLog);
+    document.body.appendChild(delegatedRow);
+    const delegatedDecoration = getComputedStyle(delegatedRow.querySelector(".task-text-input")).textDecorationLine;
+    delegatedRow.remove();
+    return JSON.stringify({
+      carryoverIds: carryovers.map((ref) => ref.task.id),
+      sourceStatus: sourceLog.tasks[0].status,
+      sourceDeletedFrom: sourceLog.tasks[0].carryoverDeletedFrom || "",
+      targetStatus: materialized.task.status,
+      targetSourceDate: materialized.task.carryoverSourceDate || "",
+      delegatedClass: getWorklogTaskStatusClass(sourceLog.tasks[4]),
+      delegatedDecoration,
+      previousBeforeNoon: isWithinWorklogEditWindow("2026-08-02", new Date(2026, 7, 3, 11, 59)),
+      previousAtNoon: isWithinWorklogEditWindow("2026-08-02", new Date(2026, 7, 3, 12, 0)),
+      olderDate: isWithinWorklogEditWindow("2026-08-01", new Date(2026, 7, 3, 9, 0)),
+      futureDate: isWithinWorklogEditWindow("2026-08-10", new Date(2026, 7, 3, 15, 0))
+    });
+  })()`));
+  const parsed = JSON.parse(metrics);
+  if (parsed.carryoverIds.join(",") !== "open-task,progress-task") {
+    fail("only unresolved priority tasks should carry into the next day", metrics);
+  }
+  if (parsed.sourceStatus !== "미완료" || parsed.sourceDeletedFrom !== "2026-08-03"
+    || parsed.targetStatus !== "완료" || parsed.targetSourceDate !== "2026-08-02") {
+    fail("resolving a carryover should preserve the source and materialize today's event", metrics);
+  }
+  if (parsed.delegatedClass !== "status-delegate" || !parsed.delegatedDecoration.includes("line-through")) {
+    fail("delegated priority work should receive the red strike treatment", metrics);
+  }
+  if (!parsed.previousBeforeNoon || parsed.previousAtNoon || parsed.olderDate || !parsed.futureDate) {
+    fail("worklog edit window should allow future dates and only the first 12 hours after a past workday", metrics);
+  }
+  if (errors.length) fail("priority carryover/date-rule page errors", errors.join(" | "));
+  await page.close();
+}
+
 async function checkStaffDirectoryListAndDetail(browser) {
   const { page, errors } = await openPage(browser, { width: 390, height: 844 });
   await page.evaluate(() => {
@@ -2651,6 +2722,7 @@ async function checkApprovalRepairMissingRpcFallsBack(browser) {
     await checkUnclassifiedFitnessEmployeeCanEditOwnProfileWorklog(browser);
     await checkFitnessManagerCanEditOwnWorklog(browser);
     await checkApprovedEmployeeWorklogEditMatrix(browser);
+    await checkPriorityCarryoverAndDateRules(browser);
     await checkStaffDirectoryListAndDetail(browser);
     await checkCalendarAnnotations(browser);
   } finally {

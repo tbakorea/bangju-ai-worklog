@@ -1997,9 +1997,9 @@ function getPreviousDateKey(dateKey = todayKey) {
 function isWithinWorklogEditWindow(dateKey = getActiveDateKey(), now = new Date()) {
   if (!dateKey) return false;
   const currentKey = formatDateKey(now);
-  if (dateKey === currentKey) return true;
+  if (dateKey >= currentKey) return true;
   if (dateKey === getPreviousDateKey(currentKey)) {
-    const limit = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 10, 0, 0, 0);
+    const limit = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 12, 0, 0, 0);
     return now < limit;
   }
   return false;
@@ -2268,7 +2268,7 @@ function getWorklogEditLockInfo(employeeId = getCurrentWorklogEmployeeId(), date
     return { locked: true, lockedByDate: false, label: "열람 전용", detail: "선택된 직원 업무일지가 없습니다." };
   }
   if (canEditEmployeeSlot(employeeId) && isWithinWorklogEditWindow(dateKey)) {
-    return { locked: false, label: "수정 가능", detail: "오늘과 전날 오전 10시 전까지 수정할 수 있습니다." };
+    return { locked: false, label: "수정 가능", detail: "미래 일정은 언제든 기록할 수 있고, 지난 업무일지는 다음날 정오까지 수정할 수 있습니다." };
   }
   const grant = getWorklogCorrectionGrant(employeeId, dateKey);
   if (isWorklogCorrectionGrantActive(employeeId, dateKey)) {
@@ -2284,7 +2284,7 @@ function getWorklogEditLockInfo(employeeId = getCurrentWorklogEmployeeId(), date
       locked: true,
       lockedByDate: true,
       label: "자동 잠금",
-      detail: "근무일 당일과 다음날 오전 10시 이후에는 기록이 잠깁니다.",
+      detail: "지난 업무일지는 다음날 정오 이후 잠기며 정정 승인이 필요합니다.",
       grant,
     };
   }
@@ -9191,16 +9191,43 @@ function createWorklogTask(priority = "?") {
 }
 
 function getWorklogTaskRefs(log) {
-  const refs = (log.tasks || []).map((task, index) => ({ task, index, log, sourceDateKey: getActiveDateKey(), isPostponedFromOtherDate: false }));
-  Object.entries(state.employeeLogs || {}).forEach(([dateKey, logsByEmployee]) => {
-    if (dateKey === getActiveDateKey()) return;
-    const sourceLog = logsByEmployee?.[getSelectedEmployee().id];
-    (sourceLog?.tasks || []).forEach((task, index) => {
-      if (task.status === "연기" && task.postponeDate === getActiveDateKey()) {
-        refs.push({ task, index, log: sourceLog, sourceDateKey: dateKey, isPostponedFromOtherDate: true });
-      }
+  const activeDateKey = getActiveDateKey();
+  const employeeId = String(log?.employeeId || getEmployeeWorklogId(getSelectedEmployee()) || "").trim();
+  const refs = (log.tasks || []).map((task, index) => ({
+    task,
+    index,
+    log,
+    sourceDateKey: activeDateKey,
+    isCarryover: false,
+    isPostponedFromOtherDate: false,
+  }));
+  Object.entries(state.employeeLogs || {})
+    .filter(([dateKey]) => dateKey < activeDateKey)
+    .sort(([dateA], [dateB]) => dateA.localeCompare(dateB))
+    .forEach(([dateKey, logsByEmployee]) => {
+      const sourceLog = logsByEmployee?.[employeeId];
+      (sourceLog?.tasks || []).forEach((task, index) => {
+        task.id ||= `task-${dateKey}-${index}`;
+        const deletedFrom = String(task.carryoverDeletedFrom || "");
+        const isPostponedHere = task.status === "연기" && task.postponeDate === activeDateKey;
+        const isOpenCarryover = Boolean(
+          String(task.text || "").trim()
+          && !task.done
+          && !["완료", "취소", "위임", "연기"].includes(task.status || "미완료")
+          && (!deletedFrom || deletedFrom > activeDateKey)
+        );
+        if (isOpenCarryover || isPostponedHere) {
+          refs.push({
+            task,
+            index,
+            log: sourceLog,
+            sourceDateKey: dateKey,
+            isCarryover: isOpenCarryover,
+            isPostponedFromOtherDate: isPostponedHere,
+          });
+        }
+      });
     });
-  });
   return refs
     .sort((a, b) => {
       const activeA = isActiveTask(a.task);
@@ -9209,6 +9236,43 @@ function getWorklogTaskRefs(log) {
       const orderB = getPrioritySortValue(b.task.priority);
       return Number(activeB) - Number(activeA) || orderA - orderB || a.index - b.index;
     });
+}
+
+function getWorklogCarryoverForkKey(ref = {}) {
+  return `${ref.sourceDateKey || "unknown"}:${ref.task?.id || ref.index || "task"}`;
+}
+
+function materializeWorklogCarryover(ref, currentLog) {
+  if (!ref?.isCarryover) return ref;
+  const forkKey = getWorklogCarryoverForkKey(ref);
+  let targetIndex = (currentLog.tasks || []).findIndex((task) => task.carryoverForkFrom === forkKey);
+  if (targetIndex < 0) {
+    const targetTask = {
+      ...cloneWorklogLogForAudit(ref.task),
+      id: crypto.randomUUID?.() || `task-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+      done: false,
+      carryoverDeletedFrom: "",
+      carryoverForkFrom: forkKey,
+      carryoverSourceDate: ref.sourceDateKey,
+    };
+    const blankIndex = (currentLog.tasks || []).findIndex((task) => !isActiveTask(task));
+    if (blankIndex >= 0) {
+      currentLog.tasks[blankIndex] = targetTask;
+      targetIndex = blankIndex;
+    } else {
+      currentLog.tasks.push(targetTask);
+      targetIndex = currentLog.tasks.length - 1;
+    }
+  }
+  ref.task.carryoverDeletedFrom = getActiveDateKey();
+  return {
+    task: currentLog.tasks[targetIndex],
+    index: targetIndex,
+    log: currentLog,
+    sourceDateKey: getActiveDateKey(),
+    isCarryover: false,
+    isPostponedFromOtherDate: false,
+  };
 }
 
 function isActiveTask(task) {
@@ -9220,47 +9284,55 @@ function getPrioritySortValue(priority = "?") {
 }
 
 function renderWorklogTaskRow(ref, currentLog, options = {}) {
-  const { task, index, log, isPostponedFromOtherDate, sourceDateKey } = ref;
+  const { task, index, log, isCarryover, isPostponedFromOtherDate, sourceDateKey } = ref;
   const viewName = options.view || activeView;
   const row = document.createElement("div");
   const marker = getWorklogTaskMarker(task);
   const statusClass = getWorklogTaskStatusClass(task);
-  row.className = `worklog-task-row task-row priority-${String(task.priority || "?").toLowerCase()} marker-${marker} ${statusClass} ${task.done ? "done" : ""} ${isPostponedFromOtherDate ? "is-postponed-in" : ""}`;
+  row.className = `worklog-task-row task-row priority-${String(task.priority || "?").toLowerCase()} marker-${marker} ${statusClass} ${task.done ? "done" : ""} ${isCarryover ? "is-carryover" : ""} ${isPostponedFromOtherDate ? "is-postponed-in" : ""}`;
   row.innerHTML = `
     <button class="task-cycle" type="button" aria-label="상태 변경">${getWorklogTaskMarkerLabel(task)}</button>
     <div class="task-status-cell">${renderTaskMetaControl(task)}</div>
     <div class="task-text-cell">
       <input class="task-text-input" type="text" value="${escapeAttr(task.text)}" placeholder="업무 내용" aria-label="주요업무" />
       ${renderWorklogTaskTags(getWorklogTaskTags(task))}
-      ${isPostponedFromOtherDate ? `<span class="task-origin-tag">${escapeHtml(formatShortDate(sourceDateKey))} 이월</span>` : ""}
+      ${(isCarryover || isPostponedFromOtherDate) ? `<span class="task-origin-tag">${escapeHtml(formatShortDate(sourceDateKey))} 이월</span>` : ""}
     </div>
     <button class="task-delete" type="button" aria-label="업무 삭제">×</button>
   `;
   row.querySelector(".task-cycle").onclick = () => {
     if (!guardWorklogEdit(viewName)) return;
-    cycleWorklogTaskStatus(task);
-    syncWorklogTaskTimeHintToSchedule(task, log);
+    const editableRef = materializeWorklogCarryover(ref, currentLog);
+    cycleWorklogTaskStatus(editableRef.task);
+    syncWorklogTaskTimeHintToSchedule(editableRef.task, editableRef.log);
     saveState();
     renderEntries();
-    showTaskStatusGuide(taskStatusGuideLabels[task.status] || task.status || "미완료");
+    showTaskStatusGuide(taskStatusGuideLabels[editableRef.task.status] || editableRef.task.status || "미완료");
   };
-  bindTaskMetaControl(row, task, log, viewName);
+  bindTaskMetaControl(row, ref, currentLog, viewName);
   row.querySelector(".task-text-input").oninput = (event) => {
     if (!guardWorklogEdit(viewName)) return;
-    task.text = event.target.value;
-    promptAttendanceBeforeWorklogInput(log, task.text);
-    syncWorklogTaskTimeHintToSchedule(task, log);
+    const editableRef = materializeWorklogCarryover(ref, currentLog);
+    editableRef.task.text = event.target.value;
+    promptAttendanceBeforeWorklogInput(editableRef.log, editableRef.task.text);
+    syncWorklogTaskTimeHintToSchedule(editableRef.task, editableRef.log);
     saveState({ fastSave: true });
-    updateTaskRowTags(row, task);
+    updateTaskRowTags(row, editableRef.task);
     renderWorklogSummary(currentLog);
     renderWorklogAppointments(currentLog);
     renderFitnessAppointments(currentLog);
-    if (row.closest("#fitnessTaskBoard")) ensureFitnessTaskRowsVisible(log);
+    if (row.closest("#fitnessTaskBoard")) ensureFitnessTaskRowsVisible(currentLog);
     renderTodayContext();
     renderReport();
   };
   row.querySelector(".task-delete").onclick = () => {
     if (!guardWorklogEdit(viewName)) return;
+    if (isCarryover) {
+      task.carryoverDeletedFrom = getActiveDateKey();
+      saveState();
+      renderEntries();
+      return;
+    }
     const beforeLog = cloneWorklogLogForAudit(log);
     removeLinkedSchedule(task, log);
     log.tasks.splice(index, 1);
@@ -9277,6 +9349,7 @@ function renderWorklogTaskRow(ref, currentLog, options = {}) {
 
 function getWorklogTaskStatusClass(task) {
   if (task.done || task.status === "완료") return "status-complete";
+  if (task.status === "위임") return "status-delegate";
   if (task.status === "연기") return "status-postpone";
   if (task.status === "취소") return "status-cancel";
   return "";
@@ -9297,12 +9370,14 @@ function renderTaskMetaControl(task) {
   `;
 }
 
-function bindTaskMetaControl(row, task, log, viewName = activeView) {
+function bindTaskMetaControl(row, ref, currentLog, viewName = activeView) {
+  const task = ref.task;
   const delegateInput = row.querySelector(".delegate-input");
   if (delegateInput) {
     delegateInput.oninput = () => {
       if (!guardWorklogEdit(viewName)) return;
-      task.delegate = delegateInput.value;
+      const editableRef = materializeWorklogCarryover(ref, currentLog);
+      editableRef.task.delegate = delegateInput.value;
       saveState({ fastSave: true });
     };
     return;
@@ -9312,7 +9387,9 @@ function bindTaskMetaControl(row, task, log, viewName = activeView) {
     postponeButton.onclick = (event) => {
       event.stopPropagation();
       if (!guardWorklogEdit(viewName)) return;
-      openPostponeCalendar(task);
+      const editableRef = materializeWorklogCarryover(ref, currentLog);
+      saveState({ fastSave: true });
+      openPostponeCalendar(editableRef.task);
     };
     return;
   }
@@ -9320,8 +9397,9 @@ function bindTaskMetaControl(row, task, log, viewName = activeView) {
   if (prioritySelect) {
     prioritySelect.onchange = (event) => {
       if (!guardWorklogEdit(viewName)) return;
-      updateWorklogTaskPriority(task, event.target.value);
-      syncWorklogTaskTimeHintToSchedule(task, log);
+      const editableRef = materializeWorklogCarryover(ref, currentLog);
+      updateWorklogTaskPriority(editableRef.task, event.target.value);
+      syncWorklogTaskTimeHintToSchedule(editableRef.task, editableRef.log);
       saveState();
       renderEntries();
     };
