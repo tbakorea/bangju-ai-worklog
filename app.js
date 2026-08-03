@@ -920,11 +920,13 @@ function normalizeState() {
   };
   const shouldApplyFitnessHourDefault = !state.fitnessScheduleUnitDefaultApplied;
   state.employeeLogs ||= {};
+  migrateEmployeeLogIdentityAliases();
   state.employeeLogs[getActiveDateKey()] ||= {};
   getEmployeeOptions().forEach((employee) => {
-    state.employeeLogs[getActiveDateKey()][employee.id] ||= createEmployeeLog(employee, state.profile, getActiveDateKey());
-    const log = state.employeeLogs[getActiveDateKey()][employee.id];
-    log.employeeId ||= employee.id;
+    const employeeId = getEmployeeWorklogId(employee);
+    state.employeeLogs[getActiveDateKey()][employeeId] ||= createEmployeeLog({ ...employee, id: employeeId }, state.profile, getActiveDateKey());
+    const log = state.employeeLogs[getActiveDateKey()][employeeId];
+    log.employeeId = employeeId;
     log.org ||= employee.org;
     log.role ||= employee.role;
     log.clockIn ||= "";
@@ -934,7 +936,7 @@ function normalizeState() {
     log.attendanceStep ||= log.attendanceStatus === "조퇴" ? "early" : log.clockOut ? "out" : log.clockIn ? "in" : "ready";
     log.tasks ||= createEmployeeLog(employee, state.profile, getActiveDateKey()).tasks;
     log.schedule ||= createEmployeeLog(employee, state.profile, getActiveDateKey()).schedule;
-    if (shouldApplyFitnessHourDefault && fitnessEmployeeIds.includes(employee.id)) {
+    if (shouldApplyFitnessHourDefault && fitnessEmployeeIds.includes(employeeId)) {
       log.scheduleUnit = "60";
     }
     normalizeEmployeeLogRows(log, getActiveDateKey());
@@ -1030,6 +1032,51 @@ function getEmployeeIdentityKeys(employee = {}) {
     mappedId ? `id:${mappedId}` : "",
     person,
   ].filter(Boolean);
+}
+
+function getEmployeeWorklogId(employee = {}) {
+  return String(employee.mappedEmployeeId || employee.id || "").trim();
+}
+
+function getEmployeeWorklogAliases(employee = {}) {
+  const sourceProfileId = String(employee.sourceProfileId || "").trim();
+  return [...new Set([
+    getEmployeeWorklogId(employee),
+    employee.id,
+    employee.mappedEmployeeId,
+    employee.profileEmployeeId,
+    sourceProfileId,
+    sourceProfileId ? `profile-${sourceProfileId}` : "",
+  ].filter(Boolean).map(String))];
+}
+
+function migrateEmployeeLogIdentityAliases() {
+  const profileEmployee = getProfileEmployee();
+  const directory = [...employees, ...getStaffDirectoryEmployees(), profileEmployee];
+  const seen = new Set();
+  const identities = directory.filter((employee) => {
+    const canonicalId = getEmployeeWorklogId(employee);
+    const key = `${canonicalId}|${getEmployeeWorklogAliases(employee).join("|")}`;
+    if (!canonicalId || seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  }).map((employee) => {
+    const aliases = getEmployeeWorklogAliases(employee);
+    if (employee === profileEmployee && profileEmployee.mappedEmployeeId) aliases.push("profile-user");
+    return { canonicalId: getEmployeeWorklogId(employee), aliases: [...new Set(aliases)] };
+  });
+
+  Object.values(state.employeeLogs || {}).forEach((logsByEmployee) => {
+    identities.forEach(({ canonicalId, aliases }) => {
+      const current = logsByEmployee?.[canonicalId];
+      const source = aliases.map((id) => logsByEmployee?.[id]).filter(Boolean).find(hasSubmittableWorklogContent);
+      if (!source || (current && hasSubmittableWorklogContent(current))) return;
+      logsByEmployee[canonicalId] = {
+        ...cloneWorklogLogForAudit(source),
+        employeeId: canonicalId,
+      };
+    });
+  });
 }
 
 function getProfileEmployee() {
@@ -1749,7 +1796,7 @@ function getFitnessLogPages() {
   const coworkerEmployees = fitnessEmployees.filter((employee) => !getEmployeeIdentityKeys(employee).some((key) => writableKeys.has(key)));
   return [{ type: "center", id: "fitness-center", title: "센터 운영현황" }, ...[writableEmployee, ...coworkerEmployees].filter(Boolean).map((employee) => ({
     type: "employee",
-    id: employee.id,
+    id: getEmployeeWorklogId(employee),
     title: employee.name,
     employee,
   }))];
@@ -2189,14 +2236,22 @@ function getSelectedLog() {
 
 function getEmployeeLogForDate(employeeId, key = getActiveDateKey()) {
   const employee = findEmployeeRecordById(employeeId) || getSelectedEmployee();
+  const canonicalId = getEmployeeWorklogId(employee) || String(employeeId || "").trim();
   state.employeeLogs ||= {};
   state.employeeLogs[key] ||= {};
-  state.employeeLogs[key][employee.id] ||= createEmployeeLog(employee, state.profile, key);
-  state.employeeLogs[key][employee.id].attendanceBreaks = Array.isArray(state.employeeLogs[key][employee.id].attendanceBreaks)
-    ? state.employeeLogs[key][employee.id].attendanceBreaks
+  if (!state.employeeLogs[key][canonicalId]) {
+    const legacyLog = getEmployeeWorklogAliases(employee)
+      .map((id) => state.employeeLogs[key][id])
+      .find(hasSubmittableWorklogContent);
+    state.employeeLogs[key][canonicalId] = legacyLog
+      ? { ...cloneWorklogLogForAudit(legacyLog), employeeId: canonicalId }
+      : createEmployeeLog({ ...employee, id: canonicalId }, state.profile, key);
+  }
+  state.employeeLogs[key][canonicalId].attendanceBreaks = Array.isArray(state.employeeLogs[key][canonicalId].attendanceBreaks)
+    ? state.employeeLogs[key][canonicalId].attendanceBreaks
     : [];
-  normalizeEmployeeLogRows(state.employeeLogs[key][employee.id], key);
-  return state.employeeLogs[key][employee.id];
+  normalizeEmployeeLogRows(state.employeeLogs[key][canonicalId], key);
+  return state.employeeLogs[key][canonicalId];
 }
 
 function findEmployeeRecordById(employeeId) {
@@ -2840,7 +2895,7 @@ function getWorklogOverviewGroups() {
 function getFitnessOverviewEmployeeIds() {
   const seen = new Set();
   return getFitnessCenterEmployees()
-    .map((employee) => employee.id)
+    .map(getEmployeeWorklogId)
     .filter((employeeId) => {
       if (!employeeId || seen.has(employeeId)) return false;
       seen.add(employeeId);
@@ -2855,7 +2910,7 @@ function getOverviewGroupEmployeeEntries(group) {
   const seen = new Set();
   return source
     .filter(isAssignedWorklogEmployee)
-    .map((employee) => ({ employeeId: employee.id, employee }))
+    .map((employee) => ({ employeeId: getEmployeeWorklogId(employee), employee }))
     .filter(({ employeeId }) => {
       if (!employeeId || seen.has(employeeId)) return false;
       seen.add(employeeId);
@@ -7366,11 +7421,17 @@ function scheduleRemoteSave(delay = 700) {
 function buildRemoteSnapshot() {
   const key = getActiveDateKey();
   const snapshotProfile = applyProfilePlacementOverride(state.profile || {});
+  const ownerEmployeeId = getProfileMappedEmployeeId(snapshotProfile) || "profile-user";
+  const ownerWorklog = state.employeeLogs?.[key]?.[ownerEmployeeId]
+    || state.employeeLogs?.[key]?.["profile-user"]
+    || null;
   return {
     backupSettings: state.backupSettings,
     selectedEmployeeId: state.selectedEmployeeId,
     selectedDateKey: key,
     profile: snapshotProfile,
+    ownerEmployeeId,
+    ownerWorklog: ownerWorklog ? cloneWorklogLogForAudit(ownerWorklog) : null,
     employeeLogs: { [key]: state.employeeLogs?.[key] || {} },
     attendance: { [key]: state.attendance?.[key] || [] },
     companyCommonWeeks: state.companyCommonWeeks || {},
@@ -7438,7 +7499,7 @@ async function loadRemoteWorklogForActiveDate() {
 async function loadVisibleStaffWorklogsForDate(dateKey = getActiveDateKey()) {
   const { data, error } = await supabaseClient
     .from("worklog_states")
-    .select("user_id,state")
+    .select("user_id,state,updated_at")
     .eq("log_date", dateKey)
     .neq("user_id", authState.user.id)
     .order("updated_at", { ascending: false });
@@ -7467,36 +7528,45 @@ async function refreshVisibleStaffWorklogsForActiveDate() {
 function mergeVisibleStaffWorklogStates(rows = [], dateKey = getActiveDateKey()) {
   state.employeeLogs ||= {};
   state.employeeLogs[dateKey] ||= {};
-  rows.forEach((row) => {
-    const remoteState = row?.state || {};
-    const profile = remoteState.profile || {};
-    const email = normalizeEmailValue(profile.email || "");
-    const mappedId = getProfileMappedEmployeeId(profile);
-    const employee = getStaffDirectoryEmployees().find((item) => (
-      (mappedId && (item.id === mappedId || item.mappedEmployeeId === mappedId))
-      || (email && normalizeEmailValue(item.email || "") === email)
-    )) || employees.find((item) => item.id === mappedId);
-    if (!employee || !isAssignedWorklogEmployee(employee)) return;
+  const mergedEmployeeIds = new Set();
+  [...rows]
+    .sort((a, b) => String(b?.updated_at || "").localeCompare(String(a?.updated_at || "")))
+    .forEach((row) => {
+      const remoteState = row?.state || {};
+      const profile = remoteState.profile || {};
+      const email = normalizeEmailValue(profile.email || "");
+      const mappedId = getProfileMappedEmployeeId(profile);
+      const employee = getStaffDirectoryEmployees().find((item) => (
+        (mappedId && (item.id === mappedId || item.mappedEmployeeId === mappedId))
+        || (email && normalizeEmailValue(item.email || "") === email)
+      )) || employees.find((item) => item.id === mappedId);
+      if (!employee || !isAssignedWorklogEmployee(employee)) return;
+      const employeeId = getEmployeeWorklogId(employee);
+      if (!employeeId || mergedEmployeeIds.has(employeeId)) return;
 
-    const logs = remoteState.employeeLogs?.[dateKey] || {};
-    const candidateIds = [...new Set([
-      employee.id,
-      employee.mappedEmployeeId,
-      mappedId,
-      remoteState.selectedEmployeeId,
-      "profile-user",
-    ].filter(Boolean))];
-    const candidateLogs = candidateIds.map((id) => logs[id]).filter(Boolean);
-    const employeeLog = candidateLogs.find(hasSubmittableWorklogContent) || candidateLogs[0];
-    if (!employeeLog) return;
-    const current = state.employeeLogs[dateKey][employee.id];
-    if (!current || hasSubmittableWorklogContent(employeeLog) || !hasSubmittableWorklogContent(current)) {
-      state.employeeLogs[dateKey][employee.id] = {
+      const logs = remoteState.employeeLogs?.[dateKey] || {};
+      const candidateIds = [...new Set([
+        employeeId,
+        employee.id,
+        employee.mappedEmployeeId,
+        mappedId,
+        remoteState.ownerEmployeeId,
+        remoteState.selectedEmployeeId,
+        row?.user_id,
+        row?.user_id ? `profile-${row.user_id}` : "",
+        "profile-user",
+      ].filter(Boolean))];
+      const candidateLogs = candidateIds.map((id) => logs[id]).filter(Boolean);
+      const employeeLog = hasSubmittableWorklogContent(remoteState.ownerWorklog)
+        ? remoteState.ownerWorklog
+        : candidateLogs.find(hasSubmittableWorklogContent);
+      if (!employeeLog) return;
+      state.employeeLogs[dateKey][employeeId] = {
         ...cloneWorklogLogForAudit(employeeLog),
-        employeeId: employee.id,
+        employeeId,
       };
-    }
-  });
+      mergedEmployeeIds.add(employeeId);
+    });
 }
 
 function profileToRemoteRow(options = {}) {
@@ -10991,6 +11061,7 @@ function formatMinutesAsHours(minutes) {
 }
 
 function buildMonthlyLaborSummary(employeeId, employee) {
+  employeeId = getEmployeeWorklogId(employee) || employeeId;
   const monthPrefix = getActiveDateKey().slice(0, 7);
   const monthLabel = monthPrefix.replace("-", ".");
   const logs = [];
@@ -12358,6 +12429,7 @@ async function copyAllSiteLaborLedgers() {
 }
 
 function buildLaborMonthArchives(employeeId, employee) {
+  employeeId = getEmployeeWorklogId(employee) || employeeId;
   const months = new Set([getActiveDateKey().slice(0, 7)]);
   Object.entries(state.employeeLogs || {}).forEach(([dateKey, logsByEmployee]) => {
     const log = logsByEmployee?.[employeeId];
@@ -12449,9 +12521,10 @@ function getEmployeeMasterRows() {
   const siteLookup = new Map(getWorklogSiteGroups().flatMap((group) => group.employeeIds.map((id) => [id, group])));
   const todayLogs = state.employeeLogs?.[getActiveDateKey()] || {};
   return getStaffDirectoryEmployees().map((employee) => {
-    const group = siteLookup.get(employee.id) || getStaffSiteGroupForEmployee(employee);
-    const labor = buildMonthlyLaborSummary(employee.id, employee);
-    const log = todayLogs[employee.id] || createEmployeeLog(employee, state.profile, getActiveDateKey());
+    const employeeId = getEmployeeWorklogId(employee);
+    const group = siteLookup.get(employeeId) || getStaffSiteGroupForEmployee(employee);
+    const labor = buildMonthlyLaborSummary(employeeId, employee);
+    const log = todayLogs[employeeId] || createEmployeeLog({ ...employee, id: employeeId }, state.profile, getActiveDateKey());
     const tasks = (log.tasks || []).filter((task) => task.text?.trim());
     const completed = tasks.filter((task) => task.done || task.status === "완료").length;
     const access = getEmployeePermissionProfile(employee, group);
@@ -14048,8 +14121,9 @@ function getReportArchiveEmployees(siteId = "all") {
 }
 
 function getReportArchiveEmployeeLog(employee, dateKey) {
-  const stored = state.employeeLogs?.[dateKey]?.[employee.id];
-  const log = stored ? { ...stored } : createEmployeeLog(employee, state.profile, dateKey);
+  const employeeId = getEmployeeWorklogId(employee);
+  const stored = state.employeeLogs?.[dateKey]?.[employeeId];
+  const log = stored ? { ...stored } : createEmployeeLog({ ...employee, id: employeeId }, state.profile, dateKey);
   normalizeEmployeeLogRows(log, dateKey);
   log.tasks = Array.isArray(log.tasks) ? log.tasks : [];
   log.schedule = Array.isArray(log.schedule) ? log.schedule : [];

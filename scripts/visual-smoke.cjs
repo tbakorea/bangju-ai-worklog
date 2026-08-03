@@ -376,6 +376,129 @@ async function checkOverviewCommandBoard(browser) {
   if (!fitnessFilter.directivePanelCount) fail("overview directive panels are missing");
   if (!fitnessFilter.fitnessSheets || fitnessFilter.nonFitnessSheets) fail("overview fitness scope should show only fitness sheets", JSON.stringify(fitnessFilter));
   if (/재무대리|재무과장|공유사업부|김성민/.test(fitnessFilter.siteText)) fail("overview fitness scope leaked non-fitness employees", fitnessFilter.siteText.slice(0, 500));
+  const isomiHistorical = await page.evaluate(() => window.eval(`(() => {
+    const dateKey = "2026-07-31";
+    authState.user = { id: "owner-user", email: "j3010@ymail.com" };
+    authState.approvalRows = [];
+    authState.approvalRowsLoaded = false;
+    state.selectedDateKey = dateKey;
+    state.employeeLogs[dateKey] = {};
+    const oldIsomiLog = createEmployeeLog({
+      id: "profile-isomi-auth",
+      name: "이소미",
+      org: "(주)방주",
+      role: "재무 대리"
+    }, {}, dateKey);
+    oldIsomiLog.tasks[0].text = "7월 31일 지출 정산 마감";
+    oldIsomiLog.schedule[0].text = "법인카드 증빙 정리";
+    mergeVisibleStaffWorklogStates([{
+      user_id: "isomi-auth",
+      updated_at: "2026-07-31T18:10:00.000Z",
+      state: {
+        profile: {
+          name: "이소미",
+          email: "isomi@example.com",
+          org: "(주)방주",
+          role: "재무 대리",
+          approvalStatus: "approved"
+        },
+        selectedEmployeeId: "profile-isomi-auth",
+        employeeLogs: { [dateKey]: { "profile-isomi-auth": oldIsomiLog } }
+      }
+    }], dateKey);
+    authState.approvalRows = [{
+      id: "isomi-auth",
+      email: "isomi@example.com",
+      name: "이소미",
+      org: "(주)방주",
+      role: "재무 대리",
+      workplace: "본사",
+      approval_status: "approved"
+    }];
+    authState.approvalRowsLoaded = true;
+    state.worklogOverviewScope = "bangju";
+    normalizeState();
+    renderDateNav();
+    renderWorklogOverview();
+    const entry = getOverviewGroupEmployeeEntries(getWorklogOverviewGroups().find((group) => group.id === "bangju"))
+      .find(({ employee }) => employee.name === "이소미");
+    const card = [...document.querySelectorAll(".worklog-overview-employee-sheet")]
+      .find((item) => item.querySelector("h3")?.textContent.includes("이소미"));
+    return JSON.stringify({
+      employeeId: entry?.employeeId || "",
+      storedTask: state.employeeLogs[dateKey]?.[entry?.employeeId]?.tasks?.[0]?.text || "",
+      cardText: card?.textContent?.replace(/\\s+/g, " ").trim() || ""
+    });
+  })()`));
+  const isomiHistoricalMetrics = JSON.parse(isomiHistorical);
+  if (isomiHistoricalMetrics.employeeId !== "bangju-finance-assistant"
+    || isomiHistoricalMetrics.storedTask !== "7월 31일 지출 정산 마감"
+    || !isomiHistoricalMetrics.cardText.includes("7월 31일 지출 정산 마감")
+    || !isomiHistoricalMetrics.cardText.includes("법인카드 증빙 정리")) {
+    fail("representative overview should preserve Isomi's July 31 worklog after approval directory loads", isomiHistorical);
+  }
+  const allStaffSync = await page.evaluate(() => window.eval(`(() => {
+    const dateKey = "2026-08-02";
+    const staff = [
+      ["bangju-finance-manager", "재무과장", "(주)방주", "재무과장", "finance-manager@example.com"],
+      ["bangju-finance-assistant", "이소미", "(주)방주", "재무 대리", "isomi@example.com"],
+      ["beyond-fitness-manager", "박주홍", "(주)방주 / 비욘드 피트니스 지사", "센터장", "pinong0@naver.com"],
+      ["fitness-trainer-1", "홍현규", "(주)방주 / 비욘드 피트니스 지사", "트레이너", "trainer@example.com"],
+      ["fitness-weekday-info-idabin", "이다빈", "(주)방주 / 비욘드 피트니스 지사", "인포데스크", "idabin@example.com"],
+      ["fitness-info-kimyoungchae", "김영채", "(주)방주 / 비욘드 피트니스 지사", "인포데스크", "yckim1558@naver.com"],
+      ["fitness-info-shinsemin", "신세민", "(주)방주 / 비욘드 피트니스 지사", "인포데스크", "tpals2990@naver.com"],
+      ["beyond-company-leader", "김성민", "(주)비욘드컴퍼니", "실장", "ksm@example.com"],
+      ["beyond-shared-manager", "추소영", "(주)비욘드컴퍼니 / 공유사업부", "공유사업부 매니저", "choo@example.com"]
+    ];
+    state.selectedDateKey = dateKey;
+    state.employeeLogs[dateKey] = {};
+    authState.approvalRows = [];
+    authState.approvalRowsLoaded = false;
+    const rows = staff.map(([expectedId, name, org, role, email], index) => {
+      const userId = "staff-auth-" + index;
+      const legacyId = [expectedId, "profile-user", userId, "profile-" + userId][index % 4];
+      const log = createEmployeeLog({ id: legacyId, name, org, role, email }, {}, dateKey);
+      log.tasks[0].text = "전직원동기화-" + expectedId;
+      log.schedule[0].text = "시간표동기화-" + expectedId;
+      return {
+        user_id: userId,
+        updated_at: "2026-08-02T" + String(10 + index).padStart(2, "0") + ":00:00.000Z",
+        state: {
+          profile: { name, org, role, email, workplace: /피트니스/.test(org) ? "비욘드 피트니스" : "", approvalStatus: "approved" },
+          selectedEmployeeId: legacyId,
+          employeeLogs: { [dateKey]: { [legacyId]: log } }
+        }
+      };
+    });
+    mergeVisibleStaffWorklogStates(rows, dateKey);
+    authState.approvalRows = rows.map((row) => ({
+      id: row.user_id,
+      email: row.state.profile.email,
+      name: row.state.profile.name,
+      org: row.state.profile.org,
+      role: row.state.profile.role,
+      workplace: row.state.profile.workplace,
+      approval_status: "approved"
+    }));
+    authState.approvalRowsLoaded = true;
+    normalizeState();
+    const overviewIds = getWorklogOverviewGroups().flatMap(getOverviewGroupEmployeeEntries).map(({ employeeId }) => employeeId);
+    const failures = staff.flatMap(([expectedId]) => {
+      const log = getEmployeeLogForDate(expectedId, dateKey);
+      const expectedTask = "전직원동기화-" + expectedId;
+      const expectedSchedule = "시간표동기화-" + expectedId;
+      const errors = [];
+      if (log.tasks?.[0]?.text !== expectedTask) errors.push(expectedId + ":task");
+      if (!(log.schedule || []).some((entry) => String(entry.text || "").includes(expectedSchedule))) errors.push(expectedId + ":schedule");
+      if (!overviewIds.includes(expectedId)) errors.push(expectedId + ":overview-id");
+      return errors;
+    });
+    return JSON.stringify({ failures, overviewIds });
+  })()`));
+  const allStaffSyncMetrics = JSON.parse(allStaffSync);
+  if (allStaffSyncMetrics.failures.length) {
+    fail("representative overview should synchronize every assigned employee through canonical worklog IDs", allStaffSync);
+  }
   if (errors.length) fail("overview page errors", errors.join(" | "));
   await page.close();
 }
@@ -763,7 +886,7 @@ async function checkUnclassifiedFitnessEmployeeCanEditOwnProfileWorklog(browser)
     lockBanner: document.querySelector("#fitnessReadOnlyNotice")?.textContent?.trim() || "",
     lockHidden: document.querySelector("#fitnessReadOnlyNotice")?.hidden ?? true,
     taskDisabled: document.querySelector("#fitnessTaskBoard .task-text-input")?.disabled ?? true,
-    scheduleTimes: (state.employeeLogs?.[state.selectedDateKey]?.["profile-user"]?.schedule || []).map((entry) => entry.time)
+    scheduleTimes: (state.employeeLogs?.[state.selectedDateKey]?.["fitness-info-shinsemin"]?.schedule || []).map((entry) => entry.time)
   })`));
   const parsed = JSON.parse(metrics);
   if (parsed.activeView !== "fitness-log") fail("unclassified fitness employee should land on fitness worklog", metrics);
