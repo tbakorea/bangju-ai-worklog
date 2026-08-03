@@ -2449,6 +2449,12 @@ async function checkRealDeviceRegressionLayouts(browser) {
       const fitnessSchedule = rect("#view-fitness-log .fitness-log-schedule-panel");
       const hero = rect("#view-attendance .work-history-hero");
       const laborConsole = rect("#view-attendance .labor-ops-console");
+      const futureAttendanceStatus = getAttendanceStatusForLog(
+        { id: "qa-future-worker", workHours: "09:00-18:00" },
+        {},
+        getNextDateKey(todayKey),
+        new Date(todayKey + "T10:00:00")
+      );
       return {
         activeView: document.body.dataset.activeView,
         horizontalOverflow: document.documentElement.scrollWidth - window.innerWidth,
@@ -2457,6 +2463,10 @@ async function checkRealDeviceRegressionLayouts(browser) {
         pagerBeforeOps: !pager || !ops || pager.bottom <= ops.top + 1,
         fitnessOpsBeforePanels: !ops || !fitnessTask || !fitnessSchedule || (ops.bottom <= fitnessTask.top + 1 && fitnessTask.bottom <= fitnessSchedule.top + 1),
         heroBeforeLabor: !hero || !laborConsole || hero.bottom <= laborConsole.top + 2,
+        laborPracticeCount: document.querySelectorAll("#view-attendance .labor-practice-card").length,
+        laborCloseStepCount: document.querySelectorAll("#view-attendance .labor-close-step").length,
+        laborHasLegalNote: Boolean(document.querySelector("#view-attendance .labor-legal-note")?.textContent.includes("공인노무사")),
+        futureAttendanceStatus,
         dockOverlapsDate: overlaps(dock, todayDate),
         dockOverlapsFitnessCoaching: overlaps(dock, fitnessCoaching),
         fitnessDateNavClear: !fitnessDateButton || (!overlaps(fitnessDateButton, fitnessPrev) && !overlaps(fitnessDateButton, fitnessNext)),
@@ -2474,6 +2484,12 @@ async function checkRealDeviceRegressionLayouts(browser) {
     if (!metrics.pagerBeforeOps) fail("fitness pager overlaps the operations summary", JSON.stringify(metrics));
     if (!metrics.fitnessOpsBeforePanels) fail("fitness operations summary overlaps worklog panels", JSON.stringify(metrics));
     if (!metrics.heroBeforeLabor) fail("labor hero overlaps the operations console", JSON.stringify(metrics));
+    if (item.view === "attendance" && (metrics.laborPracticeCount !== 10 || metrics.laborCloseStepCount !== 5 || !metrics.laborHasLegalNote)) {
+      fail("labor operations desk should expose ten review domains, five close steps, and a legal review note", JSON.stringify(metrics));
+    }
+    if (item.view === "attendance" && metrics.futureAttendanceStatus !== "예정") {
+      fail("future attendance rows must remain scheduled instead of becoming absence", JSON.stringify(metrics));
+    }
     if (metrics.dockOverlapsDate) fail("worklog menu dock overlaps the date band", JSON.stringify(metrics));
     if (metrics.dockOverlapsFitnessCoaching) fail("fitness menu overlaps the AI coaching band", JSON.stringify(metrics));
     if (!metrics.fitnessDateNavClear) fail("fitness date navigation controls overlap", JSON.stringify(metrics));

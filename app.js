@@ -10581,7 +10581,7 @@ function applyAttendanceCycle() {
   renderReport();
 }
 
-function getAttendanceStatusForLog(employee, log = getEmployeeLogForDate(employee.id)) {
+function getAttendanceStatusForLog(employee, log = getEmployeeLogForDate(employee.id), dateKey = getActiveDateKey(), now = new Date()) {
   if (log.attendanceStatus === "조퇴") return "조퇴";
   if (log.clockIn) {
     const [start] = String(employee.workHours || getEmployeeWorkHours(employee.id)).split("-");
@@ -10593,11 +10593,12 @@ function getAttendanceStatusForLog(employee, log = getEmployeeLogForDate(employe
     if (log.attendanceStatus === "외출") return "외출";
     return "정상";
   }
-  const todayMinutes = new Date().getHours() * 60 + new Date().getMinutes();
-  const activeDate = getActiveDateKey();
+  const today = formatDateKey(now);
+  const todayMinutes = now.getHours() * 60 + now.getMinutes();
   const [start] = String(employee.workHours || getEmployeeWorkHours(employee.id)).split("-");
   const startMinutes = timeToMinutes(start);
-  if (activeDate < todayKey || (activeDate === todayKey && Number.isFinite(startMinutes) && todayMinutes > startMinutes + 30)) return "결석";
+  if (dateKey > today) return "예정";
+  if (dateKey < today || (dateKey === today && Number.isFinite(startMinutes) && todayMinutes > startMinutes + 30)) return "결석";
   return "미기록";
 }
 
@@ -10673,7 +10674,9 @@ function renderAttendance() {
   document.getElementById("copyAllSiteLaborLedgersButton")?.addEventListener("click", copyAllSiteLaborLedgers);
   list.querySelectorAll("[data-labor-jump]").forEach((button) => {
     button.addEventListener("click", () => {
-      document.getElementById(button.dataset.laborJump)?.scrollIntoView({ behavior: "smooth", block: "start" });
+      const target = document.getElementById(button.dataset.laborJump);
+      if (target) target.scrollIntoView({ behavior: "smooth", block: "start" });
+      else showAppToast("해당 항목은 노무 권한자 화면에서 확인할 수 있습니다.");
     });
   });
   list.querySelectorAll("[data-labor-payroll-field]").forEach((field) => {
@@ -10751,6 +10754,58 @@ function getLaborAgentSignals(labor, payroll) {
   return signals;
 }
 
+function buildLaborPracticeReview(labor, employee, payroll) {
+  const profile = getLaborProfileForEmployee(employee);
+  const wageReady = Boolean(numberValue(profile.hourlyWage) || numberValue(profile.dailyWage));
+  const contractReady = Boolean(
+    String(profile.employmentType || "").trim()
+    && String(profile.workHours || "").trim()
+    && String(profile.workplace || "").trim()
+    && wageReady
+  );
+  const today = todayKey;
+  const elapsedRows = labor.dayRows.filter((row) => row.dateKey <= today);
+  const scheduledRows = elapsedRows.filter((row) => row.scheduled > 0);
+  const incompleteRows = scheduledRows.filter((row) => (row.clockIn && !row.clockOut) || (!row.clockIn && row.status !== "휴무" && row.status !== "예정"));
+  const breakReady = elapsedRows.every((row) => row.worked < 4 * 60 || Boolean(row.breakSummary));
+  const payrollReady = payroll.checks.filter(([, ok]) => ok).length;
+  const insuranceReady = [
+    payroll.draft.nationalPension,
+    payroll.draft.healthInsurance,
+    payroll.draft.employmentInsurance,
+  ].some((value) => String(value || "").trim()) || /프리랜서/.test(String(profile.employmentType || ""));
+  const evidenceReady = scheduledRows.length > 0 && incompleteRows.length === 0;
+  const freelancerSeparated = Number.isFinite(labor.settlementPtCount) && Number.isFinite(labor.freePtCount);
+  const items = [
+    ["01", "근로계약", contractReady, "고용형태·근무지·소정근로시간·임금단가를 서면 원장과 대조합니다.", "staff-list"],
+    ["02", "근태 원장", evidenceReady, incompleteRows.length ? `누락·미완료 ${incompleteRows.length}일을 보완합니다.` : "출퇴근 시각과 일자별 근무기록이 연결되어 있습니다.", "laborRegister"],
+    ["03", "휴게·연장", breakReady && (labor.overtimeMinutes ? wageReady : true), !breakReady ? "4시간 이상 근무일의 휴게기록을 확인합니다." : "휴게와 연장·야간·휴일 시간을 수당 산식과 대조합니다.", "laborRegister"],
+    ["04", "휴일·휴가", true, `휴가 ${labor.leaveDays}일 · 휴일/주말근로 ${formatMinutesAsHours(labor.holidayMinutes)}를 취업규칙과 대조합니다.`, "laborRegister", "manual"],
+    ["05", "임금명세", payrollReady === payroll.checks.length, `필수 점검 ${payrollReady}/${payroll.checks.length} · 지급·공제·계산방법을 확인합니다.`, "payrollStatement"],
+    ["06", "퇴직급여", Boolean(profile.joinDate), profile.joinDate ? `입사일 ${profile.joinDate} 기준으로 계속근로기간을 별도 검토합니다.` : "입사일과 계속근로기간을 등록하고 퇴직급여 적용 여부를 확인합니다.", "staff-list", "manual"],
+    ["07", "사회보험", insuranceReady, insuranceReady ? "사회보험 공제 입력 여부가 확인됩니다." : "가입대상과 보수월액을 확인한 뒤 공제액을 입력합니다.", "payrollStatement", "manual"],
+    ["08", "프리랜서·PT", freelancerSeparated, `유료 PT ${labor.settlementPtCount}건 · 무료 PT ${labor.freePtCount}건을 분리 집계합니다.`, "companyLaborLedgers"],
+    ["09", "증빙·보존", evidenceReady, evidenceReady ? "근태·업무일지·임금 계산기초의 월별 보관 준비가 완료되었습니다." : "누락 근태를 보완한 뒤 월별 증빙 묶음을 보관합니다.", "laborRegister"],
+    ["10", "개인정보", true, "식별정보는 화면에서 마스킹하고 노무 권한자에게만 열람을 허용합니다.", "companyLaborLedgers", "manual"],
+  ].map(([number, title, ready, description, target, tone]) => ({
+    number,
+    title,
+    status: tone || (ready ? "ready" : "check"),
+    label: tone === "manual" ? "전문확인" : ready ? "준비" : "보완",
+    description,
+    target,
+  }));
+  const readyCount = items.filter((item) => item.status !== "check").length;
+  const exceptions = [];
+  if (incompleteRows.length) exceptions.push(["근태 누락", `${incompleteRows.slice(0, 4).map((row) => Number(row.dateKey.slice(8)) + "일").join(", ")} 출퇴근 기록 확인`, "laborRegister"]);
+  payroll.checks.filter(([, ok]) => !ok).slice(0, 3).forEach(([label]) => exceptions.push(["명세 보완", label, "payrollStatement"]));
+  if (labor.overtimeMinutes && !wageReady) exceptions.push(["수당 산식", "연장근로가 있으나 임금단가가 없습니다.", "payrollStatement"]);
+  if (!breakReady) exceptions.push(["휴게 확인", "4시간 이상 근무일의 휴게기록이 비어 있습니다.", "laborRegister"]);
+  if (!profile.joinDate) exceptions.push(["인사 원장", "입사일이 없어 퇴직급여 검토 기준일을 계산할 수 없습니다.", "staff-list"]);
+  if (!exceptions.length) exceptions.push(["월 마감", "자동 점검상 즉시 보완할 항목이 없습니다. 최종 교부 전 전문가 확인이 필요합니다.", "payrollStatement"]);
+  return { items, readyCount, exceptions, incompleteRows, payrollReady };
+}
+
 function renderLaborOperationsConsole(labor, employee, payroll) {
   const siteRows = getLaborSiteConsoleRows();
   const siteRecorded = siteRows.reduce((sum, row) => sum + row.recordedEmployees, 0);
@@ -10758,6 +10813,8 @@ function renderLaborOperationsConsole(labor, employee, payroll) {
   const totalIssues = siteRows.reduce((sum, row) => sum + row.issues, 0);
   const readyCount = payroll.checks.filter(([, ok]) => ok).length;
   const agentSignals = getLaborAgentSignals(labor, payroll);
+  const practice = buildLaborPracticeReview(labor, employee, payroll);
+  const readiness = Math.round((practice.readyCount / practice.items.length) * 100);
   const cards = [
     ["사업장별 근무기록", `${siteRecorded}/${siteEmployees}명`, "사업장별 출역·근무시간 원장", "companyLaborLedgers"],
     ["근태관리", totalIssues ? `${totalIssues}건 확인` : "정상", "지각·조퇴·결근·외출 추적", "laborRegister"],
@@ -10766,7 +10823,17 @@ function renderLaborOperationsConsole(labor, employee, payroll) {
     ["각 직원 근무기록", `${labor.recordedDays}일`, `${getEmployeeAdminLabel(employee)} 월별 기록`, "laborRegister"],
   ];
   return `
-    <section class="labor-ops-console">
+    <section class="labor-ops-console" id="laborOperationsConsole">
+      <header class="labor-command-head">
+        <div>
+          <span>Labor Operations Desk</span>
+          <h3>${escapeHtml(labor.monthLabel)} 노무 월 마감 관제</h3>
+          <p>근태 → 수당 → 임금명세 → 증빙보관 순서로 확인하는 실무 점검 화면입니다.</p>
+        </div>
+        <div class="labor-readiness-ring" style="--labor-readiness:${escapeAttr(String(readiness))}" aria-label="노무 준비도 ${escapeAttr(String(readiness))}점">
+          <strong>${escapeHtml(String(readiness))}</strong><span>준비도</span>
+        </div>
+      </header>
       <div class="labor-ops-grid">
         ${cards.map(([label, value, description, target]) => `
           <button type="button" data-labor-jump="${escapeAttr(target)}">
@@ -10776,6 +10843,37 @@ function renderLaborOperationsConsole(labor, employee, payroll) {
           </button>
         `).join("")}
       </div>
+      <div class="labor-close-flow" aria-label="노무 월 마감 순서">
+        ${[
+          ["01", "근태 마감", practice.items.find((item) => item.title === "근태 원장")?.status === "ready", "출퇴근·휴게 누락 확인"],
+          ["02", "예외 검토", practice.exceptions.length === 1 && practice.exceptions[0][0] === "월 마감", "지각·조퇴·휴가·수정이력"],
+          ["03", "수당 계산", Boolean(numberValue(getLaborProfileForEmployee(employee).hourlyWage) || numberValue(getLaborProfileForEmployee(employee).dailyWage)), "연장·야간·휴일 산식"],
+          ["04", "명세 완성", readyCount === payroll.checks.length, "지급·공제·계산방법"],
+          ["05", "교부·보관", false, "확정본 교부 및 증빙 보관"],
+        ].map(([number, title, done, description]) => `
+          <span class="labor-close-step ${done ? "is-done" : "is-next"}">
+            <b>${escapeHtml(number)}</b><strong>${escapeHtml(title)}</strong><em>${escapeHtml(description)}</em>
+          </span>
+        `).join("")}
+      </div>
+      <div class="labor-practice-grid" aria-label="노무 10대 실무 점검">
+        ${practice.items.map((item) => `
+          <button type="button" class="labor-practice-card is-${escapeAttr(item.status)}" data-labor-jump="${escapeAttr(item.target)}">
+            <span>${escapeHtml(item.number)}</span>
+            <b>${escapeHtml(item.title)}</b>
+            <strong>${escapeHtml(item.label)}</strong>
+            <em>${escapeHtml(item.description)}</em>
+          </button>
+        `).join("")}
+      </div>
+      <article class="labor-exception-panel">
+        <header><div><span>Exception Queue</span><h3>보완 대기 ${escapeHtml(String(practice.exceptions.length))}건</h3></div><b>자동점검</b></header>
+        <div>
+          ${practice.exceptions.slice(0, 6).map(([title, text, target]) => `
+            <button type="button" data-labor-jump="${escapeAttr(target)}"><strong>${escapeHtml(title)}</strong><span>${escapeHtml(text)}</span><em>확인 →</em></button>
+          `).join("")}
+        </div>
+      </article>
       <article class="labor-agent-panel">
         <header>
           <div>
@@ -10805,6 +10903,7 @@ function renderLaborOperationsConsole(labor, employee, payroll) {
           `).join("")}
         </div>
       ` : ""}
+      <p class="labor-legal-note">이 화면은 근로계약·근로시간·휴게·휴일·임금명세·퇴직·사회보험·프리랜서·증빙·개인정보를 빠뜨리지 않기 위한 실무 점검 도구입니다. 사업장 규모와 고용형태에 따라 적용 기준이 달라질 수 있으므로 지급·신고·징계·퇴직 처리는 공인노무사 또는 관계기관 확인 후 확정하세요.</p>
     </section>
   `;
 }
@@ -11324,7 +11423,9 @@ function renderWorkHistorySummary() {
         ].map(([label, value]) => `<span><b>${escapeHtml(label)}</b><strong>${escapeHtml(value)}</strong></span>`).join("")}
       </div>
     </section>
+    ${renderLaborOperationsConsole(labor, employee, payroll)}
     ${renderLaborMonthlyRegister(labor, employee)}
+    ${canAccessLaborPayrollLedgers() ? renderPayrollStatement(payroll) : ""}
     <section class="labor-report-launch-card">
       <header>
         <div>
@@ -11344,6 +11445,19 @@ function renderWorkHistorySummary() {
   document.getElementById("laborMonthInput")?.addEventListener("change", (event) => {
     if (event.target.value) setSelectedDateKey(`${event.target.value}-01`);
   });
+  node.querySelectorAll("[data-labor-jump]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const target = document.getElementById(button.dataset.laborJump);
+      if (target) target.scrollIntoView({ behavior: "smooth", block: "start" });
+      else showAppToast("해당 항목은 노무 권한자 화면에서 확인할 수 있습니다.");
+    });
+  });
+  node.querySelectorAll("[data-labor-payroll-field]").forEach((field) => {
+    field.addEventListener("change", () => {
+      updateLaborPayrollField(employeeId, labor.month, field.dataset.laborPayrollField, field.value);
+    });
+  });
+  document.getElementById("copyPayrollStatementButton")?.addEventListener("click", () => copyPayrollStatement(payroll));
   document.getElementById("openLaborReportButton")?.addEventListener("click", () => openLaborReportSheet(labor, payroll, ledger));
 }
 
@@ -11421,7 +11535,7 @@ function buildMonthlyLaborSummary(employeeId, employee) {
       paidPtCount += numberValue(ops.ptRegular);
       freePtCount += numberValue(ops.ptFree);
       otherPtCount += numberValue(ops.ptOther);
-      status = getAttendanceStatusForLog(employee, dayLog);
+      status = getAttendanceStatusForLog(employee, dayLog, dateKey);
     }
     if (dayLog?.clockIn && dayLog?.clockOut) {
       const range = getTimeRangeMinutes(dayLog.clockIn, dayLog.clockOut);

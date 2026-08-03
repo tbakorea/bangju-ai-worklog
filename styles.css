@@ -2303,17 +2303,80 @@ body[data-device-mode="narrow"] .os-mode-switch span[data-device-mode="narrow"] 
 
 .labor-ops-console {
   display: grid;
-  gap: 10px;
-  border: 1px solid rgba(33, 55, 45, 0.1);
-  border-radius: 20px;
-  background: rgba(255, 253, 248, 0.9);
-  padding: 12px;
-  box-shadow: 0 14px 30px rgba(33, 55, 45, 0.05);
+  gap: 14px;
+  border: 1px solid rgba(15, 59, 46, 0.14);
+  border-radius: 26px;
+  background:
+    radial-gradient(circle at 94% 4%, rgba(193, 219, 198, 0.42), transparent 26%),
+    linear-gradient(180deg, rgba(255, 254, 250, 0.98), rgba(240, 247, 241, 0.9));
+  padding: clamp(14px, 2.5vw, 22px);
+  box-shadow: 0 22px 48px rgba(15, 59, 46, 0.08);
+}
+
+.labor-command-head {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 84px;
+  gap: 14px;
+  align-items: center;
+}
+
+.labor-command-head > div:first-child > span,
+.labor-exception-panel header span {
+  display: block;
+  color: rgba(15, 59, 46, 0.58);
+  font-size: 10px;
+  font-weight: 950;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.labor-command-head h3,
+.labor-exception-panel h3 {
+  margin: 3px 0 0;
+  color: var(--fitness-green);
+  font-size: clamp(21px, 3vw, 28px);
+  font-weight: 950;
+  line-height: 1.08;
+}
+
+.labor-command-head p {
+  margin: 6px 0 0;
+  color: rgba(38, 50, 56, 0.66);
+  font-size: 12px;
+  font-weight: 780;
+  line-height: 1.45;
+}
+
+.labor-readiness-ring {
+  position: relative;
+  display: grid;
+  place-content: center;
+  width: 80px;
+  aspect-ratio: 1;
+  border-radius: 50%;
+  background:
+    radial-gradient(circle, #fffefa 57%, transparent 59%),
+    conic-gradient(var(--fitness-green) calc(var(--labor-readiness) * 1%), rgba(15, 59, 46, 0.1) 0);
+  box-shadow: inset 0 0 0 1px rgba(15, 59, 46, 0.08);
+  text-align: center;
+}
+
+.labor-readiness-ring strong {
+  color: var(--fitness-green);
+  font-size: 24px;
+  font-weight: 950;
+  line-height: 1;
+}
+
+.labor-readiness-ring span {
+  color: rgba(38, 50, 56, 0.58);
+  font-size: 9px;
+  font-weight: 900;
 }
 
 .labor-ops-grid {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(5, minmax(0, 1fr));
   gap: 8px;
 }
 
@@ -2360,6 +2423,219 @@ body[data-device-mode="narrow"] .os-mode-switch span[data-device-mode="narrow"] 
     var(--fitness-green);
   padding: 12px;
   color: var(--nordic-sheet);
+}
+
+.labor-close-flow {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 0;
+  overflow: hidden;
+  border: 1px solid rgba(15, 59, 46, 0.1);
+  border-radius: 18px;
+  background: rgba(255, 254, 250, 0.8);
+}
+
+.labor-close-step {
+  position: relative;
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+  padding: 12px;
+  border-right: 1px solid rgba(15, 59, 46, 0.08);
+}
+
+.labor-close-step:last-child {
+  border-right: 0;
+}
+
+.labor-close-step b {
+  color: rgba(15, 59, 46, 0.42);
+  font-size: 10px;
+  font-weight: 950;
+}
+
+.labor-close-step strong {
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 950;
+}
+
+.labor-close-step em {
+  overflow: hidden;
+  color: rgba(38, 50, 56, 0.58);
+  font-size: 10px;
+  font-style: normal;
+  font-weight: 760;
+  line-height: 1.35;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.labor-close-step.is-done {
+  background: rgba(15, 83, 64, 0.08);
+}
+
+.labor-close-step.is-done::after {
+  position: absolute;
+  top: 9px;
+  right: 9px;
+  color: var(--fitness-green);
+  content: "✓";
+  font-size: 12px;
+  font-weight: 950;
+}
+
+.labor-practice-grid {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.labor-practice-card {
+  position: relative;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 4px 7px;
+  min-width: 0;
+  min-height: 118px;
+  border: 1px solid rgba(15, 59, 46, 0.1);
+  border-radius: 16px;
+  background: rgba(255, 254, 250, 0.82);
+  color: var(--ink);
+  padding: 11px;
+  text-align: left;
+}
+
+.labor-practice-card > span {
+  color: rgba(15, 59, 46, 0.42);
+  font-size: 10px;
+  font-weight: 950;
+}
+
+.labor-practice-card > b {
+  overflow: hidden;
+  font-size: 13px;
+  font-weight: 950;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.labor-practice-card > strong {
+  grid-column: 1 / -1;
+  justify-self: start;
+  border-radius: 999px;
+  background: rgba(15, 83, 64, 0.1);
+  color: var(--fitness-green);
+  padding: 4px 7px;
+  font-size: 9px;
+  font-weight: 950;
+}
+
+.labor-practice-card > em {
+  grid-column: 1 / -1;
+  color: rgba(38, 50, 56, 0.64);
+  font-size: 10px;
+  font-style: normal;
+  font-weight: 760;
+  line-height: 1.4;
+}
+
+.labor-practice-card.is-check {
+  border-color: rgba(191, 72, 51, 0.22);
+  background: rgba(255, 244, 238, 0.82);
+}
+
+.labor-practice-card.is-check > strong {
+  background: rgba(191, 72, 51, 0.1);
+  color: #aa3f2c;
+}
+
+.labor-practice-card.is-manual {
+  border-color: rgba(151, 104, 33, 0.2);
+  background: rgba(255, 249, 232, 0.82);
+}
+
+.labor-practice-card.is-manual > strong {
+  background: rgba(151, 104, 33, 0.1);
+  color: #845b18;
+}
+
+.labor-exception-panel {
+  display: grid;
+  gap: 9px;
+  border: 1px solid rgba(191, 72, 51, 0.15);
+  border-radius: 18px;
+  background: rgba(255, 249, 244, 0.86);
+  padding: 12px;
+}
+
+.labor-exception-panel header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.labor-exception-panel h3 {
+  color: #723d2d;
+  font-size: 18px;
+}
+
+.labor-exception-panel header > b {
+  border-radius: 999px;
+  background: rgba(191, 72, 51, 0.1);
+  color: #a74431;
+  padding: 5px 8px;
+  font-size: 10px;
+  font-weight: 950;
+}
+
+.labor-exception-panel > div {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 7px;
+}
+
+.labor-exception-panel button {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 7px;
+  align-items: center;
+  min-width: 0;
+  border: 1px solid rgba(191, 72, 51, 0.1);
+  border-radius: 12px;
+  background: rgba(255, 254, 250, 0.86);
+  color: var(--ink);
+  padding: 9px;
+  text-align: left;
+}
+
+.labor-exception-panel button strong,
+.labor-exception-panel button em {
+  color: #8d4634;
+  font-size: 10px;
+  font-style: normal;
+  font-weight: 950;
+  white-space: nowrap;
+}
+
+.labor-exception-panel button span {
+  overflow: hidden;
+  color: rgba(38, 50, 56, 0.66);
+  font-size: 10px;
+  font-weight: 780;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.labor-legal-note {
+  margin: 0;
+  border-top: 1px solid rgba(15, 59, 46, 0.08);
+  color: rgba(38, 50, 56, 0.58);
+  padding: 10px 2px 0;
+  font-size: 10px;
+  font-weight: 730;
+  line-height: 1.55;
 }
 
 .labor-agent-panel header {
@@ -20410,6 +20686,64 @@ body.physical-phone-device #view-attendance .labor-agent-panel {
 body[data-layout-mode="phone"] #view-attendance .labor-site-strip,
 body.physical-phone-device #view-attendance .labor-site-strip {
   grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+}
+
+@media (max-width: 900px) {
+  #view-attendance .labor-ops-grid,
+  #view-attendance .labor-practice-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  #view-attendance .labor-close-flow {
+    grid-template-columns: repeat(5, minmax(132px, 1fr));
+    overflow-x: auto;
+    overscroll-behavior-inline: contain;
+  }
+}
+
+body[data-layout-mode="phone"] #view-attendance .labor-command-head,
+body.physical-phone-device #view-attendance .labor-command-head {
+  grid-template-columns: minmax(0, 1fr) 68px;
+  gap: 9px;
+}
+
+body[data-layout-mode="phone"] #view-attendance .labor-readiness-ring,
+body.physical-phone-device #view-attendance .labor-readiness-ring {
+  width: 66px;
+}
+
+body[data-layout-mode="phone"] #view-attendance .labor-readiness-ring strong,
+body.physical-phone-device #view-attendance .labor-readiness-ring strong {
+  font-size: 20px;
+}
+
+body[data-layout-mode="phone"] #view-attendance .labor-practice-grid,
+body.physical-phone-device #view-attendance .labor-practice-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 7px;
+}
+
+body[data-layout-mode="phone"] #view-attendance .labor-practice-card,
+body.physical-phone-device #view-attendance .labor-practice-card {
+  min-height: 126px;
+  padding: 10px;
+}
+
+body[data-layout-mode="phone"] #view-attendance .labor-exception-panel > div,
+body.physical-phone-device #view-attendance .labor-exception-panel > div,
+body[data-layout-mode="phone"] #view-attendance .labor-agent-list,
+body.physical-phone-device #view-attendance .labor-agent-list {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+body[data-layout-mode="phone"] #view-attendance .labor-exception-panel button,
+body.physical-phone-device #view-attendance .labor-exception-panel button {
+  grid-template-columns: auto minmax(0, 1fr);
+}
+
+body[data-layout-mode="phone"] #view-attendance .labor-exception-panel button em,
+body.physical-phone-device #view-attendance .labor-exception-panel button em {
+  display: none;
 }
 
 body[data-layout-mode="phone"] #view-fitness-log,
