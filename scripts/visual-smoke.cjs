@@ -364,6 +364,14 @@ async function checkOverviewCommandBoard(browser) {
       weatherCount: document.querySelectorAll("#overviewSiteWeatherBoard .site-weather-board-grid article").length,
       weatherRecordedCount: document.querySelectorAll("#overviewSiteWeatherBoard .site-weather-board-grid article.has-weather").length,
       weatherText: document.querySelector("#overviewSiteWeatherBoard")?.textContent?.replace(/\s+/g, " ").trim() || "",
+      weatherHeight: document.querySelector("#overviewSiteWeatherBoard")?.getBoundingClientRect().height || 0,
+      recoveredWeatherAddressCount: (() => {
+        state.siteWeatherAddresses = {};
+        return mergeSiteWeatherAddressesFromSnapshots([{ state: { siteWeatherAddresses: {
+          "비욘드 피트니스": "울산광역시 남구 피트니스 주소",
+          "(주)방주 · 재무": "울산광역시 남구 본사 주소"
+        } } }]);
+      })(),
       activeScope: document.querySelector("[data-overview-scope].is-active")?.dataset.overviewScope || "",
       allCommandCount: document.querySelectorAll(".overview-all-command").length,
       businessBoardCount: document.querySelectorAll(".overview-all-business-board").length,
@@ -387,6 +395,9 @@ async function checkOverviewCommandBoard(browser) {
   if (metrics.scopeCount < 4 || metrics.activeScope !== "all") fail("overview scope selector is not initialized", JSON.stringify({ count: metrics.scopeCount, active: metrics.activeScope }));
   if (metrics.weatherCount !== 7 || metrics.weatherRecordedCount !== 7 || !metrics.weatherText.includes("사업장별 날씨") || !metrics.weatherText.includes("비욘드 피트니스")) {
     fail("representative overview should show all configured site weather records", JSON.stringify(metrics));
+  }
+  if (metrics.weatherHeight > 300 || metrics.recoveredWeatherAddressCount !== 2) {
+    fail("representative weather should stay compact and recover saved site addresses", JSON.stringify(metrics));
   }
   if (!metrics.allCommandCount) fail("overview all-scope command board is missing");
   if (!metrics.businessBoardCount || metrics.businessSnapshotCount < 3) fail("overview all-scope business snapshots are missing", JSON.stringify(metrics));

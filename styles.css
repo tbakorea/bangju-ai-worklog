@@ -16835,6 +16835,57 @@ body[data-view-mode="ceo"] .control-kpi-grid {
   padding-block: 3px;
 }
 
+#overviewSiteWeatherBoard {
+  gap: 6px;
+  border-radius: 15px;
+  padding: 9px 10px;
+  box-shadow: none;
+}
+
+#overviewSiteWeatherBoard > header p {
+  display: none;
+}
+
+#overviewSiteWeatherBoard > header h3 {
+  font-size: 15px;
+}
+
+#overviewSiteWeatherBoard .site-weather-board-grid {
+  display: flex;
+  gap: 5px;
+  overflow-x: auto;
+  padding-bottom: 2px;
+  scrollbar-width: thin;
+}
+
+#overviewSiteWeatherBoard .site-weather-board-grid article {
+  flex: 0 0 176px;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 3px 8px;
+  min-height: 54px;
+  border-radius: 11px;
+  padding: 7px 8px;
+}
+
+#overviewSiteWeatherBoard .site-weather-board-grid article > div {
+  grid-column: 1;
+}
+
+#overviewSiteWeatherBoard .site-weather-board-grid article i {
+  font-size: 17px;
+}
+
+#overviewSiteWeatherBoard .site-weather-board-grid article strong {
+  grid-column: 1;
+  font-size: 12px;
+}
+
+#overviewSiteWeatherBoard .site-weather-board-grid article p,
+#overviewSiteWeatherBoard .site-weather-board-grid article button {
+  display: none;
+}
+
 @media (max-width: 640px) {
   .site-weather-board {
     border-radius: 16px;

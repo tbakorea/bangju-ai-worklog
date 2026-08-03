@@ -1186,6 +1186,23 @@ function getSiteWeatherAddress(siteKey = "") {
   return String(state.siteWeatherAddresses?.[siteKey] || "").trim();
 }
 
+function mergeSiteWeatherAddressesFromSnapshots(rows = []) {
+  state.siteWeatherAddresses = { ...(state.siteWeatherAddresses || {}) };
+  const knownKeys = new Set(Object.keys(state.siteWeatherAddresses));
+  let recovered = 0;
+  rows.forEach((row) => {
+    const addresses = row?.state?.siteWeatherAddresses || {};
+    Object.entries(addresses).forEach(([siteKey, address]) => {
+      const value = String(address || "").trim();
+      if (!value || knownKeys.has(siteKey)) return;
+      state.siteWeatherAddresses[siteKey] = value;
+      knownKeys.add(siteKey);
+      recovered += 1;
+    });
+  });
+  return recovered;
+}
+
 function getWeatherCacheKey(siteKey = "", dateKey = getActiveDateKey()) {
   return `${dateKey}::${siteKey || "기타"}`;
 }
@@ -1277,12 +1294,20 @@ function renderSiteWeatherBoard(boardId, dateKey = getActiveDateKey()) {
   const rows = getSiteWeatherBoardRows(dateKey);
   const recordedCount = rows.filter((row) => row.record).length;
   const configuredCount = rows.filter((row) => row.address).length;
+  const isOverviewBoard = boardId === "overviewSiteWeatherBoard";
+  const visibleRows = isOverviewBoard ? rows.filter((row) => row.address || row.record) : rows;
+  board.classList.toggle("is-compact-overview", isOverviewBoard);
+  if (isOverviewBoard && !visibleRows.length) {
+    board.hidden = true;
+    board.innerHTML = "";
+    return;
+  }
   board.innerHTML = `
     <header>
       <div>
         <span>Site Weather · ${escapeHtml(formatShortDate(dateKey))}</span>
         <h3>사업장별 날씨</h3>
-        <p>대표 앱설정의 사업장 주소를 기준으로 기록합니다.</p>
+        <p>앱설정의 사업장 주소에서 자동 기록합니다.</p>
       </div>
       <div>
         <em>${recordedCount}/${configuredCount || 0} 기록</em>
@@ -1290,7 +1315,7 @@ function renderSiteWeatherBoard(boardId, dateKey = getActiveDateKey()) {
       </div>
     </header>
     <div class="site-weather-board-grid">
-      ${rows.map((row) => `
+      ${visibleRows.map((row) => `
         <article class="${row.record ? "has-weather" : row.address ? "is-pending" : "is-missing"}">
           <div>
             <span>${escapeHtml(row.label)}</span>
@@ -7884,6 +7909,7 @@ async function loadRemoteWorklogForActiveDate() {
     state.weatherCache = { ...(state.weatherCache || {}), ...(data.state.weatherCache || {}) };
     state.weatherLocationCache = { ...(state.weatherLocationCache || {}), ...(data.state.weatherLocationCache || {}) };
   }
+  await loadLatestRemoteSiteWeatherSettings();
   await loadRemoteLaborPayrollDrafts();
   if (canAccessWorklogOverview()) await loadVisibleStaffWorklogsForDate(key);
   else await loadCoworkerWorklogsForDate(key);
@@ -7892,6 +7918,18 @@ async function loadRemoteWorklogForActiveDate() {
   authState.applyingRemote = false;
   renderAll();
   renderAuthStatus();
+}
+
+async function loadLatestRemoteSiteWeatherSettings() {
+  if (!supabaseClient || !authState.user) return;
+  const { data, error } = await supabaseClient
+    .from("worklog_states")
+    .select("state,updated_at")
+    .eq("user_id", authState.user.id)
+    .order("updated_at", { ascending: false })
+    .limit(30);
+  if (error || !Array.isArray(data)) return;
+  mergeSiteWeatherAddressesFromSnapshots(data);
 }
 
 async function loadVisibleStaffWorklogsForDate(dateKey = getActiveDateKey()) {
