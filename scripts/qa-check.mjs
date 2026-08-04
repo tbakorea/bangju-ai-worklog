@@ -97,7 +97,7 @@ check(
 
 check(
   "fixed employee worklogs require authenticated owner",
-  /function canEditEmployeeSlot\(employeeId = ""\)[\s\S]{0,180}if \(!authState\.user\) return false;[\s\S]{0,160}getProfileMappedEmployeeId\(\) === employeeId/.test(js),
+  /function canEditEmployeeSlot\(employeeId = ""\)[\s\S]{0,180}if \(!authState\.user\) return false;[\s\S]{0,200}const ownEmployeeId = getProfileMappedEmployeeId\(\) \|\| "profile-user";[\s\S]{0,80}employeeId === ownEmployeeId/.test(js),
   "logged-out or mismatched viewers must not operate another employee's attendance/worklog"
 );
 
@@ -140,6 +140,34 @@ check(
 );
 
 check(
+  "fitness manager worklog stays isolated from trainer PT records",
+  /if \(isActiveFitnessManagerEmail\(email\) \|\| \/박주홍\|센터장\|운영총괄\|manager\/.test\(role\)\) id = "beyond-fitness-manager";[\s\S]{0,120}else if \(\/홍현규\|트레이너\|trainer\|pt\|피티\/.test\(role\)\) id = "fitness-trainer-1";/.test(js)
+    && /else if \(isFitnessManagerRosterIdentity\(employee\) \|\| \/박주홍\|센터장\|운영총괄\|manager\/.test\(source\)\) ids.push\("beyond-fitness-manager"\);[\s\S]{0,140}else if \(\/홍현규\|트레이너\|trainer\|pt\|피티\/.test\(source\)\) ids.push\("fitness-trainer-1"\);/.test(js),
+  "manager identity must be classified before generic PT keywords so trainer logs cannot leak into the manager page"
+);
+
+check(
+  "worklog writes are restricted to the current profile identity",
+  /function canEditEmployeeSlot\(employeeId = ""\) \{[\s\S]{0,220}if \(isRepresentativeProfile\(\)\) return false;[\s\S]{0,160}const ownEmployeeId = getProfileMappedEmployeeId\(\) \|\| "profile-user";[\s\S]{0,80}return employeeId === ownEmployeeId;/.test(js)
+    && /function canApplyMissionToEmployee\(employeeId = ""\) \{[\s\S]{0,100}return canEditEmployeeSlot\(employeeId\);/.test(js),
+  "employees and AI actions must only write to the current user's own worklog slot"
+);
+
+check(
+  "representative personal worklog is removed from remote snapshots",
+  /const hasPersonalWorklog = !isRepresentativeProfile\(\);[\s\S]{0,220}const ownerEmployeeId = hasPersonalWorklog \?[\s\S]{0,100}: "";[\s\S]{0,180}const ownerWorklog = hasPersonalWorklog/.test(js)
+    && !js.includes("benny 업무일지"),
+  "representative accounts must inspect employee logs without creating a representative personal worklog"
+);
+
+check(
+  "own worklog pages use a distinct background treatment",
+  /generalView\.classList\.toggle\("is-own-page", isOwnPage\)/.test(js)
+    && /#view-fitness-log\.is-own-page \.fitness-log-task-panel[\s\S]{0,420}#view-today\.is-own-page \.worklog-task-panel/.test(css),
+  "the current user's page must be visually distinct from coworker read-only pages"
+);
+
+check(
   "fitness center report uses canonical roster",
   /function getFitnessReportLogEntries\(dateKey, isCenter, employee\) \{[\s\S]{0,80}if \(isCenter\) \{[\s\S]{0,80}return getFitnessCenterEmployees\(\)\.map/.test(js),
   "center operating reports must use the same canonical roster as the center page"
@@ -159,7 +187,7 @@ check(
 
 check(
   "general worklog readonly controls are applied",
-  /function applyCurrentWorklogPermissionState\(viewName = activeView\)[\s\S]{0,900}#worklogTaskBoard \.task-cycle[\s\S]{0,700}#employeeMemo/.test(js),
+  /function applyCurrentWorklogPermissionState\(viewName = activeView\)[\s\S]{0,1400}#worklogTaskBoard \.task-cycle[\s\S]{0,700}#employeeMemo/.test(js),
   "task, schedule, report, and memo controls should be locked in read-only worklogs"
 );
 

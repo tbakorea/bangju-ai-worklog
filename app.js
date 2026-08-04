@@ -598,6 +598,12 @@ function isAssignedWorklogEmployee(employee) {
   return !/spare|예비|미배정|unassigned/.test(source);
 }
 
+function isRepresentativeWorklogEmployee(employee = {}) {
+  const email = normalizeEmailValue(employee.email || "");
+  const role = String(employee.role || "").trim().toLowerCase();
+  return controlTowerEmails.has(email) || /대표|ceo|owner/.test(role);
+}
+
 function getAssignedWorklogEmployeeIds(employeeIds = []) {
   return employeeIds.filter((employeeId) => isAssignedWorklogEmployee(employees.find((employee) => employee.id === employeeId)));
 }
@@ -947,9 +953,18 @@ function normalizeState() {
   };
   const shouldApplyFitnessHourDefault = !state.fitnessScheduleUnitDefaultApplied;
   state.employeeLogs ||= {};
+  if (isRepresentativeProfile()) {
+    const representativeIds = new Set(["profile-user"]);
+    getStaffDirectoryEmployees()
+      .filter(isRepresentativeWorklogEmployee)
+      .forEach((employee) => getEmployeeWorklogAliases(employee).forEach((id) => representativeIds.add(id)));
+    Object.values(state.employeeLogs).forEach((logsByEmployee) => {
+      representativeIds.forEach((employeeId) => delete logsByEmployee?.[employeeId]);
+    });
+  }
   migrateEmployeeLogIdentityAliases();
   state.employeeLogs[getActiveDateKey()] ||= {};
-  getEmployeeOptions().forEach((employee) => {
+  getEmployeeOptions().filter((employee) => !isRepresentativeWorklogEmployee(employee)).forEach((employee) => {
     const employeeId = getEmployeeWorklogId(employee);
     state.employeeLogs[getActiveDateKey()][employeeId] ||= createEmployeeLog({ ...employee, id: employeeId }, state.profile, getActiveDateKey());
     const log = state.employeeLogs[getActiveDateKey()][employeeId];
@@ -1933,15 +1948,9 @@ function getEmployeeOwnLabel(employee = getSelectedEmployee()) {
   return employee.nickname || employee.name || getEmployeeAdminLabel(employee);
 }
 
-function isBennyExecutiveProfile() {
-  const email = String(authState.user?.email || state.profile?.email || "").trim().toLowerCase();
-  const nickname = String(state.profile?.nickname || "").trim().toLowerCase();
-  return email === "j3010@ymail.com" || nickname === "베니" || nickname === "benny";
-}
-
 function getFitnessOwnIdentity(employee = employees.find((item) => item.id === state.fitnessWritableEmployeeId) || getSelectedEmployee()) {
-  if (employee?.id === "profile-user" && isBennyExecutiveProfile()) {
-    return { role: "대표", label: "베니", pageTitle: "benny 업무일지" };
+  if (isRepresentativeProfile()) {
+    return { role: "대표", label: "직원 열람", pageTitle: "직원 업무일지" };
   }
   const label = getEmployeeOwnLabel(employee);
   const role = employee.role || "직원";
@@ -1957,14 +1966,14 @@ function syncFitnessWritableEmployeeFromProfile() {
   if (!/피트니스|fitness/.test(source)) return;
   let id = fitnessEmployeeIds.includes(getProfileMappedEmployeeId(profile)) ? getProfileMappedEmployeeId(profile) : "profile-user";
   const role = source;
-  if (/홍현규|트레이너|trainer|pt|피티/.test(role)) id = "fitness-trainer-1";
+  if (isActiveFitnessManagerEmail(email) || /박주홍|센터장|운영총괄|manager/.test(role)) id = "beyond-fitness-manager";
+  else if (/홍현규|트레이너|trainer|pt|피티/.test(role)) id = "fitness-trainer-1";
   else if (/이다빈/.test(role)) id = "fitness-weekday-info-idabin";
   else if (/김영채|yckim1558/.test(role)) id = "fitness-info-kimyoungchae";
   else if (/신세민|tpals2990/.test(role)) id = "fitness-info-shinsemin";
   else if (/토요|토요일/.test(role)) id = "fitness-saturday-info";
   else if (/일요|일요일/.test(role)) id = "fitness-sunday-info";
   else if (/인포|데스크|front|프론트|주중/.test(role)) id = "fitness-weekday-info";
-  else if (isActiveFitnessManagerEmail(email) || (!email && /박주홍|센터장|총괄|manager/.test(role))) id = "beyond-fitness-manager";
   state.fitnessWritableEmployeeId = id;
   state.selectedEmployeeId = id;
   state.fitnessLogPage = 1;
@@ -2175,10 +2184,10 @@ function getOwnEditableEmployeeIdForView(view = activeView) {
 function canEditEmployeeSlot(employeeId = "") {
   if (!employeeId) return false;
   if (isExplicitlySignedOut()) return false;
-  if (employeeId === "profile-user") return true;
   if (!authState.user) return false;
   if (isRepresentativeProfile()) return false;
-  return getProfileMappedEmployeeId() === employeeId;
+  const ownEmployeeId = getProfileMappedEmployeeId() || "profile-user";
+  return employeeId === ownEmployeeId;
 }
 
 function canApproveWorklogCorrections() {
@@ -3107,6 +3116,7 @@ function getOverviewGroupEmployeeEntries(group) {
   const seen = new Set();
   return source
     .filter(isAssignedWorklogEmployee)
+    .filter((employee) => !isRepresentativeWorklogEmployee(employee))
     .map((employee) => ({ employeeId: getEmployeeWorklogId(employee), employee }))
     .filter(({ employeeId }) => {
       if (!employeeId || seen.has(employeeId)) return false;
@@ -4773,6 +4783,7 @@ function getMissionProposalsForEmployee(employee = getSelectedEmployee(), log = 
 function getMissionProposalQueue(limit = 8) {
   const sourceEmployees = getEmployeeOptions()
     .filter(isAssignedWorklogEmployee)
+    .filter((employee) => !isRepresentativeWorklogEmployee(employee))
     .filter((employee) => !employee.id.includes("profile-user"));
   return sourceEmployees
     .flatMap((employee) => getMissionProposalsForEmployee(employee, getEmployeeLogForDate(employee.id)).slice(0, 2))
@@ -4782,7 +4793,7 @@ function getMissionProposalQueue(limit = 8) {
 
 function canApplyMissionToEmployee(employeeId = "") {
   if (!employeeId) return false;
-  return canAccessWorklogOverview() || canEditEmployeeSlot(employeeId);
+  return canEditEmployeeSlot(employeeId);
 }
 
 function applyMissionProposal(proposalId) {
@@ -4946,7 +4957,7 @@ function renderMissionProposalCards(proposals, options = {}) {
           <b>${escapeHtml(proposal.reason)} · ${escapeHtml(proposal.impact)}</b>
           <footer>
             <span>${escapeHtml(proposal.tip)}</span>
-            ${allowApply ? `<button type="button" data-ai-mission-apply="${escapeAttr(proposal.id)}">업무에 반영</button>` : ""}
+            ${allowApply && canApplyMissionToEmployee(proposal.employeeId) ? `<button type="button" data-ai-mission-apply="${escapeAttr(proposal.id)}">업무에 반영</button>` : ""}
           </footer>
         </article>
       `).join("") || `
@@ -7850,10 +7861,11 @@ function scheduleRemoteSave(delay = 700) {
 function buildRemoteSnapshot() {
   const key = getActiveDateKey();
   const snapshotProfile = applyProfilePlacementOverride(state.profile || {});
-  const ownerEmployeeId = getProfileMappedEmployeeId(snapshotProfile) || "profile-user";
-  const ownerWorklog = state.employeeLogs?.[key]?.[ownerEmployeeId]
-    || state.employeeLogs?.[key]?.["profile-user"]
-    || null;
+  const hasPersonalWorklog = !isRepresentativeProfile();
+  const ownerEmployeeId = hasPersonalWorklog ? getProfileMappedEmployeeId(snapshotProfile) || "profile-user" : "";
+  const ownerWorklog = hasPersonalWorklog
+    ? state.employeeLogs?.[key]?.[ownerEmployeeId] || state.employeeLogs?.[key]?.["profile-user"] || null
+    : null;
   return {
     backupSettings: state.backupSettings,
     selectedEmployeeId: state.selectedEmployeeId,
@@ -8042,7 +8054,7 @@ function mergeVisibleStaffWorklogStates(rows = [], dateKey = getActiveDateKey())
       const profile = remoteState.profile || {};
       const mappedId = getProfileMappedEmployeeId(profile);
       const employee = resolveRemoteWorklogEmployee(row);
-      if (!employee || !isAssignedWorklogEmployee(employee)) return;
+      if (!employee || !isAssignedWorklogEmployee(employee) || isRepresentativeWorklogEmployee(employee)) return;
       const employeeId = getEmployeeWorklogId(employee);
       if (!employeeId || mergedEmployeeIds.has(employeeId)) return;
 
@@ -8567,8 +8579,13 @@ function applyCurrentWorklogPermissionState(viewName = activeView) {
   const isGeneralWorklog = ["bangju-log", "beyond-log", "today"].includes(viewName);
   if (generalView) {
     const readOnly = isGeneralWorklog && !canEditCurrentWorklog(viewName);
+    const currentEmployeeId = getCurrentWorklogEmployeeId(viewName);
+    const ownEmployeeId = getOwnEditableEmployeeIdForView(viewName);
+    const isOwnPage = Boolean(isGeneralWorklog && !isRepresentativeProfile() && currentEmployeeId && currentEmployeeId === ownEmployeeId);
     generalView.classList.toggle("is-readonly", readOnly);
+    generalView.classList.toggle("is-own-page", isOwnPage);
     generalView.dataset.worklogPermission = readOnly ? "readonly" : "editable";
+    generalView.dataset.worklogPageType = isOwnPage ? "own" : "coworker";
     generalView.querySelectorAll(`
       #worklogTaskBoard .task-cycle,
       #worklogTaskBoard .delegate-input,
@@ -8866,8 +8883,8 @@ function getFitnessEmployeeLogCandidateIds(employee = {}) {
   else if (/fitness-saturday-info|토요|토요일/.test(source)) ids.push("fitness-saturday-info");
   else if (/fitness-sunday-info|일요|일요일/.test(source)) ids.push("fitness-sunday-info");
   else if (/fitness-weekday-info|주중/.test(source)) ids.push("fitness-weekday-info");
+  else if (isFitnessManagerRosterIdentity(employee) || /박주홍|센터장|운영총괄|manager/.test(source)) ids.push("beyond-fitness-manager");
   else if (/홍현규|트레이너|trainer|pt|피티/.test(source)) ids.push("fitness-trainer-1");
-  else if (/박주홍|센터장|운영총괄|manager/.test(source)) ids.push("beyond-fitness-manager");
   return [...new Set(ids)];
 }
 
@@ -15178,7 +15195,9 @@ function getReportArchiveEmployees(siteId = "all") {
     && isAssignedWorklogEmployee(profileEmployee)
     && String(profileEmployee.name || "").trim();
   const list = shouldIncludeProfile ? [profileEmployee, ...roster] : roster;
-  return list.filter((employee) => siteId === "all" || getReportArchiveSiteId(employee) === siteId);
+  return list
+    .filter((employee) => !isRepresentativeWorklogEmployee(employee))
+    .filter((employee) => siteId === "all" || getReportArchiveSiteId(employee) === siteId);
 }
 
 function getReportArchiveEmployeeLog(employee, dateKey) {

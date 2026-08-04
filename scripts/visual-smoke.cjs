@@ -808,6 +808,7 @@ async function checkRepresentativeProfileSeparation(browser) {
     const pager = document.querySelector("#fitnessLogPagerTitle")?.textContent?.trim() || "";
     const view = document.querySelector("#view-fitness-log");
     const exitButton = document.querySelector("#returnToFitnessWorklogOverviewButton");
+    const snapshot = window.eval("buildRemoteSnapshot()");
     return {
       header,
       pager,
@@ -817,6 +818,9 @@ async function checkRepresentativeProfileSeparation(browser) {
       selectedEmployeeId: window.state?.selectedEmployeeId || "",
       exitVisible: Boolean(exitButton && !exitButton.hidden),
       taskRows: document.querySelectorAll("#fitnessTaskBoard .worklog-task-row").length,
+      snapshotOwnerEmployeeId: snapshot.ownerEmployeeId || "",
+      snapshotHasOwnerWorklog: Boolean(snapshot.ownerWorklog),
+      snapshotEmployeeIds: Object.keys(snapshot.employeeLogs?.[snapshot.selectedDateKey] || {}),
     };
   });
   if (/정찬훈|베니|benny/i.test(metrics.header + metrics.pager + metrics.identityBadge)) {
@@ -830,6 +834,9 @@ async function checkRepresentativeProfileSeparation(browser) {
   }
   if (!metrics.exitVisible || metrics.taskRows !== 3) {
     fail("representative fitness detail should provide an overview exit and keep only three blank priority rows", JSON.stringify(metrics));
+  }
+  if (metrics.snapshotOwnerEmployeeId || metrics.snapshotHasOwnerWorklog || metrics.snapshotEmployeeIds.includes("profile-user")) {
+    fail("representative remote snapshot must not contain a personal worklog", JSON.stringify(metrics));
   }
   await page.click("#returnToFitnessWorklogOverviewButton");
   if (await page.evaluate(() => document.body.dataset.activeView) !== "worklog-overview") {
@@ -1249,7 +1256,16 @@ async function checkFitnessManagerCanEditOwnWorklog(browser) {
         accessPreset: "employee",
         permissions: {},
       },
-      employeeLogs: {},
+      employeeLogs: {
+        "2026-07-27": {
+          "fitness-trainer-1": {
+            employeeId: "fitness-trainer-1",
+            tasks: [{ priority: "A", text: "홍현규 전용 PT 업무", status: "예정", done: false }],
+            schedule: [],
+            report: "홍현규 전용 보고",
+          },
+        },
+      },
     }));
     localStorage.setItem("beyond-worklog-global-view-mode", "ceo");
   });
@@ -1278,7 +1294,11 @@ async function checkFitnessManagerCanEditOwnWorklog(browser) {
     lockBanner: document.querySelector("#fitnessReadOnlyNotice")?.textContent?.trim() || "",
     lockHidden: document.querySelector("#fitnessReadOnlyNotice")?.hidden ?? true,
     taskDisabled: document.querySelector("#fitnessTaskBoard .task-text-input")?.disabled ?? true,
-    scheduleTimes: (state.employeeLogs?.[state.selectedDateKey]?.["beyond-fitness-manager"]?.schedule || []).map((entry) => entry.time)
+    scheduleTimes: (state.employeeLogs?.[state.selectedDateKey]?.["beyond-fitness-manager"]?.schedule || []).map((entry) => entry.time),
+    managerCandidateIds: getFitnessEmployeeLogCandidateIds(getFitnessCenterEmployees().find((employee) => isFitnessManagerRosterIdentity(employee)) || {}),
+    managerVisibleTask: document.querySelector("#fitnessTaskBoard .task-text-input")?.value || "",
+    ownPageClass: document.querySelector("#view-fitness-log")?.classList.contains("is-own-page") || false,
+    ownPanelBackground: getComputedStyle(document.querySelector("#view-fitness-log .fitness-log-task-panel")).backgroundImage,
   })`));
   const parsed = JSON.parse(metrics);
   if (parsed.activeView !== "fitness-log") fail("Park fitness manager should land on fitness worklog", metrics);
@@ -1293,6 +1313,12 @@ async function checkFitnessManagerCanEditOwnWorklog(browser) {
   }
   if (!parsed.lockHidden && /열람 전용|본인 업무일지만/.test(parsed.lockBanner)) {
     fail("Park fitness manager own page should not show readonly banner", metrics);
+  }
+  if (parsed.managerCandidateIds.includes("fitness-trainer-1") || parsed.managerVisibleTask === "홍현규 전용 PT 업무") {
+    fail("Park fitness manager must not inherit Hong Hyeon-gyu's trainer worklog", metrics);
+  }
+  if (!parsed.ownPageClass || !parsed.ownPanelBackground.includes("gradient")) {
+    fail("Park own worklog should use the distinct own-page background", metrics);
   }
   if (parsed.scheduleTimes[0] !== "06:00" || parsed.scheduleTimes.at(-1) !== "24:00" || parsed.scheduleTimes.includes("08:00") === false) {
     fail("Park fitness manager schedule should follow 06:00-24:00 profile work hours", metrics);
@@ -1435,21 +1461,6 @@ async function checkApprovedEmployeeWorklogEditMatrix(browser) {
       expectedView: "beyond-log",
       expectedEmployeeId: "beyond-shared-manager",
     },
-    {
-      label: "approved local profile without remote session",
-      userId: "",
-      email: "offline.approved@example.com",
-      profile: {
-        role: "직원",
-        name: "오프라인직원",
-        nickname: "오프라인",
-        org: "(주)방주",
-        workplace: "본사",
-        primaryWork: "기획 관리",
-      },
-      expectedView: "bangju-log",
-      expectedEmployeeId: "profile-user",
-    },
   ];
 
   for (const testCase of cases) {
@@ -1505,6 +1516,9 @@ async function checkApprovedEmployeeWorklogEditMatrix(browser) {
       selectedDateKey: state.selectedDateKey,
       savedText: state.employeeLogs?.[state.selectedDateKey]?.[${JSON.stringify(payload.expectedEmployeeId)}]?.tasks?.[0]?.text || "",
       profileSavedText: state.employeeLogs?.[state.selectedDateKey]?.["profile-user"]?.tasks?.[0]?.text || "",
+      ownPageClass: document.querySelector("#view-today")?.classList.contains("is-own-page") || false,
+      ownPageType: document.querySelector("#view-today")?.dataset.worklogPageType || "",
+      ownPanelBackground: getComputedStyle(document.querySelector("#view-today .worklog-task-panel")).backgroundImage,
       storage: localStorage.getItem("beyond-worklog-state-v1") || "{}"
     })`), testCase);
     const parsed = JSON.parse(metrics);
@@ -1516,6 +1530,9 @@ async function checkApprovedEmployeeWorklogEditMatrix(browser) {
     if (parsed.selectedEmployeeId !== testCase.expectedEmployeeId) fail("approved employee did not select own editable sheet", `${testCase.label}: ${metrics}`);
     if (parsed.ownEditableEmployeeId !== testCase.expectedEmployeeId || !parsed.canEdit || parsed.disabled) {
       fail("approved employee own worklog should be editable", `${testCase.label}: ${metrics}`);
+    }
+    if (!parsed.ownPageClass || parsed.ownPageType !== "own" || !parsed.ownPanelBackground.includes("gradient")) {
+      fail("approved employee own worklog should use the distinct own-page background", `${testCase.label}: ${metrics}`);
     }
     const savedText = parsed.savedText || parsed.profileSavedText || "";
     if (parsed.inputValue !== marker || savedText !== marker || storedText !== marker) {
@@ -1933,15 +1950,13 @@ async function checkAiMissionArchitect(browser) {
   }));
   if (metrics.activeView !== "ai") fail("AI coaching view did not open", metrics.activeView);
   if (metrics.missionTitle !== "업무·프로젝트 제안") fail("AI mission architect title missing", metrics.missionTitle);
-  if (!metrics.applyButtons) fail("AI mission apply buttons missing");
-  await page.locator("#view-ai [data-ai-mission-apply]").first().click();
-  await page.waitForTimeout(180);
+  if (metrics.applyButtons) fail("representative must not receive buttons that write into an employee worklog");
   const applied = await page.evaluate(() => {
     const stored = JSON.parse(localStorage.getItem("beyond-worklog-state-v1") || "{}");
     const logs = stored.employeeLogs?.[stored.selectedDateKey] || {};
     return Object.values(logs).some((log) => (log.tasks || []).some((task) => String(task.text || "").includes("[AI미션]")));
   });
-  if (!applied) fail("AI mission was not applied to worklog tasks");
+  if (applied) fail("representative AI coaching must not write into an employee worklog");
   if (errors.length) fail("AI mission page errors", errors.join(" | "));
   await page.close();
 }
