@@ -8490,6 +8490,7 @@ function renderFitnessWorklog(log = getSelectedLog()) {
   renderWorklogEditLockBanner("fitness");
   const isCenter = page?.type === "center";
   document.getElementById("fitnessCenterDailyPanel").hidden = !isCenter;
+  renderFitnessPersonalMonthSummary(page, isCenter);
   document.querySelector(".fitness-log-task-panel")?.toggleAttribute("hidden", isCenter);
   document.querySelector(".fitness-log-schedule-panel")?.toggleAttribute("hidden", isCenter);
   document.querySelector(".fitness-ops-section")?.toggleAttribute("hidden", isCenter);
@@ -8640,13 +8641,15 @@ function renderFitnessCenterDaily() {
     summary.pt += row.ptTotal;
     summary.new += numberValue(row.ops.customerNew);
     summary.renewal += numberValue(row.ops.customerRenewal);
+    summary.dayPass += numberValue(row.ops.dayPass);
     summary.consultation += numberValue(row.ops.consultation);
     summary.inbound += numberValue(row.ops.inbound);
     summary.outbound += numberValue(row.ops.outbound);
+    summary.outsideSales += numberValue(row.ops.outsideSales);
     summary.workMinutes += row.workMinutes;
     summary.recordedDays += row.recordedDays;
     return summary;
-  }, { pt: 0, ptPaid: 0, ptFree: 0, ptOther: 0, new: 0, renewal: 0, consultation: 0, inbound: 0, outbound: 0, workMinutes: 0, recordedDays: 0 });
+  }, { pt: 0, ptPaid: 0, ptFree: 0, ptOther: 0, new: 0, renewal: 0, dayPass: 0, consultation: 0, inbound: 0, outbound: 0, outsideSales: 0, workMinutes: 0, recordedDays: 0 });
 
   const summaryGrid = document.getElementById("fitnessCenterSummaryGrid");
   if (summaryGrid) {
@@ -8656,11 +8659,14 @@ function renderFitnessCenterDaily() {
       ["총 근무", formatWorkDuration(total.workMinutes)],
       ["유료 PT", `${total.ptPaid}건`],
       ["무료 PT", `${total.ptFree}건`],
+      ["기타 PT", `${total.ptOther}건`],
       ["신규", `${total.new}건`],
       ["재등록", `${total.renewal}건`],
+      ["일일권", `${total.dayPass}건`],
       ["상담", `${total.consultation}건`],
       ["아웃바운드", `${total.outbound}건`],
       ["인바운드", `${total.inbound}건`],
+      ["외부영업", `${total.outsideSales}건`],
     ].map(([label, value]) => `<article><span>${label}</span><strong>${value}</strong></article>`).join("");
   }
 
@@ -8680,9 +8686,11 @@ function renderFitnessCenterDaily() {
         <td>${escapeHtml(row.ops.ptOther || "")}</td>
         <td>${escapeHtml(row.ops.customerNew || "")}</td>
         <td>${escapeHtml(row.ops.customerRenewal || "")}</td>
+        <td>${escapeHtml(row.ops.dayPass || "")}</td>
         <td>${escapeHtml(row.ops.consultation || "")}</td>
-        <td>${escapeHtml(row.ops.outbound || "")}</td>
         <td>${escapeHtml(row.ops.inbound || "")}</td>
+        <td>${escapeHtml(row.ops.outbound || "")}</td>
+        <td>${escapeHtml(row.ops.outsideSales || "")}</td>
         <td>${escapeHtml(row.ops.specialReport || row.ops.shiftNote || "")}</td>
       </tr>
     `).join("");
@@ -8698,9 +8706,11 @@ function renderFitnessCenterDaily() {
         <td>${total.ptOther}</td>
         <td>${total.new}</td>
         <td>${total.renewal}</td>
+        <td>${total.dayPass}</td>
         <td>${total.consultation}</td>
-        <td>${total.outbound}</td>
         <td>${total.inbound}</td>
+        <td>${total.outbound}</td>
+        <td>${total.outsideSales}</td>
         <td></td>
       </tr>
     `;
@@ -8805,7 +8815,7 @@ function buildFitnessCenterEmployeeMonthRow(employee, monthPrefix) {
     const free = numberValue(dayOps.ptFree);
     paidPtTotal += paid;
     freePtTotal += free;
-    ptTotal += paid + free;
+    ptTotal += paid + free + numberValue(dayOps.ptOther);
     const minutes = getWorkMinutes(log.clockIn, log.clockOut);
     if (minutes || log.clockIn || log.clockOut || log.attendanceStatus || paid || free || numberValue(dayOps.ptOther)) recordedDays += 1;
     workMinutes += minutes;
@@ -8839,6 +8849,38 @@ function buildFitnessCenterEmployeeMonthRow(employee, monthPrefix) {
     breakSummary: breakCount ? `${breakCount}건` : "-",
     notes,
   };
+}
+
+function renderFitnessPersonalMonthSummary(page = getCurrentFitnessLogPage(), isCenter = page?.type === "center") {
+  const panel = document.getElementById("fitnessPersonalMonthSummary");
+  if (!panel) return;
+  const employee = page?.employee || getFitnessIdentityEmployee();
+  panel.hidden = Boolean(isCenter || !employee);
+  if (panel.hidden) return;
+  const month = getActiveDateKey().slice(0, 7);
+  const aggregate = buildFitnessCenterEmployeeMonthRow(employee, month);
+  const ops = { ...createFitnessOps(), ...(aggregate.ops || {}) };
+  const title = document.getElementById("fitnessPersonalMonthTitle");
+  if (title) title.textContent = `${formatCenterMonthLabel(month)} · ${getEmployeeAdminLabel(employee)} 개인 누계`;
+  const metrics = [
+    ["유료 PT", aggregate.paidPtTotal],
+    ["무료 PT", aggregate.freePtTotal],
+    ["보강/기타", numberValue(ops.ptOther)],
+    ["신규", numberValue(ops.customerNew)],
+    ["재등록", numberValue(ops.customerRenewal)],
+    ["일일권", numberValue(ops.dayPass)],
+    ["상담", numberValue(ops.consultation)],
+    ["인바운드", numberValue(ops.inbound)],
+    ["아웃바운드", numberValue(ops.outbound)],
+    ["외부영업", numberValue(ops.outsideSales)],
+  ];
+  const grid = document.getElementById("fitnessPersonalMonthGrid");
+  if (grid) {
+    grid.innerHTML = metrics.map(([label, value]) => `
+      <span><b>${escapeHtml(label)}</b><strong>${Number(value || 0).toLocaleString()}건</strong></span>
+    `).join("");
+  }
+  panel.setAttribute("aria-label", `${formatCenterMonthLabel(month)} ${getEmployeeAdminLabel(employee)} 피트니스 수량 누계`);
 }
 
 function getFitnessEmployeeLogForDate(employee = {}, dateKey = getActiveDateKey()) {

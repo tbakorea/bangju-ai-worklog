@@ -1257,12 +1257,39 @@ async function checkFitnessManagerCanEditOwnWorklog(browser) {
         permissions: {},
       },
       employeeLogs: {
+        "2026-07-26": {
+          "beyond-fitness-manager": {
+            employeeId: "beyond-fitness-manager",
+            tasks: [],
+            schedule: [],
+            fitnessOps: { ptRegular: "2", consultation: "1" },
+            fitnessOpsManual: { ptRegular: true, consultation: true },
+          },
+        },
         "2026-07-27": {
+          "beyond-fitness-manager": {
+            employeeId: "beyond-fitness-manager",
+            tasks: [],
+            schedule: [],
+            fitnessOps: { ptRegular: "3", ptFree: "1", consultation: "2", customerNew: "1" },
+            fitnessOpsManual: { ptRegular: true, ptFree: true, consultation: true, customerNew: true },
+          },
           "fitness-trainer-1": {
             employeeId: "fitness-trainer-1",
             tasks: [{ priority: "A", text: "홍현규 전용 PT 업무", status: "예정", done: false }],
             schedule: [],
             report: "홍현규 전용 보고",
+            fitnessOps: { ptRegular: "7", ptOther: "1" },
+            fitnessOpsManual: { ptRegular: true, ptOther: true },
+          },
+        },
+        "2026-08-01": {
+          "beyond-fitness-manager": {
+            employeeId: "beyond-fitness-manager",
+            tasks: [],
+            schedule: [],
+            fitnessOps: { ptRegular: "11", consultation: "4" },
+            fitnessOpsManual: { ptRegular: true, consultation: true },
           },
         },
       },
@@ -1299,6 +1326,11 @@ async function checkFitnessManagerCanEditOwnWorklog(browser) {
     managerVisibleTask: document.querySelector("#fitnessTaskBoard .task-text-input")?.value || "",
     ownPageClass: document.querySelector("#view-fitness-log")?.classList.contains("is-own-page") || false,
     ownPanelBackground: getComputedStyle(document.querySelector("#view-fitness-log .fitness-log-task-panel")).backgroundImage,
+    personalMonthTitle: document.querySelector("#fitnessPersonalMonthTitle")?.textContent?.trim() || "",
+    personalMonthText: document.querySelector("#fitnessPersonalMonthGrid")?.textContent?.replace(/\\s+/g, " ").trim() || "",
+    julyManager: buildFitnessCenterEmployeeMonthRow(getFitnessCenterEmployees().find((employee) => isFitnessManagerRosterIdentity(employee)), "2026-07").ops,
+    augustManager: buildFitnessCenterEmployeeMonthRow(getFitnessCenterEmployees().find((employee) => isFitnessManagerRosterIdentity(employee)), "2026-08").ops,
+    julyTrainer: buildFitnessCenterEmployeeMonthRow(getFitnessCenterEmployees().find((employee) => /홍현규/.test(employee.name || "")), "2026-07").ops,
   })`));
   const parsed = JSON.parse(metrics);
   if (parsed.activeView !== "fitness-log") fail("Park fitness manager should land on fitness worklog", metrics);
@@ -1319,6 +1351,11 @@ async function checkFitnessManagerCanEditOwnWorklog(browser) {
   }
   if (!parsed.ownPageClass || !parsed.ownPanelBackground.includes("gradient")) {
     fail("Park own worklog should use the distinct own-page background", metrics);
+  }
+  if (!parsed.personalMonthTitle.includes("2026.08") || !parsed.personalMonthText.includes("11건")
+    || Number(parsed.julyManager.ptRegular) !== 5 || Number(parsed.julyManager.consultation) !== 3
+    || Number(parsed.augustManager.ptRegular) !== 11 || Number(parsed.julyTrainer.ptRegular) !== 7) {
+    fail("fitness personal totals must accumulate within the selected month and reset for the next month", metrics);
   }
   if (parsed.scheduleTimes[0] !== "06:00" || parsed.scheduleTimes.at(-1) !== "24:00" || parsed.scheduleTimes.includes("08:00") === false) {
     fail("Park fitness manager schedule should follow 06:00-24:00 profile work hours", metrics);
@@ -1347,6 +1384,17 @@ async function checkFitnessManagerCanEditOwnWorklog(browser) {
   }
   if (saved.savedScheduleType !== "유료PT" || saved.savedScheduleText !== "김영수 수업" || saved.storageScheduleText !== "김영수 수업") {
     fail("Park fitness manager schedule editor should persist", saveMetrics);
+  }
+  await page.evaluate(() => window.eval("setFitnessLogPage(0); setFitnessCenterMonth('2026-07')"));
+  await page.waitForTimeout(220);
+  const centerMonth = await page.evaluate(() => ({
+    title: document.querySelector("#fitnessCenterMonthTitle")?.textContent?.trim() || "",
+    rows: document.querySelector("#fitnessCenterDailyBody")?.textContent?.replace(/\s+/g, " ").trim() || "",
+    foot: document.querySelector("#fitnessCenterDailyFoot")?.textContent?.replace(/\s+/g, " ").trim() || "",
+  }));
+  if (!centerMonth.title.includes("2026.07") || !centerMonth.rows.includes("박주홍") || !centerMonth.rows.includes("홍현규")
+    || !centerMonth.foot.includes("12") || !centerMonth.foot.includes("1")) {
+    fail("fitness center month view must accumulate every employee into the monthly status and total", JSON.stringify(centerMonth));
   }
   if (errors.length) fail("Park fitness manager regression page errors", errors.join(" | "));
   await page.close();

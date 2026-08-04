@@ -168,6 +168,22 @@ check(
 );
 
 check(
+  "fitness quantities accumulate by employee and calendar month",
+  /function renderFitnessPersonalMonthSummary\(page = getCurrentFitnessLogPage\(\), isCenter = page\?\.type === "center"\)[\s\S]{0,500}getActiveDateKey\(\)\.slice\(0, 7\)[\s\S]{0,700}buildFitnessCenterEmployeeMonthRow\(employee, month\)/.test(js)
+    && /function buildFitnessCenterEmployeeMonthRow\(employee, monthPrefix\)[\s\S]{0,900}getMonthDateKeys\(monthPrefix\)\.forEach/.test(js)
+    && /const employeesForCenter = getFitnessCenterEmployees\(\);[\s\S]{0,180}buildFitnessCenterEmployeeMonthRow\(employee, centerMonth\)/.test(js)
+    && /id="fitnessPersonalMonthSummary"/.test(html),
+  "personal worklogs need their own monthly totals and the center page needs all employee monthly totals"
+);
+
+check(
+  "fitness monthly totals include every quantity field",
+  /\["유료 PT", aggregate\.paidPtTotal\][\s\S]{0,700}\["외부영업", numberValue\(ops\.outsideSales\)\]/.test(js)
+    && /summary\.dayPass \+= numberValue\(row\.ops\.dayPass\)[\s\S]{0,300}summary\.outsideSales \+= numberValue\(row\.ops\.outsideSales\)/.test(js),
+  "PT, contracts, consultation, inbound/outbound, day passes, and outside sales must all roll up"
+);
+
+check(
   "fitness center report uses canonical roster",
   /function getFitnessReportLogEntries\(dateKey, isCenter, employee\) \{[\s\S]{0,80}if \(isCenter\) \{[\s\S]{0,80}return getFitnessCenterEmployees\(\)\.map/.test(js),
   "center operating reports must use the same canonical roster as the center page"
