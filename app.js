@@ -301,6 +301,20 @@ const defaultProfile = {
 };
 
 const profilePlacementOverrides = {
+  "gusrd1005@gmail.com": {
+    org: "(주)방주 / 비욘드 피트니스 지사",
+    workplace: "비욘드 피트니스",
+    role: "트레이너",
+    name: "홍현규",
+    nickname: "홍트",
+    primaryWork: "PT 수업",
+    secondaryWork: "회원관리, 센터 운영 지원",
+    employmentType: "프리랜서",
+    workHours: "06:00-24:00",
+    accessPreset: "freelance",
+    permissions: {},
+    mappedEmployeeId: "fitness-trainer-1",
+  },
   [activeFitnessManagerEmail]: {
     org: "(주)방주 / 비욘드 피트니스 지사",
     workplace: "비욘드 피트니스",
@@ -561,7 +575,7 @@ const employees = [
   { id: "construction-finance-assistant", name: "비제이 재무 예비", org: "(주)비제이종합건설", role: "예비", primaryWork: "건설현장 지출, 정산, 노무자료" },
   { id: "bangju-spare-1", name: "방주 예비", org: "(주)방주", role: "예비", primaryWork: "공통 지원" },
   { id: "beyond-fitness-manager", name: "박주홍", nickname: "센터장", org: "(주)방주 / 비욘드 피트니스 지사", role: "센터장", workHours: "06:00-24:00", primaryWork: "운영총괄, PT 수업" },
-  { id: "fitness-trainer-1", name: "홍현규", nickname: "홍트", org: "(주)방주 / 비욘드 피트니스 지사", role: "트레이너", workHours: "06:00-24:00", primaryWork: "PT 수업", employmentType: "프리랜서" },
+  { id: "fitness-trainer-1", name: "홍현규", nickname: "홍트", email: "gusrd1005@gmail.com", org: "(주)방주 / 비욘드 피트니스 지사", role: "트레이너", workHours: "06:00-24:00", primaryWork: "PT 수업", employmentType: "프리랜서" },
   { id: "fitness-weekday-info", name: "주중 인포", nickname: "주중인포", org: "(주)방주 / 비욘드 피트니스 지사", role: "인포데스크", workHours: "16:00-20:00", primaryWork: "고객응대, 센터관리" },
   { id: "fitness-weekday-info-idabin", name: "이다빈", nickname: "이다빈", org: "(주)방주 / 비욘드 피트니스 지사", role: "인포데스크", workHours: "16:00-20:00", primaryWork: "고객응대, 센터관리" },
   { id: "fitness-info-kimyoungchae", name: "김영채", nickname: "김영채", email: "yckim1558@naver.com", org: "(주)방주 / 비욘드 피트니스 지사", role: "인포데스크", workHours: "10:00-18:00", primaryWork: "고객응대, 센터관리" },

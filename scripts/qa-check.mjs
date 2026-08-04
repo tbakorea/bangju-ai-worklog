@@ -122,6 +122,15 @@ check(
 );
 
 check(
+  "Hong Hyeon-gyu account is pinned to the trainer worklog",
+  /"gusrd1005@gmail\.com": \{[\s\S]{0,700}role: "트레이너"[\s\S]{0,500}mappedEmployeeId: "fitness-trainer-1"/.test(js)
+    && /id: "fitness-trainer-1"[^\n]+email: "gusrd1005@gmail\.com"/.test(js)
+    && read("supabase/worklog_schema.sql").includes("where lower(coalesce(email, '')) = 'gusrd1005@gmail.com'")
+    && read("supabase/worklog_schema.sql").includes("approval_status = 'approved'"),
+  "Hong Hyeon-gyu must be approved and mapped to his own editable trainer sheet"
+);
+
+check(
   "fitness center roster keeps one active Park manager",
   /const activeFitnessManagerEmail = "pinong0@naver\.com";/.test(js)
     && /const retiredFitnessManagerEmails = new Set\(\["pjhong0@naver\.com", "pjhong1@naver\.com", "pjhong9@naver\.com"\]\);/.test(js)

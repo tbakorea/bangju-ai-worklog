@@ -1326,6 +1326,68 @@ async function checkFitnessManagerCanEditOwnWorklog(browser) {
   await page.close();
 }
 
+async function checkFitnessTrainerCanEditOwnWorklog(browser) {
+  const page = await browser.newPage({ viewport: { width: 390, height: 844 } });
+  const errors = [];
+  page.on("pageerror", (error) => errors.push(error.message));
+  await page.addInitScript(() => {
+    localStorage.setItem("beyond-worklog-state-v1", JSON.stringify({
+      selectedDateKey: "2026-07-27",
+      selectedEmployeeId: "beyond-fitness-manager",
+      fitnessWritableEmployeeId: "beyond-fitness-manager",
+      profile: {
+        email: "gusrd1005@gmail.com",
+        role: "직원",
+        name: "가입직원",
+        org: "미분류",
+        workplace: "",
+        approvalStatus: "approved",
+        accessPreset: "employee",
+        permissions: {},
+      },
+      employeeLogs: {},
+    }));
+    localStorage.setItem("beyond-worklog-global-view-mode", "ceo");
+  });
+  await page.goto(target, { waitUntil: "domcontentloaded" });
+  await page.evaluate(() => {
+    document.body.classList.add("physical-phone-device");
+    document.body.dataset.layoutMode = "phone";
+    document.body.dataset.viewMode = "ceo";
+    window.eval(`
+      authState.user = { id: "hong-hyeongyu-user", email: "gusrd1005@gmail.com" };
+      normalizeState();
+      switchView(getInitialLandingView());
+    `);
+  });
+  await page.waitForTimeout(350);
+  await page.fill("#fitnessTaskBoard .task-text-input", "홍현규 트레이너 업무 입력 저장 확인");
+  await page.waitForTimeout(300);
+  const metrics = await page.evaluate(() => window.eval(`JSON.stringify({
+    activeView: document.body.dataset.activeView,
+    selectedEmployeeId: state.selectedEmployeeId,
+    fitnessWritableEmployeeId: state.fitnessWritableEmployeeId,
+    canEdit: canEditCurrentWorklog(activeView),
+    taskDisabled: document.querySelector("#fitnessTaskBoard .task-text-input")?.disabled ?? true,
+    identity: document.querySelector("#fitnessIdentityBadge")?.textContent?.trim() || "",
+    savedText: state.employeeLogs?.[state.selectedDateKey]?.["fitness-trainer-1"]?.tasks?.[0]?.text || "",
+    storageText: JSON.parse(localStorage.getItem("beyond-worklog-state-v1") || "{}").employeeLogs?.[state.selectedDateKey]?.["fitness-trainer-1"]?.tasks?.[0]?.text || ""
+  })`));
+  const parsed = JSON.parse(metrics);
+  if (parsed.activeView !== "fitness-log"
+    || parsed.selectedEmployeeId !== "fitness-trainer-1"
+    || parsed.fitnessWritableEmployeeId !== "fitness-trainer-1"
+    || !parsed.canEdit
+    || parsed.taskDisabled
+    || !/홍현규|홍트/.test(parsed.identity)
+    || parsed.savedText !== "홍현규 트레이너 업무 입력 저장 확인"
+    || parsed.storageText !== parsed.savedText) {
+    fail("Hong Hyeon-gyu should land on and save his own trainer worklog", metrics);
+  }
+  if (errors.length) fail("Hong Hyeon-gyu fitness worklog page errors", errors.join(" | "));
+  await page.close();
+}
+
 async function checkApprovedEmployeeWorklogEditMatrix(browser) {
   const cases = [
     {
@@ -3208,6 +3270,7 @@ async function checkApprovalRepairMissingRpcFallsBack(browser) {
     await checkKimSungminAccountIsEmployeeOnly(browser);
     await checkUnmappedEmployeeDoesNotInheritFitnessManager(browser);
     await checkUnclassifiedFitnessEmployeeCanEditOwnProfileWorklog(browser);
+    await checkFitnessTrainerCanEditOwnWorklog(browser);
     await checkFitnessManagerCanEditOwnWorklog(browser);
     await checkApprovedEmployeeWorklogEditMatrix(browser);
     await checkPriorityCarryoverAndDateRules(browser);

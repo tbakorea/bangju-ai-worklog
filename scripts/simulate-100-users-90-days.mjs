@@ -364,6 +364,8 @@ const appJs = read("app.js");
 const schema = read("supabase/worklog_schema.sql");
 assert(appJs.includes(`const activeFitnessManagerEmail = "${activeFitnessManagerEmail}";`), "app.js must pin the active Park manager account to pinong0@naver.com");
 assert(appJs.includes("retiredFitnessManagerEmails"), "app.js must keep a retired account guard for duplicate Park manager records");
+assert(appJs.includes('"gusrd1005@gmail.com": {') && appJs.includes('mappedEmployeeId: "fitness-trainer-1"'), "Hong Hyeon-gyu account must map to the editable trainer worklog");
+assert(schema.includes("delete from auth.users") && schema.includes("pjhong0@naver.com") && schema.includes("pinong0@naver.com"), "duplicate Park manager auth accounts must be removed only after preserving the active account");
 assert(appJs.includes("김영채") && appJs.includes("신세민") && appJs.includes("이다빈"), "app.js must include canonical fitness members 김영채/신세민/이다빈");
 assert(appJs.includes("function canEditCurrentWorklog") && appJs.includes("function canEditEmployeeSlot"), "app.js must keep owner/edit permission guards");
 assert(appJs.includes("weekly_work_hours") && appJs.includes("work_hours"), "app.js must support default and weekday-specific work hours");
