@@ -96,6 +96,51 @@ check(
 );
 
 check(
+  "readonly worklogs cap blank priority rows at three",
+  /function getVisibleWorklogTaskRefs[\s\S]{0,260}if \(!canEditCurrentWorklog\(view\)\)[\s\S]{0,220}3 - activeRefs\.length/.test(js),
+  "every read-only detail path must use the same compact blank-row policy"
+);
+
+check(
+  "fitness schedule display groups repeated categories",
+  js.includes("function formatScheduleTextSmartly")
+    && js.includes('.split(/\\s*\\/\\s*(?=\\([^)]+\\))/)')
+    && js.includes('texts.filter(Boolean).join(", ")'),
+  "same-time entries should not repeat an identical category label"
+);
+
+check(
+  "fitness schedule time has final no-wrap guard",
+  /#view-fitness-log \.fitness-log-schedule-panel \.appointment-time[\s\S]{0,260}white-space:\s*nowrap !important;[\s\S]{0,100}word-break:\s*keep-all !important;/.test(css),
+  "representative split view must keep HH:MM on one line"
+);
+
+check(
+  "DaGym daily facts and generated guidance sync remotely",
+  js.includes("dagymDaily: state.dagymDaily || {}")
+    && js.includes("fitnessDailyGuidance: state.fitnessDailyGuidance || {}")
+    && /function mergeSharedFitnessOperations\(remoteState = \{\}\)[\s\S]{0,2200}remoteState\.dagymDaily[\s\S]{0,1800}remoteState\.fitnessDailyGuidance/.test(js),
+  "date-scoped DaGym facts and guidance must follow the existing remote worklog snapshot flow"
+);
+
+check(
+  "previous operating day generates assigned fitness guidance",
+  /function getPreviousDagymOperatingDate[\s\S]{0,300}status === "closed"/.test(js)
+    && /function buildTodayFitnessGuidance[\s\S]{0,1800}no-show[\s\S]{0,900}pt-gap[\s\S]{0,900}sales-action/.test(js)
+    && ids.includes("fitnessDailyGuidancePanel")
+    && ids.includes("dagymCloseButton"),
+  "only closed daily facts should drive traceable next-day actions"
+);
+
+check(
+  "fitness guidance acceptance preserves employee edit boundaries",
+  /function acceptFitnessDailyGuidance\(guidanceId\)[\s\S]{0,500}isRepresentativeProfile\(\)[\s\S]{0,180}item\.targetEmployeeId !== ownId[\s\S]{0,120}!canEditEmployeeSlot\(ownId\)/.test(js)
+    && /guidanceId: item\.id[\s\S]{0,150}guidanceSourceDateKey: item\.sourceDateKey/.test(js)
+    && /cycleWorklogTaskStatus\(editableRef\.task\);[\s\S]{0,80}syncFitnessGuidanceFromTask\(editableRef\.task\)/.test(js),
+  "only the assigned employee may accept guidance and task status must flow back to the guidance card"
+);
+
+check(
   "fixed employee worklogs require authenticated owner",
   /function canEditEmployeeSlot\(employeeId = ""\)[\s\S]{0,180}if \(!authState\.user\) return false;[\s\S]{0,200}const ownEmployeeId = getProfileMappedEmployeeId\(\) \|\| "profile-user";[\s\S]{0,80}employeeId === ownEmployeeId/.test(js),
   "logged-out or mismatched viewers must not operate another employee's attendance/worklog"

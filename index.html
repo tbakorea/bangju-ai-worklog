@@ -503,6 +503,17 @@
           </header>
           <div class="fitness-personal-month-grid" id="fitnessPersonalMonthGrid"></div>
         </article>
+        <article class="fitness-daily-guidance-panel" id="fitnessDailyGuidancePanel" hidden>
+          <header>
+            <div>
+              <span>PREVIOUS DAY → TODAY</span>
+              <strong id="fitnessDailyGuidanceTitle">오늘 실행지침</strong>
+              <p id="fitnessDailyGuidanceSubtitle">직전 영업일 마감자료 대기</p>
+            </div>
+            <button type="button" id="fitnessGuidanceGenerateButton">오늘 지침 생성</button>
+          </header>
+          <div class="fitness-daily-guidance-list" id="fitnessDailyGuidanceList"></div>
+        </article>
         <article class="planner-section fitness-center-daily-panel" id="fitnessCenterDailyPanel" hidden>
           <div class="fitness-center-month-nav">
             <button type="button" id="fitnessCenterPrevMonthButton" aria-label="이전 달">‹</button>
@@ -515,8 +526,11 @@
           </div>
           <div class="dagym-ops-panel">
             <header>
-              <strong>다짐 운영현황</strong>
-              <span>다짐매니저 자료를 입력하거나 붙여넣어 오늘 운영 상태를 분석합니다</span>
+              <div>
+                <strong>다짐 운영현황</strong>
+                <span>날짜별 자료를 마감하면 다음 영업일의 실행지침으로 연결합니다</span>
+              </div>
+              <em id="dagymDailyStatus">오늘 입력 중</em>
             </header>
             <div class="dagym-ops-grid">
               <label>오늘 출석 <input data-dagym-field="visits" type="number" min="0" inputmode="numeric" /></label>
@@ -533,6 +547,7 @@
               <textarea id="dagymImportText" rows="3" placeholder="다짐매니저에서 복사한 출석, 예약, 결제, 만료 예정 내용을 붙여넣습니다."></textarea>
             </label>
             <div class="dagym-actions">
+              <button type="button" id="dagymCloseButton">마감 확정</button>
               <button type="button" id="dagymImportButton">붙여넣기 분석</button>
               <button type="button" id="dagymClearButton">초기화</button>
             </div>

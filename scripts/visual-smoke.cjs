@@ -803,11 +803,38 @@ async function checkRepresentativeProfileSeparation(browser) {
     window.switchView?.("fitness-log");
   });
   await page.waitForTimeout(350);
+  await page.evaluate(() => {
+    const page = window.eval("getCurrentFitnessLogPage()");
+    const employeeId = page?.id || "beyond-fitness-manager";
+    const log = window.eval("getFitnessEmployeeLogForDate")(page?.employee || { id: employeeId }, "2026-07-23")
+      || window.eval(`getEmployeeLogForDate(${JSON.stringify(employeeId)}, "2026-07-23")`);
+    log.tasks = Array.from({ length: 8 }, (_, index) => ({
+      id: `representative-blank-${index}`,
+      priority: "?",
+      text: "",
+      status: "미완료",
+      done: false,
+    }));
+    const scheduleEntry = log.schedule.find((entry) => entry.time === "06:00") || log.schedule[0];
+    scheduleEntry.text = "(시설청결)웨이트존 청소기/(시설청결)웨이트존 거울닦기";
+    delete scheduleEntry.items;
+    window.eval("renderFitnessWorklog")?.(log);
+  });
+  await page.waitForTimeout(120);
   const metrics = await page.evaluate(() => {
     const header = document.querySelector("#globalHeaderTitle")?.textContent?.trim() || "";
     const pager = document.querySelector("#fitnessLogPagerTitle")?.textContent?.trim() || "";
     const view = document.querySelector("#view-fitness-log");
     const exitButton = document.querySelector("#returnToFitnessWorklogOverviewButton");
+    const firstScheduleRow = document.querySelector("#fitnessAppointmentList .fitness-appointment-row");
+    const filledScheduleRow = document.querySelector("#fitnessAppointmentList .fitness-appointment-row.is-filled");
+    const firstScheduleTime = firstScheduleRow?.querySelector(".appointment-time");
+    const smartScheduleRow = window.eval("renderFitnessAppointmentRow")({
+      time: "06:00",
+      text: "(시설청결)웨이트존 청소기/(시설청결)웨이트존 거울닦기",
+      status: "예정",
+      mergeDown: false,
+    }, window.eval("getSelectedLog")());
     const snapshot = window.eval("buildRemoteSnapshot()");
     return {
       header,
@@ -818,6 +845,10 @@ async function checkRepresentativeProfileSeparation(browser) {
       selectedEmployeeId: window.state?.selectedEmployeeId || "",
       exitVisible: Boolean(exitButton && !exitButton.hidden),
       taskRows: document.querySelectorAll("#fitnessTaskBoard .worklog-task-row").length,
+      firstScheduleText: filledScheduleRow?.querySelector(".fitness-appointment-summary")?.textContent?.replace(/\s+/g, " ").trim() || "",
+      smartScheduleText: smartScheduleRow.querySelector(".fitness-appointment-summary")?.textContent?.replace(/\s+/g, " ").trim() || "",
+      firstScheduleTimeWhiteSpace: firstScheduleTime ? getComputedStyle(firstScheduleTime).whiteSpace : "",
+      firstScheduleTimeHeight: firstScheduleTime?.getBoundingClientRect().height || 0,
       snapshotOwnerEmployeeId: snapshot.ownerEmployeeId || "",
       snapshotHasOwnerWorklog: Boolean(snapshot.ownerWorklog),
       snapshotEmployeeIds: Object.keys(snapshot.employeeLogs?.[snapshot.selectedDateKey] || {}),
@@ -834,6 +865,12 @@ async function checkRepresentativeProfileSeparation(browser) {
   }
   if (!metrics.exitVisible || metrics.taskRows !== 3) {
     fail("representative fitness detail should provide an overview exit and keep only three blank priority rows", JSON.stringify(metrics));
+  }
+  if (metrics.smartScheduleText !== "(시설청결) 웨이트존 청소기, 웨이트존 거울 닦기") {
+    fail("same-time fitness facility tasks should be grouped into one smart label", metrics.smartScheduleText);
+  }
+  if (metrics.firstScheduleTimeWhiteSpace !== "nowrap" || metrics.firstScheduleTimeHeight > 24) {
+    fail("fitness schedule time should stay on one line in the narrow representative view", JSON.stringify(metrics));
   }
   if (metrics.snapshotOwnerEmployeeId || metrics.snapshotHasOwnerWorklog || metrics.snapshotEmployeeIds.includes("profile-user")) {
     fail("representative remote snapshot must not contain a personal worklog", JSON.stringify(metrics));
@@ -3304,6 +3341,114 @@ async function checkApprovalRepairMissingRpcFallsBack(browser) {
   await page.close();
 }
 
+async function checkDagymPreviousDayGuidanceFlow(browser) {
+  const { page, errors } = await openPage(browser, { width: 390, height: 844 });
+  await page.evaluate(() => {
+    window.eval(`
+      authState.user = { id: "owner-guidance-qa", email: "j3010@ymail.com" };
+      state.profile = {
+        ...state.profile,
+        authUserId: "owner-guidance-qa",
+        email: "j3010@ymail.com",
+        name: "정찬훈",
+        nickname: "Benny",
+        org: "(주)방주",
+        workplace: "본사",
+        role: "대표",
+        primaryWork: "기획/관리",
+        approvalStatus: "approved",
+        accessPreset: "owner",
+        permissions: { controlTower: true, worklogAll: true }
+      };
+      state.selectedDateKey = "2026-08-05";
+      state.fitnessLogPage = 0;
+      state.fitnessDailyGuidance = {};
+      state.dagymDaily = {
+        "2026-08-04": {
+          ...createDagymDailyRecord("2026-08-04"),
+          visits: "120",
+          newMembers: "0",
+          renewals: "1",
+          expiring: "6",
+          ptBookings: "8",
+          noShows: "2",
+          lockerExpiring: "3",
+          sales: "450000",
+          status: "closed",
+          closedAt: "2026-08-04T21:00:00.000Z",
+          updatedAt: "2026-08-04T21:00:00.000Z"
+        }
+      };
+      normalizeState();
+      switchView("fitness-log");
+    `);
+  });
+  await page.waitForTimeout(250);
+  const representative = await page.evaluate(() => {
+    const panel = document.querySelector("#fitnessDailyGuidancePanel");
+    return {
+      hidden: panel?.hidden ?? true,
+      source: document.querySelector("#fitnessDailyGuidanceSubtitle")?.textContent?.trim() || "",
+      count: panel?.querySelectorAll(".fitness-guidance-item").length || 0,
+      accepts: panel?.querySelectorAll("[data-accept-fitness-guidance]").length || 0,
+      fits: !panel || panel.scrollWidth <= panel.clientWidth + 2,
+      stored: JSON.parse(localStorage.getItem("beyond-worklog-state-v1") || "{}").fitnessDailyGuidance?.["2026-08-05"]?.length || 0,
+    };
+  });
+  if (representative.hidden || representative.count < 4 || representative.stored !== representative.count) {
+    fail("closed previous-day DaGym facts should generate today's guidance", JSON.stringify(representative));
+  }
+  if (!representative.source.includes("08.04") || representative.accepts || !representative.fits) {
+    fail("representative guidance must show source, remain read-only, and fit phone width", JSON.stringify(representative));
+  }
+
+  await page.evaluate(() => {
+    window.eval(`
+      authState.user = { id: "trainer-guidance-qa", email: "gusrd1005@gmail.com" };
+      state.profile = {
+        ...state.profile,
+        authUserId: "trainer-guidance-qa",
+        email: "gusrd1005@gmail.com",
+        name: "홍현규",
+        nickname: "홍현규",
+        org: "비욘드 피트니스",
+        workplace: "비욘드 피트니스",
+        role: "트레이너",
+        primaryWork: "PT 회원관리",
+        approvalStatus: "approved",
+        accessPreset: "employee",
+        permissions: {}
+      };
+      state.fitnessWritableEmployeeId = "fitness-trainer-1";
+      state.selectedEmployeeId = "fitness-trainer-1";
+      normalizeState();
+      const trainerPage = getFitnessLogPages().findIndex((entry) => entry.id === "fitness-trainer-1");
+      state.fitnessLogPage = trainerPage;
+      renderAll();
+    `);
+  });
+  await page.waitForTimeout(180);
+  const acceptButton = page.locator("[data-accept-fitness-guidance]").first();
+  if (await acceptButton.count() !== 1) fail("assigned trainer should see one-click guidance acceptance");
+  await acceptButton.click();
+  await page.waitForTimeout(150);
+  const employee = await page.evaluate(() => {
+    const stored = JSON.parse(localStorage.getItem("beyond-worklog-state-v1") || "{}");
+    const tasks = stored.employeeLogs?.["2026-08-05"]?.["fitness-trainer-1"]?.tasks || [];
+    const guidance = stored.fitnessDailyGuidance?.["2026-08-05"] || [];
+    return {
+      linkedTask: tasks.find((task) => task.guidanceId) || null,
+      accepted: guidance.find((item) => item.targetEmployeeId === "fitness-trainer-1")?.status || "",
+      panelFits: document.querySelector("#fitnessDailyGuidancePanel")?.scrollWidth <= document.querySelector("#fitnessDailyGuidancePanel")?.clientWidth + 2,
+    };
+  });
+  if (!employee.linkedTask?.text?.startsWith("[전일 다짐]") || employee.accepted !== "accepted" || !employee.panelFits) {
+    fail("accepted guidance should become the employee's linked priority task", JSON.stringify(employee));
+  }
+  if (errors.length) fail("DaGym guidance page errors", errors.join(" | "));
+  await page.close();
+}
+
 (async () => {
   const browser = await chromium.launch({
     headless: true,
@@ -3328,6 +3473,7 @@ async function checkApprovalRepairMissingRpcFallsBack(browser) {
     await checkFitnessNewEmployeeRegistrationFlow(browser);
     await checkApprovalRepairRevealsPendingFitnessSignup(browser);
     await checkApprovalRepairMissingRpcFallsBack(browser);
+    await checkDagymPreviousDayGuidanceFlow(browser);
     await checkRepresentativeProfileSeparation(browser);
     await checkNonControlRoleTextDoesNotBecomeRepresentative(browser);
     await checkKimSungminAccountIsEmployeeOnly(browser);

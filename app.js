@@ -652,6 +652,39 @@ function createDagymOps() {
   };
 }
 
+function createDagymDailyRecord(dateKey = todayKey) {
+  return {
+    ...createDagymOps(),
+    dateKey,
+    status: "draft",
+    updatedAt: "",
+    updatedBy: "",
+    closedAt: "",
+  };
+}
+
+function hasDagymDailyActivity(record = {}) {
+  return Object.keys(createDagymOps()).some((key) => key !== "importText" && numberValue(record?.[key]) > 0)
+    || Boolean(String(record?.importText || "").trim());
+}
+
+function getDagymOpsForDate(dateKey = getActiveDateKey(), { create = true } = {}) {
+  state.dagymDaily ||= {};
+  if (!state.dagymDaily[dateKey] && create) state.dagymDaily[dateKey] = createDagymDailyRecord(dateKey);
+  return state.dagymDaily[dateKey] || createDagymDailyRecord(dateKey);
+}
+
+function touchDagymDailyRecord(record = getDagymOpsForDate()) {
+  record.updatedAt = new Date().toISOString();
+  record.updatedBy = getEmployeeOwnLabel(getProfileEmployee()) || state.profile?.name || "담당자";
+  if (record.status === "closed") {
+    record.status = "draft";
+    record.closedAt = "";
+  }
+  state.dagymOps = record;
+  return record;
+}
+
 const beyondAssets = [
   {
     building: "루클라쎄 1차",
@@ -803,6 +836,8 @@ function createState() {
     },
     fitnessGoals: createFitnessGoals(),
     dagymOps: createDagymOps(),
+    dagymDaily: {},
+    fitnessDailyGuidance: {},
     fitnessCenterReports: {},
     worklogReportSubmissions: {},
     fitnessLogPage: 1,
@@ -928,7 +963,27 @@ function normalizeState() {
   state.fitnessWritableEmployeeId ||= isMappedFitnessEmployee ? mappedFitnessEmployeeId : "beyond-fitness-manager";
   if (!isRepresentativeProfile() && isMappedFitnessEmployee) state.fitnessWritableEmployeeId = mappedFitnessEmployeeId;
   state.fitnessGoals = { ...createFitnessGoals(), ...(state.fitnessGoals || {}) };
-  state.dagymOps = { ...createDagymOps(), ...(state.dagymOps || {}) };
+  state.dagymDaily = { ...(state.dagymDaily || {}) };
+  const legacyDagymOps = { ...createDagymOps(), ...(state.dagymOps || {}) };
+  if (!state.dagymDaily[getActiveDateKey()] && hasDagymDailyActivity(legacyDagymOps)) {
+    state.dagymDaily[getActiveDateKey()] = {
+      ...createDagymDailyRecord(getActiveDateKey()),
+      ...legacyDagymOps,
+      updatedAt: new Date().toISOString(),
+    };
+  }
+  Object.entries(state.dagymDaily).forEach(([dateKey, record]) => {
+    state.dagymDaily[dateKey] = {
+      ...createDagymDailyRecord(dateKey),
+      ...(record || {}),
+      dateKey,
+    };
+  });
+  state.dagymOps = getDagymOpsForDate(getActiveDateKey());
+  state.fitnessDailyGuidance = { ...(state.fitnessDailyGuidance || {}) };
+  Object.entries(state.fitnessDailyGuidance).forEach(([dateKey, items]) => {
+    state.fitnessDailyGuidance[dateKey] = Array.isArray(items) ? items.slice(-40) : [];
+  });
   state.fitnessCenterReports = { ...(state.fitnessCenterReports || {}) };
   state.worklogReportSubmissions = { ...(state.worklogReportSubmissions || {}) };
   state.backupSettings = {
@@ -7876,6 +7931,8 @@ function buildRemoteSnapshot() {
     employeeLogs: { [key]: ownerWorklog ? { [ownerEmployeeId]: cloneWorklogLogForAudit(ownerWorklog) } : {} },
     attendance: { [key]: state.attendance?.[key] || [] },
     companyCommonWeeks: state.companyCommonWeeks || {},
+    dagymDaily: state.dagymDaily || {},
+    fitnessDailyGuidance: state.fitnessDailyGuidance || {},
     fitnessCenterReports: state.fitnessCenterReports || {},
     worklogReportSubmissions: state.worklogReportSubmissions || {},
     reportTone: state.reportTone,
@@ -7928,6 +7985,7 @@ async function loadRemoteWorklogForActiveDate() {
     state.employeeLogs = { ...(state.employeeLogs || {}), ...(data.state.employeeLogs || {}) };
     state.attendance = { ...(state.attendance || {}), ...(data.state.attendance || {}) };
     state.companyCommonWeeks = { ...(state.companyCommonWeeks || {}), ...(data.state.companyCommonWeeks || {}) };
+    mergeSharedFitnessOperations(data.state);
     state.fitnessCenterReports = { ...(state.fitnessCenterReports || {}), ...(data.state.fitnessCenterReports || {}) };
     state.worklogReportSubmissions = { ...(state.worklogReportSubmissions || {}), ...(data.state.worklogReportSubmissions || {}) };
     state.reportTone = data.state.reportTone || state.reportTone;
@@ -8051,6 +8109,7 @@ function mergeVisibleStaffWorklogStates(rows = [], dateKey = getActiveDateKey())
     .sort((a, b) => String(b?.updated_at || "").localeCompare(String(a?.updated_at || "")))
     .forEach((row) => {
       const remoteState = row?.state || {};
+      mergeSharedFitnessOperations(remoteState);
       const profile = remoteState.profile || {};
       const mappedId = getProfileMappedEmployeeId(profile);
       const employee = resolveRemoteWorklogEmployee(row);
@@ -8083,6 +8142,35 @@ function mergeVisibleStaffWorklogStates(rows = [], dateKey = getActiveDateKey())
       };
       mergedEmployeeIds.add(employeeId);
     });
+}
+
+function mergeSharedFitnessOperations(remoteState = {}) {
+  state.dagymDaily ||= {};
+  Object.entries(remoteState.dagymDaily || {}).forEach(([dateKey, remoteRecord]) => {
+    const localRecord = state.dagymDaily[dateKey];
+    const remoteUpdatedAt = String(remoteRecord?.updatedAt || "");
+    const localUpdatedAt = String(localRecord?.updatedAt || "");
+    if (!localRecord || remoteUpdatedAt >= localUpdatedAt) {
+      state.dagymDaily[dateKey] = {
+        ...createDagymDailyRecord(dateKey),
+        ...(remoteRecord || {}),
+        dateKey,
+      };
+    }
+  });
+  state.fitnessDailyGuidance ||= {};
+  Object.entries(remoteState.fitnessDailyGuidance || {}).forEach(([dateKey, remoteItems]) => {
+    if (!Array.isArray(remoteItems)) return;
+    const mergedById = new Map((state.fitnessDailyGuidance[dateKey] || []).map((item) => [item.id, item]));
+    remoteItems.forEach((remoteItem) => {
+      if (!remoteItem?.id) return;
+      const localItem = mergedById.get(remoteItem.id);
+      if (!localItem || String(remoteItem.updatedAt || remoteItem.generatedAt || "") >= String(localItem.updatedAt || localItem.generatedAt || "")) {
+        mergedById.set(remoteItem.id, remoteItem);
+      }
+    });
+    state.fitnessDailyGuidance[dateKey] = [...mergedById.values()].slice(-40);
+  });
 }
 
 function profileToRemoteRow(options = {}) {
@@ -8461,6 +8549,7 @@ function renderWorklogToday(log = getSelectedLog()) {
 
 function renderFitnessWorklog(log = getSelectedLog()) {
   const page = getCurrentFitnessLogPage();
+  const isCenter = page?.type === "center";
   if (page?.type === "employee") {
     if (page.id !== state.selectedEmployeeId && activeView === "fitness-log") state.selectedEmployeeId = page.id;
     log = getFitnessEmployeeLogForDate(page.employee || { id: page.id }, getActiveDateKey())
@@ -8483,14 +8572,18 @@ function renderFitnessWorklog(log = getSelectedLog()) {
   if (unitButton) unitButton.textContent = log.scheduleUnit === "60" ? "1시간" : "30분";
   updateWorklogScheduleControlLabels(log, "fitness");
   renderFitnessLogPager();
+  const hasGuidance = Boolean((state.fitnessDailyGuidance?.[getActiveDateKey()] || []).length);
+  if (isCenter && canManageDagymOperations() && !hasGuidance && getPreviousDagymOperatingDate()) {
+    generateTodayFitnessGuidance({ silent: true });
+  }
   renderFitnessCenterDaily();
   renderFitnessCoaching();
   renderWorklogIdentityBadges();
   renderWeatherWidgets();
   renderWorklogEditLockBanner("fitness");
-  const isCenter = page?.type === "center";
   document.getElementById("fitnessCenterDailyPanel").hidden = !isCenter;
   renderFitnessPersonalMonthSummary(page, isCenter);
+  renderFitnessDailyGuidance(page, isCenter);
   document.querySelector(".fitness-log-task-panel")?.toggleAttribute("hidden", isCenter);
   document.querySelector(".fitness-log-schedule-panel")?.toggleAttribute("hidden", isCenter);
   document.querySelector(".fitness-ops-section")?.toggleAttribute("hidden", isCenter);
@@ -8723,6 +8816,7 @@ function renderFitnessCenterDaily() {
   }
   renderFitnessCenterConfirmPanel();
   renderFitnessCenterCoaching(total, rows);
+  renderFitnessDailyGuidance(getCurrentFitnessLogPage(), true);
 }
 
 function renderFitnessCenterConfirmPanel() {
@@ -8931,18 +9025,256 @@ function getFitnessEmployeeLogCandidateIds(employee = {}) {
 }
 
 function renderDagymOpsFields() {
-  state.dagymOps = { ...createDagymOps(), ...(state.dagymOps || {}) };
+  const record = getDagymOpsForDate(getActiveDateKey());
+  state.dagymOps = record;
   document.querySelectorAll("[data-dagym-field]").forEach((field) => {
-    field.value = state.dagymOps[field.dataset.dagymField] || "";
+    field.value = record[field.dataset.dagymField] || "";
+    field.disabled = !canManageDagymOperations();
   });
   const importText = document.getElementById("dagymImportText");
-  if (importText) importText.value = state.dagymOps.importText || "";
+  if (importText) {
+    importText.value = record.importText || "";
+    importText.disabled = !canManageDagymOperations();
+  }
+  const status = document.getElementById("dagymDailyStatus");
+  if (status) {
+    status.textContent = record.status === "closed"
+      ? `${formatShortDate(record.dateKey)} 마감 확정`
+      : `${formatShortDate(record.dateKey)} 입력 중`;
+  }
+  const closeButton = document.getElementById("dagymCloseButton");
+  if (closeButton) {
+    closeButton.disabled = !canManageDagymOperations() || !hasDagymDailyActivity(record);
+    closeButton.textContent = record.status === "closed" ? "마감 해제" : "마감 확정";
+  }
+  const importButton = document.getElementById("dagymImportButton");
+  const clearButton = document.getElementById("dagymClearButton");
+  if (importButton) importButton.disabled = !canManageDagymOperations();
+  if (clearButton) clearButton.disabled = !canManageDagymOperations();
+}
+
+function canManageDagymOperations() {
+  const profileEmployee = getProfileEmployee();
+  return Boolean(
+    isRepresentativeProfile()
+    || hasProfilePermission("controlTower")
+    || hasProfilePermission("worklogAll")
+    || isFitnessManagerRosterIdentity(profileEmployee)
+  );
+}
+
+function getPreviousDagymOperatingDate(dateKey = getActiveDateKey()) {
+  return Object.keys(state.dagymDaily || {})
+    .filter((key) => key < dateKey && state.dagymDaily[key]?.status === "closed" && hasDagymDailyActivity(state.dagymDaily[key]))
+    .sort()
+    .pop() || "";
+}
+
+function getFitnessDayOpsTotal(dateKey) {
+  return getFitnessCenterEmployees().reduce((total, employee) => {
+    const log = getFitnessEmployeeLogForDate(employee, dateKey);
+    if (!log) return total;
+    syncFitnessOpsFromSchedule(log);
+    const ops = { ...createFitnessOps(), ...(log.fitnessOps || {}) };
+    total.pt += numberValue(ops.ptRegular) + numberValue(ops.ptFree) + numberValue(ops.ptOther);
+    total.consultation += numberValue(ops.consultation);
+    total.renewal += numberValue(ops.customerRenewal);
+    total.outbound += numberValue(ops.outbound) + numberValue(ops.outsideSales);
+    return total;
+  }, { pt: 0, consultation: 0, renewal: 0, outbound: 0 });
+}
+
+function getFitnessGuidanceRoster(dateKey = getActiveDateKey()) {
+  const scheduled = getFitnessCenterEmployees().filter((employee) => {
+    const log = getFitnessEmployeeLogForDate(employee, dateKey) || {};
+    return !isOffWorkHours(getOverviewScheduledWorkHours(employee, dateKey, log));
+  });
+  const pick = (pattern) => scheduled.find((employee) => pattern.test(`${employee.role || ""} ${employee.name || ""} ${employee.nickname || ""}`));
+  const manager = pick(/센터장|박주홍|운영총괄/) || scheduled[0];
+  const trainer = pick(/트레이너|홍현규/) || manager;
+  const info = pick(/인포|데스크|신세민|이다빈|김영채/) || manager;
+  return { scheduled, manager, trainer, info };
+}
+
+function createFitnessGuidanceRule({ dateKey, sourceDateKey, type, target, title, detail, dueTime, sourceValue }) {
+  const targetEmployeeId = getEmployeeWorklogId(target || {}) || "beyond-fitness-manager";
+  const id = `dagym-guidance:${dateKey}:${sourceDateKey}:${type}:${targetEmployeeId}`;
+  const now = new Date().toISOString();
+  return {
+    id,
+    dateKey,
+    sourceDateKey,
+    source: "dagym-previous-operating-day",
+    type,
+    title,
+    detail,
+    dueTime,
+    sourceValue: Number(sourceValue || 0),
+    targetEmployeeId,
+    targetName: getEmployeeAdminLabel(target || {}) || "센터장",
+    status: "generated",
+    generatedAt: now,
+    updatedAt: now,
+    acceptedAt: "",
+    completedAt: "",
+  };
+}
+
+function buildTodayFitnessGuidance(dateKey = getActiveDateKey()) {
+  const sourceDateKey = getPreviousDagymOperatingDate(dateKey);
+  if (!sourceDateKey) return { sourceDateKey: "", items: [] };
+  const dagym = getDagymOpsForDate(sourceDateKey, { create: false });
+  const staff = getFitnessDayOpsTotal(sourceDateKey);
+  const roster = getFitnessGuidanceRoster(dateKey);
+  const items = [];
+  const add = (rule) => items.push(createFitnessGuidanceRule({ dateKey, sourceDateKey, ...rule }));
+  const noShows = numberValue(dagym.noShows);
+  const expiringGap = Math.max(0, numberValue(dagym.expiring) - numberValue(dagym.renewals));
+  const ptGap = Math.max(0, numberValue(dagym.ptBookings) - staff.pt);
+  const lockerExpiring = numberValue(dagym.lockerExpiring);
+  const expectedSalesActions = numberValue(dagym.visits) ? Math.max(2, Math.round(numberValue(dagym.visits) * 0.03)) : 0;
+  const salesActionGap = Math.max(0, expectedSalesActions - staff.consultation - staff.renewal - staff.outbound);
+  if (noShows) add({ type: "no-show", target: roster.info, title: `노쇼·취소 ${noShows}건 재예약 확인`, detail: "미회복 회원에게 연락하고 재예약·보류·연락불가 결과를 남깁니다.", dueTime: "10:30", sourceValue: noShows });
+  if (expiringGap) add({ type: "expiry", target: roster.info, title: `만료 예정 미처리 ${expiringGap}건 상담`, detail: "만료 예정 대상의 안내 여부를 확인하고 재등록 상담 결과를 기록합니다.", dueTime: "11:00", sourceValue: expiringGap });
+  if (ptGap) add({ type: "pt-gap", target: roster.trainer, title: `PT 예약·완료 차이 ${ptGap}건 확인`, detail: "수업 완료, 노쇼, 일정 변경 중 하나로 대조 결과를 확정합니다.", dueTime: "12:00", sourceValue: ptGap });
+  if (lockerExpiring) add({ type: "locker", target: roster.info, title: `락커 만료 ${lockerExpiring}건 안내`, detail: "만료 안내와 연장·정리 여부를 확인합니다.", dueTime: "15:00", sourceValue: lockerExpiring });
+  if (salesActionGap) add({ type: "sales-action", target: roster.manager, title: `출석 대비 상담행동 ${salesActionGap}건 보강`, detail: "오늘 근무자에게 재등록·체험·휴면회원 후속조치를 배정합니다.", dueTime: "14:00", sourceValue: salesActionGap });
+  if (numberValue(dagym.sales) && !staff.renewal && !numberValue(dagym.newMembers)) {
+    add({ type: "sales-review", target: roster.manager, title: "전일 매출 발생 원인 확인", detail: "결제와 연결된 상담·PT·재등록 행동을 센터 보고에 남깁니다.", dueTime: "17:00", sourceValue: dagym.sales });
+  }
+  return { sourceDateKey, items };
+}
+
+function generateTodayFitnessGuidance({ silent = false } = {}) {
+  if (!canManageDagymOperations()) {
+    if (!silent) showAppToast("센터장 또는 대표만 오늘 지침을 생성할 수 있습니다");
+    return false;
+  }
+  const dateKey = getActiveDateKey();
+  const { sourceDateKey, items } = buildTodayFitnessGuidance(dateKey);
+  if (!sourceDateKey) {
+    if (!silent) showAppToast("직전 영업일의 다짐 마감자료가 없습니다");
+    return false;
+  }
+  const existingById = new Map((state.fitnessDailyGuidance?.[dateKey] || []).map((item) => [item.id, item]));
+  state.fitnessDailyGuidance ||= {};
+  state.fitnessDailyGuidance[dateKey] = items.map((item) => {
+    const existing = existingById.get(item.id);
+    return existing ? { ...item, ...existing, detail: item.detail, title: item.title, sourceValue: item.sourceValue } : item;
+  });
+  saveState();
+  renderFitnessDailyGuidance();
+  if (!silent) showAppToast(items.length ? `전일 자료로 오늘 지침 ${items.length}건을 만들었습니다` : "전일 미처리 신호가 없습니다");
+  return true;
+}
+
+function getFitnessGuidanceStatusLabel(status = "generated") {
+  return { generated: "배정", accepted: "수락", completed: "완료", delegated: "위임", postponed: "연기", cancelled: "취소" }[status] || "배정";
+}
+
+function renderFitnessDailyGuidance(page = getCurrentFitnessLogPage(), isCenter = page?.type === "center") {
+  const panel = document.getElementById("fitnessDailyGuidancePanel");
+  const list = document.getElementById("fitnessDailyGuidanceList");
+  if (!panel || !list) return;
+  const dateKey = getActiveDateKey();
+  const allItems = state.fitnessDailyGuidance?.[dateKey] || [];
+  const pageEmployeeId = page?.type === "employee" ? page.id : "";
+  const items = isCenter ? allItems : allItems.filter((item) => item.targetEmployeeId === pageEmployeeId);
+  panel.hidden = !isCenter && !items.length;
+  panel.classList.toggle("is-center-guidance", Boolean(isCenter));
+  const source = items[0]?.sourceDateKey || getPreviousDagymOperatingDate(dateKey);
+  const title = document.getElementById("fitnessDailyGuidanceTitle");
+  const subtitle = document.getElementById("fitnessDailyGuidanceSubtitle");
+  if (title) title.textContent = isCenter ? "오늘 실행지침" : "나에게 배정된 오늘 지침";
+  if (subtitle) subtitle.textContent = source ? `${formatShortDate(source)} 다짐 마감자료 기준` : "직전 영업일 마감자료 대기";
+  const generateButton = document.getElementById("fitnessGuidanceGenerateButton");
+  if (generateButton) {
+    generateButton.hidden = !isCenter;
+    generateButton.disabled = !canManageDagymOperations();
+  }
+  list.innerHTML = items.length ? items.map((item) => {
+    const ownId = getProfileMappedEmployeeId() || "profile-user";
+    const canAccept = !isRepresentativeProfile() && page?.type === "employee" && page.id === ownId && item.targetEmployeeId === ownId && item.status === "generated";
+    return `
+      <article class="fitness-guidance-item status-${escapeAttr(item.status)}">
+        <div class="fitness-guidance-meta">
+          <span>${escapeHtml(item.dueTime || "오늘")}</span>
+          <b>${escapeHtml(item.targetName || "담당자")}</b>
+          <em>${escapeHtml(getFitnessGuidanceStatusLabel(item.status))}</em>
+        </div>
+        <strong>${escapeHtml(item.title)}</strong>
+        <p>${escapeHtml(item.detail)}</p>
+        ${canAccept ? `<button type="button" data-accept-fitness-guidance="${escapeAttr(item.id)}">우선업무로 수락</button>` : ""}
+      </article>
+    `;
+  }).join("") : `<p class="fitness-guidance-empty">${source ? "전일 자료에서 추가 조치가 필요한 신호가 없습니다." : "전일 다짐 마감자료를 입력하면 오늘 지침을 만들 수 있습니다."}</p>`;
+}
+
+function acceptFitnessDailyGuidance(guidanceId) {
+  const dateKey = getActiveDateKey();
+  const item = (state.fitnessDailyGuidance?.[dateKey] || []).find((entry) => entry.id === guidanceId);
+  const ownId = getProfileMappedEmployeeId() || "profile-user";
+  if (!item || isRepresentativeProfile() || item.targetEmployeeId !== ownId || !canEditEmployeeSlot(ownId)) {
+    showAppToast("본인에게 배정된 지침만 수락할 수 있습니다");
+    return;
+  }
+  const log = getEmployeeLogForDate(ownId, dateKey);
+  const existing = (log.tasks || []).find((task) => task.guidanceId === item.id);
+  if (!existing) {
+    const task = (log.tasks || []).find((candidate) => !isActiveTask(candidate)) || createWorklogTask("A");
+    if (!log.tasks.includes(task)) log.tasks.push(task);
+    Object.assign(task, {
+      priority: "A",
+      text: `[전일 다짐] ${item.title}`,
+      status: "미완료",
+      done: false,
+      guidanceId: item.id,
+      guidanceSourceDateKey: item.sourceDateKey,
+      scheduledSlot: item.dueTime || "",
+    });
+  }
+  const now = new Date().toISOString();
+  item.status = "accepted";
+  item.acceptedAt ||= now;
+  item.updatedAt = now;
+  saveState();
+  renderEntries();
+  showAppToast("오늘의 우선업무에 추가했습니다");
+}
+
+function syncFitnessGuidanceFromTask(task = {}) {
+  if (!task.guidanceId) return;
+  Object.values(state.fitnessDailyGuidance || {}).forEach((items) => {
+    const item = (items || []).find((entry) => entry.id === task.guidanceId);
+    if (!item) return;
+    const now = new Date().toISOString();
+    if (task.done || task.status === "완료") {
+      item.status = "completed";
+      item.completedAt = now;
+    } else if (task.status === "취소") item.status = "cancelled";
+    else if (task.status === "위임") item.status = "delegated";
+    else if (task.status === "연기") item.status = "postponed";
+    else item.status = "accepted";
+    item.updatedAt = now;
+  });
+}
+
+function resetFitnessGuidanceFromTask(task = {}) {
+  if (!task.guidanceId) return;
+  Object.values(state.fitnessDailyGuidance || {}).forEach((items) => {
+    const item = (items || []).find((entry) => entry.id === task.guidanceId);
+    if (!item) return;
+    item.status = "generated";
+    item.acceptedAt = "";
+    item.completedAt = "";
+    item.updatedAt = new Date().toISOString();
+  });
 }
 
 function renderFitnessCenterCoaching(total, rows) {
   const node = document.getElementById("fitnessCenterCoachingList");
   if (!node) return;
-  const dagym = { ...createDagymOps(), ...(state.dagymOps || {}) };
+  const dagym = getDagymOpsForDate(getActiveDateKey());
   const visits = numberValue(dagym.visits);
   const ptBookings = numberValue(dagym.ptBookings);
   const noShows = numberValue(dagym.noShows);
@@ -8987,7 +9319,7 @@ function getFitnessCoachingMessages() {
   const page = getCurrentFitnessLogPage();
   const log = page?.type === "employee" ? getSelectedLog() : getEmployeeLogForDate(state.fitnessWritableEmployeeId);
   const ops = { ...createFitnessOps(), ...(log.fitnessOps || {}) };
-  const dagym = { ...createDagymOps(), ...(state.dagymOps || {}) };
+  const dagym = getDagymOpsForDate(getActiveDateKey());
   const employee = page?.employee || employees.find((item) => item.id === state.fitnessWritableEmployeeId) || getSelectedEmployee();
   const tasks = getWorklogTaskRefs(log).map((ref) => ref.task).filter(isActiveTask);
   const pending = tasks.filter((task) => !task.done && !["완료", "취소"].includes(task.status));
@@ -9041,8 +9373,10 @@ function closeFitnessCoachingSheet() {
 }
 
 function importDagymText() {
+  if (!canManageDagymOperations()) return;
   const text = document.getElementById("dagymImportText")?.value || "";
-  state.dagymOps = { ...createDagymOps(), ...(state.dagymOps || {}), importText: text };
+  const record = getDagymOpsForDate(getActiveDateKey());
+  record.importText = text;
   const rules = [
     ["visits", /(?:출석|입장|방문)\D{0,12}(\d[\d,]*)/i],
     ["newMembers", /(?:신규|신규\s*등록)\D{0,12}(\d[\d,]*)/i],
@@ -9055,16 +9389,42 @@ function importDagymText() {
   ];
   rules.forEach(([key, pattern]) => {
     const match = text.match(pattern);
-    if (match) state.dagymOps[key] = match[1].replaceAll(",", "");
+    if (match) record[key] = match[1].replaceAll(",", "");
   });
+  touchDagymDailyRecord(record);
   saveState({ fastSave: true });
   renderFitnessCenterDaily();
 }
 
 function clearDagymOps() {
-  state.dagymOps = createDagymOps();
+  if (!canManageDagymOperations()) return;
+  state.dagymDaily[getActiveDateKey()] = {
+    ...createDagymDailyRecord(getActiveDateKey()),
+    updatedAt: new Date().toISOString(),
+    updatedBy: getEmployeeOwnLabel(getProfileEmployee()),
+  };
+  state.dagymOps = state.dagymDaily[getActiveDateKey()];
   saveState();
   renderFitnessCenterDaily();
+}
+
+function toggleDagymDailyClose() {
+  if (!canManageDagymOperations()) return;
+  const record = getDagymOpsForDate(getActiveDateKey());
+  if (!hasDagymDailyActivity(record)) {
+    showAppToast("마감할 다짐 자료가 없습니다");
+    return;
+  }
+  const closing = record.status !== "closed";
+  const now = new Date().toISOString();
+  record.status = closing ? "closed" : "draft";
+  record.closedAt = closing ? now : "";
+  record.updatedAt = now;
+  record.updatedBy = getEmployeeOwnLabel(getProfileEmployee()) || state.profile?.name || "담당자";
+  state.dagymOps = record;
+  saveState();
+  renderFitnessCenterDaily();
+  showAppToast(closing ? "다짐 일일자료를 마감 확정했습니다" : "다짐 마감을 해제했습니다");
 }
 
 function getWorkMinutes(start = "", end = "") {
@@ -9758,7 +10118,7 @@ function ensureFitnessTaskRowsVisible(log) {
 function getVisibleWorklogTaskRefs(log, { view = activeView, compactEditable = false } = {}) {
   const refs = getWorklogTaskRefs(log);
   const activeRefs = refs.filter((ref) => isActiveTask(ref.task));
-  if (canAccessWorklogOverview() && !canEditCurrentWorklog(view)) {
+  if (!canEditCurrentWorklog(view)) {
     const blankRefs = refs.filter((ref) => !isActiveTask(ref.task)).slice(0, Math.max(0, 3 - activeRefs.length));
     const visible = new Set([...activeRefs, ...blankRefs]);
     return refs.filter((ref) => visible.has(ref));
@@ -9894,6 +10254,7 @@ function renderWorklogTaskRow(ref, currentLog, options = {}) {
     if (!guardWorklogEdit(viewName)) return;
     const editableRef = materializeWorklogCarryover(ref, currentLog);
     cycleWorklogTaskStatus(editableRef.task);
+    syncFitnessGuidanceFromTask(editableRef.task);
     syncWorklogTaskTimeHintToSchedule(editableRef.task, editableRef.log);
     saveState();
     renderEntries();
@@ -9924,12 +10285,15 @@ function renderWorklogTaskRow(ref, currentLog, options = {}) {
       return;
     }
     const beforeLog = cloneWorklogLogForAudit(log);
+    const removedTask = { ...task };
     removeLinkedSchedule(task, log);
     log.tasks.splice(index, 1);
+    resetFitnessGuidanceFromTask(removedTask);
     saveState();
     renderEntries();
     showUndoToast("업무 행을 삭제했습니다", () => {
       restoreObjectSnapshot(log, beforeLog);
+      syncFitnessGuidanceFromTask(removedTask);
       saveState();
       renderEntries();
     });
@@ -9989,6 +10353,7 @@ function bindTaskMetaControl(row, ref, currentLog, viewName = activeView) {
       if (!guardWorklogEdit(viewName)) return;
       const editableRef = materializeWorklogCarryover(ref, currentLog);
       updateWorklogTaskPriority(editableRef.task, event.target.value);
+      syncFitnessGuidanceFromTask(editableRef.task);
       syncWorklogTaskTimeHintToSchedule(editableRef.task, editableRef.log);
       saveState();
       renderEntries();
@@ -10136,18 +10501,20 @@ function normalizeScheduleEntryItems(entry) {
 
 function getScheduleEntryText(entry) {
   const items = normalizeScheduleEntryItems(entry);
-  return items
+  const text = items
     .filter((item) => String(item.text || "").trim())
-    .map((item) => `(${formatScheduleTypeLabel(item.type || "업무")}) ${item.text.trim()}`)
+    .map((item) => formatScheduleItemWithType(item))
     .join(" / ");
+  return formatScheduleTextSmartly(text);
 }
 
 function syncScheduleEntryText(entry) {
   const items = Array.isArray(entry.items) ? entry.items : [];
-  entry.text = items
+  const text = items
     .filter((item) => String(item.text || "").trim())
-    .map((item) => `(${formatScheduleTypeLabel(item.type || "업무")}) ${item.text.trim()}`)
+    .map((item) => formatScheduleItemWithType(item))
     .join(" / ");
+  entry.text = formatScheduleTextSmartly(text);
 }
 
 function createScheduleItem(text = "", type = "") {
@@ -10164,7 +10531,40 @@ function formatScheduleTypeLabel(type = "업무") {
 function formatScheduleItemInline(item) {
   const text = String(item?.text || "").trim();
   if (!text) return "";
-  return `(${formatScheduleTypeLabel(item.type || "업무")})${text}`;
+  return formatScheduleTextSmartly(formatScheduleItemWithType(item));
+}
+
+function formatScheduleItemWithType(item) {
+  const text = String(item?.text || "").trim();
+  if (!text) return "";
+  if (/^\([^)]+\)/.test(text)) return text;
+  return `(${formatScheduleTypeLabel(item?.type || "업무")}) ${text}`;
+}
+
+function formatScheduleTextSmartly(value = "") {
+  const sections = String(value || "")
+    .split(/\s*\/\s*(?=\([^)]+\))/)
+    .map((section) => section.trim())
+    .filter(Boolean)
+    .map((section) => {
+      const match = section.match(/^\(([^)]+)\)\s*(.*)$/);
+      const label = match?.[1]?.trim() || "";
+      const text = String(match?.[2] ?? section)
+        .trim()
+        .replace(/(거울|유리|창문|매트)\s*닦기/g, "$1 닦기")
+        .replace(/\s+/g, " ");
+      return { label, text };
+    });
+  const grouped = [];
+  sections.forEach((section) => {
+    const previous = grouped.at(-1);
+    if (previous && previous.label === section.label && section.label) previous.texts.push(section.text);
+    else grouped.push({ label: section.label, texts: [section.text] });
+  });
+  return grouped
+    .map(({ label, texts }) => `${label ? `(${label}) ` : ""}${texts.filter(Boolean).join(", ")}`.trim())
+    .filter(Boolean)
+    .join(" / ");
 }
 
 function renderScheduleTypeOptions(selected = "업무") {
@@ -10202,7 +10602,7 @@ function renderFitnessAppointmentRow(entry, log) {
   row.innerHTML = `
     <span class="appointment-time">${escapeHtml(entry.time)}</span>
     <button class="fitness-appointment-summary" type="button" aria-label="${escapeAttr(entry.time)} 일정 편집">
-      ${filledItems.length ? filledItems.map((item) => `<span>${escapeHtml(formatScheduleItemInline(item))}</span>`).join("") : `<span class="empty">업무 추가</span>`}
+      ${filledItems.length ? `<span>${escapeHtml(value)}</span>` : `<span class="empty">업무 추가</span>`}
     </button>
     <button class="appointment-merge-button" type="button" aria-label="${escapeAttr(entry.time)} 일정 추가">+</button>
   `;
@@ -17960,18 +18360,29 @@ document.querySelectorAll("[data-fitness-field]").forEach((field) => {
 });
 document.querySelectorAll("[data-dagym-field]").forEach((field) => {
   field.oninput = (event) => {
-    state.dagymOps = { ...createDagymOps(), ...(state.dagymOps || {}) };
-    state.dagymOps[event.target.dataset.dagymField] = event.target.value;
+    if (!canManageDagymOperations()) return;
+    const record = getDagymOpsForDate(getActiveDateKey());
+    record[event.target.dataset.dagymField] = event.target.value;
+    touchDagymDailyRecord(record);
     saveState({ fastSave: true });
     renderFitnessCenterDaily();
   };
 });
 document.getElementById("dagymImportText")?.addEventListener("input", (event) => {
-  state.dagymOps = { ...createDagymOps(), ...(state.dagymOps || {}), importText: event.target.value };
+  if (!canManageDagymOperations()) return;
+  const record = getDagymOpsForDate(getActiveDateKey());
+  record.importText = event.target.value;
+  touchDagymDailyRecord(record);
   saveState({ fastSave: true });
 });
 document.getElementById("dagymImportButton")?.addEventListener("click", importDagymText);
 document.getElementById("dagymClearButton")?.addEventListener("click", clearDagymOps);
+document.getElementById("dagymCloseButton")?.addEventListener("click", toggleDagymDailyClose);
+document.getElementById("fitnessGuidanceGenerateButton")?.addEventListener("click", () => generateTodayFitnessGuidance());
+document.getElementById("fitnessDailyGuidancePanel")?.addEventListener("click", (event) => {
+  const button = event.target.closest("[data-accept-fitness-guidance]");
+  if (button) acceptFitnessDailyGuidance(button.dataset.acceptFitnessGuidance);
+});
 document.querySelectorAll("[data-fitness-goal]").forEach((field) => {
   field.oninput = (event) => {
     state.fitnessGoals = { ...createFitnessGoals(), ...(state.fitnessGoals || {}) };

@@ -9939,8 +9939,28 @@ textarea:focus-visible {
 }
 
 .dagym-ops-panel header {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  align-items: start;
+}
+
+.dagym-ops-panel header div {
   display: grid;
   gap: 2px;
+}
+
+.dagym-ops-panel header em {
+  flex: 0 0 auto;
+  border: 1px solid rgba(15, 77, 58, 0.2);
+  border-radius: 999px;
+  background: rgba(15, 77, 58, 0.07);
+  color: var(--fitness-green);
+  padding: 5px 8px;
+  font-size: 10px;
+  font-style: normal;
+  font-weight: 950;
+  white-space: nowrap;
 }
 
 .dagym-ops-panel header strong,
@@ -10033,6 +10053,162 @@ textarea:focus-visible {
 #dagymImportButton {
   background: var(--fitness-green);
   color: var(--nordic-sheet);
+}
+
+#dagymCloseButton {
+  border-color: var(--fitness-green);
+  color: var(--fitness-green);
+}
+
+.fitness-daily-guidance-panel {
+  display: grid;
+  gap: 10px;
+  border: 1px solid rgba(15, 77, 58, 0.28);
+  border-radius: 20px;
+  background:
+    linear-gradient(135deg, rgba(15, 77, 58, 0.08), rgba(255, 255, 250, 0.94) 48%),
+    var(--nordic-sheet);
+  padding: 14px;
+  box-shadow: 0 10px 26px rgba(13, 57, 44, 0.07);
+}
+
+.fitness-daily-guidance-panel[hidden] {
+  display: none;
+}
+
+.fitness-daily-guidance-panel > header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+}
+
+.fitness-daily-guidance-panel > header > div {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.fitness-daily-guidance-panel header span {
+  color: rgba(15, 77, 58, 0.66);
+  font-size: 9px;
+  font-weight: 950;
+  letter-spacing: 0.13em;
+}
+
+.fitness-daily-guidance-panel header strong {
+  color: var(--ink);
+  font-size: 19px;
+  font-weight: 950;
+}
+
+.fitness-daily-guidance-panel header p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 800;
+}
+
+#fitnessGuidanceGenerateButton,
+.fitness-guidance-item button {
+  min-height: 36px;
+  border: 1px solid var(--fitness-green);
+  border-radius: 999px;
+  background: var(--fitness-green);
+  color: white;
+  padding: 7px 12px;
+  font-size: 11px;
+  font-weight: 950;
+  white-space: nowrap;
+}
+
+#fitnessGuidanceGenerateButton:disabled {
+  opacity: 0.45;
+}
+
+.fitness-daily-guidance-list {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 7px;
+}
+
+.fitness-guidance-item {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 4px 8px;
+  align-items: center;
+  min-width: 0;
+  border: 1px solid rgba(15, 77, 58, 0.14);
+  border-radius: 13px;
+  background: rgba(255, 255, 251, 0.88);
+  padding: 9px 10px;
+}
+
+.fitness-guidance-meta {
+  grid-column: 1 / -1;
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 900;
+}
+
+.fitness-guidance-meta span,
+.fitness-guidance-meta em {
+  border-radius: 999px;
+  background: rgba(15, 77, 58, 0.08);
+  color: var(--fitness-green);
+  padding: 3px 6px;
+  font-style: normal;
+}
+
+.fitness-guidance-meta em {
+  margin-left: auto;
+}
+
+.fitness-guidance-item > strong {
+  min-width: 0;
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 950;
+}
+
+.fitness-guidance-item > p {
+  grid-column: 1 / -1;
+  margin: 0;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 750;
+  line-height: 1.35;
+}
+
+.fitness-guidance-item button {
+  grid-column: 1 / -1;
+  justify-self: start;
+  min-height: 30px;
+  background: transparent;
+  color: var(--fitness-green);
+  padding-block: 4px;
+}
+
+.fitness-guidance-item.status-completed,
+.fitness-guidance-item.status-cancelled,
+.fitness-guidance-item.status-delegated,
+.fitness-guidance-item.status-postponed {
+  opacity: 0.66;
+}
+
+.fitness-guidance-empty {
+  grid-column: 1 / -1;
+  margin: 0;
+  border: 1px dashed rgba(15, 77, 58, 0.22);
+  border-radius: 12px;
+  color: var(--muted);
+  padding: 12px;
+  font-size: 12px;
+  font-weight: 800;
+  text-align: center;
 }
 
 #fitnessCenterCoachingList {
@@ -10872,6 +11048,38 @@ body[data-layout-mode="phone"] .fitness-ai-briefing h4 {
 
 body[data-layout-mode="phone"] .dagym-ops-panel header span {
   font-size: 10px;
+}
+
+body[data-layout-mode="phone"] .fitness-daily-guidance-panel {
+  gap: 7px;
+  border-radius: 16px;
+  padding: 9px;
+}
+
+body[data-layout-mode="phone"] .fitness-daily-guidance-panel > header {
+  align-items: end;
+}
+
+body[data-layout-mode="phone"] .fitness-daily-guidance-panel header strong {
+  font-size: 16px;
+}
+
+body[data-layout-mode="phone"] .fitness-daily-guidance-panel header p {
+  font-size: 9px;
+}
+
+body[data-layout-mode="phone"] #fitnessGuidanceGenerateButton {
+  min-height: 32px;
+  padding-inline: 9px;
+  font-size: 10px;
+}
+
+body[data-layout-mode="phone"] .fitness-daily-guidance-list {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+body[data-layout-mode="phone"] .fitness-guidance-item {
+  padding: 8px;
 }
 
 body[data-layout-mode="phone"] .dagym-ops-grid {
@@ -23751,6 +23959,22 @@ body.physical-phone-device[data-active-view="worklog-overview"] .overview-date-n
   background-color: rgba(237, 249, 242, 0.98) !important;
   background-image: linear-gradient(145deg, rgba(226, 246, 236, 0.96), rgba(247, 252, 246, 0.94)) !important;
   box-shadow: inset 4px 0 0 rgba(16, 104, 75, 0.52), 0 10px 24px rgba(15, 69, 50, 0.06) !important;
+}
+
+/* Fitness schedule times stay on one line even in the representative's narrow split view. */
+#view-fitness-log .fitness-log-schedule-panel .fitness-appointment-row {
+  grid-template-columns: minmax(58px, 5.8ch) minmax(0, 1fr) 28px !important;
+}
+
+#view-fitness-log .fitness-log-schedule-panel .appointment-time {
+  box-sizing: border-box !important;
+  width: 58px !important;
+  min-width: 58px !important;
+  max-width: 58px !important;
+  white-space: nowrap !important;
+  word-break: keep-all !important;
+  overflow-wrap: normal !important;
+  font-variant-numeric: tabular-nums !important;
 }
 
 /* Keep this at the absolute end so page-specific display rules never stack
