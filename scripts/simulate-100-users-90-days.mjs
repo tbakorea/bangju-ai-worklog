@@ -6,8 +6,8 @@ import { fileURLToPath } from "node:url";
 const rootDir = dirname(dirname(fileURLToPath(import.meta.url)));
 const TODAY = "2026-08-02";
 const DAY_COUNT = 90;
-const activeFitnessManagerEmail = "pinong0@naver.com";
-const retiredFitnessManagerEmails = new Set(["pjhong0@naver.com", "pjhong1@naver.com", "pjhong9@naver.com"]);
+const activeFitnessManagerEmail = "pjhong0@naver.com";
+const retiredFitnessManagerEmails = new Set(["pjhong1@naver.com", "pjhong9@naver.com"]);
 const failures = [];
 const notes = [];
 
@@ -122,7 +122,6 @@ function collapseByEmail(employees) {
 function canonicalFitnessEmployees(employees) {
   return collapseByEmail(employees)
     .filter((employee) => isActiveOperationalEmployee(employee) && isFitnessOrg(employee))
-    .filter((employee) => normalizeEmail(employee.email) !== "pjhong0@naver.com")
     .filter((employee) => normalizeEmail(employee.email) !== "pjhong1@naver.com")
     .filter((employee) => normalizeEmail(employee.email) !== "pjhong9@naver.com")
     .sort((a, b) => {
@@ -178,7 +177,6 @@ function buildEmployees() {
     { id: "fitness-info-idabin", name: "이다빈", nickname: "이다빈", email: "dlekqls89@naver.com", org: "비욘드 피트니스", workplace: "비욘드 피트니스", role: "인포데스크", employmentType: "직원", workHours: "10:00-18:00", workDays: [1, 2, 3, 4, 5], permissions: ["own_worklog", "own_labor"], status: "approved" },
     { id: "fitness-info-kimyoungchae", name: "김영채", nickname: "김영채", email: "yckim1558@naver.com", org: "비욘드 피트니스", workplace: "비욘드 피트니스", role: "인포", employmentType: "직원", workHours: "10:00-18:00", workDays: [1, 2, 3, 4, 5], permissions: ["own_worklog", "own_labor"], status: "approved" },
     { id: "fitness-info-shinsemin", name: "신세민", nickname: "신세민", email: "tpals2990@naver.com", org: "비욘드 피트니스", workplace: "비욘드 피트니스", role: "인포", employmentType: "직원", workHours: "10:00-18:00", workDays: [1, 2, 3, 4, 5], permissions: ["own_worklog", "own_labor"], status: "approved" },
-    { id: "retired-park-0", name: "박주홍", email: "pjhong0@naver.com", org: "비욘드 피트니스", workplace: "비욘드 피트니스", role: "센터장", status: "retired" },
     { id: "retired-park-1", name: "박주홍", email: "pjhong1@naver.com", org: "비욘드 피트니스", workplace: "비욘드 피트니스", role: "센터장", status: "retired" },
     { id: "retired-park-9", name: "박주홍", email: "pjhong9@naver.com", org: "비욘드 피트니스", workplace: "비욘드 피트니스", role: "직원", status: "retired" },
     { id: "template-fitness-spare", name: "직원", email: "", org: "비욘드 피트니스", workplace: "비욘드 피트니스", role: "직원", status: "template" },
@@ -303,7 +301,7 @@ assert(activeEmployees.length === 100, `active employee count should be 100, got
 assert(Boolean(ceo), "CEO account j3010@ymail.com must exist in simulation");
 assert(Boolean(hongGildong), "홍길동 profile must exist");
 assert(Boolean(kimSungmin), "김성민 profile must exist");
-assert(Boolean(parkJuhong), "박주홍 active profile must be pinong0@naver.com");
+assert(Boolean(parkJuhong), "박주홍 active profile must be pjhong0@naver.com");
 assert(!activeEmployees.some((employee) => retiredFitnessManagerEmails.has(normalizeEmail(employee.email))), "retired Park manager accounts must not be active");
 assert(fitnessEmails.has("yckim1558@naver.com"), "피트니스 직원 김영채 must be included in canonical roster");
 assert(fitnessEmails.has("tpals2990@naver.com"), "피트니스 직원 신세민 must be included in canonical roster");
@@ -362,10 +360,10 @@ notes.push(`fitness paid/free PT totals=${fitnessPaidPt}/${fitnessFreePt}`);
 
 const appJs = read("app.js");
 const schema = read("supabase/worklog_schema.sql");
-assert(appJs.includes(`const activeFitnessManagerEmail = "${activeFitnessManagerEmail}";`), "app.js must pin the active Park manager account to pinong0@naver.com");
+assert(appJs.includes(`const activeFitnessManagerEmail = "${activeFitnessManagerEmail}";`), "app.js must pin the active Park manager account to pjhong0@naver.com");
 assert(appJs.includes("retiredFitnessManagerEmails"), "app.js must keep a retired account guard for duplicate Park manager records");
 assert(appJs.includes('"gusrd1005@gmail.com": {') && appJs.includes('mappedEmployeeId: "fitness-trainer-1"'), "Hong Hyeon-gyu account must map to the editable trainer worklog");
-assert(schema.includes("delete from auth.users") && schema.includes("pjhong0@naver.com") && schema.includes("pinong0@naver.com"), "duplicate Park manager auth accounts must be removed only after preserving the active account");
+assert(schema.includes("delete from auth.users") && schema.includes("pjhong0@naver.com") && schema.includes("pjhong1@naver.com") && schema.includes("pjhong9@naver.com"), "duplicate Park manager auth accounts must be removed only after preserving the active account");
 assert(appJs.includes("김영채") && appJs.includes("신세민") && appJs.includes("이다빈"), "app.js must include canonical fitness members 김영채/신세민/이다빈");
 assert(appJs.includes("function canEditCurrentWorklog") && appJs.includes("function canEditEmployeeSlot"), "app.js must keep owner/edit permission guards");
 assert(appJs.includes("weekly_work_hours") && appJs.includes("work_hours"), "app.js must support default and weekday-specific work hours");

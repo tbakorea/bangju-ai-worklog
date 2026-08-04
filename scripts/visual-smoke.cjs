@@ -499,7 +499,7 @@ async function checkOverviewCommandBoard(browser) {
     const staff = [
       ["bangju-finance-manager", "재무과장", "(주)방주", "재무과장", "finance-manager@example.com"],
       ["bangju-finance-assistant", "이소미", "(주)방주", "재무 대리", "isomi@example.com"],
-      ["beyond-fitness-manager", "박주홍", "(주)방주 / 비욘드 피트니스 지사", "센터장", "pinong0@naver.com"],
+      ["beyond-fitness-manager", "박주홍", "(주)방주 / 비욘드 피트니스 지사", "센터장", "pjhong0@naver.com"],
       ["fitness-trainer-1", "홍현규", "(주)방주 / 비욘드 피트니스 지사", "트레이너", "trainer@example.com"],
       ["fitness-weekday-info-idabin", "이다빈", "(주)방주 / 비욘드 피트니스 지사", "인포데스크", "idabin@example.com"],
       ["fitness-info-kimyoungchae", "김영채", "(주)방주 / 비욘드 피트니스 지사", "인포데스크", "yckim1558@naver.com"],
@@ -1237,7 +1237,7 @@ async function checkFitnessManagerCanEditOwnWorklog(browser) {
       fitnessWritableEmployeeId: "fitness-weekday-info",
       fitnessLogPage: 2,
       profile: {
-        email: "pinong0@naver.com",
+        email: "pjhong0@naver.com",
         role: "센터장",
         name: "박주홍",
         nickname: "박주홍",
@@ -1259,7 +1259,7 @@ async function checkFitnessManagerCanEditOwnWorklog(browser) {
     document.body.dataset.layoutMode = "phone";
     document.body.dataset.viewMode = "ceo";
     window.eval(`
-      authState.user = { id: "park-juhong-user", email: "pinong0@naver.com" };
+      authState.user = { id: "park-juhong-user", email: "pjhong0@naver.com" };
       normalizeState();
       switchView(getInitialLandingView());
     `);
@@ -2269,11 +2269,11 @@ async function checkFitnessCenterReportConfirmation(browser) {
   const { page, errors } = await openPage(browser, { width: 390, height: 844 });
   await page.evaluate(() => {
     window.eval(`
-      authState.user = { id: "fitness-manager-auth", email: "pinong0@naver.com" };
+      authState.user = { id: "fitness-manager-auth", email: "pjhong0@naver.com" };
       state.profile = {
         ...state.profile,
         authUserId: "fitness-manager-auth",
-        email: "pinong0@naver.com",
+        email: "pjhong0@naver.com",
         role: "센터장",
         name: "박주홍",
         nickname: "센터장",
@@ -2435,7 +2435,7 @@ async function checkFitnessCenterReportConfirmation(browser) {
       fail("Shin Se-min's personal report should preserve every worklog source field", `${label} missing`);
     }
   });
-  ["pjhong0", "pjhong1", "pjhong9"].forEach((retiredEmailPrefix) => {
+  ["pjhong1", "pjhong9"].forEach((retiredEmailPrefix) => {
     if (before.centerRows.some((row) => row.includes(retiredEmailPrefix))) {
       fail("fitness center roster should hide retired Park manager accounts", `${retiredEmailPrefix} leaked into ${JSON.stringify(before.centerRows)}`);
     }
@@ -2490,7 +2490,7 @@ async function checkReportArchiveFitnessSubmission(browser) {
       fitnessWritableEmployeeId: "beyond-fitness-manager",
       profile: {
         authUserId: "fitness-manager-auth",
-        email: "pinong0@naver.com",
+        email: "pjhong0@naver.com",
         role: "센터장",
         name: "박주홍",
         nickname: "센터장",
@@ -2522,7 +2522,7 @@ async function checkReportArchiveFitnessSubmission(browser) {
   await page.reload({ waitUntil: "domcontentloaded" });
   await page.evaluate(() => {
     window.eval(`
-      authState.user = { id: "fitness-manager-auth", email: "pinong0@naver.com" };
+      authState.user = { id: "fitness-manager-auth", email: "pjhong0@naver.com" };
       document.body.classList.add("physical-phone-device");
       document.body.dataset.layoutMode = "phone";
       document.body.dataset.viewMode = "ceo";

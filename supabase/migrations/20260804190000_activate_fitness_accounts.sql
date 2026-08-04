@@ -37,7 +37,7 @@ set org = '(주)방주 / 비욘드 피트니스 지사',
     approval_note = '',
     approved_at = coalesce(approved_at, now()),
     updated_at = now()
-where lower(coalesce(email, '')) = 'pinong0@naver.com';
+where lower(coalesce(email, '')) = 'pjhong0@naver.com';
 
 do $$
 declare
@@ -45,7 +45,7 @@ declare
 begin
   select id into active_manager_id
   from auth.users
-  where lower(coalesce(email, '')) = 'pinong0@naver.com'
+  where lower(coalesce(email, '')) = 'pjhong0@naver.com'
   limit 1;
 
   if active_manager_id is not null then
@@ -58,11 +58,11 @@ begin
       source.updated_at
     from public.worklog_states source
     join auth.users retired on retired.id = source.user_id
-    where lower(coalesce(retired.email, '')) in ('pjhong0@naver.com', 'pjhong1@naver.com', 'pjhong9@naver.com')
+    where lower(coalesce(retired.email, '')) in ('pjhong1@naver.com', 'pjhong9@naver.com')
     order by source.log_date, source.organization, source.updated_at desc
     on conflict (user_id, organization, log_date) do nothing;
     delete from auth.users
-    where lower(coalesce(email, '')) in ('pjhong0@naver.com', 'pjhong1@naver.com', 'pjhong9@naver.com');
+    where lower(coalesce(email, '')) in ('pjhong1@naver.com', 'pjhong9@naver.com');
   end if;
 end
 $$;
