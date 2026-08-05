@@ -213,19 +213,31 @@ check(
 );
 
 check(
-  "fitness quantities accumulate by employee and calendar month",
-  /function renderFitnessPersonalMonthSummary\(page = getCurrentFitnessLogPage\(\), isCenter = page\?\.type === "center"\)[\s\S]{0,500}getActiveDateKey\(\)\.slice\(0, 7\)[\s\S]{0,700}buildFitnessCenterEmployeeMonthRow\(employee, month\)/.test(js)
+  "fitness quantities use compact daily/monthly totals",
+  /function renderFitnessOpsSummaryButton\(log = getSelectedLog\(\)\)[\s\S]{0,1000}buildFitnessCenterEmployeeMonthRow\(employee, getActiveDateKey\(\)\.slice\(0, 7\)\)/.test(js)
+    && /<strong>\$\{paidPtTotal\}\/\$\{monthlyPaidPtTotal\}<\/strong>/.test(js)
+    && /function renderFitnessPersonalMonthSummary[\s\S]{0,180}panel\.hidden = true;/.test(js)
     && /function buildFitnessCenterEmployeeMonthRow\(employee, monthPrefix\)[\s\S]{0,900}getMonthDateKeys\(monthPrefix\)\.forEach/.test(js)
-    && /const employeesForCenter = getFitnessCenterEmployees\(\);[\s\S]{0,180}buildFitnessCenterEmployeeMonthRow\(employee, centerMonth\)/.test(js)
-    && /id="fitnessPersonalMonthSummary"/.test(html),
-  "personal worklogs need their own monthly totals and the center page needs all employee monthly totals"
+    && /const employeesForCenter = getFitnessCenterEmployees\(\);[\s\S]{0,180}buildFitnessCenterEmployeeMonthRow\(employee, centerMonth\)/.test(js),
+  "personal worklogs should show today/month in existing summary cells without a separate grid"
 );
 
 check(
   "fitness monthly totals include every quantity field",
-  /\["유료 PT", aggregate\.paidPtTotal\][\s\S]{0,700}\["외부영업", numberValue\(ops\.outsideSales\)\]/.test(js)
+  /Object\.keys\(ops\)\.forEach\(\(key\)[\s\S]{0,240}ops\[key\] = String\(numberValue\(ops\[key\]\) \+ numberValue\(dayOps\[key\]\)/.test(js)
     && /summary\.dayPass \+= numberValue\(row\.ops\.dayPass\)[\s\S]{0,300}summary\.outsideSales \+= numberValue\(row\.ops\.outsideSales\)/.test(js),
   "PT, contracts, consultation, inbound/outbound, day passes, and outside sales must all roll up"
+);
+
+check(
+  "fitness schedules normalize to each roster employee's work hours",
+  js.includes("return employee ? getOverviewScheduledWorkHours(employee, dateKey, {}) : defaultProfile.workHours")
+    && js.includes("function alignFitnessEmployeeLogToRoster")
+    && js.includes("if (employeeId) log.employeeId = employeeId")
+    && js.includes('if (!log.scheduleUnitExplicit) log.scheduleUnit = "60"')
+    && js.includes("normalizeEmployeeLogRows(log, dateKey)")
+    && js.includes("if (isFitnessEmployeeRecord(employee) && !log.scheduleUnitExplicit)"),
+  "aliased and newly added fitness logs must not inherit another employee's hours or 30-minute default"
 );
 
 check(

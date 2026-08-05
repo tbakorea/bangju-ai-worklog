@@ -877,9 +877,10 @@ function createState() {
 function createEmployeeLog(employee = employees[0], profile = defaultProfile, dateKey = todayKey) {
   const mappedProfileId = getProfileMappedEmployeeId(profile || {});
   const profileHours = getProfileWorkHoursForDate(profile || defaultProfile, dateKey) || profile?.workHours || defaultProfile.workHours;
+  const employeeHours = getOverviewScheduledWorkHours(employee, dateKey, {});
   const workHours = employee.id === "profile-user" || mappedProfileId === employee.id
     ? profileHours
-    : employee.workHours || defaultProfile.workHours;
+    : employeeHours || employee.workHours || defaultProfile.workHours;
   return {
     employeeId: employee.id,
     org: employee.org,
@@ -1006,7 +1007,6 @@ function normalizeState() {
     selectedId: "",
     ...(state.reportArchive || {}),
   };
-  const shouldApplyFitnessHourDefault = !state.fitnessScheduleUnitDefaultApplied;
   state.employeeLogs ||= {};
   if (isRepresentativeProfile()) {
     const representativeIds = new Set(["profile-user"]);
@@ -1033,7 +1033,7 @@ function normalizeState() {
     log.attendanceStep ||= log.attendanceStatus === "조퇴" ? "early" : log.clockOut ? "out" : log.clockIn ? "in" : "ready";
     log.tasks ||= createEmployeeLog(employee, state.profile, getActiveDateKey()).tasks;
     log.schedule ||= createEmployeeLog(employee, state.profile, getActiveDateKey()).schedule;
-    if (shouldApplyFitnessHourDefault && fitnessEmployeeIds.includes(employeeId)) {
+    if (isFitnessEmployeeRecord(employee) && !log.scheduleUnitExplicit) {
       log.scheduleUnit = "60";
     }
     normalizeEmployeeLogRows(log, getActiveDateKey());
@@ -1235,7 +1235,7 @@ function getEmployeeWorkHours(employeeId = state?.selectedEmployeeId, profile = 
     return profileHours || profile?.workHours || state?.profile?.workHours || defaultProfile.workHours;
   }
   const employee = findEmployeeRecordById(employeeId);
-  return employee?.workHours || defaultProfile.workHours;
+  return employee ? getOverviewScheduledWorkHours(employee, dateKey, {}) : defaultProfile.workHours;
 }
 
 function getEmployeeWorkHoursOverride(employeeId = state?.selectedEmployeeId, dateKey = getActiveDateKey()) {
@@ -8948,33 +8948,7 @@ function buildFitnessCenterEmployeeMonthRow(employee, monthPrefix) {
 function renderFitnessPersonalMonthSummary(page = getCurrentFitnessLogPage(), isCenter = page?.type === "center") {
   const panel = document.getElementById("fitnessPersonalMonthSummary");
   if (!panel) return;
-  const employee = page?.employee || getFitnessIdentityEmployee();
-  panel.hidden = Boolean(isCenter || !employee);
-  if (panel.hidden) return;
-  const month = getActiveDateKey().slice(0, 7);
-  const aggregate = buildFitnessCenterEmployeeMonthRow(employee, month);
-  const ops = { ...createFitnessOps(), ...(aggregate.ops || {}) };
-  const title = document.getElementById("fitnessPersonalMonthTitle");
-  if (title) title.textContent = `${formatCenterMonthLabel(month)} · ${getEmployeeAdminLabel(employee)} 개인 누계`;
-  const metrics = [
-    ["유료 PT", aggregate.paidPtTotal],
-    ["무료 PT", aggregate.freePtTotal],
-    ["보강/기타", numberValue(ops.ptOther)],
-    ["신규", numberValue(ops.customerNew)],
-    ["재등록", numberValue(ops.customerRenewal)],
-    ["일일권", numberValue(ops.dayPass)],
-    ["상담", numberValue(ops.consultation)],
-    ["인바운드", numberValue(ops.inbound)],
-    ["아웃바운드", numberValue(ops.outbound)],
-    ["외부영업", numberValue(ops.outsideSales)],
-  ];
-  const grid = document.getElementById("fitnessPersonalMonthGrid");
-  if (grid) {
-    grid.innerHTML = metrics.map(([label, value]) => `
-      <span><b>${escapeHtml(label)}</b><strong>${Number(value || 0).toLocaleString()}건</strong></span>
-    `).join("");
-  }
-  panel.setAttribute("aria-label", `${formatCenterMonthLabel(month)} ${getEmployeeAdminLabel(employee)} 피트니스 수량 누계`);
+  panel.hidden = true;
 }
 
 function getFitnessEmployeeLogForDate(employee = {}, dateKey = getActiveDateKey()) {
@@ -8982,8 +8956,8 @@ function getFitnessEmployeeLogForDate(employee = {}, dateKey = getActiveDateKey(
   const ids = getFitnessEmployeeLogCandidateIds(employee);
   const candidateLogs = ids.map((id) => logsByEmployee[id]).filter(Boolean);
   const filledCandidate = candidateLogs.find(hasFitnessEmployeeLogContent);
-  if (filledCandidate) return filledCandidate;
-  if (candidateLogs[0]) return candidateLogs[0];
+  if (filledCandidate) return alignFitnessEmployeeLogToRoster(filledCandidate, employee, dateKey);
+  if (candidateLogs[0]) return alignFitnessEmployeeLogToRoster(candidateLogs[0], employee, dateKey);
   const email = normalizeEmailValue(employee.email || "");
   if (email) {
     const emailMatchedLogs = Object.entries(logsByEmployee).filter(([employeeId]) => {
@@ -8991,10 +8965,19 @@ function getFitnessEmployeeLogForDate(employee = {}, dateKey = getActiveDateKey(
       return normalizeEmailValue(staff?.email || "") === email;
     }).map(([, log]) => log);
     const filledEmailLog = emailMatchedLogs.find(hasFitnessEmployeeLogContent);
-    if (filledEmailLog) return filledEmailLog;
-    if (emailMatchedLogs[0]) return emailMatchedLogs[0];
+    if (filledEmailLog) return alignFitnessEmployeeLogToRoster(filledEmailLog, employee, dateKey);
+    if (emailMatchedLogs[0]) return alignFitnessEmployeeLogToRoster(emailMatchedLogs[0], employee, dateKey);
   }
   return null;
+}
+
+function alignFitnessEmployeeLogToRoster(log, employee = {}, dateKey = getActiveDateKey()) {
+  if (!log) return null;
+  const employeeId = getEmployeeWorklogId(employee);
+  if (employeeId) log.employeeId = employeeId;
+  if (!log.scheduleUnitExplicit) log.scheduleUnit = "60";
+  normalizeEmployeeLogRows(log, dateKey);
+  return log;
 }
 
 function hasFitnessEmployeeLogContent(log = {}) {
@@ -11098,16 +11081,24 @@ function renderFitnessOpsSummaryButton(log = getSelectedLog()) {
   const freePtTotal = numberValue(ops.ptFree);
   const contractTotal = ["customerNew", "customerRenewal", "dayPass"].reduce((sum, key) => sum + numberValue(ops[key]), 0);
   const marketingTotal = ["outbound", "outsideSales"].reduce((sum, key) => sum + numberValue(ops[key]), 0);
+  const page = getCurrentFitnessLogPage();
+  const employee = page?.type === "employee" ? page.employee : findEmployeeRecordById(log.employeeId);
+  const aggregate = employee ? buildFitnessCenterEmployeeMonthRow(employee, getActiveDateKey().slice(0, 7)) : null;
+  const monthOps = { ...createFitnessOps(), ...(aggregate?.ops || {}) };
+  const monthlyPaidPtTotal = numberValue(aggregate?.paidPtTotal) + numberValue(monthOps.ptOther);
+  const monthlyFreePtTotal = numberValue(aggregate?.freePtTotal);
+  const monthlyConsultationTotal = numberValue(monthOps.consultation);
+  const monthlyContractTotal = ["customerNew", "customerRenewal", "dayPass"].reduce((sum, key) => sum + numberValue(monthOps[key]), 0);
   const memoState = ops.shiftNote || ops.specialReport ? "메모 있음" : "메모 없음";
   button.innerHTML = `
     <span class="ops-summary-title">업무요약</span>
-    <span class="ops-summary-metric"><b>유료PT</b><strong>${paidPtTotal}</strong></span>
-    <span class="ops-summary-metric"><b>무료PT</b><strong>${freePtTotal}</strong></span>
-    <span class="ops-summary-metric"><b>상담</b><strong>${numberValue(ops.consultation)}</strong></span>
-    <span class="ops-summary-metric"><b>계약</b><strong>${contractTotal}</strong></span>
+    <span class="ops-summary-metric"><b>유료PT</b><strong>${paidPtTotal}/${monthlyPaidPtTotal}</strong></span>
+    <span class="ops-summary-metric"><b>무료PT</b><strong>${freePtTotal}/${monthlyFreePtTotal}</strong></span>
+    <span class="ops-summary-metric"><b>상담</b><strong>${numberValue(ops.consultation)}/${monthlyConsultationTotal}</strong></span>
+    <span class="ops-summary-metric"><b>계약</b><strong>${contractTotal}/${monthlyContractTotal}</strong></span>
     <span class="ops-summary-note">${memoState}</span>
   `;
-  button.setAttribute("aria-label", `업무요약. 유료 PT ${paidPtTotal}건, 무료 PT ${freePtTotal}건, 상담 ${numberValue(ops.consultation)}건, 계약 ${contractTotal}건, 홍보 마케팅 ${marketingTotal}건, ${memoState}`);
+  button.setAttribute("aria-label", `업무요약. 오늘/월 누계 기준. 유료 PT ${paidPtTotal}/${monthlyPaidPtTotal}건, 무료 PT ${freePtTotal}/${monthlyFreePtTotal}건, 상담 ${numberValue(ops.consultation)}/${monthlyConsultationTotal}건, 계약 ${contractTotal}/${monthlyContractTotal}건, 홍보 마케팅 오늘 ${marketingTotal}건, ${memoState}`);
 }
 
 function syncFitnessOpsFromSchedule(log = getSelectedLog()) {
@@ -18192,6 +18183,7 @@ document.getElementById("fitnessScheduleUnitButton")?.addEventListener("click", 
   if (!guardWorklogEdit("fitness-log")) return;
   const log = getSelectedLog();
   log.scheduleUnit = log.scheduleUnit === "60" ? "30" : "60";
+  log.scheduleUnitExplicit = true;
   normalizeEmployeeLogRows(log);
   saveState();
   renderEntries();

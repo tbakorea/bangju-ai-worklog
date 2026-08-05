@@ -23977,6 +23977,15 @@ body.physical-phone-device[data-active-view="worklog-overview"] .overview-date-n
   font-variant-numeric: tabular-nums !important;
 }
 
+/* Daily/monthly fitness totals share the existing summary cells as 3/13. */
+#view-fitness-log .fitness-ops-summary-button .ops-summary-metric strong {
+  max-width: 100% !important;
+  font-size: clamp(14px, 3.8vw, 18px) !important;
+  line-height: 1 !important;
+  white-space: nowrap !important;
+  font-variant-numeric: tabular-nums !important;
+}
+
 /* Keep this at the absolute end so page-specific display rules never stack
    inactive sections under the active view. */
 .worklog-shell > .worklog-view:not(.is-active) {

@@ -1363,8 +1363,8 @@ async function checkFitnessManagerCanEditOwnWorklog(browser) {
     managerVisibleTask: document.querySelector("#fitnessTaskBoard .task-text-input")?.value || "",
     ownPageClass: document.querySelector("#view-fitness-log")?.classList.contains("is-own-page") || false,
     ownPanelBackground: getComputedStyle(document.querySelector("#view-fitness-log .fitness-log-task-panel")).backgroundImage,
-    personalMonthTitle: document.querySelector("#fitnessPersonalMonthTitle")?.textContent?.trim() || "",
-    personalMonthText: document.querySelector("#fitnessPersonalMonthGrid")?.textContent?.replace(/\\s+/g, " ").trim() || "",
+    personalMonthHidden: document.querySelector("#fitnessPersonalMonthSummary")?.hidden ?? false,
+    compactTotals: [...document.querySelectorAll("#fitnessOpsSummaryButton .ops-summary-metric strong")].map((node) => node.textContent.trim()),
     julyManager: buildFitnessCenterEmployeeMonthRow(getFitnessCenterEmployees().find((employee) => isFitnessManagerRosterIdentity(employee)), "2026-07").ops,
     augustManager: buildFitnessCenterEmployeeMonthRow(getFitnessCenterEmployees().find((employee) => isFitnessManagerRosterIdentity(employee)), "2026-08").ops,
     julyTrainer: buildFitnessCenterEmployeeMonthRow(getFitnessCenterEmployees().find((employee) => /홍현규/.test(employee.name || "")), "2026-07").ops,
@@ -1389,7 +1389,7 @@ async function checkFitnessManagerCanEditOwnWorklog(browser) {
   if (!parsed.ownPageClass || !parsed.ownPanelBackground.includes("gradient")) {
     fail("Park own worklog should use the distinct own-page background", metrics);
   }
-  if (!parsed.personalMonthTitle.includes("2026.08") || !parsed.personalMonthText.includes("11건")
+  if (!parsed.personalMonthHidden || parsed.compactTotals.join(",") !== "0/11,0/0,0/4,0/0"
     || Number(parsed.julyManager.ptRegular) !== 5 || Number(parsed.julyManager.consultation) !== 3
     || Number(parsed.augustManager.ptRegular) !== 11 || Number(parsed.julyTrainer.ptRegular) !== 7) {
     fail("fitness personal totals must accumulate within the selected month and reset for the next month", metrics);
@@ -3449,6 +3449,93 @@ async function checkDagymPreviousDayGuidanceFlow(browser) {
   await page.close();
 }
 
+async function checkFitnessRosterHoursAndCompactTotals(browser) {
+  const { page, errors } = await openPage(browser, { width: 390, height: 844 });
+  await page.evaluate(() => {
+    window.eval(`
+      authState.user = { id: "fitness-hours-qa", email: "pjhong0@naver.com" };
+      state.profile = {
+        ...state.profile,
+        authUserId: "fitness-hours-qa",
+        email: "pjhong0@naver.com",
+        name: "박주홍",
+        nickname: "센터장",
+        org: "(주)방주 / 비욘드 피트니스 지사",
+        workplace: "비욘드 피트니스",
+        role: "센터장",
+        primaryWork: "운영총괄, PT 수업",
+        workHours: "06:00-24:00",
+        approvalStatus: "approved",
+        accessPreset: "employee",
+        permissions: {}
+      };
+      state.selectedDateKey = "2026-08-04";
+      state.fitnessWritableEmployeeId = "beyond-fitness-manager";
+      state.selectedEmployeeId = "beyond-fitness-manager";
+      const manager = employees.find((item) => item.id === "beyond-fitness-manager");
+      const kim = employees.find((item) => item.id === "fitness-info-kimyoungchae");
+      const ida = employees.find((item) => item.id === "fitness-weekday-info-idabin");
+      const priorManager = createEmployeeLog(manager, state.profile, "2026-08-03");
+      priorManager.fitnessOps.ptRegular = "10";
+      priorManager.fitnessOpsManual.ptRegular = true;
+      const todayManager = createEmployeeLog(manager, state.profile, "2026-08-04");
+      todayManager.employeeId = "fitness-trainer-1";
+      todayManager.scheduleUnit = "30";
+      todayManager.fitnessOps.ptRegular = "3";
+      todayManager.fitnessOpsManual.ptRegular = true;
+      const wrongKim = createEmployeeLog(manager, state.profile, "2026-08-04");
+      wrongKim.employeeId = "beyond-fitness-manager";
+      wrongKim.scheduleUnit = "30";
+      const wrongIda = createEmployeeLog(manager, state.profile, "2026-08-04");
+      wrongIda.employeeId = "beyond-fitness-manager";
+      wrongIda.scheduleUnit = "30";
+      state.employeeLogs = {
+        "2026-08-03": { "beyond-fitness-manager": priorManager },
+        "2026-08-04": {
+          "beyond-fitness-manager": todayManager,
+          "fitness-info-kimyoungchae": wrongKim,
+          "fitness-weekday-info-idabin": wrongIda
+        }
+      };
+      state.fitnessScheduleUnitDefaultApplied = true;
+      normalizeState();
+      const managerLog = getFitnessEmployeeLogForDate(manager, "2026-08-04");
+      const kimLog = getFitnessEmployeeLogForDate(kim, "2026-08-04");
+      const idaLog = getFitnessEmployeeLogForDate(ida, "2026-08-04");
+      window.__fitnessRosterHoursQA = {
+        manager: { id: managerLog.employeeId, unit: managerLog.scheduleUnit, times: managerLog.schedule.map((entry) => entry.time) },
+        kim: { id: kimLog.employeeId, unit: kimLog.scheduleUnit, times: kimLog.schedule.map((entry) => entry.time) },
+        ida: { id: idaLog.employeeId, unit: idaLog.scheduleUnit, times: idaLog.schedule.map((entry) => entry.time) }
+      };
+      state.fitnessLogPage = getFitnessLogPages().findIndex((entry) => entry.id === "beyond-fitness-manager");
+      switchView("fitness-log");
+    `);
+  });
+  await page.waitForTimeout(220);
+  const metrics = await page.evaluate(() => ({
+    schedules: window.__fitnessRosterHoursQA,
+    summaryValues: [...document.querySelectorAll("#fitnessOpsSummaryButton .ops-summary-metric strong")].map((node) => node.textContent.trim()),
+    monthlyPanelHidden: document.querySelector("#fitnessPersonalMonthSummary")?.hidden ?? false,
+    summaryFits: document.querySelector("#fitnessOpsSummaryButton")?.scrollWidth <= document.querySelector("#fitnessOpsSummaryButton")?.clientWidth + 2,
+  }));
+  const expected = [
+    ["manager", "beyond-fitness-manager", "06:00", "24:00", 19],
+    ["kim", "fitness-info-kimyoungchae", "10:00", "18:00", 9],
+    ["ida", "fitness-weekday-info-idabin", "16:00", "20:00", 5],
+  ];
+  expected.forEach(([key, id, first, last, count]) => {
+    const item = metrics.schedules?.[key];
+    if (item?.id !== id || item?.unit !== "60" || item?.times?.[0] !== first || item?.times?.at(-1) !== last || item?.times?.length !== count) {
+      fail("fitness schedule should follow each employee's roster hours", `${key}: ${JSON.stringify(item)}`);
+    }
+  });
+  if (metrics.summaryValues[0] !== "3/13" || !metrics.monthlyPanelHidden || !metrics.summaryFits) {
+    fail("fitness totals should use compact today/month notation without another panel", JSON.stringify(metrics));
+  }
+  if (errors.length) fail("fitness roster hours page errors", errors.join(" | "));
+  await page.close();
+}
+
 (async () => {
   const browser = await chromium.launch({
     headless: true,
@@ -3474,6 +3561,7 @@ async function checkDagymPreviousDayGuidanceFlow(browser) {
     await checkApprovalRepairRevealsPendingFitnessSignup(browser);
     await checkApprovalRepairMissingRpcFallsBack(browser);
     await checkDagymPreviousDayGuidanceFlow(browser);
+    await checkFitnessRosterHoursAndCompactTotals(browser);
     await checkRepresentativeProfileSeparation(browser);
     await checkNonControlRoleTextDoesNotBecomeRepresentative(browser);
     await checkKimSungminAccountIsEmployeeOnly(browser);
