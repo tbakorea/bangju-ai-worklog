@@ -13185,6 +13185,26 @@ body[data-layout-mode="phone"] .fitness-log-schedule-panel .appointment-merge-bu
   padding-inline: 4px;
 }
 
+.fitness-report-sheet footer {
+  flex-wrap: wrap;
+}
+
+#fitnessReportCoachButton {
+  border-color: rgba(15, 70, 55, 0.32);
+  background: var(--fitness-green);
+  color: var(--nordic-sheet);
+}
+
+#fitnessReportCoachButton[data-ai-state="cached"] {
+  background: rgba(237, 244, 224, 0.94);
+  color: var(--fitness-green);
+}
+
+#fitnessReportCoachButton[data-ai-state="unavailable"] {
+  background: rgba(17, 20, 17, 0.06);
+  color: var(--muted);
+}
+
 .fitness-report-sheet header button,
 .fitness-report-sheet footer button {
   border-color: rgba(22, 56, 44, 0.16);
@@ -13375,6 +13395,15 @@ body[data-layout-mode="phone"] .fitness-log-schedule-panel .appointment-merge-bu
   min-height: 24px;
   margin: 0;
   border-top: 1px solid rgba(18, 59, 45, 0.12);
+}
+
+.fitness-paper-footer-grid > div:last-child p {
+  grid-template-columns: 58px minmax(0, 1fr);
+  min-height: 18px;
+}
+
+.fitness-paper-footer-grid > div:last-child p span {
+  padding-block: 3px;
 }
 
 .fitness-paper-tasks p b,
@@ -13634,7 +13663,7 @@ body[data-layout-mode="phone"] .fitness-log-schedule-panel .appointment-merge-bu
 
 .fitness-report-page.is-center-report .fitness-paper-footer-grid > div {
   display: grid;
-  grid-template-rows: auto repeat(3, minmax(23px, 1fr));
+  grid-template-rows: auto repeat(4, minmax(18px, 1fr));
 }
 
 @media (max-width: 760px) {

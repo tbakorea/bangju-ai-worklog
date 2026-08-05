@@ -9,6 +9,7 @@ const html = read("index.html");
 const js = read("app.js");
 const css = read("styles.css");
 const backupApi = existsSync(join(root, "api/backup-mail.js")) ? read("api/backup-mail.js") : "";
+const fitnessCoachApi = existsSync(join(root, "api/fitness-coach.js")) ? read("api/fitness-coach.js") : "";
 const loginCardHtml = html.slice(html.indexOf('<section class="login-card"'), html.indexOf('<div class="auth-panel'));
 const failures = [];
 
@@ -28,6 +29,11 @@ const syntax = spawnSync(process.execPath, ["--check", join(root, "app.js")], { 
 check("app.js syntax", syntax.status === 0, syntax.stderr.trim());
 const backupApiSyntax = backupApi ? spawnSync(process.execPath, ["--check", join(root, "api/backup-mail.js")], { encoding: "utf8" }) : null;
 check("backup mail api exists and parses", Boolean(backupApi) && backupApiSyntax.status === 0, backupApiSyntax?.stderr?.trim() || "api/backup-mail.js is missing");
+const fitnessCoachApiSyntax = fitnessCoachApi ? spawnSync(process.execPath, ["--check", join(root, "api/fitness-coach.js")], { encoding: "utf8" }) : null;
+check("fitness coach api exists and parses", Boolean(fitnessCoachApi) && fitnessCoachApiSyntax.status === 0, fitnessCoachApiSyntax?.stderr?.trim() || "api/fitness-coach.js is missing");
+check("fitness coach keeps OpenAI key server-side", fitnessCoachApi.includes("process.env.OPENAI_API_KEY") && !js.includes("OPENAI_API_KEY"));
+check("fitness coach verifies signed-in user", fitnessCoachApi.includes("/auth/v1/user") && fitnessCoachApi.includes("Authorization"));
+check("fitness coach uses structured Responses output", fitnessCoachApi.includes("/v1/responses") && fitnessCoachApi.includes('type: "json_schema"'));
 
 const ids = findAll(/id="([^"]+)"/g, html);
 const duplicateIds = unique(ids.filter((id, index) => ids.indexOf(id) !== index));

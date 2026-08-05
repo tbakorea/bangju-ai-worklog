@@ -2729,6 +2729,26 @@ async function checkReportArchiveVault(browser) {
 
 async function checkFitnessCenterReportConfirmation(browser) {
   const { page, errors } = await openPage(browser, { width: 390, height: 844 });
+  let aiCoachRequest = null;
+  await page.route("**/api/fitness-coach", async (route) => {
+    aiCoachRequest = route.request().postDataJSON();
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        ok: true,
+        model: "gpt-5.6-qa",
+        generatedAt: "2026-07-24T12:00:00.000Z",
+        coaching: {
+          praise: "직원 운영기록을 빠짐없이 취합한 점이 좋습니다.",
+          feedback: "상담 결과의 후속 담당자를 한 명씩 지정해주세요.",
+          nextAction: "내일 첫 근무 전에 만료 예정 회원 후속조치를 확인하세요.",
+          manualReminder: "센터장 매뉴얼의 마감 인수인계 기준을 확인해주세요.",
+          evidence: ["직원 운영기록", "센터 보고 확정"],
+        },
+      }),
+    });
+  });
   await page.evaluate(() => {
     window.eval(`
       authState.user = { id: "fitness-manager-auth", email: "pjhong0@naver.com" };
@@ -2940,15 +2960,26 @@ async function checkFitnessCenterReportConfirmation(browser) {
   if (confirmed.stored?.status !== "confirmed" || !confirmed.stored?.confirmedAt || !confirmed.statusText.includes("확정")) {
     fail("fitness center report confirmation was not persisted", JSON.stringify(confirmed));
   }
+  await page.evaluate(() => {
+    authState.session = { access_token: "qa-access-token" };
+  });
   await page.click("#fitnessReportMenuButton");
-  await page.waitForTimeout(250);
+  await page.waitForTimeout(450);
   const reportState = await page.evaluate(() => ({
     buttonHidden: document.querySelector("#fitnessReportConfirmButton")?.hidden ?? true,
     buttonText: document.querySelector("#fitnessReportConfirmButton")?.textContent?.trim() || "",
     previewText: document.querySelector("#fitnessReportPreview")?.textContent?.trim() || "",
+    coachButtonText: document.querySelector("#fitnessReportCoachButton")?.textContent?.trim() || "",
   }));
   if (reportState.buttonHidden || reportState.buttonText !== "확정 취소" || !reportState.previewText.includes("확정")) {
     fail("fitness report preview should expose confirmation state", JSON.stringify(reportState));
+  }
+  if (!aiCoachRequest?.context?.manual?.guidelines?.length
+    || reportState.coachButtonText !== "AI 코칭 새로고침"
+    || !reportState.previewText.includes("AI 코칭 · ChatGPT")
+    || !reportState.previewText.includes("직원 운영기록을 빠짐없이 취합한 점이 좋습니다.")
+    || !reportState.previewText.includes("센터장 매뉴얼의 마감 인수인계 기준을 확인해주세요.")) {
+    fail("fitness report should replace fallback guidance with authenticated ChatGPT coaching", JSON.stringify({ aiCoachRequest, reportState }));
   }
   ["명일 예정업무", "전체 직원 운영기록", "유료PT", "무료PT", "기타PT", "신규", "재등록", "상담", "아웃바운드", "인바운드", "특이사항", "오늘의 기록", "담당", "팀장", "센터장"].forEach((label) => {
     if (!reportState.previewText.includes(label)) {

@@ -2,6 +2,7 @@ const storageKey = "beyond-worklog-state-v1";
 const layoutModeStorageKey = "beyond-worklog-layout-mode";
 const globalViewModeStorageKey = "beyond-worklog-global-view-mode";
 const localAuthSignedOutKey = "beyond-worklog-auth-signed-out";
+const fitnessAiCoachingStorageKey = "beyond-fitness-ai-coaching-v1";
 const productionAppUrl = "https://bangju-ai-worklog.vercel.app/";
 const supabaseConfig = {
   url: "https://zllpfaijahyfppivkxzu.supabase.co",
@@ -794,6 +795,9 @@ let mobileDayFocusMode = "split";
 let fitnessMobileFocusMode = "split";
 let mobileFocusGateSuppressClick = false;
 let fitnessScheduleEditorState = null;
+let activeFitnessReportAiKey = "";
+let fitnessReportAiRequestId = 0;
+const fitnessReportAiAttempted = new Set();
 const dailyEditingState = {
   focused: false,
   composing: false,
@@ -9496,15 +9500,18 @@ function renderFitnessCenterCoaching(total, rows) {
   node.innerHTML = messages.slice(0, 6).map(([title, text]) => `<article><b>${escapeHtml(title)}</b><span>${escapeHtml(text)}</span></article>`).join("");
 }
 
-function getFitnessCoachingMessages() {
-  const page = getCurrentFitnessLogPage();
-  const log = page?.type === "employee" ? getSelectedLog() : getEmployeeLogForDate(state.fitnessWritableEmployeeId);
+function getFitnessCoachingMessages(context = {}) {
+  const page = context.page || getCurrentFitnessLogPage();
+  const log = context.log || (page?.type === "employee" ? getSelectedLog() : getEmployeeLogForDate(state.fitnessWritableEmployeeId));
   const ops = { ...createFitnessOps(), ...(log.fitnessOps || {}) };
-  const dagym = getDagymOpsForDate(getActiveDateKey());
-  const employee = page?.employee || employees.find((item) => item.id === state.fitnessWritableEmployeeId) || getSelectedEmployee();
+  const dateKey = context.dateKey || getActiveDateKey();
+  const dagym = context.dagym || getDagymOpsForDate(dateKey);
+  const employee = context.employee || page?.employee || employees.find((item) => item.id === state.fitnessWritableEmployeeId) || getSelectedEmployee();
   const tasks = getWorklogTaskRefs(log).map((ref) => ref.task).filter(isActiveTask);
   const pending = tasks.filter((task) => !task.done && !["완료", "취소"].includes(task.status));
-  const nextEntry = getNextScheduleEntry(log);
+  const nextEntry = context.log
+    ? (log.schedule || []).find((entry) => getScheduleEntryText(entry)) || null
+    : getNextScheduleEntry(log);
   const ptTotal = ["ptRegular", "ptFree", "ptOther"].reduce((sum, key) => sum + numberValue(ops[key]), 0);
   const salesAction = ["customerNew", "customerRenewal", "consultation", "outbound", "outsideSales"].reduce((sum, key) => sum + numberValue(ops[key]), 0);
   const visits = numberValue(dagym.visits);
@@ -16590,7 +16597,7 @@ function buildFitnessReportLines() {
     ...model.issueRows.map((row) => `- ${row}`),
     "",
     "[AI 보완 코칭]",
-    ...model.coaching.map(([title, text]) => `- ${title}: ${text}`),
+    ...getFitnessReportCoachingRows(model).map(([title, text]) => `- ${title}: ${text}`),
   ];
 }
 
@@ -17106,6 +17113,135 @@ function getFitnessReportClassStats(employee = {}, dateKey = getActiveDateKey(),
   };
 }
 
+function sanitizeFitnessCoachText(value = "") {
+  return String(value || "")
+    .replace(/[\w.+-]+@[\w.-]+\.[A-Za-z]{2,}/g, "[이메일 제거]")
+    .replace(/(?:\+?82[-\s]?)?0?1[016789][-\s]?\d{3,4}[-\s]?\d{4}/g, "[연락처 제거]")
+    .replace(/([가-힣]{2,4})(?=\s*(회원|고객|님))/g, "해당 ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 900);
+}
+
+function getFitnessAiCoachingCache() {
+  try {
+    const parsed = JSON.parse(localStorage.getItem(fitnessAiCoachingStorageKey) || "{}");
+    return parsed && typeof parsed === "object" ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+function setFitnessAiCoachingCache(key, entry) {
+  const cache = getFitnessAiCoachingCache();
+  cache[key] = entry;
+  const trimmed = Object.fromEntries(Object.entries(cache)
+    .sort((left, right) => String(right[1]?.generatedAt || "").localeCompare(String(left[1]?.generatedAt || "")))
+    .slice(0, 40));
+  localStorage.setItem(fitnessAiCoachingStorageKey, JSON.stringify(trimmed));
+}
+
+function getFitnessReportAiFingerprint(context = {}) {
+  const source = stableStringify(context);
+  let hash = 2166136261;
+  for (let index = 0; index < source.length; index += 1) {
+    hash ^= source.charCodeAt(index);
+    hash = Math.imul(hash, 16777619);
+  }
+  return (hash >>> 0).toString(36);
+}
+
+function buildFitnessReportAiContext({ dateKey, isCenter, employee, sourceLog, logEntries, totals, classStats, manual }) {
+  const taskRefs = logEntries.flatMap(({ log }) => getWorklogTaskRefs(log));
+  const tasks = taskRefs.map(({ task }) => ({
+    text: sanitizeFitnessCoachText(task.text),
+    status: task.done || task.status === "완료" ? "완료" : task.status || "미완료",
+  })).filter((task) => task.text).slice(0, 18);
+  const scheduleTypes = {};
+  logEntries.forEach(({ log }) => (log.schedule || []).forEach((entry) => {
+    const text = getScheduleEntryText(entry);
+    if (!text) return;
+    const type = inferScheduleType(text) || "업무";
+    scheduleTypes[type] = (scheduleTypes[type] || 0) + 1;
+  }));
+  const assignedMission = getAssignedMissionForEmployee(employee);
+  return {
+    dateKey,
+    reportType: isCenter ? "센터 운영 취합" : "개인 업무보고",
+    employee: isCenter ? { name: "센터 전체", role: "운영 취합" } : {
+      name: sanitizeFitnessCoachText(employee.name || getEmployeeOwnLabel(employee)),
+      role: sanitizeFitnessCoachText(employee.role || "직원"),
+    },
+    attendance: isCenter ? "센터 취합" : `${sourceLog.clockIn || "미기록"} ~ ${sourceLog.clockOut || "미기록"}`,
+    taskSummary: {
+      total: tasks.length,
+      completed: tasks.filter((task) => task.status === "완료").length,
+      items: tasks,
+    },
+    scheduleSummary: {
+      total: Object.values(scheduleTypes).reduce((sum, count) => sum + count, 0),
+      types: scheduleTypes,
+    },
+    performance: {
+      paidPtToday: classStats.paid.today,
+      paidPtMonth: classStats.paid.month,
+      freePtToday: classStats.free.today,
+      freePtMonth: classStats.free.month,
+      consultation: numberValue(totals.consultation),
+      contract: numberValue(totals.contractTotal),
+      promotion: numberValue(totals.outbound),
+      marketing: numberValue(totals.outsideSales),
+    },
+    reportNotes: getFitnessReportRecordRows(logEntries, { isCenter, totals })
+      .map(sanitizeFitnessCoachText)
+      .filter(Boolean)
+      .slice(0, 8),
+    assignedMission: assignedMission?.visible ? sanitizeFitnessCoachText(assignedMission.text) : "",
+    manual: {
+      title: manual.title,
+      guidelines: String(manual.text || "").split("\n").map(sanitizeFitnessCoachText).filter(Boolean).slice(0, 8),
+    },
+  };
+}
+
+function getFitnessReportManualTemplate(employee = {}) {
+  const source = `${employee.role || ""} ${employee.primaryWork || ""} ${employee.workplace || ""}`;
+  if (/센터장|총괄|실장/.test(source)) return { key: "manager", template: fitnessManualTemplates.manager };
+  if (/인포|고객응대/.test(source)) return { key: "frontDesk", template: fitnessManualTemplates.frontDesk };
+  if (/트레이너|PT|수업/i.test(source)) return { key: "trainer", template: fitnessManualTemplates.trainer };
+  if (/상담|계약|영업/.test(source)) return { key: "sales", template: fitnessManualTemplates.sales };
+  if (/홍보|마케팅/.test(source)) return { key: "marketing", template: fitnessManualTemplates.marketing };
+  if (/시설/.test(source)) return { key: "facility", template: fitnessManualTemplates.facility };
+  if (/청결|청소/.test(source)) return { key: "cleaning", template: fitnessManualTemplates.cleaning };
+  return { key: "manager", template: fitnessManualTemplates.manager };
+}
+
+function getFitnessReportCoachingRows(model = {}) {
+  if (model.aiCoaching) {
+    return [
+      ["칭찬", model.aiCoaching.praise],
+      ["피드백", model.aiCoaching.feedback],
+      ["다음 행동", model.aiCoaching.nextAction],
+      ["매뉴얼", model.aiCoaching.manualReminder],
+    ];
+  }
+  const completed = model.aiContext?.taskSummary?.completed || 0;
+  const scheduleTotal = model.aiContext?.scheduleSummary?.total || 0;
+  const praise = completed
+    ? `우선업무 ${completed}건을 완료하며 오늘의 실행을 기록한 점이 좋습니다.`
+    : scheduleTotal
+      ? `시간별 일정 ${scheduleTotal}건을 기록해 업무 흐름을 남긴 점이 좋습니다.`
+      : "업무보고서를 열어 오늘의 실행을 점검한 태도가 좋습니다.";
+  const fallback = model.coaching || [];
+  const manualLine = model.aiContext?.manual?.guidelines?.[0] || "직급별 매뉴얼의 핵심 기준을 다음 근무 전에 확인해주세요.";
+  return [
+    ["칭찬", praise],
+    ["피드백", fallback.find(([title]) => title === "우선업무")?.[1] || "업무 결과와 후속 조치를 한 줄 더 남겨주세요."],
+    ["다음 행동", fallback.find(([title]) => title === "시간관리")?.[1] || "다음 근무의 첫 실행업무를 미리 정해주세요."],
+    ["매뉴얼", manualLine],
+  ];
+}
+
 function buildFitnessReportModel(options = {}) {
   const page = getCurrentFitnessLogPage();
   const dateKey = options.dateKey || getActiveDateKey();
@@ -17129,7 +17265,15 @@ function buildFitnessReportModel(options = {}) {
   const weatherSiteKey = getSiteWeatherKeyForEmployee(weatherEmployee);
   const weather = getWeatherRecordForSite(weatherSiteKey, dateKey);
   const weatherText = formatWeatherSummary(weather, { compact: true });
-  return {
+  const { key: manualRoleKey, template: manualTemplate } = getFitnessReportManualTemplate(employee);
+  const manual = {
+    ...manualTemplate,
+    text: getManualSettings().customByRole?.[manualRoleKey] || manualTemplate.text,
+  };
+  const aiContext = buildFitnessReportAiContext({ dateKey, isCenter, employee, sourceLog, logEntries, totals, classStats, manual });
+  const aiKey = `${dateKey}:${isCenter ? "center" : employee.id}:${getFitnessReportAiFingerprint(aiContext)}`;
+  const aiCacheEntry = getFitnessAiCoachingCache()[aiKey] || null;
+  const model = {
     title,
     dateKey,
     isCenter,
@@ -17163,8 +17307,14 @@ function buildFitnessReportModel(options = {}) {
       ["마케팅", `${numberValue(totals.outsideSales)}건`],
     ],
     issueRows: getFitnessReportRecordRows(logEntries, { isCenter, totals, weatherText }),
-    coaching: getFitnessCoachingMessages(),
+    coaching: getFitnessCoachingMessages({ page, employee, log: sourceLog, dateKey }),
+    aiContext,
+    aiKey,
+    aiCoaching: aiCacheEntry?.coaching || null,
+    aiCoachModel: aiCacheEntry?.model || "",
+    aiCoachGeneratedAt: aiCacheEntry?.generatedAt || "",
   };
+  return model;
 }
 
 function formatReportTime(value = "") {
@@ -17279,8 +17429,8 @@ function renderFitnessReportTemplate(model = buildFitnessReportModel()) {
           ${getFitnessReportIssueRowsHtml(model)}
         </div>
         <div>
-          <h3>AI 코칭</h3>
-          ${model.coaching.slice(0, 3).map(([title, text]) => `<p><b>${escapeHtml(title)}</b><span>${escapeHtml(text)}</span></p>`).join("")}
+          <h3>AI 코칭 · ${model.aiCoaching ? "ChatGPT" : "기본 코칭"}</h3>
+          ${getFitnessReportCoachingRows(model).map(([title, text]) => `<p><b>${escapeHtml(title)}</b><span>${escapeHtml(text)}</span></p>`).join("")}
         </div>
       </section>
     </article>
@@ -17299,6 +17449,74 @@ function getFitnessReportScheduleRows(schedule = []) {
   return rows;
 }
 
+function setFitnessReportCoachButtonState(stateName = "ready") {
+  const button = document.getElementById("fitnessReportCoachButton");
+  if (!button) return;
+  const labels = {
+    ready: "ChatGPT 코칭",
+    cached: "AI 코칭 새로고침",
+    loading: "AI 코칭 생성 중…",
+    unavailable: "AI 코칭 연결 필요",
+  };
+  button.textContent = labels[stateName] || labels.ready;
+  button.disabled = stateName === "loading";
+  button.dataset.aiState = stateName;
+}
+
+function refreshOpenFitnessReport(model = buildFitnessReportModel()) {
+  const preview = document.getElementById("fitnessReportPreview");
+  if (!preview || !document.getElementById("fitnessReportSheet")?.classList.contains("is-open")) return;
+  preview.innerHTML = renderFitnessReportTemplate(model);
+  updateFitnessReportConfirmButton(model);
+  fitFitnessReportPreview();
+}
+
+async function requestFitnessReportAiCoaching(model = buildFitnessReportModel(), { force = false, silent = false } = {}) {
+  if (!model?.aiKey || !model?.aiContext) return null;
+  activeFitnessReportAiKey = model.aiKey;
+  if (model.aiCoaching && !force) {
+    setFitnessReportCoachButtonState("cached");
+    return model.aiCoaching;
+  }
+  if (!force && fitnessReportAiAttempted.has(model.aiKey)) return null;
+  const accessToken = authState.session?.access_token;
+  if (!accessToken) {
+    setFitnessReportCoachButtonState("unavailable");
+    if (!silent) showAppToast("로그인 후 실제 AI 코칭을 사용할 수 있습니다");
+    return null;
+  }
+
+  fitnessReportAiAttempted.add(model.aiKey);
+  const requestId = ++fitnessReportAiRequestId;
+  setFitnessReportCoachButtonState("loading");
+  try {
+    const coachResponse = await fetch("/api/fitness-coach", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ context: model.aiContext }),
+    });
+    const result = await coachResponse.json().catch(() => ({}));
+    if (!coachResponse.ok || !result.coaching) throw new Error(result.error || "AI 코칭을 생성하지 못했습니다.");
+    setFitnessAiCoachingCache(model.aiKey, {
+      coaching: result.coaching,
+      model: result.model || "OpenAI",
+      generatedAt: result.generatedAt || new Date().toISOString(),
+    });
+    if (requestId === fitnessReportAiRequestId && activeFitnessReportAiKey === model.aiKey) {
+      refreshOpenFitnessReport(buildFitnessReportModel());
+      setFitnessReportCoachButtonState("cached");
+    }
+    return result.coaching;
+  } catch (error) {
+    if (requestId === fitnessReportAiRequestId) setFitnessReportCoachButtonState("unavailable");
+    if (!silent) showAppToast(error.message || "기본 코칭으로 보고서를 유지합니다");
+    return null;
+  }
+}
+
 function openFitnessReportSheet() {
   const backdrop = document.getElementById("fitnessReportBackdrop");
   const sheet = document.getElementById("fitnessReportSheet");
@@ -17306,14 +17524,17 @@ function openFitnessReportSheet() {
   const subtitle = document.getElementById("fitnessReportSubtitle");
   if (!backdrop || !sheet || !preview) return;
   const model = buildFitnessReportModel();
+  activeFitnessReportAiKey = model.aiKey;
   if (subtitle) subtitle.textContent = `${formatKoreanDate(getActiveDateKey())} 보고서`;
   preview.innerHTML = renderFitnessReportTemplate(model);
   updateFitnessReportConfirmButton(model);
+  setFitnessReportCoachButtonState(model.aiCoaching ? "cached" : "ready");
   backdrop.hidden = false;
   sheet.hidden = false;
   requestAnimationFrame(() => {
     sheet.classList.add("is-open");
     fitFitnessReportPreview();
+    requestFitnessReportAiCoaching(model, { silent: true });
   });
 }
 
@@ -17345,6 +17566,7 @@ function closeFitnessReportSheet() {
   const backdrop = document.getElementById("fitnessReportBackdrop");
   const sheet = document.getElementById("fitnessReportSheet");
   sheet?.classList.remove("is-open");
+  activeFitnessReportAiKey = "";
   window.setTimeout(() => {
     if (backdrop) backdrop.hidden = true;
     if (sheet) sheet.hidden = true;
@@ -17520,6 +17742,15 @@ function getFitnessReportExportCss(reportHeight = 1754) {
       min-height: 48px;
       margin: 0;
       border-top: 2px solid rgba(18, 59, 45, 0.12);
+    }
+    .fitness-paper-footer-grid > div:last-child p {
+      grid-template-columns: 118px minmax(0, 1fr);
+      min-height: 36px;
+    }
+    .fitness-paper-footer-grid > div:last-child p span {
+      padding-top: 7px;
+      padding-bottom: 7px;
+      font-size: 18px;
     }
     .fitness-paper-tasks p b,
     .fitness-paper-footer-grid p b {
@@ -17708,7 +17939,7 @@ function getFitnessReportExportCss(reportHeight = 1754) {
     }
     .fitness-report-page.is-center-report .fitness-paper-footer-grid > div {
       display: grid;
-      grid-template-rows: auto repeat(3, minmax(42px, 1fr));
+      grid-template-rows: auto repeat(4, minmax(34px, 1fr));
     }
   `;
 }
@@ -18654,6 +18885,11 @@ document.getElementById("fitnessReportCloseButton")?.addEventListener("click", c
 document.getElementById("fitnessReportBackdrop")?.addEventListener("click", closeFitnessReportSheet);
 document.getElementById("fitnessReportPrintButton")?.addEventListener("click", printFitnessReport);
 document.getElementById("fitnessReportConfirmButton")?.addEventListener("click", toggleFitnessCenterReportConfirmation);
+document.getElementById("fitnessReportCoachButton")?.addEventListener("click", () => {
+  const model = buildFitnessReportModel();
+  fitnessReportAiAttempted.delete(model.aiKey);
+  requestFitnessReportAiCoaching(model, { force: true, silent: false });
+});
 document.getElementById("fitnessReportImageButton")?.addEventListener("click", () => {
   saveFitnessReportImage().catch(() => alert("이미지 파일을 만들지 못했습니다. 출력 메뉴에서 PDF 저장을 이용해주세요."));
 });

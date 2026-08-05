@@ -1,0 +1,170 @@
+const { createHash } = require("node:crypto");
+
+const SUPABASE_URL = process.env.SUPABASE_URL || "https://zllpfaijahyfppivkxzu.supabase.co";
+const SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY || "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InpsbHBmYWlqYWh5ZnBwaXZreHp1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODMzMzQxNTUsImV4cCI6MjA5ODkxMDE1NX0.C4omaj-e_9PM-iF3-5GUUVX47Wo06UsNTOYMlMMVcZU";
+const DEFAULT_ORIGIN = "https://bangju-ai-worklog.vercel.app";
+const MAX_PAYLOAD_BYTES = 24000;
+
+const coachingSchema = {
+  type: "object",
+  additionalProperties: false,
+  properties: {
+    praise: { type: "string" },
+    feedback: { type: "string" },
+    nextAction: { type: "string" },
+    manualReminder: { type: "string" },
+    evidence: {
+      type: "array",
+      items: { type: "string" },
+      minItems: 1,
+      maxItems: 3,
+    },
+  },
+  required: ["praise", "feedback", "nextAction", "manualReminder", "evidence"],
+};
+
+function getAllowedOrigin(request) {
+  const origin = String(request.headers.origin || "");
+  if (origin === DEFAULT_ORIGIN || /^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin)) return origin;
+  return DEFAULT_ORIGIN;
+}
+
+async function verifySupabaseUser(request) {
+  const authorization = String(request.headers.authorization || "");
+  if (!authorization.startsWith("Bearer ")) return null;
+  const userResponse = await fetch(`${SUPABASE_URL}/auth/v1/user`, {
+    headers: {
+      apikey: SUPABASE_ANON_KEY,
+      Authorization: authorization,
+    },
+  });
+  if (!userResponse.ok) return null;
+  return userResponse.json().catch(() => null);
+}
+
+function extractResponseText(result = {}) {
+  if (typeof result.output_text === "string" && result.output_text.trim()) return result.output_text;
+  return (result.output || [])
+    .filter((item) => item?.type === "message")
+    .flatMap((item) => item.content || [])
+    .filter((item) => item?.type === "output_text")
+    .map((item) => item.text || "")
+    .join("")
+    .trim();
+}
+
+function normalizeCoachResult(value = {}) {
+  const clamp = (text, max = 180) => String(text || "").replace(/\s+/g, " ").trim().slice(0, max);
+  const result = {
+    praise: clamp(value.praise),
+    feedback: clamp(value.feedback),
+    nextAction: clamp(value.nextAction),
+    manualReminder: clamp(value.manualReminder),
+    evidence: Array.isArray(value.evidence) ? value.evidence.map((item) => clamp(item, 120)).filter(Boolean).slice(0, 3) : [],
+  };
+  if (!result.praise || !result.feedback || !result.nextAction || !result.manualReminder || !result.evidence.length) return null;
+  return result;
+}
+
+module.exports = async function handler(request, response) {
+  response.setHeader("Access-Control-Allow-Origin", getAllowedOrigin(request));
+  response.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
+  response.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
+  response.setHeader("Cache-Control", "no-store");
+
+  if (request.method === "OPTIONS") {
+    response.status(204).end();
+    return;
+  }
+  if (request.method !== "POST") {
+    response.status(405).json({ ok: false, error: "POST only" });
+    return;
+  }
+
+  const user = await verifySupabaseUser(request).catch(() => null);
+  if (!user?.id) {
+    response.status(401).json({ ok: false, error: "로그인이 필요합니다." });
+    return;
+  }
+  if (!process.env.OPENAI_API_KEY) {
+    response.status(501).json({
+      ok: false,
+      error: "AI 코칭 서버 설정이 필요합니다.",
+      next: "Vercel 환경 변수에 OPENAI_API_KEY를 등록해주세요.",
+    });
+    return;
+  }
+
+  const context = request.body?.context;
+  const serialized = JSON.stringify(context || {});
+  if (!context || serialized.length > MAX_PAYLOAD_BYTES || !/^\d{4}-\d{2}-\d{2}$/.test(String(context.dateKey || ""))) {
+    response.status(400).json({ ok: false, error: "코칭 자료 형식이 올바르지 않습니다." });
+    return;
+  }
+
+  const model = process.env.OPENAI_COACH_MODEL || "gpt-5.6";
+  const safetyIdentifier = createHash("sha256").update(`bangju-worklog:${user.id}`).digest("hex").slice(0, 32);
+  const openaiResponse = await fetch("https://api.openai.com/v1/responses", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      model,
+      store: false,
+      safety_identifier: safetyIdentifier,
+      reasoning: { effort: "low" },
+      instructions: [
+        "당신은 비욘드 피트니스의 실무형 한국어 업무 코치입니다.",
+        "제공된 업무일지와 수치, 직급별 매뉴얼에 명시된 사실만 근거로 답하세요.",
+        "성격, 역량, 인사등급을 단정하거나 직원 간 순위를 매기지 마세요.",
+        "칭찬은 구체적 실행 근거를 포함하고, 피드백은 비난 없이 가장 중요한 보완점 하나만 제시하세요.",
+        "다음 행동은 다음 근무에서 바로 실행 가능한 한 가지로 쓰세요.",
+        "매뉴얼 상기는 제공된 매뉴얼 중 오늘 기록과 가장 관련된 기준 하나를 짧게 상기시키세요.",
+        "자료가 부족하면 부족한 사실을 솔직히 밝히되 네 항목 모두 유용한 문장으로 완성하세요.",
+        "각 문장은 공손하고 따뜻하며 90자 안팎의 간결한 한국어로 작성하세요.",
+      ].join("\n"),
+      input: [{ role: "user", content: `다음 JSON 업무자료를 코칭하세요.\n${serialized}` }],
+      text: {
+        format: {
+          type: "json_schema",
+          name: "fitness_worklog_coaching",
+          strict: true,
+          schema: coachingSchema,
+        },
+        verbosity: "low",
+      },
+      max_output_tokens: 700,
+    }),
+  });
+
+  const openaiResult = await openaiResponse.json().catch(() => ({}));
+  if (!openaiResponse.ok) {
+    response.status(openaiResponse.status).json({
+      ok: false,
+      error: openaiResult?.error?.message || "AI 코칭을 생성하지 못했습니다.",
+    });
+    return;
+  }
+
+  const outputText = extractResponseText(openaiResult);
+  let parsed = null;
+  try {
+    parsed = JSON.parse(outputText);
+  } catch {
+    parsed = null;
+  }
+  const coaching = normalizeCoachResult(parsed);
+  if (!coaching) {
+    response.status(502).json({ ok: false, error: "AI 코칭 결과를 해석하지 못했습니다." });
+    return;
+  }
+
+  response.status(200).json({
+    ok: true,
+    coaching,
+    model,
+    generatedAt: new Date().toISOString(),
+  });
+};

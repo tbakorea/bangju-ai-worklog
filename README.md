@@ -68,6 +68,19 @@ For the Beyond OS master data model, run `supabase/beyond_os_schema.sql` after t
 
 The browser still keeps a local copy with `localStorage`, so a network issue does not erase the current device's worklog.
 
+## ChatGPT Fitness Coaching
+
+The fitness daily report can request evidence-based coaching from the OpenAI Responses API. The browser sends the signed-in Supabase access token to `/api/fitness-coach`; the server verifies the user before calling OpenAI. The OpenAI API key is never exposed to browser code.
+
+Set these variables in Vercel Project Settings > Environment Variables and redeploy:
+
+```text
+OPENAI_API_KEY=...
+OPENAI_COACH_MODEL=gpt-5.6
+```
+
+`OPENAI_COACH_MODEL` is optional. When the API is unavailable, the report keeps the local rule-based praise, feedback, next action, and role-manual reminder.
+
 ## Today Section Reuse
 
 Bangju AI Worklog should reuse the shape of Beyond Work's Today section, then adjust it for management reporting:
