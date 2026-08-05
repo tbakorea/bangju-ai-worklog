@@ -1535,6 +1535,21 @@ async function checkFitnessTrainerCanEditOwnWorklog(browser) {
 async function checkApprovedEmployeeWorklogEditMatrix(browser) {
   const cases = [
     {
+      label: "bangju finance assistant Isomi",
+      userId: "isomi-future-user",
+      email: "isomi@example.com",
+      profile: {
+        role: "재무 대리",
+        name: "이소미",
+        nickname: "이소미",
+        org: "(주)방주",
+        workplace: "본사",
+        primaryWork: "회계 증빙 자금 정산",
+      },
+      expectedView: "bangju-log",
+      expectedEmployeeId: "bangju-finance-assistant",
+    },
+    {
       label: "bangju finance manager",
       userId: "finance-manager-user",
       email: "finance.manager@example.com",
@@ -1616,6 +1631,7 @@ async function checkApprovedEmployeeWorklogEditMatrix(browser) {
           permissions: {},
           ...${JSON.stringify(payload.profile)}
         };
+        state.selectedDateKey = "2026-08-10";
         normalizeState();
         switchView(getInitialLandingView());
       `);
@@ -1672,6 +1688,7 @@ async function checkPriorityCarryoverAndDateRules(browser) {
     sourceLog.tasks = [
       { id: "open-task", priority: "A", text: "미처리 이월 업무", status: "미완료", done: false },
       { id: "progress-task", priority: "B", text: "진행중 이월 업무", status: "진행중", done: false },
+      { id: "spaced-progress-task", priority: "B", text: "공백 표기 진행 중 업무", status: "진행 중", done: true },
       { id: "done-task", priority: "A", text: "완료 업무", status: "완료", done: true },
       { id: "cancel-task", priority: "B", text: "취소 업무", status: "취소", done: false },
       { id: "delegate-task", priority: "B", text: "위임 업무", status: "위임", done: false, delegate: "담당자" },
@@ -1691,7 +1708,7 @@ async function checkPriorityCarryoverAndDateRules(browser) {
     cycleWorklogTaskStatus(materialized.task);
     const delegatedRow = renderWorklogTaskRow({
       task: sourceLog.tasks.find((task) => task.id === "delegate-task"),
-      index: 4,
+      index: 5,
       log: sourceLog,
       sourceDateKey,
       isCarryover: false,
@@ -1706,7 +1723,7 @@ async function checkPriorityCarryoverAndDateRules(browser) {
       sourceDeletedFrom: sourceLog.tasks[0].carryoverDeletedFrom || "",
       targetStatus: materialized.task.status,
       targetSourceDate: materialized.task.carryoverSourceDate || "",
-      delegatedClass: getWorklogTaskStatusClass(sourceLog.tasks[4]),
+      delegatedClass: getWorklogTaskStatusClass(sourceLog.tasks[5]),
       delegatedDecoration,
       previousBeforeNoon: isWithinWorklogEditWindow("2026-08-02", new Date(2026, 7, 3, 11, 59)),
       previousAtNoon: isWithinWorklogEditWindow("2026-08-02", new Date(2026, 7, 3, 12, 0)),
@@ -1715,7 +1732,7 @@ async function checkPriorityCarryoverAndDateRules(browser) {
     });
   })()`));
   const parsed = JSON.parse(metrics);
-  if (parsed.carryoverIds.join(",") !== "open-task,progress-task") {
+  if (parsed.carryoverIds.join(",") !== "open-task,progress-task,spaced-progress-task") {
     fail("only unresolved priority tasks should carry into the next day", metrics);
   }
   if (parsed.sourceStatus !== "미완료" || parsed.sourceDeletedFrom !== "2026-08-03"
@@ -1727,6 +1744,53 @@ async function checkPriorityCarryoverAndDateRules(browser) {
   }
   if (!parsed.previousBeforeNoon || parsed.previousAtNoon || parsed.olderDate || !parsed.futureDate) {
     fail("worklog edit window should allow future dates and only the first 12 hours after a past workday", metrics);
+  }
+  const employeeFutureMatrix = await page.evaluate(() => window.eval(`(() => {
+    const cases = [
+      ["이소미", "재무 대리", "(주)방주", "본사", "회계 정산", "isomi@example.com", "bangju-finance-assistant", "bangju-log"],
+      ["최희진", "재무과장", "(주)방주", "본사", "자금 회계", "finance.manager@example.com", "bangju-finance-manager", "bangju-log"],
+      ["김성민", "실장", "(주)비욘드컴퍼니", "TBA studio", "시공 상담", "ksm@example.com", "beyond-company-leader", "beyond-log"],
+      ["추소영", "공유사업부 매니저", "(주)비욘드컴퍼니", "공유사업부", "공유오피스", "choo@example.com", "beyond-shared-manager", "beyond-log"],
+      ["박주홍", "센터장", "비욘드 피트니스", "비욘드 피트니스", "운영총괄", "pjhong0@naver.com", "beyond-fitness-manager", "fitness-log"],
+      ["홍현규", "트레이너", "비욘드 피트니스", "비욘드 피트니스", "PT 회원관리", "gusrd1005@gmail.com", "fitness-trainer-1", "fitness-log"],
+      ["신세민", "인포데스크", "비욘드 피트니스", "비욘드 피트니스", "주중 인포", "tpals2990@naver.com", "fitness-info-shinsemin", "fitness-log"],
+      ["이다빈", "인포데스크", "비욘드 피트니스", "비욘드 피트니스", "토요일 인포", "idabin@example.com", "fitness-weekday-info-idabin", "fitness-log"],
+      ["김영채", "인포데스크", "비욘드 피트니스", "비욘드 피트니스", "일요일 인포", "yckim1558@naver.com", "fitness-info-kimyoungchae", "fitness-log"]
+    ];
+    const results = cases.map(([name, role, org, workplace, primaryWork, email, expectedId, view], index) => {
+      authState.user = { id: "future-user-" + index, email };
+      state.profile = { ...defaultProfile, name, nickname: name, role, org, workplace, primaryWork, email, approvalStatus: "approved", accessPreset: "employee", permissions: {} };
+      state.selectedDateKey = "2026-08-10";
+      normalizeState();
+      state.selectedEmployeeId = expectedId;
+      if (view === "fitness-log") {
+        state.fitnessWritableEmployeeId = expectedId;
+        state.fitnessLogPage = getFitnessLogPages().findIndex((entry) => entry.id === expectedId);
+      }
+      return { name, expectedId, mappedId: getProfileMappedEmployeeId(), editable: canEditCurrentWorklog(view) };
+    });
+    authState.saveTimers?.forEach((timer) => clearTimeout(timer));
+    authState.saveTimers = new Map();
+    authState.user = { id: "isomi-future-save", email: "isomi@example.com" };
+    state.profile = { ...defaultProfile, name: "이소미", nickname: "이소미", role: "재무 대리", org: "(주)방주", workplace: "본사", approvalStatus: "approved", accessPreset: "employee", permissions: {} };
+    state.selectedEmployeeId = "bangju-finance-assistant";
+    state.selectedDateKey = "2026-08-10";
+    getEmployeeLogForDate("bangju-finance-assistant", "2026-08-10").tasks[0].text = "미래 업무 저장 검증";
+    saveState({ fastSave: true });
+    state.selectedDateKey = "2026-08-11";
+    saveState({ fastSave: true });
+    const queuedDates = [...authState.saveTimers.keys()].sort();
+    authState.saveTimers.forEach((timer) => clearTimeout(timer));
+    authState.saveTimers = new Map();
+    return JSON.stringify({ results, queuedDates });
+  })()`));
+  const futureMatrix = JSON.parse(employeeFutureMatrix);
+  const brokenFutureEmployees = futureMatrix.results.filter((item) => item.mappedId !== item.expectedId || !item.editable);
+  if (brokenFutureEmployees.length) {
+    fail("every mapped employee should be able to edit only their own future worklog", JSON.stringify(brokenFutureEmployees));
+  }
+  if (futureMatrix.queuedDates.join(",") !== "2026-08-10,2026-08-11") {
+    fail("rapid date navigation must not cancel a pending future-date remote save", employeeFutureMatrix);
   }
   if (errors.length) fail("priority carryover/date-rule page errors", errors.join(" | "));
   await page.close();

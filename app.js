@@ -759,6 +759,7 @@ const authState = {
   remoteReady: Boolean(supabaseClient),
   applyingRemote: false,
   saveTimer: null,
+  saveTimers: new Map(),
   pendingApprovalCount: 0,
   pendingPasswordResetCount: 0,
   approvalRows: [],
@@ -1079,8 +1080,7 @@ function normalizeEmployeeLogRows(log, dateKey = getActiveDateKey()) {
       task.priority ||= "?";
       task.status ||= "예정";
     }
-    task.status ||= "예정";
-    task.done ||= false;
+    normalizeWorklogTaskState(task);
     task.text ||= "";
     task.delegate ||= "";
     task.postponeDate ||= "";
@@ -1106,6 +1106,39 @@ function saveState(options = {}) {
   normalizeProfilePlacementForAuth();
   localStorage.setItem(storageKey, JSON.stringify(state));
   scheduleRemoteSave(options.fastSave ? 500 : 700);
+}
+
+function normalizeWorklogTaskStatus(status = "예정") {
+  const source = String(status || "예정").trim();
+  const compact = source.replace(/\s+/g, "");
+  if (["진행", "진행중", "처리중"].includes(compact)) return "진행중";
+  if (["완료", "취소", "위임", "연기", "미완료", "예정"].includes(compact)) return compact;
+  return source || "예정";
+}
+
+function normalizeWorklogTaskState(task = {}) {
+  const status = normalizeWorklogTaskStatus(task.status);
+  if (status === "진행중") {
+    task.status = "진행중";
+    task.done = false;
+  } else if (status === "완료" || task.done === true) {
+    task.status = "완료";
+    task.done = true;
+  } else {
+    task.status = status;
+    task.done = false;
+  }
+  return task;
+}
+
+function isWorklogTaskCarryoverEligible(task = {}) {
+  const status = normalizeWorklogTaskStatus(task.status || "미완료");
+  const isInProgress = status === "진행중";
+  return Boolean(
+    String(task.text || "").trim()
+    && (isInProgress || !task.done)
+    && !["완료", "취소", "위임", "연기"].includes(status)
+  );
 }
 
 function getSelectedEmployee() {
@@ -7643,6 +7676,8 @@ function clearAuthRuntimeState() {
   authState.visibleWorklogsLoading = false;
   clearTimeout(authState.saveTimer);
   authState.saveTimer = null;
+  authState.saveTimers?.forEach((timer) => clearTimeout(timer));
+  authState.saveTimers = new Map();
   clearInterval(authState.approvalTimer);
   authState.approvalTimer = null;
 }
@@ -7937,16 +7972,21 @@ async function applySession(session) {
   switchView(getInitialLandingView());
 }
 
-function scheduleRemoteSave(delay = 700) {
+function scheduleRemoteSave(delay = 700, dateKey = getActiveDateKey()) {
   if (!authState.user || authState.applyingRemote) return;
-  clearTimeout(authState.saveTimer);
-  authState.saveTimer = setTimeout(() => {
-    saveRemoteSnapshot();
+  const key = dateKey || getActiveDateKey();
+  authState.saveTimers ||= new Map();
+  clearTimeout(authState.saveTimers.get(key));
+  const timer = setTimeout(() => {
+    authState.saveTimers.delete(key);
+    saveRemoteSnapshot(key);
   }, delay);
+  authState.saveTimers.set(key, timer);
+  authState.saveTimer = timer;
 }
 
-function buildRemoteSnapshot() {
-  const key = getActiveDateKey();
+function buildRemoteSnapshot(dateKey = getActiveDateKey()) {
+  const key = dateKey || getActiveDateKey();
   const snapshotProfile = applyProfilePlacementOverride(state.profile || {});
   const hasPersonalWorklog = !isRepresentativeProfile();
   const ownerEmployeeId = hasPersonalWorklog ? getProfileMappedEmployeeId(snapshotProfile) || "profile-user" : "";
@@ -7974,14 +8014,14 @@ function buildRemoteSnapshot() {
   };
 }
 
-async function saveRemoteSnapshot() {
+async function saveRemoteSnapshot(dateKey = getActiveDateKey()) {
   if (!supabaseClient || !authState.user) return;
-  const key = getActiveDateKey();
+  const key = dateKey || getActiveDateKey();
   const { error } = await supabaseClient.from("worklog_states").upsert({
     user_id: authState.user.id,
     log_date: key,
     organization: state.profile?.org || "(주)방주",
-    state: buildRemoteSnapshot(),
+    state: buildRemoteSnapshot(key),
     updated_at: new Date().toISOString(),
   }, { onConflict: "user_id,organization,log_date" });
   if (error) {
@@ -10188,9 +10228,7 @@ function getWorklogTaskRefs(log) {
         const deletedFrom = String(task.carryoverDeletedFrom || "");
         const isPostponedHere = task.status === "연기" && task.postponeDate === activeDateKey;
         const isOpenCarryover = Boolean(
-          String(task.text || "").trim()
-          && !task.done
-          && !["완료", "취소", "위임", "연기"].includes(task.status || "미완료")
+          isWorklogTaskCarryoverEligible(task)
           && (!deletedFrom || deletedFrom > activeDateKey)
         );
         if (isOpenCarryover || isPostponedHere) {
@@ -10419,7 +10457,8 @@ function getWorklogTaskMarkerLabel(task) {
 }
 
 function cycleWorklogTaskStatus(task) {
-  const current = task.done ? "완료" : ["예정", "진행"].includes(task.status) ? "미완료" : task.status || "미완료";
+  normalizeWorklogTaskState(task);
+  const current = task.done ? "완료" : task.status === "예정" ? "미완료" : task.status || "미완료";
   const next = taskStatusCycle[(taskStatusCycle.indexOf(current) + 1) % taskStatusCycle.length] || "미완료";
   task.status = next;
   task.done = next === "완료";

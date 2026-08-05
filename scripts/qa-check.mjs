@@ -96,6 +96,22 @@ check(
 );
 
 check(
+  "future worklogs keep independent pending remote saves",
+  /function scheduleRemoteSave\(delay = 700, dateKey = getActiveDateKey\(\)\)[\s\S]{0,500}saveTimers\.get\(key\)[\s\S]{0,500}saveRemoteSnapshot\(key\)/.test(js)
+    && /function buildRemoteSnapshot\(dateKey = getActiveDateKey\(\)\)/.test(js)
+    && /async function saveRemoteSnapshot\(dateKey = getActiveDateKey\(\)\)/.test(js),
+  "moving to another day must not cancel the unsent worklog for the date just edited"
+);
+
+check(
+  "in-progress priority work carries over across status spellings",
+  /function normalizeWorklogTaskStatus[\s\S]{0,260}\["진행", "진행중", "처리중"\]/.test(js)
+    && /function isWorklogTaskCarryoverEligible[\s\S]{0,420}isInProgress[\s\S]{0,220}!\["완료", "취소", "위임", "연기"\]\.includes\(status\)/.test(js)
+    && /function getWorklogTaskRefs[\s\S]{0,1800}isWorklogTaskCarryoverEligible\(task\)/.test(js),
+  "진행중/진행 중/legacy 진행 tasks should remain visible on following dates"
+);
+
+check(
   "readonly worklogs cap blank priority rows at three",
   /function getVisibleWorklogTaskRefs[\s\S]{0,260}if \(!canEditCurrentWorklog\(view\)\)[\s\S]{0,220}3 - activeRefs\.length/.test(js),
   "every read-only detail path must use the same compact blank-row policy"
@@ -340,7 +356,7 @@ check(
 
 check(
   "backup settings sync with remote snapshot",
-  /function buildRemoteSnapshot\(\)[\s\S]{0,500}backupSettings: state\.backupSettings/.test(js) && /loadRemoteWorklogForActiveDate\(\)[\s\S]{0,1400}data\.state\.backupSettings/.test(js),
+  /function buildRemoteSnapshot\(dateKey = getActiveDateKey\(\)\)[\s\S]{0,600}backupSettings: state\.backupSettings/.test(js) && /loadRemoteWorklogForActiveDate\(\)[\s\S]{0,1400}data\.state\.backupSettings/.test(js),
   "backup cadence and recipient should follow the logged-in account across devices"
 );
 
