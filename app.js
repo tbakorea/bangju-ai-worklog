@@ -68,9 +68,9 @@ const priorityOptions = [
   ["C", "C"],
   ["?", "?"],
 ];
-const taskPriorityOptions = ["?", "A", "B", "C", "취소", "연기"];
+const taskPriorityOptions = ["?", "A", "B", "C", "위임", "연기", "취소"];
 const scheduleTypeOptions = ["업무", "유료PT", "무료PT", "고객/상담", "영업/홍보", "시설/청결", "행정/정산", "오픈/마감", "휴게"];
-const taskStatusCycle = ["미완료", "완료", "진행중", "위임", "연기"];
+const taskStatusCycle = ["미완료", "완료", "진행중"];
 const taskStatusGuideLabels = {
   "완료": "완료",
   "진행중": "진행중",
@@ -1130,7 +1130,8 @@ function normalizeWorklogTaskStatus(status = "예정") {
 }
 
 function normalizeWorklogTaskState(task = {}) {
-  const status = normalizeWorklogTaskStatus(task.status);
+  const legacyAction = ["취소", "위임", "연기"].includes(task.priority) ? task.priority : "";
+  const status = normalizeWorklogTaskStatus(legacyAction && !["취소", "위임", "연기"].includes(task.status) ? legacyAction : task.status);
   if (status === "진행중") {
     task.status = "진행중";
     task.done = false;
@@ -1141,6 +1142,7 @@ function normalizeWorklogTaskState(task = {}) {
     task.status = status;
     task.done = false;
   }
+  if (legacyAction) task.priority = "?";
   return task;
 }
 
@@ -10415,6 +10417,7 @@ function renderWorklogTaskRow(ref, currentLog, options = {}) {
     <div class="task-status-cell">${renderTaskMetaControl(task)}</div>
     <div class="task-text-cell">
       <input class="task-text-input" type="text" value="${escapeAttr(task.text)}" placeholder="업무 내용" aria-label="주요업무" />
+      ${renderTaskActionControl(task)}
       ${renderWorklogTaskTags(getWorklogTaskTags(task))}
       ${(isCarryover || isPostponedFromOtherDate) ? `<span class="task-origin-tag">${escapeHtml(formatShortDate(sourceDateKey))} 이월</span>` : ""}
     </div>
@@ -10480,18 +10483,24 @@ function getWorklogTaskStatusClass(task) {
 }
 
 function renderTaskMetaControl(task) {
-  if (task.status === "위임") {
-    return `<input class="delegate-input" type="text" value="${escapeAttr(task.delegate || "")}" placeholder="위임자" aria-label="위임받은 사람" />`;
-  }
-  if (task.status === "연기") {
-    const label = task.postponeDate ? formatShortDate(task.postponeDate) : "미정";
-    return `<button class="postpone-date-button" type="button" aria-label="연기 날짜 선택">${escapeHtml(label)}</button>`;
-  }
+  const selectedValue = getPriorityValue(task);
+  const actionClass = ["위임", "연기", "취소"].includes(selectedValue) ? " is-action" : "";
   return `
-    <select class="priority-select" aria-label="중요도">
-      ${taskPriorityOptions.map((value) => `<option value="${escapeAttr(value)}" ${getPriorityValue(task) === value ? "selected" : ""}>${value}</option>`).join("")}
+    <select class="priority-select${actionClass}" aria-label="중요도 및 처리">
+      ${taskPriorityOptions.map((value) => `<option value="${escapeAttr(value)}" ${selectedValue === value ? "selected" : ""}>${value}</option>`).join("")}
     </select>
   `;
+}
+
+function renderTaskActionControl(task) {
+  if (task.status === "위임") {
+    return `<input class="delegate-input task-action-control" type="text" value="${escapeAttr(task.delegate || "")}" placeholder="위임자" aria-label="위임받은 사람" />`;
+  }
+  if (task.status === "연기") {
+    const label = task.postponeDate ? formatShortDate(task.postponeDate) : "날짜";
+    return `<button class="postpone-date-button task-action-control" type="button" aria-label="연기 날짜 선택">${escapeHtml(label)}</button>`;
+  }
+  return "";
 }
 
 function bindTaskMetaControl(row, ref, currentLog, viewName = activeView) {
@@ -10504,7 +10513,6 @@ function bindTaskMetaControl(row, ref, currentLog, viewName = activeView) {
       editableRef.task.delegate = delegateInput.value;
       saveState({ fastSave: true });
     };
-    return;
   }
   const postponeButton = row.querySelector(".postpone-date-button");
   if (postponeButton) {
@@ -10515,7 +10523,6 @@ function bindTaskMetaControl(row, ref, currentLog, viewName = activeView) {
       saveState({ fastSave: true });
       openPostponeCalendar(editableRef.task);
     };
-    return;
   }
   const prioritySelect = row.querySelector(".priority-select");
   if (prioritySelect) {
@@ -10527,24 +10534,29 @@ function bindTaskMetaControl(row, ref, currentLog, viewName = activeView) {
       syncWorklogTaskTimeHintToSchedule(editableRef.task, editableRef.log);
       saveState();
       renderEntries();
+      showTaskStatusGuide(taskStatusGuideLabels[editableRef.task.status] || event.target.value);
     };
   }
 }
 
 function getPriorityValue(task) {
-  if (["취소", "연기"].includes(task.status)) return task.status;
+  if (["취소", "위임", "연기"].includes(task.status)) return task.status;
   return task.priority || "?";
 }
 
 function updateWorklogTaskPriority(task, value) {
-  if (["취소", "연기"].includes(value)) {
+  if (["취소", "위임", "연기"].includes(value)) {
     task.status = value;
     task.done = false;
-    task.priority = value;
+    if (!["?", "A", "B", "C"].includes(task.priority)) task.priority = "?";
+    if (value !== "위임") task.delegate = "";
+    if (value !== "연기") task.postponeDate = "";
     return;
   }
   task.priority = value;
-  if (["취소", "연기"].includes(task.status)) task.status = "미완료";
+  if (["취소", "위임", "연기"].includes(task.status)) task.status = "미완료";
+  task.delegate = "";
+  task.postponeDate = "";
 }
 
 function getWorklogTaskMarker(task) {
@@ -10567,8 +10579,8 @@ function cycleWorklogTaskStatus(task) {
   const next = taskStatusCycle[(taskStatusCycle.indexOf(current) + 1) % taskStatusCycle.length] || "미완료";
   task.status = next;
   task.done = next === "완료";
-  if (next !== "위임") task.delegate ||= "";
-  if (next !== "연기") task.postponeDate ||= "";
+  if (next !== "위임") task.delegate = "";
+  if (next !== "연기") task.postponeDate = "";
 }
 
 function showTaskStatusGuide(label) {

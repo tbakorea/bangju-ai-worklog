@@ -1868,6 +1868,11 @@ body[data-device-mode="narrow"] .os-mode-switch span[data-device-mode="narrow"] 
   text-align: center;
 }
 
+.priority-select.is-action {
+  width: 38px;
+  font-size: 12px;
+}
+
 .delegate-input,
 .postpone-date-button {
   width: auto;
@@ -1885,6 +1890,13 @@ body[data-device-mode="narrow"] .os-mode-switch span[data-device-mode="narrow"] 
   outline: 0;
   letter-spacing: -0.01em;
   white-space: nowrap;
+}
+
+.task-action-control {
+  position: relative;
+  z-index: 2;
+  flex: 0 1 76px;
+  background: var(--nordic-sheet);
 }
 
 .delegate-input::placeholder {

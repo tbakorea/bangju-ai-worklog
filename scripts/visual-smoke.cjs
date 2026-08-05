@@ -1821,6 +1821,21 @@ async function checkPriorityCarryoverAndDateRules(browser) {
     }, sourceLog);
     document.body.appendChild(delegatedRow);
     const delegatedDecoration = getComputedStyle(delegatedRow.querySelector(".task-text-input")).textDecorationLine;
+    const delegatedSelect = delegatedRow.querySelector(".priority-select");
+    const delegatedOptionCounts = ["위임", "연기"].map((value) => delegatedSelect.querySelectorAll('option[value="' + value + '"]').length);
+    const priorityActionTask = { priority: "A", text: "메뉴 처리 검증", status: "미완료", done: false };
+    updateWorklogTaskPriority(priorityActionTask, "위임");
+    const delegatedFromMenu = { status: priorityActionTask.status, priority: priorityActionTask.priority };
+    updateWorklogTaskPriority(priorityActionTask, "연기");
+    const postponedFromMenu = { status: priorityActionTask.status, priority: priorityActionTask.priority };
+    updateWorklogTaskPriority(priorityActionTask, "B");
+    const restoredPriority = { status: priorityActionTask.status, priority: priorityActionTask.priority };
+    const cycleOnlyTask = { priority: "A", text: "체크 순환 검증", status: "미완료", done: false };
+    const cycleStatuses = [];
+    for (let index = 0; index < 9; index += 1) {
+      cycleWorklogTaskStatus(cycleOnlyTask);
+      cycleStatuses.push(cycleOnlyTask.status);
+    }
     delegatedRow.remove();
     return JSON.stringify({
       carryoverIds: carryovers.map((ref) => ref.task.id),
@@ -1830,6 +1845,13 @@ async function checkPriorityCarryoverAndDateRules(browser) {
       targetSourceDate: materialized.task.carryoverSourceDate || "",
       delegatedClass: getWorklogTaskStatusClass(sourceLog.tasks[5]),
       delegatedDecoration,
+      delegatedSelectValue: delegatedSelect.value,
+      delegatedHasInput: Boolean(delegatedRow.querySelector(".delegate-input")),
+      delegatedOptionCounts,
+      delegatedFromMenu,
+      postponedFromMenu,
+      restoredPriority,
+      cycleStatuses,
       previousBeforeNoon: isWithinWorklogEditWindow("2026-08-02", new Date(2026, 7, 3, 11, 59)),
       previousAtNoon: isWithinWorklogEditWindow("2026-08-02", new Date(2026, 7, 3, 12, 0)),
       olderDate: isWithinWorklogEditWindow("2026-08-01", new Date(2026, 7, 3, 9, 0)),
@@ -1846,6 +1868,18 @@ async function checkPriorityCarryoverAndDateRules(browser) {
   }
   if (parsed.delegatedClass !== "status-delegate" || !parsed.delegatedDecoration.includes("line-through")) {
     fail("delegated priority work should receive the red strike treatment", metrics);
+  }
+  if (parsed.delegatedSelectValue !== "위임"
+    || !parsed.delegatedHasInput
+    || parsed.delegatedOptionCounts.join(",") !== "1,1"
+    || parsed.delegatedFromMenu.status !== "위임"
+    || parsed.delegatedFromMenu.priority !== "A"
+    || parsed.postponedFromMenu.status !== "연기"
+    || parsed.postponedFromMenu.priority !== "A"
+    || parsed.restoredPriority.status !== "미완료"
+    || parsed.restoredPriority.priority !== "B"
+    || parsed.cycleStatuses.some((status) => ["위임", "연기"].includes(status))) {
+    fail("delegation and postponement should exist once in the priority menu and never in checkbox cycling", metrics);
   }
   if (!parsed.previousBeforeNoon || parsed.previousAtNoon || parsed.olderDate || !parsed.futureDate) {
     fail("worklog edit window should allow future dates and only the first 12 hours after a past workday", metrics);
