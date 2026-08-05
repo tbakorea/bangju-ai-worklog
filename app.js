@@ -398,12 +398,16 @@ function applyProfilePlacementOverride(profile = {}) {
   if (isRetiredFitnessManagerEmail(email)) return profile;
   const override = getProfilePlacementOverride(email);
   if (!override) return profile;
+  const hasStaleOwnerResidue = normalizePermissionPresetKey(profile.accessPreset || "employee") === "owner"
+    && !controlTowerEmails.has(email);
   return {
     ...profile,
     ...override,
     email: profile.email || email,
     approvalStatus: profile.approvalStatus || "approved",
-    permissions: { ...(override.permissions || (override.accessPreset ? {} : profile.permissions || {})) },
+    permissions: hasStaleOwnerResidue
+      ? { ...(override.permissions || {}) }
+      : { ...(profile.permissions || {}), ...(override.permissions || {}) },
   };
 }
 
@@ -3134,12 +3138,17 @@ function renderOsDashboard() {
 
 function canAccessControlTower() {
   if (isExplicitlySignedOut()) return false;
-  return hasProfilePermission("controlTower") || hasProfilePermission("siteControl") || hasApprovalAuthority();
+  return isRepresentativeProfile() || hasProfilePermission("controlTower") || hasProfilePermission("siteControl");
+}
+
+function canAccessAllWorklogs() {
+  if (isExplicitlySignedOut()) return false;
+  return isRepresentativeProfile() || hasProfilePermission("worklogAll") || hasProfilePermission("controlTower");
 }
 
 function canAccessWorklogOverview() {
   if (isExplicitlySignedOut()) return false;
-  return hasProfilePermission("worklogAll") || isRepresentativeProfile() || canAccessControlTower();
+  return canAccessAllWorklogs() || hasProfilePermission("worklogSite") || hasProfilePermission("siteControl");
 }
 
 function canAccessAllLabor() {
@@ -3159,10 +3168,17 @@ function canAccessLaborPayrollLedgers() {
 
 function canOpenLaborSection() {
   if (isExplicitlySignedOut()) return false;
-  return canAccessAllLabor()
-    || hasProfilePermission("laborSite")
-    || hasProfilePermission("staffManage")
-    || hasProfilePermission("staffApproval");
+  return canAccessAllLabor() || hasProfilePermission("laborSite");
+}
+
+function canAccessStaffSection() {
+  if (isExplicitlySignedOut()) return false;
+  return isRepresentativeProfile() || hasProfilePermission("staffManage");
+}
+
+function canAccessPremiumOperations() {
+  if (isExplicitlySignedOut()) return false;
+  return isRepresentativeProfile() || hasProfilePermission("controlTower") || hasProfilePermission("siteControl");
 }
 
 function canAccessManualCoachingAdmin() {
@@ -3381,7 +3397,9 @@ function renderOverviewCommonSheet({ group, dateKey, dateLabel }) {
 
 function getActiveWorklogOverviewScope() {
   const scope = state.worklogOverviewScope || "all";
-  return ["all", "bangju", "beyond", "fitness"].includes(scope) ? scope : "all";
+  const normalized = ["all", "bangju", "beyond", "fitness"].includes(scope) ? scope : "all";
+  if (canAccessAllWorklogs()) return normalized;
+  return getStaffSiteGroupForEmployee(getProfileEmployee())?.id || "bangju";
 }
 
 function getFilteredWorklogOverviewGroups() {
@@ -3393,6 +3411,9 @@ function getFilteredWorklogOverviewGroups() {
 function updateWorklogOverviewModebar() {
   const scope = getActiveWorklogOverviewScope();
   document.querySelectorAll("[data-overview-scope]").forEach((button) => {
+    const allowed = canAccessAllWorklogs() || button.dataset.overviewScope === scope;
+    button.hidden = !allowed;
+    button.disabled = !allowed;
     button.classList.toggle("is-active", button.dataset.overviewScope === scope);
     button.setAttribute("aria-pressed", String(button.dataset.overviewScope === scope));
   });
@@ -5734,14 +5755,13 @@ function getProfilePermissionSet(profile = state.profile || {}) {
   const overridePreset = getProfilePlacementOverride(email)?.accessPreset;
   let presetKey = normalizePermissionPresetKey(overridePreset || profile.accessPreset || getRecommendedPermissionPresetForProfile(profile));
   let permissions = { ...(profile.permissions || {}) };
-  if (overridePreset || presetKey === "owner") {
+  if (overridePreset) presetKey = "employee";
+  if (presetKey === "owner") {
     presetKey = "employee";
     permissions = {};
   }
 
-  if (["employee", "freelance", "readonly"].includes(presetKey)) {
-    permissions = {};
-  } else if (presetKey !== "executive_delegate") {
+  if (presetKey !== "executive_delegate") {
     permissions.executiveRoom = false;
   }
   return buildPermissionSet(presetKey, permissions);
@@ -5785,7 +5805,7 @@ function hasApprovalAuthority(profile = state.profile || {}) {
 function canShowApprovalMenu() {
   if (isExplicitlySignedOut()) return false;
   const email = String(authState.user?.email || state.profile?.email || "").trim().toLowerCase();
-  return controlTowerEmails.has(email) || hasApprovalAuthority();
+  return controlTowerEmails.has(email) || isRepresentativeProfile() || hasProfilePermission("staffApproval");
 }
 
 function isProfileApproved() {
@@ -6510,7 +6530,7 @@ function renderApprovalAccess() {
 
 function renderApprovalNotification() {
   const menuAllowed = canShowApprovalMenu();
-  const alertAllowed = Boolean(authState.user && hasApprovalAuthority());
+  const alertAllowed = Boolean(authState.user && menuAllowed);
   const count = alertAllowed ? (authState.pendingApprovalCount || 0) + (authState.pendingPasswordResetCount || 0) : 0;
   const alertButton = document.getElementById("approvalAlertButton");
   const alertCount = document.getElementById("approvalAlertCount");
@@ -6529,7 +6549,7 @@ function renderApprovalNotification() {
 }
 
 async function refreshApprovalNotification() {
-  if (!supabaseClient || !authState.user || !hasApprovalAuthority()) {
+  if (!supabaseClient || !authState.user || !canShowApprovalMenu()) {
     authState.pendingApprovalCount = 0;
     authState.pendingPasswordResetCount = 0;
     renderApprovalNotification();
@@ -6550,7 +6570,7 @@ async function refreshApprovalNotification() {
 
 function startApprovalNotificationPolling() {
   clearInterval(authState.approvalTimer);
-  if (!authState.user || !hasApprovalAuthority()) {
+  if (!authState.user || !canShowApprovalMenu()) {
     authState.approvalTimer = null;
     refreshApprovalNotification();
     return;
@@ -6560,6 +6580,10 @@ function startApprovalNotificationPolling() {
 }
 
 function openApprovalManagement() {
+  if (!canShowApprovalMenu()) {
+    showAppToast("승인요청 메뉴 권한이 없습니다");
+    return;
+  }
   switchView("settings");
   renderApprovalAccess();
   switchSettingsTab("approval");
@@ -7629,32 +7653,48 @@ function renderMainMenuAuthButton() {
 }
 
 function renderMainMenuVisibility() {
-  const generalMenuViews = new Set(["worklog", "report", "settings", "auth"]);
-  const showFullMenu = canAccessWorklogOverview();
-  const showLaborMenu = canOpenLaborSection();
+  const worklogButton = document.querySelector('#mainMenuPopover [data-menu-view="worklog"]');
+  const laborButton = document.querySelector('#mainMenuPopover [data-menu-view="attendance"]');
+  if (worklogButton) {
+    worklogButton.textContent = canAccessAllWorklogs()
+      ? "전직원 업무일지"
+      : canAccessWorklogOverview() ? "소속 업무일지" : "업무일지";
+  }
+  if (laborButton) {
+    laborButton.textContent = canAccessAllLabor()
+      ? "전직원 노무"
+      : hasProfilePermission("laborSite") ? "소속 노무" : "노무";
+  }
+  const viewAccess = {
+    executive: () => isRepresentativeProfile() || hasProfilePermission("executiveRoom"),
+    control: () => canAccessControlTower(),
+    worklog: () => isKnownLoggedInProfile(),
+    staff: () => canAccessStaffSection(),
+    attendance: () => canOpenLaborSection(),
+    premium: () => canAccessPremiumOperations(),
+    ai: () => isKnownLoggedInProfile(),
+    report: () => isKnownLoggedInProfile(),
+    settings: () => isKnownLoggedInProfile(),
+    auth: () => true,
+  };
   document.querySelectorAll("#mainMenuPopover [data-menu-view]").forEach((item) => {
     const view = item.dataset.menuView;
     if (isExplicitlySignedOut()) {
       item.hidden = view !== "auth";
       return;
     }
-    item.hidden = (!showFullMenu && !generalMenuViews.has(view))
-      || (view === "ai" && !canAccessManualCoachingAdmin())
-      || (view === "attendance" && !showLaborMenu);
+    item.hidden = !(viewAccess[view]?.() ?? false);
   });
-  document.querySelectorAll('.worklog-tabs [data-view="attendance"]').forEach((item) => {
-    item.hidden = !showLaborMenu;
+  document.querySelectorAll(".worklog-tabs [data-view]").forEach((item) => {
+    const view = item.dataset.view;
+    if (viewAccess[view]) item.hidden = !viewAccess[view]();
   });
-  document.querySelectorAll('.worklog-tabs [data-view="ai"]').forEach((item) => {
-    item.hidden = !canAccessManualCoachingAdmin();
-  });
-  document.querySelectorAll('#mainMenuWheelSelect option[value="attendance"]').forEach((item) => {
-    item.hidden = !showLaborMenu;
-    item.disabled = !showLaborMenu;
-  });
-  document.querySelectorAll('#mainMenuWheelSelect option[value="ai"]').forEach((item) => {
-    item.hidden = !canAccessManualCoachingAdmin();
-    item.disabled = !canAccessManualCoachingAdmin();
+  document.querySelectorAll("#mainMenuWheelSelect option").forEach((item) => {
+    const allowed = viewAccess[item.value]?.() ?? false;
+    item.hidden = !allowed;
+    item.disabled = !allowed;
+    if (item.value === "worklog") item.textContent = worklogButton?.textContent || "업무일지";
+    if (item.value === "attendance") item.textContent = laborButton?.textContent || "노무";
   });
   document.querySelectorAll("#mainMenuPopover [data-menu-action]").forEach((item) => {
     if (isExplicitlySignedOut() && !item.dataset.menuView) item.hidden = true;
@@ -7708,9 +7748,7 @@ function hasUnsafeRepresentativeResidue(user = authState.user, profile = state.p
   const email = String(user?.email || profile.email || "").trim().toLowerCase();
   if (!email || controlTowerEmails.has(email)) return false;
   const presetKey = normalizePermissionPresetKey(profile.accessPreset || "employee");
-  const permissions = profile.permissions || {};
-  return presetKey === "owner" || ["executiveRoom", "controlTower", "worklogAll", "laborAll", "staffApproval", "staffManage"]
-    .some((key) => permissions[key] === true);
+  return presetKey === "owner";
 }
 
 function enforceAuthProfileBoundary(user = authState.user) {
@@ -7727,9 +7765,7 @@ function enforceAuthProfileBoundary(user = authState.user) {
   let presetKey = normalizePermissionPresetKey(overridePreset || state.profile.accessPreset || getRecommendedPermissionPresetForProfile(state.profile));
   if (presetKey === "owner") presetKey = "employee";
   state.profile.accessPreset = presetKey;
-  if (["employee", "freelance", "readonly"].includes(presetKey)) {
-    state.profile.permissions = {};
-  } else if (presetKey !== "executive_delegate") {
+  if (presetKey !== "executive_delegate") {
     state.profile.permissions = { ...(state.profile.permissions || {}), executiveRoom: false };
   } else {
     state.profile.permissions = { ...(state.profile.permissions || {}) };
@@ -8067,7 +8103,7 @@ async function loadRemoteWorklogForActiveDate() {
   }
   await loadLatestRemoteSiteWeatherSettings();
   await loadRemoteLaborPayrollDrafts();
-  if (canAccessWorklogOverview()) await loadVisibleStaffWorklogsForDate(key);
+  if (canAccessAllWorklogs()) await loadVisibleStaffWorklogsForDate(key);
   else await loadCoworkerWorklogsForDate(key);
   normalizeState();
   localStorage.setItem(storageKey, JSON.stringify(state));
@@ -8144,7 +8180,7 @@ function resolveRemoteWorklogEmployee(row = {}) {
 }
 
 async function refreshVisibleStaffWorklogsForActiveDate() {
-  if (!supabaseClient || !authState.user || !canAccessWorklogOverview() || authState.visibleWorklogsLoading) return;
+  if (!supabaseClient || !authState.user || !canAccessAllWorklogs() || authState.visibleWorklogsLoading) return;
   authState.visibleWorklogsLoading = true;
   try {
     const dateKey = getActiveDateKey();
@@ -8159,7 +8195,7 @@ async function refreshVisibleStaffWorklogsForActiveDate() {
 }
 
 async function refreshCoworkerWorklogsForActiveDate() {
-  if (!supabaseClient || !authState.user || canAccessWorklogOverview() || !isProfileApproved() || authState.visibleWorklogsLoading) return;
+  if (!supabaseClient || !authState.user || canAccessAllWorklogs() || !isProfileApproved() || authState.visibleWorklogsLoading) return;
   authState.visibleWorklogsLoading = true;
   try {
     const dateKey = getActiveDateKey();
@@ -8320,6 +8356,8 @@ function remoteRowToProfile(row) {
     assignedMissionVisible: row.assigned_mission_visible !== false,
     assignedMissionUpdatedAt: row.assigned_mission_updated_at || "",
     assignedMissionUpdatedBy: row.assigned_mission_updated_by || "",
+    accessPreset: row.access_preset || "employee",
+    permissions: { ...(row.permissions || {}) },
   });
 }
 
@@ -8369,7 +8407,7 @@ async function loadRemoteProfile() {
   if (controlTowerEmails.has(email)) {
     state.profile.accessPreset = "owner";
     state.profile.permissions = {};
-  } else if (!sameUser || normalizePermissionPresetKey(state.profile.accessPreset) === "owner") {
+  } else if (normalizePermissionPresetKey(state.profile.accessPreset) === "owner") {
     state.profile.accessPreset = getRecommendedPermissionPresetForProfile(state.profile);
     if (state.profile.accessPreset === "owner") state.profile.accessPreset = "employee";
     state.profile.permissions = {};
@@ -14214,6 +14252,8 @@ function approvalRowToStaffEmployee(row = {}) {
     assignedMissionVisible: row.assigned_mission_visible !== false,
     assignedMissionUpdatedAt: row.assigned_mission_updated_at || "",
     assignedMissionUpdatedBy: row.assigned_mission_updated_by || "",
+    accessPreset: profile.accessPreset || row.access_preset || "employee",
+    permissions: { ...(profile.permissions || row.permissions || {}) },
   };
 }
 
@@ -14232,7 +14272,10 @@ function getStaffSortKey(employee = {}) {
 
 function getEmployeePermissionProfile(employee, group) {
   const inferredPreset = getRecommendedPermissionPresetForEmployee(employee, group);
-  const override = state.employeePermissions?.[employee.id] || {};
+  const remoteOverride = employee.accessPreset || Object.keys(employee.permissions || {}).length
+    ? { preset: employee.accessPreset, permissions: employee.permissions }
+    : {};
+  const override = state.employeePermissions?.[employee.id] || remoteOverride;
   const presetKey = normalizePermissionPresetKey(override.preset || inferredPreset);
   const set = buildPermissionSet(presetKey, override.permissions || {});
   const worklog = set.permissions.worklogAll ? "전사 열람" : set.permissions.worklogSite ? "소속 열람" : "본인 수정";
@@ -14453,7 +14496,29 @@ function closeStaffPermissionModal() {
   document.getElementById("staffPermissionOverlay")?.remove();
 }
 
-function saveStaffPermissionDraft() {
+async function persistEmployeePermissionOverride(employeeId, normalized) {
+  if (!supabaseClient || !authState.user || !canAccessStaffSection()) return { saved: false, localOnly: true };
+  const row = getEmployeeMasterRows().find((item) => item.id === employeeId);
+  const sourceProfileId = row?.sourceProfileId || getEmployeeSourceProfileRow(row || {})?.id || "";
+  if (!sourceProfileId) return { saved: false, localOnly: true };
+  const preset = normalized?.hasCustom
+    ? normalized.override.preset
+    : getRecommendedPermissionPresetForEmployee(row || {});
+  const permissions = normalized?.hasCustom ? normalized.override.permissions : {};
+  const result = await updateProfileRowWithSchemaFallback(sourceProfileId, {
+    access_preset: preset,
+    permissions,
+    updated_at: new Date().toISOString(),
+  });
+  const approvalRow = (authState.approvalRows || []).find((item) => String(item.id || "") === String(sourceProfileId));
+  if (!result.error && approvalRow) {
+    approvalRow.access_preset = preset;
+    approvalRow.permissions = permissions;
+  }
+  return { saved: !result.error && !result.removedColumns.length, localOnly: Boolean(result.error || result.removedColumns.length) };
+}
+
+async function saveStaffPermissionDraft() {
   if (!staffPermissionDraft) return;
   const employeeId = staffPermissionDraft.employeeId;
   const normalized = normalizeStaffPermissionOverride(employeeId, staffPermissionDraft);
@@ -14465,8 +14530,10 @@ function saveStaffPermissionDraft() {
     delete state.employeePermissions[employeeId];
   }
   saveState();
+  const remote = await persistEmployeePermissionOverride(employeeId, normalized);
   closeStaffPermissionModal();
   renderStaffMaster();
+  showAppToast(remote.saved ? "위임 권한과 메뉴 구성을 적용했습니다" : "이 기기에 권한을 저장했습니다. 최신 데이터베이스 설정 적용 후 원격 동기화됩니다");
 }
 
 function getManualTemplateForEmployee(employee) {
@@ -14493,8 +14560,12 @@ const staffMasterTabs = [
   ["growth", "성장기록", "역량·온보딩 추적"],
 ];
 
+function getVisibleStaffMasterTabs() {
+  return staffMasterTabs.filter(([key]) => key !== "approval" || canShowApprovalMenu());
+}
+
 function normalizeStaffMasterTab(value) {
-  return staffMasterTabs.some(([key]) => key === value) ? value : "staff-list";
+  return getVisibleStaffMasterTabs().some(([key]) => key === value) ? value : "staff-list";
 }
 
 function getStaffMasterTabMeta(value = state.staffMasterTab) {
@@ -14554,7 +14625,7 @@ function renderStaffSiteFilters(rows = []) {
 function renderStaffSectionTabbar() {
   return `
     <nav class="section-command-strip staff-section-tabbar" aria-label="직원 섹션 보기">
-      ${staffMasterTabs.map(([key, label, caption], index) => `
+      ${getVisibleStaffMasterTabs().map(([key, label, caption], index) => `
         <button type="button" class="${key === state.staffMasterTab ? "is-active" : ""}" data-staff-tab="${escapeAttr(key)}">
           <span>${String(index + 1).padStart(2, "0")}</span>
           <strong>${escapeHtml(label)}</strong>
@@ -14747,8 +14818,8 @@ function renderStaffMaster() {
   const grid = document.getElementById("staffMasterGrid");
   const approvalButton = document.getElementById("staffOpenApprovalButton");
   if (!grid) return;
-  const canManage = canAccessWorklogOverview();
-  if (approvalButton) approvalButton.hidden = !canManage;
+  const canManage = canAccessStaffSection();
+  if (approvalButton) approvalButton.hidden = !canShowApprovalMenu();
   if (!canManage) {
     const employee = getProfileEmployee();
     grid.innerHTML = `
@@ -16759,6 +16830,111 @@ function buildWorklogDailyReportLines(model = buildWorklogDailyReportModel()) {
   ];
 }
 
+function getWorklogReportFileBase(model = buildWorklogDailyReportModel()) {
+  const person = String(model.writer || "직원").replace(/[^0-9A-Za-z가-힣_-]+/g, "-");
+  return `Bangju-업무보고서-${model.dateKey}-${person}`;
+}
+
+function getWorklogReportExportHeight(model = buildWorklogDailyReportModel()) {
+  const taskOverflow = Math.max(0, model.tasks.length - 8) * 34;
+  const scheduleOverflow = Math.max(0, model.schedule.length - 12) * 30;
+  return Math.max(1754, 1754 + taskOverflow + scheduleOverflow);
+}
+
+function getWorklogReportExportCss(height = 1754) {
+  return `
+    * { box-sizing: border-box; }
+    body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", "Noto Sans KR", sans-serif; color: #17211d; }
+    .worklog-daily-report-page { width: 1240px; min-height: ${height}px; padding: 54px; background: #fffefa; border: 2px solid #1d513f; }
+    .worklog-report-paper-header { display: grid; grid-template-columns: 1fr 330px; gap: 30px; align-items: end; padding-bottom: 26px; border-bottom: 5px solid #174c3a; }
+    .worklog-report-paper-header small { color: #527064; font-size: 17px; font-weight: 800; letter-spacing: .08em; }
+    .worklog-report-paper-header h2 { margin: 8px 0; color: #123d2f; font-size: 38px; line-height: 1.15; }
+    .worklog-report-paper-header p { margin: 0; color: #64736c; font-size: 17px; font-weight: 700; }
+    table { width: 100%; border-collapse: collapse; table-layout: fixed; }
+    th, td { border: 1px solid #9cad9f; padding: 9px 10px; font-size: 16px; line-height: 1.35; vertical-align: middle; overflow-wrap: anywhere; }
+    th { background: #e9f0e9; color: #214b3c; font-weight: 900; }
+    .worklog-report-paper-header table th, .worklog-report-paper-header table td { text-align: center; height: 46px; }
+    .worklog-report-meta { display: grid; grid-template-columns: 120px 1fr 120px 1fr; margin: 24px 0 18px; border: 1px solid #9cad9f; }
+    .worklog-report-meta dt, .worklog-report-meta dd { margin: 0; padding: 11px 13px; border-bottom: 1px solid #c2cec5; font-size: 16px; }
+    .worklog-report-meta dt { background: #eef3ea; color: #315848; font-weight: 900; }
+    .worklog-report-meta dd { font-weight: 750; }
+    .worklog-report-executive { display: grid; grid-template-columns: 170px 170px 170px 1fr; gap: 10px; margin-bottom: 22px; }
+    .worklog-report-executive > div, .worklog-report-executive > p { margin: 0; padding: 15px; border: 1px solid #afc0b4; background: #f2f6ed; }
+    .worklog-report-executive span, .worklog-report-executive b { display: block; color: #466356; font-size: 14px; }
+    .worklog-report-executive strong { display: block; margin-top: 4px; color: #123d2f; font-size: 28px; }
+    .worklog-report-executive p { font-size: 16px; line-height: 1.5; }
+    .worklog-report-executive p b { margin-bottom: 5px; }
+    section h3 { margin: 20px 0 8px; color: #173f32; font-size: 20px; }
+    .worklog-report-table-section table th:first-child, .worklog-report-table-section table td:first-child { width: 110px; text-align: center; }
+    .worklog-report-table-section table th:last-child, .worklog-report-table-section table td:last-child { width: 150px; text-align: center; }
+    .worklog-report-bottom-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 12px; }
+    .worklog-report-bottom-grid > div { min-height: 150px; padding: 14px 18px; border: 1px solid #afc0b4; background: #fafbf6; }
+    .worklog-report-bottom-grid h3 { margin-top: 0; }
+    .worklog-report-bottom-grid p { margin: 7px 0; font-size: 15px; line-height: 1.45; }
+    .worklog-report-action-brief { display: flex; gap: 18px; margin-top: 20px; padding: 15px 18px; background: #174c3a; color: white; font-size: 14px; line-height: 1.45; }
+    .worklog-report-action-brief b { flex: 0 0 auto; color: #dcebdc; }
+  `;
+}
+
+async function renderWorklogReportCanvas() {
+  const width = 1240;
+  const model = buildWorklogDailyReportModel();
+  const height = getWorklogReportExportHeight(model);
+  const html = `<div xmlns="http://www.w3.org/1999/xhtml"><style>${getWorklogReportExportCss(height)}</style>${renderWorklogDailyReportTemplate(model)}</div>`;
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}"><foreignObject width="${width}" height="${height}">${html}</foreignObject></svg>`;
+  if (document.fonts?.ready) await document.fonts.ready;
+  const image = new Image();
+  image.decoding = "async";
+  image.src = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
+  await new Promise((resolve, reject) => {
+    image.onload = resolve;
+    image.onerror = reject;
+  });
+  const canvas = document.createElement("canvas");
+  canvas.width = width;
+  canvas.height = height;
+  const context = canvas.getContext("2d");
+  context.fillStyle = "#fffefa";
+  context.fillRect(0, 0, width, height);
+  context.drawImage(image, 0, 0);
+  return canvas;
+}
+
+async function saveWorklogReportImage() {
+  const model = buildWorklogDailyReportModel();
+  const blob = await canvasToBlob(await renderWorklogReportCanvas(), "image/png");
+  downloadBlob(blob, `${getWorklogReportFileBase(model)}.png`);
+}
+
+async function saveWorklogReportPdf() {
+  const model = buildWorklogDailyReportModel();
+  const pdf = createPdfBlobFromCanvas(await renderWorklogReportCanvas());
+  downloadBlob(pdf, `${getWorklogReportFileBase(model)}.pdf`);
+}
+
+async function shareWorklogDailyReport() {
+  const model = buildWorklogDailyReportModel();
+  const canvas = await renderWorklogReportCanvas();
+  const pngBlob = await canvasToBlob(canvas, "image/png");
+  const pdfBlob = createPdfBlobFromCanvas(canvas);
+  const base = getWorklogReportFileBase(model);
+  const files = [
+    new File([pngBlob], `${base}.png`, { type: "image/png" }),
+    new File([pdfBlob], `${base}.pdf`, { type: "application/pdf" }),
+  ];
+  if (navigator.canShare?.({ files }) && navigator.share) {
+    await navigator.share({ title: model.title, text: `${model.dateLabel} ${model.writer} 업무보고서`, files });
+    return;
+  }
+  const text = buildWorklogDailyReportLines(model).join("\n");
+  if (navigator.share) {
+    await navigator.share({ title: model.title, text });
+    return;
+  }
+  await navigator.clipboard?.writeText(text);
+  showAppToast("보내기 대신 보고서 내용을 복사했습니다");
+}
+
 async function copyWorklogDailyReport() {
   const text = buildWorklogDailyReportLines().join("\n");
   try {
@@ -17589,6 +17765,10 @@ function switchView(view) {
   if (view === "attendance" && !canOpenLaborSection()) {
     view = getUserWorklogView();
   }
+  if (view === "staff" && !canAccessStaffSection()) view = getUserWorklogView();
+  if (view === "control" && !canAccessControlTower()) view = getUserWorklogView();
+  if (view === "executive" && !(isRepresentativeProfile() || hasProfilePermission("executiveRoom"))) view = getUserWorklogView();
+  if (view === "premium" && !canAccessPremiumOperations()) view = getUserWorklogView();
   if (view === "worklog") view = getUserWorklogView();
   view = view === "today" ? "bangju-log" : view;
   ensureSelectedEmployeeForWorklogView(view);
@@ -17619,7 +17799,7 @@ function switchView(view) {
   renderFitnessDashboard();
   renderEntries();
   renderStaffMaster();
-  if (view === "staff" && canAccessWorklogOverview() && !authState.approvalRowsLoaded) refreshStaffApprovalRows();
+  if (view === "staff" && canAccessStaffSection() && !authState.approvalRowsLoaded) refreshStaffApprovalRows();
   renderAttendance();
   renderOrganization();
   updateGlobalAttendanceVisibility(view);
@@ -17627,7 +17807,10 @@ function switchView(view) {
   applyCurrentWorklogPermissionState(view);
   if (view === "fitness-log") window.setTimeout(() => showFitnessPageToast(), 80);
   if (view === "fitness-log" && authState.session) refreshCoworkerWorklogsForActiveDate();
-  if (view === "worklog-overview") refreshVisibleStaffWorklogsForActiveDate();
+  if (view === "worklog-overview") {
+    if (canAccessAllWorklogs()) refreshVisibleStaffWorklogsForActiveDate();
+    else refreshCoworkerWorklogsForActiveDate();
+  }
 }
 
 function getActiveViewPanel(panelView = worklogViewAliases[activeView] || activeView) {
@@ -18356,7 +18539,15 @@ document.getElementById("fitnessReportShareButton")?.addEventListener("click", (
 document.getElementById("worklogReportMenuButton")?.addEventListener("click", openWorklogReportSheet);
 document.getElementById("worklogReportCloseButton")?.addEventListener("click", closeWorklogReportSheet);
 document.getElementById("worklogReportBackdrop")?.addEventListener("click", closeWorklogReportSheet);
-document.getElementById("worklogReportCopyButton")?.addEventListener("click", copyWorklogDailyReport);
+document.getElementById("worklogReportImageButton")?.addEventListener("click", () => {
+  saveWorklogReportImage().catch(() => alert("보고서 사진을 만들지 못했습니다. 출력 메뉴를 이용해주세요."));
+});
+document.getElementById("worklogReportPdfButton")?.addEventListener("click", () => {
+  saveWorklogReportPdf().catch(() => alert("PDF 파일을 만들지 못했습니다. 출력 메뉴에서 PDF 저장을 이용해주세요."));
+});
+document.getElementById("worklogReportShareButton")?.addEventListener("click", () => {
+  shareWorklogDailyReport().catch(() => alert("보내기 기능을 사용할 수 없어 보고서 미리보기를 유지합니다."));
+});
 document.getElementById("worklogReportArchiveButton")?.addEventListener("click", openWorklogReportArchive);
 document.getElementById("worklogReportPrintButton")?.addEventListener("click", printWorklogDailyReport);
 document.getElementById("fitnessCenterConfirmPanel")?.addEventListener("click", (event) => {

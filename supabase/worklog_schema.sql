@@ -31,6 +31,8 @@ create table if not exists public.profiles (
   assigned_mission_visible boolean not null default true,
   assigned_mission_updated_by uuid references auth.users(id),
   assigned_mission_updated_at timestamptz,
+  access_preset text not null default 'employee',
+  permissions jsonb not null default '{}'::jsonb,
   updated_at timestamptz not null default now()
 );
 
@@ -52,6 +54,8 @@ alter table public.profiles add column if not exists assigned_mission text not n
 alter table public.profiles add column if not exists assigned_mission_visible boolean not null default true;
 alter table public.profiles add column if not exists assigned_mission_updated_by uuid references auth.users(id);
 alter table public.profiles add column if not exists assigned_mission_updated_at timestamptz;
+alter table public.profiles add column if not exists access_preset text not null default 'employee';
+alter table public.profiles add column if not exists permissions jsonb not null default '{}'::jsonb;
 
 create table if not exists public.labor_payroll_drafts (
   user_id uuid not null references auth.users(id) on delete cascade,
@@ -374,6 +378,8 @@ as $$
       and coalesce(p.approval_status, 'approved') = 'approved'
       and (
         lower(coalesce(p.email, '')) in ('j3010@ymail.com', 'tbakorea@gmail.com')
+        or coalesce((p.permissions ->> 'staffApproval')::boolean, false)
+        or coalesce((p.permissions ->> 'staffManage')::boolean, false)
         or coalesce(p.role, '') ~* '대표|관리자|센터장|총괄|임원|admin|owner|manager'
         or coalesce(p.primary_work, '') ~* '대표|관리자|센터장|총괄|임원|admin|owner|manager'
       )
@@ -647,6 +653,26 @@ on public.profiles for update
 to authenticated
 using (auth.uid() = id or public.is_profile_approver())
 with check (auth.uid() = id or public.is_profile_approver());
+
+create or replace function public.protect_delegated_profile_permissions()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  if auth.uid() = old.id then
+    new.access_preset := old.access_preset;
+    new.permissions := old.permissions;
+  end if;
+  return new;
+end;
+$$;
+
+drop trigger if exists protect_delegated_profile_permissions on public.profiles;
+create trigger protect_delegated_profile_permissions
+before update of access_preset, permissions on public.profiles
+for each row execute function public.protect_delegated_profile_permissions();
 
 drop policy if exists "password_reset_insert_request" on public.password_reset_requests;
 create policy "password_reset_insert_request"

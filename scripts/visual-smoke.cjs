@@ -970,6 +970,64 @@ async function checkNonControlRoleTextDoesNotBecomeRepresentative(browser) {
   await page.close();
 }
 
+async function checkDelegatedPermissionMenus(browser) {
+  const { page, errors } = await openPage(browser, { width: 390, height: 844 });
+  const matrix = await page.evaluate(() => window.eval(`(() => {
+    authState.user = { id: "delegated-menu-user", email: "delegated@example.com" };
+    const run = (permissions) => {
+      state.profile = {
+        ...defaultProfile,
+        name: "권한위임 직원",
+        role: "직원",
+        org: "(주)방주",
+        workplace: "본사",
+        email: "delegated@example.com",
+        approvalStatus: "approved",
+        accessPreset: "employee",
+        permissions
+      };
+      normalizeState();
+      renderMainMenuAuthButton();
+      return [...document.querySelectorAll("#mainMenuPopover button")]
+        .filter((button) => !button.hidden)
+        .map((button) => button.textContent.replace(/\\s+/g, " ").trim());
+    };
+    const worklogAll = run({ worklogAll: true });
+    const staffOnly = run({ staffManage: true });
+    const laborApproval = run({ laborSite: true, staffApproval: true });
+    authState.user = { id: "fitness-manager-delegated", email: "pjhong0@naver.com" };
+    state.profile = applyProfilePlacementOverride({ ...defaultProfile, email: "pjhong0@naver.com", approvalStatus: "approved", permissions: { worklogAll: true } });
+    normalizeState();
+    renderMainMenuAuthButton();
+    const pinnedAccount = [...document.querySelectorAll("#mainMenuPopover button")]
+      .filter((button) => !button.hidden)
+      .map((button) => button.textContent.replace(/\\s+/g, " ").trim());
+    authState.user = { id: "delegated-menu-user", email: "delegated@example.com" };
+    state.profile.permissions = {};
+    state.profile.email = "delegated@example.com";
+    state.profile.accessPreset = "employee";
+    normalizeState();
+    switchView("staff");
+    return JSON.stringify({ worklogAll, staffOnly, laborApproval, pinnedAccount, guardedView: document.body.dataset.activeView });
+  })()`));
+  const parsed = JSON.parse(matrix);
+  if (!parsed.worklogAll.includes("전직원 업무일지") || parsed.worklogAll.some((label) => /직원$|노무|승인요청|통합관제/.test(label))) {
+    fail("worklogAll delegation should build only the proportional all-worklog menu", matrix);
+  }
+  if (!parsed.staffOnly.includes("직원") || parsed.staffOnly.some((label) => /전직원 업무일지|노무|승인요청/.test(label))) {
+    fail("staffManage delegation should expose staff without unrelated labor or approval menus", matrix);
+  }
+  if (!parsed.laborApproval.includes("소속 노무") || !parsed.laborApproval.some((label) => label.startsWith("승인요청")) || parsed.laborApproval.includes("직원")) {
+    fail("laborSite and staffApproval should expose labor and approval independently", matrix);
+  }
+  if (!parsed.pinnedAccount.includes("전직원 업무일지")) {
+    fail("fixed fitness account placement must preserve remotely delegated menu permissions", matrix);
+  }
+  if (parsed.guardedView === "staff") fail("hidden staff route should remain guarded", matrix);
+  if (errors.length) fail("delegated permission menu page errors", errors.join(" | "));
+  await page.close();
+}
+
 async function checkKimSungminAccountIsEmployeeOnly(browser) {
   const page = await browser.newPage({ viewport: { width: 390, height: 844 } });
   const errors = [];
@@ -3170,14 +3228,25 @@ async function checkSiteWeatherAndGeneralDailyReport(browser) {
       futureUsesForecast: pastUrl !== futureUrl && futureUrl.includes("api.open-meteo.com/v1/forecast") && futureUrl.includes("start_date=2026-08-31"),
       snapshotHasWeather: Boolean(snapshot.siteWeatherAddresses && snapshot.weatherCache),
       fitnessReportPreserved: Boolean(document.querySelector("#fitnessReportMenuButton") && document.querySelector("#fitnessReportSheet")),
+      exportButtons: ["worklogReportImageButton", "worklogReportPdfButton", "worklogReportShareButton", "worklogReportPrintButton"]
+        .every((id) => Boolean(document.getElementById(id))),
     };
+  });
+  const exportMetrics = await page.evaluate(async () => {
+    const canvas = await renderWorklogReportCanvas();
+    const png = await canvasToBlob(canvas, "image/png");
+    const pdf = createPdfBlobFromCanvas(canvas);
+    return { width: canvas.width, height: canvas.height, pngSize: png.size, pdfSize: pdf.size, pdfType: pdf.type };
   });
   ["업무 진행 현황", "시간대별 실행 내역", "이슈·리스크·지원 요청", "명일 계획·인수인계", "Bangju Action Brief", "맑음", "월 마감 자료 검토", "거래처 증빙 대조", "재무 자료 취합", "세금계산서 원장 대조", "회계 원장 실행기록을 저장했습니다.", "명일 거래처 확인이 필요합니다."].forEach((label) => {
     if (!metrics.previewText.includes(label)) fail("general daily report should include corporate and Bangju report sections", `${label} missing`);
   });
   if (!metrics.sheetOpen || metrics.previewOverflow < 0) fail("general daily report sheet should open and remain scrollable", JSON.stringify(metrics));
-  if (!metrics.archiveHasDesignedReport || !metrics.pastUsesArchive || !metrics.futureUsesForecast || !metrics.snapshotHasWeather || !metrics.fitnessReportPreserved) {
+  if (!metrics.archiveHasDesignedReport || !metrics.pastUsesArchive || !metrics.futureUsesForecast || !metrics.snapshotHasWeather || !metrics.fitnessReportPreserved || !metrics.exportButtons) {
     fail("site weather and general report data flow should remain connected without changing fitness report", JSON.stringify(metrics));
+  }
+  if (exportMetrics.width !== 1240 || exportMetrics.height < 1754 || exportMetrics.pngSize < 10000 || exportMetrics.pdfSize < 10000 || exportMetrics.pdfType !== "application/pdf") {
+    fail("general worklog report should export valid PNG and PDF artifacts", JSON.stringify(exportMetrics));
   }
   if (errors.length) fail("site weather and general report page errors", errors.join(" | "));
   await page.close();
@@ -3661,6 +3730,7 @@ async function checkFitnessRosterHoursAndCompactTotals(browser) {
     await checkFitnessRosterHoursAndCompactTotals(browser);
     await checkRepresentativeProfileSeparation(browser);
     await checkNonControlRoleTextDoesNotBecomeRepresentative(browser);
+    await checkDelegatedPermissionMenus(browser);
     await checkKimSungminAccountIsEmployeeOnly(browser);
     await checkUnmappedEmployeeDoesNotInheritFitnessManager(browser);
     await checkUnclassifiedFitnessEmployeeCanEditOwnProfileWorklog(browser);

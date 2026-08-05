@@ -96,6 +96,35 @@ check(
 );
 
 check(
+  "delegated permissions build proportional menus and guard routes",
+  /function renderMainMenuVisibility\(\)[\s\S]{0,2600}canAccessAllWorklogs\(\)[\s\S]{0,700}canAccessStaffSection\(\)[\s\S]{0,500}canOpenLaborSection\(\)/.test(js)
+    && /if \(view === "staff" && !canAccessStaffSection\(\)\)/.test(js)
+    && /if \(view === "control" && !canAccessControlTower\(\)\)/.test(js)
+    && /function canShowApprovalMenu[\s\S]{0,300}staffApproval/.test(js),
+  "worklog, staff, labor, and approval menus must follow their own delegated permission"
+);
+
+check(
+  "delegated permissions persist in protected profile fields",
+  /accessPreset: row\.access_preset \|\| "employee"/.test(js)
+    && /async function persistEmployeePermissionOverride[\s\S]{0,1200}access_preset:[\s\S]{0,120}permissions/.test(js)
+    && read("supabase/worklog_schema.sql").includes("access_preset text not null default 'employee'")
+    && read("supabase/worklog_schema.sql").includes("protect_delegated_profile_permissions"),
+  "delegated menus must follow the employee across devices without allowing self-escalation"
+);
+
+check(
+  "general worklog report exports image PDF share and print",
+  ["worklogReportImageButton", "worklogReportPdfButton", "worklogReportShareButton", "worklogReportPrintButton"].every((id) => ids.includes(id))
+    && /async function renderWorklogReportCanvas\(\)/.test(js)
+    && /async function saveWorklogReportImage\(\)/.test(js)
+    && /async function saveWorklogReportPdf\(\)/.test(js)
+    && /async function shareWorklogDailyReport\(\)/.test(js)
+    && /function printWorklogDailyReport\(\)/.test(js),
+  "non-fitness daily reports need PNG, PDF, share, and print actions"
+);
+
+check(
   "future worklogs keep independent pending remote saves",
   /function scheduleRemoteSave\(delay = 700, dateKey = getActiveDateKey\(\)\)[\s\S]{0,500}saveTimers\.get\(key\)[\s\S]{0,500}saveRemoteSnapshot\(key\)/.test(js)
     && /function buildRemoteSnapshot\(dateKey = getActiveDateKey\(\)\)/.test(js)
