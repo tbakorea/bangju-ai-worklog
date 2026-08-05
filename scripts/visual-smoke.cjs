@@ -1836,6 +1836,10 @@ async function checkPriorityCarryoverAndDateRules(browser) {
       cycleWorklogTaskStatus(cycleOnlyTask);
       cycleStatuses.push(cycleOnlyTask.status);
     }
+    const cycleGuideLabels = cycleStatuses.slice(0, 3).map((status) => {
+      showTaskStatusGuide(taskStatusGuideLabels[status] || status);
+      return document.getElementById("taskStatusGuide")?.textContent || "";
+    });
     delegatedRow.remove();
     return JSON.stringify({
       carryoverIds: carryovers.map((ref) => ref.task.id),
@@ -1852,6 +1856,7 @@ async function checkPriorityCarryoverAndDateRules(browser) {
       postponedFromMenu,
       restoredPriority,
       cycleStatuses,
+      cycleGuideLabels,
       previousBeforeNoon: isWithinWorklogEditWindow("2026-08-02", new Date(2026, 7, 3, 11, 59)),
       previousAtNoon: isWithinWorklogEditWindow("2026-08-02", new Date(2026, 7, 3, 12, 0)),
       olderDate: isWithinWorklogEditWindow("2026-08-01", new Date(2026, 7, 3, 9, 0)),
@@ -1878,7 +1883,9 @@ async function checkPriorityCarryoverAndDateRules(browser) {
     || parsed.postponedFromMenu.priority !== "A"
     || parsed.restoredPriority.status !== "미완료"
     || parsed.restoredPriority.priority !== "B"
-    || parsed.cycleStatuses.some((status) => ["위임", "연기"].includes(status))) {
+    || parsed.cycleStatuses.some((status) => ["위임", "연기"].includes(status))
+    || parsed.cycleStatuses.slice(0, 3).join(",") !== "완료,진행중,미완료"
+    || parsed.cycleGuideLabels.join(",") !== "완료,진행중,해제") {
     fail("delegation and postponement should exist once in the priority menu and never in checkbox cycling", metrics);
   }
   if (!parsed.previousBeforeNoon || parsed.previousAtNoon || parsed.olderDate || !parsed.futureDate) {

@@ -76,7 +76,7 @@ const taskStatusGuideLabels = {
   "진행중": "진행중",
   "위임": "위임",
   "연기": "연기",
-  "미완료": "미완료",
+  "미완료": "해제",
 };
 const permissionKeys = [
   ["executiveRoom", "대표 의사결정"],
@@ -10413,7 +10413,7 @@ function renderWorklogTaskRow(ref, currentLog, options = {}) {
   const statusClass = getWorklogTaskStatusClass(task);
   row.className = `worklog-task-row task-row priority-${String(task.priority || "?").toLowerCase()} marker-${marker} ${statusClass} ${task.done ? "done" : ""} ${isCarryover ? "is-carryover" : ""} ${isPostponedFromOtherDate ? "is-postponed-in" : ""}`;
   row.innerHTML = `
-    <button class="task-cycle" type="button" aria-label="상태 변경">${getWorklogTaskMarkerLabel(task)}</button>
+    <button class="task-cycle" type="button" aria-label="상태 변경: 완료, 진행중, 해제 순환">${getWorklogTaskMarkerLabel(task)}</button>
     <div class="task-status-cell">${renderTaskMetaControl(task)}</div>
     <div class="task-text-cell">
       <input class="task-text-input" type="text" value="${escapeAttr(task.text)}" placeholder="업무 내용" aria-label="주요업무" />
