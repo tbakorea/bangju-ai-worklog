@@ -730,6 +730,53 @@ async function checkOverviewCommandBoard(browser) {
   if (staleProfileMetrics.some((item) => item.stored !== item.marker)) {
     fail("representative overview should map historical worklogs by employee account UUID even when snapshot profiles are stale", staleProfileSync);
   }
+  const isomiTodaySync = await page.evaluate(() => window.eval(`(() => {
+    const dateKey = "2026-08-05";
+    authState.user = { id: "owner-user", email: "j3010@ymail.com" };
+    authState.approvalRows = [
+      { id: "isomi-current-user", email: "isomi-current@example.com", name: "이소미", org: "(주)방주", role: "재무 대리", approval_status: "approved" },
+      { id: "isomi-legacy-user", email: "isomi-legacy@example.com", name: "이소미", org: "(주)방주", role: "재무 대리", approval_status: "approved" }
+    ];
+    authState.approvalRowsLoaded = true;
+    state.employeeLogs[dateKey] = {};
+    const currentLog = createEmployeeLog({ id: "bangju-finance-assistant", name: "이소미", org: "(주)방주", role: "재무 대리" }, {}, dateKey);
+    currentLog.tasks[0].text = "이소미 오늘 실제업무";
+    const legacyLog = createEmployeeLog({ id: "profile-user", name: "이소미", org: "(주)방주", role: "재무 대리" }, {}, dateKey);
+    legacyLog.tasks[0].text = "이소미 이전 복제계정 업무";
+    mergeVisibleStaffWorklogStates([
+      {
+        user_id: "isomi-legacy-user",
+        updated_at: "2026-08-05T09:10:00.000Z",
+        state: { profile: { name: "이소미", org: "(주)방주", role: "재무 대리" }, ownerEmployeeId: "profile-user", ownerWorklog: legacyLog }
+      },
+      {
+        user_id: "isomi-current-user",
+        updated_at: "2026-08-05T09:00:00.000Z",
+        state: { profile: { name: "이소미", org: "(주)방주", role: "재무 대리" }, ownerEmployeeId: "bangju-finance-assistant", ownerWorklog: currentLog }
+      }
+    ], dateKey);
+    return state.employeeLogs[dateKey]?.["bangju-finance-assistant"]?.tasks?.[0]?.text || "";
+  })()`));
+  if (isomiTodaySync !== "이소미 오늘 실제업무") {
+    fail("representative overview should prefer Isomi's canonical owner worklog over a newer legacy duplicate", isomiTodaySync);
+  }
+  const localUnsyncedProtection = await page.evaluate(() => window.eval(`(() => {
+    const dateKey = "2026-08-05";
+    authState.user = { id: "isomi-current-user", email: "isomi-current@example.com" };
+    state.profile = { ...defaultProfile, name: "이소미", org: "(주)방주", role: "재무 대리", email: "isomi-current@example.com", approvalStatus: "approved" };
+    const localLog = createEmployeeLog({ id: "bangju-finance-assistant", name: "이소미", org: "(주)방주", role: "재무 대리" }, state.profile, dateKey);
+    localLog.tasks[0].text = "아직 전송되지 않은 이소미 업무";
+    localLog.updatedAt = "2026-08-05T09:30:00.000Z";
+    state.employeeLogs[dateKey] = { "bangju-finance-assistant": localLog };
+    const remoteLog = createEmployeeLog({ id: "bangju-finance-assistant", name: "이소미", org: "(주)방주", role: "재무 대리" }, state.profile, dateKey);
+    remoteLog.tasks[0].text = "이전 원격 업무";
+    remoteLog.updatedAt = "2026-08-05T09:00:00.000Z";
+    mergeOwnRemoteEmployeeLogs({ [dateKey]: { "bangju-finance-assistant": remoteLog } });
+    return state.employeeLogs[dateKey]?.["bangju-finance-assistant"]?.tasks?.[0]?.text || "";
+  })()`));
+  if (localUnsyncedProtection !== "아직 전송되지 않은 이소미 업무") {
+    fail("employee login should not overwrite a newer unsynced local worklog with an older remote snapshot", localUnsyncedProtection);
+  }
   if (errors.length) fail("overview page errors", errors.join(" | "));
   await page.close();
 }

@@ -769,6 +769,7 @@ const authState = {
   approvalRows: [],
   approvalRowsLoaded: false,
   visibleWorklogsLoading: false,
+  visibleWorklogsTimer: null,
   approvalRepairTried: false,
   approvalRepairUnavailable: false,
   passwordResetRows: [],
@@ -1108,8 +1109,16 @@ function normalizeEmployeeLogRows(log, dateKey = getActiveDateKey()) {
 function saveState(options = {}) {
   recordActiveCorrectionAudits();
   normalizeProfilePlacementForAuth();
+  markOwnedWorklogUpdated();
   localStorage.setItem(storageKey, JSON.stringify(state));
   scheduleRemoteSave(options.fastSave ? 500 : 700);
+}
+
+function markOwnedWorklogUpdated(dateKey = getActiveDateKey()) {
+  if (!authState.user || isRepresentativeProfile() || !isWorklogEditView()) return;
+  const employeeId = getProfileMappedEmployeeId() || "profile-user";
+  const log = state.employeeLogs?.[dateKey]?.[employeeId] || state.employeeLogs?.[dateKey]?.["profile-user"];
+  if (log && hasSubmittableWorklogContent(log)) log.updatedAt = new Date().toISOString();
 }
 
 function normalizeWorklogTaskStatus(status = "예정") {
@@ -7705,21 +7714,24 @@ function renderMainMenuVisibility() {
 function clearAuthRuntimeState() {
   authState.session = null;
   authState.user = null;
+  clearTimeout(authState.saveTimer);
+  authState.saveTimer = null;
+  clearInterval(authState.approvalTimer);
+  authState.approvalTimer = null;
   authState.pendingApprovalCount = 0;
   authState.pendingPasswordResetCount = 0;
   authState.approvalRows = [];
+  authState.approvalRowsLoaded = false;
   authState.passwordResetRows = [];
   authState.selectedApprovalId = "";
   authState.approvalRepairTried = false;
   authState.passwordRecoveryMode = false;
   authState.applyingRemote = false;
   authState.visibleWorklogsLoading = false;
-  clearTimeout(authState.saveTimer);
-  authState.saveTimer = null;
   authState.saveTimers?.forEach((timer) => clearTimeout(timer));
   authState.saveTimers = new Map();
-  clearInterval(authState.approvalTimer);
-  authState.approvalTimer = null;
+  clearInterval(authState.visibleWorklogsTimer);
+  authState.visibleWorklogsTimer = null;
 }
 
 function isSameAuthProfile(user = authState.user, profile = state.profile || {}) {
@@ -8003,6 +8015,7 @@ async function applySession(session) {
   await saveRemoteProfile();
   scheduleRemoteSave(0);
   startApprovalNotificationPolling();
+  startVisibleWorklogPolling();
   renderAll();
   renderAuthStatus();
   switchView(getInitialLandingView());
@@ -8019,6 +8032,16 @@ function scheduleRemoteSave(delay = 700, dateKey = getActiveDateKey()) {
   }, delay);
   authState.saveTimers.set(key, timer);
   authState.saveTimer = timer;
+}
+
+async function flushPendingRemoteSaves() {
+  if (!authState.user || !authState.saveTimers?.size) return;
+  const dateKeys = [...authState.saveTimers.keys()];
+  dateKeys.forEach((dateKey) => {
+    clearTimeout(authState.saveTimers.get(dateKey));
+    authState.saveTimers.delete(dateKey);
+  });
+  await Promise.allSettled(dateKeys.map((dateKey) => saveRemoteSnapshot(dateKey)));
 }
 
 function buildRemoteSnapshot(dateKey = getActiveDateKey()) {
@@ -8090,7 +8113,7 @@ async function loadRemoteWorklogForActiveDate() {
     state.profile = applyProfilePlacementOverride(state.profile);
     normalizeProfilePlacementForAuth();
     enforceAuthProfileBoundary();
-    state.employeeLogs = { ...(state.employeeLogs || {}), ...(data.state.employeeLogs || {}) };
+    mergeOwnRemoteEmployeeLogs(data.state.employeeLogs || {});
     state.attendance = { ...(state.attendance || {}), ...(data.state.attendance || {}) };
     state.companyCommonWeeks = { ...(state.companyCommonWeeks || {}), ...(data.state.companyCommonWeeks || {}) };
     mergeSharedFitnessOperations(data.state);
@@ -8110,6 +8133,34 @@ async function loadRemoteWorklogForActiveDate() {
   authState.applyingRemote = false;
   renderAll();
   renderAuthStatus();
+}
+
+function mergeOwnRemoteEmployeeLogs(remoteEmployeeLogs = {}) {
+  state.employeeLogs ||= {};
+  const ownEmployeeId = getProfileMappedEmployeeId() || "profile-user";
+  Object.entries(remoteEmployeeLogs).forEach(([dateKey, remoteLogs]) => {
+    state.employeeLogs[dateKey] ||= {};
+    Object.entries(remoteLogs || {}).forEach(([remoteEmployeeId, remoteLog]) => {
+      const isOwnAlias = [ownEmployeeId, "profile-user", authState.user?.id, `profile-${authState.user?.id || ""}`]
+        .filter(Boolean)
+        .includes(remoteEmployeeId);
+      const targetEmployeeId = isOwnAlias ? ownEmployeeId : remoteEmployeeId;
+      const localLog = state.employeeLogs[dateKey][targetEmployeeId]
+        || (isOwnAlias ? state.employeeLogs[dateKey]["profile-user"] : null);
+      const localUpdatedAt = String(localLog?.updatedAt || "");
+      const remoteUpdatedAt = String(remoteLog?.updatedAt || "");
+      const keepLocal = Boolean(
+        localLog
+        && hasSubmittableWorklogContent(localLog)
+        && (!hasSubmittableWorklogContent(remoteLog) || (localUpdatedAt && localUpdatedAt > remoteUpdatedAt))
+      );
+      if (keepLocal) return;
+      state.employeeLogs[dateKey][targetEmployeeId] = {
+        ...cloneWorklogLogForAudit(remoteLog),
+        employeeId: targetEmployeeId,
+      };
+    });
+  });
 }
 
 async function loadLatestRemoteSiteWeatherSettings() {
@@ -8194,6 +8245,16 @@ async function refreshVisibleStaffWorklogsForActiveDate() {
   }
 }
 
+function startVisibleWorklogPolling() {
+  clearInterval(authState.visibleWorklogsTimer);
+  authState.visibleWorklogsTimer = null;
+  if (!authState.user || !canAccessAllWorklogs()) return;
+  authState.visibleWorklogsTimer = setInterval(() => {
+    if (document.visibilityState !== "visible" || activeView !== "worklog-overview") return;
+    refreshVisibleStaffWorklogsForActiveDate();
+  }, 15000);
+}
+
 async function refreshCoworkerWorklogsForActiveDate() {
   if (!supabaseClient || !authState.user || canAccessAllWorklogs() || !isProfileApproved() || authState.visibleWorklogsLoading) return;
   authState.visibleWorklogsLoading = true;
@@ -8212,44 +8273,50 @@ async function refreshCoworkerWorklogsForActiveDate() {
 function mergeVisibleStaffWorklogStates(rows = [], dateKey = getActiveDateKey()) {
   state.employeeLogs ||= {};
   state.employeeLogs[dateKey] ||= {};
-  const mergedEmployeeIds = new Set();
-  [...rows]
-    .sort((a, b) => String(b?.updated_at || "").localeCompare(String(a?.updated_at || "")))
-    .forEach((row) => {
-      const remoteState = row?.state || {};
-      mergeSharedFitnessOperations(remoteState);
-      const profile = remoteState.profile || {};
-      const mappedId = getProfileMappedEmployeeId(profile);
-      const employee = resolveRemoteWorklogEmployee(row);
-      if (!employee || !isAssignedWorklogEmployee(employee) || isRepresentativeWorklogEmployee(employee)) return;
-      const employeeId = getEmployeeWorklogId(employee);
-      if (!employeeId || mergedEmployeeIds.has(employeeId)) return;
+  const candidatesByEmployee = new Map();
+  [...rows].forEach((row) => {
+    const remoteState = row?.state || {};
+    mergeSharedFitnessOperations(remoteState);
+    const profile = remoteState.profile || {};
+    const mappedId = getProfileMappedEmployeeId(profile);
+    const employee = resolveRemoteWorklogEmployee(row);
+    if (!employee || !isAssignedWorklogEmployee(employee) || isRepresentativeWorklogEmployee(employee)) return;
+    const employeeId = getEmployeeWorklogId(employee);
+    if (!employeeId) return;
 
-      const logs = remoteState.employeeLogs?.[dateKey] || {};
-      const candidateIds = [...new Set([
-        employeeId,
-        employee.id,
-        employee.mappedEmployeeId,
-        mappedId,
-        employee.sourceProfileId,
-        employee.profileEmployeeId,
-        remoteState.ownerEmployeeId,
-        remoteState.selectedEmployeeId,
-        row?.user_id,
-        row?.user_id ? `profile-${row.user_id}` : "",
-        "profile-user",
-      ].filter(Boolean))];
-      const candidateLogs = candidateIds.map((id) => logs[id]).filter(Boolean);
-      const employeeLog = hasSubmittableWorklogContent(remoteState.ownerWorklog)
-        ? remoteState.ownerWorklog
-        : candidateLogs.find(hasSubmittableWorklogContent);
-      if (!employeeLog) return;
-      state.employeeLogs[dateKey][employeeId] = {
-        ...cloneWorklogLogForAudit(employeeLog),
-        employeeId,
-      };
-      mergedEmployeeIds.add(employeeId);
-    });
+    const logs = remoteState.employeeLogs?.[dateKey] || {};
+    const candidateIds = [...new Set([
+      employeeId,
+      employee.id,
+      employee.mappedEmployeeId,
+      mappedId,
+      employee.sourceProfileId,
+      employee.profileEmployeeId,
+      remoteState.ownerEmployeeId,
+      remoteState.selectedEmployeeId,
+      row?.user_id,
+      row?.user_id ? `profile-${row.user_id}` : "",
+      "profile-user",
+    ].filter(Boolean))];
+    const candidateLogs = candidateIds.map((id) => logs[id]).filter(Boolean);
+    const employeeLog = hasSubmittableWorklogContent(remoteState.ownerWorklog)
+      ? remoteState.ownerWorklog
+      : candidateLogs.find(hasSubmittableWorklogContent);
+    if (!employeeLog) return;
+    const directOwner = remoteState.ownerEmployeeId === employeeId;
+    const candidate = { row, employeeId, employeeLog, directOwner };
+    candidatesByEmployee.set(employeeId, [...(candidatesByEmployee.get(employeeId) || []), candidate]);
+  });
+  candidatesByEmployee.forEach((candidates, employeeId) => {
+    const selected = candidates.sort((a, b) => (
+      Number(b.directOwner) - Number(a.directOwner)
+      || String(b.row?.updated_at || "").localeCompare(String(a.row?.updated_at || ""))
+    ))[0];
+    state.employeeLogs[dateKey][employeeId] = {
+      ...cloneWorklogLogForAudit(selected.employeeLog),
+      employeeId,
+    };
+  });
 }
 
 function mergeSharedFitnessOperations(remoteState = {}) {
@@ -18808,6 +18875,16 @@ document.getElementById("worklogAiButton")?.addEventListener("click", () => {
 window.addEventListener("resize", () => {
   renderResponsiveMode();
   fitFitnessReportPreview();
+});
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "hidden") {
+    flushPendingRemoteSaves();
+    return;
+  }
+  if (activeView === "worklog-overview" && canAccessAllWorklogs()) refreshVisibleStaffWorklogsForActiveDate();
+});
+window.addEventListener("pagehide", () => {
+  flushPendingRemoteSaves();
 });
 
 renderResponsiveMode();
