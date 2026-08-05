@@ -5802,6 +5802,38 @@ function getWorklogEmployeeIdsForView(view) {
   return [];
 }
 
+function getWorklogGroupIdForView(view = activeView, employee = getSelectedEmployee()) {
+  if (view === "fitness-log") return "fitness";
+  if (view === "beyond-log") return "beyond";
+  if (["bangju-log", "today"].includes(view)) return "bangju";
+  return getStaffSiteGroupForEmployee(employee)?.id || "";
+}
+
+function getCoworkerEmployeesForWorklog(selectedEmployee = getSelectedEmployee(), view = activeView) {
+  const groupId = getWorklogGroupIdForView(view, selectedEmployee);
+  const preferredIds = getWorklogEmployeeIdsForView(view);
+  const preferredOrder = new Map(preferredIds.map((employeeId, index) => [employeeId, index]));
+  const selectedKeys = new Set(getEmployeeIdentityKeys(selectedEmployee));
+  const byEmployeeId = new Map();
+  getEmployeeOptions()
+    .filter(isAssignedWorklogEmployee)
+    .filter((employee) => !isRepresentativeWorklogEmployee(employee))
+    .filter((employee) => !getEmployeeIdentityKeys(employee).some((key) => selectedKeys.has(key)))
+    .filter((employee) => !groupId || getStaffSiteGroupForEmployee(employee)?.id === groupId)
+    .forEach((employee) => {
+      const employeeId = getEmployeeWorklogId(employee);
+      if (!employeeId || byEmployeeId.has(employeeId)) return;
+      byEmployeeId.set(employeeId, employee);
+    });
+  return [...byEmployeeId.values()].sort((a, b) => {
+    const aId = getEmployeeWorklogId(a);
+    const bId = getEmployeeWorklogId(b);
+    const aOrder = preferredOrder.has(aId) ? preferredOrder.get(aId) : 999;
+    const bOrder = preferredOrder.has(bId) ? preferredOrder.get(bId) : 999;
+    return aOrder - bOrder || getEmployeeAdminLabel(a).localeCompare(getEmployeeAdminLabel(b), "ko");
+  });
+}
+
 function ensureSelectedEmployeeForWorklogView(view) {
   const ids = getWorklogEmployeeIdsForView(view);
   const ownEmployeeId = getOwnEditableEmployeeIdForView(view);
@@ -9679,10 +9711,7 @@ function renderSharedWorklogPanels(log = getSelectedLog()) {
   });
   if (commonChanged) saveState({ fastSave: true });
 
-  const siteKey = selectedEmployee.org?.split(" / ").at(-1) || selectedEmployee.org || "";
-  const coworkerRows = getEmployeeOptions()
-    .filter((employee) => employee.id !== selectedEmployee.id)
-    .filter((employee) => !siteKey || employee.org?.includes(siteKey) || selectedEmployee.org?.includes(employee.org?.split(" / ").at(-1) || ""))
+  const coworkerRows = getCoworkerEmployeesForWorklog(selectedEmployee, activeView)
     .slice(0, 8)
     .map((employee) => {
       const dayLog = getEmployeeLogForDate(employee.id, dateKey);
@@ -9693,11 +9722,26 @@ function renderSharedWorklogPanels(log = getSelectedLog()) {
   coworkers.innerHTML = coworkerRows.length
     ? coworkerRows.map((row) => `
       <article class="coworker-worklog-item">
-        <header><b>${escapeHtml(getEmployeeAdminLabel(row.employee))}</b><span>${row.completed}/${row.tasks.length}</span></header>
+        <header>
+          <b>${escapeHtml(getEmployeeAdminLabel(row.employee))}</b>
+          <span>${row.completed}/${row.tasks.length}</span>
+          <button type="button" data-coworker-worklog-open="${escapeAttr(getEmployeeWorklogId(row.employee))}">업무일지 열기</button>
+        </header>
         ${renderSharedTaskList(row.tasks.map((task) => ({ text: task.text || task.status || "업무" })), "공유된 업무가 없습니다.")}
       </article>
     `).join("")
     : `<p class="shared-empty">같은 사업장 동료 업무일지가 아직 없습니다.</p>`;
+  coworkers.querySelectorAll("[data-coworker-worklog-open]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const employeeId = button.dataset.coworkerWorklogOpen || "";
+      if (!getWorklogEmployeeIdsForView(activeView).includes(employeeId)) return;
+      state.selectedEmployeeId = employeeId;
+      saveState({ fastSave: true });
+      setTodayPageMode("daily");
+      renderEntries();
+      renderGlobalEmployeeIdentity();
+    });
+  });
 }
 
 function renderSharedTaskList(items, emptyText) {

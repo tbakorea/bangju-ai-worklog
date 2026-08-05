@@ -497,7 +497,7 @@ async function checkOverviewCommandBoard(browser) {
   const allStaffSync = await page.evaluate(() => window.eval(`(() => {
     const dateKey = "2026-08-02";
     const staff = [
-      ["bangju-finance-manager", "재무과장", "(주)방주", "재무과장", "finance-manager@example.com"],
+      ["bangju-finance-manager", "최희진", "(주)방주", "재무과장", "finance-manager@example.com"],
       ["bangju-finance-assistant", "이소미", "(주)방주", "재무 대리", "isomi@example.com"],
       ["beyond-fitness-manager", "박주홍", "(주)방주 / 비욘드 피트니스 지사", "센터장", "pjhong0@naver.com"],
       ["fitness-trainer-1", "홍현규", "(주)방주 / 비욘드 피트니스 지사", "트레이너", "trainer@example.com"],
@@ -556,6 +556,39 @@ async function checkOverviewCommandBoard(browser) {
   const allStaffSyncMetrics = JSON.parse(allStaffSync);
   if (allStaffSyncMetrics.failures.length) {
     fail("representative overview should synchronize every assigned employee through canonical worklog IDs", allStaffSync);
+  }
+  const bangjuCoworkerNavigation = await page.evaluate(() => window.eval(`(() => {
+    state.selectedEmployeeId = "bangju-finance-manager";
+    switchView("bangju-log");
+    setTodayPageMode("coworker");
+    const board = document.querySelector("#coworkerWorklogBoard");
+    const names = [...(board?.querySelectorAll(".coworker-worklog-item header b") || [])].map((node) => node.textContent.trim());
+    const boardText = board?.textContent?.replace(/\\s+/g, " ").trim() || "";
+    const isomiButton = board?.querySelector('[data-coworker-worklog-open="bangju-finance-assistant"]');
+    isomiButton?.click();
+    const exitButton = document.getElementById("returnToWorklogOverviewButton");
+    const result = {
+      names,
+      boardText,
+      selectedAfterOpen: state.selectedEmployeeId,
+      pageModeAfterOpen: document.querySelector("#worklogMain")?.dataset.todayPage || "",
+      exitVisible: Boolean(exitButton && !exitButton.hidden),
+      exitText: exitButton?.textContent?.replace(/\\s+/g, " ").trim() || "",
+      fitnessLeak: /박주홍|홍현규|신세민|이다빈|김영채|피트니스/.test(boardText),
+    };
+    exitButton?.click();
+    result.returnedView = document.body.dataset.activeView || "";
+    return JSON.stringify(result);
+  })()`));
+  const bangjuCoworkerMetrics = JSON.parse(bangjuCoworkerNavigation);
+  if (!bangjuCoworkerMetrics.names[0]?.includes("이소미")
+    || bangjuCoworkerMetrics.fitnessLeak
+    || bangjuCoworkerMetrics.selectedAfterOpen !== "bangju-finance-assistant"
+    || bangjuCoworkerMetrics.pageModeAfterOpen !== "daily"
+    || !bangjuCoworkerMetrics.exitVisible
+    || !bangjuCoworkerMetrics.exitText.includes("전체 업무일지")
+    || bangjuCoworkerMetrics.returnedView !== "worklog-overview") {
+    fail("Bangju coworker navigation should open Isomi without leaking fitness staff and return to all worklogs", bangjuCoworkerNavigation);
   }
   const overviewDetailOpen = await page.evaluate(() => window.eval(`(() => {
     state.companyCommonWeeks ||= {};

@@ -16407,6 +16407,18 @@ body[data-layout-mode="phone"] #view-fitness-log .ops-summary-note {
   gap: 8px;
 }
 
+.coworker-worklog-item header button {
+  min-height: 28px;
+  border: 1px solid rgba(15, 59, 46, 0.2);
+  border-radius: 999px;
+  background: rgba(15, 59, 46, 0.06);
+  color: var(--fitness-green);
+  padding: 4px 8px;
+  font-size: 10px;
+  font-weight: 950;
+  white-space: nowrap;
+}
+
 .plain-appointment-row .appointment-item {
   grid-template-columns: minmax(0, 1fr) 20px;
 }

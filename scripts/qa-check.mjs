@@ -213,6 +213,16 @@ check(
 );
 
 check(
+  "coworker worklogs stay inside the active business group",
+  js.includes("function getCoworkerEmployeesForWorklog")
+    && js.includes("getStaffSiteGroupForEmployee(employee)?.id === groupId")
+    && js.includes("data-coworker-worklog-open")
+    && html.includes("전체 업무일지로 돌아가기")
+    && /function updateWorklogOverviewExitButton[\s\S]{0,420}canAccessWorklogOverview\(\)/.test(js),
+  "Bangju, Beyond, and Fitness coworker navigation must not leak employees across business groups"
+);
+
+check(
   "fitness quantities use compact daily/monthly totals",
   /function renderFitnessOpsSummaryButton\(log = getSelectedLog\(\)\)[\s\S]{0,1000}buildFitnessCenterEmployeeMonthRow\(employee, getActiveDateKey\(\)\.slice\(0, 7\)\)/.test(js)
     && /<strong>\$\{paidPtTotal\}\/\$\{monthlyPaidPtTotal\}<\/strong>/.test(js)
