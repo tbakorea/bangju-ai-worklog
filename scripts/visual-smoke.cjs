@@ -2606,6 +2606,10 @@ async function checkFitnessCenterReportConfirmation(browser) {
       log.clockIn = "06:00";
       log.clockOut = "12:00";
       log.fitnessOps = { ...createFitnessOps(), ptRegular: "2", consultation: "1" };
+      log.fitnessOpsManual = { ...createFitnessOpsManual(), ptRegular: true, consultation: true };
+      const priorManagerLog = getEmployeeLogForDate("beyond-fitness-manager", "2026-07-23");
+      priorManagerLog.fitnessOps = { ...createFitnessOps(), ptRegular: "3", ptFree: "1" };
+      priorManagerLog.fitnessOpsManual = { ...createFitnessOpsManual(), ptRegular: true, ptFree: true };
       const dabinLog = getEmployeeLogForDate("fitness-weekday-info", "2026-07-24");
       dabinLog.clockIn = "16:00";
       dabinLog.clockOut = "20:00";
@@ -2693,6 +2697,16 @@ async function checkFitnessCenterReportConfirmation(browser) {
         reportHtml: renderFitnessReportTemplate(model),
       };
     })(),
+    managerClassStats: (() => {
+      const employee = getFitnessCenterEmployees().find((item) => item.id === "beyond-fitness-manager");
+      const model = buildFitnessReportModel({ employee, dateKey: "2026-07-24", isCenter: false });
+      return {
+        stats: model.classStats,
+        labels: model.kpis.map(([label]) => label),
+        values: model.kpis.map(([, value]) => value),
+        html: renderFitnessReportTemplate(model),
+      };
+    })(),
   }));
   if (before.activeView !== "fitness-log" || !before.pageTitle.includes("센터")) {
     fail("fitness center report confirmation should start on center page", JSON.stringify(before));
@@ -2737,6 +2751,18 @@ async function checkFitnessCenterReportConfirmation(browser) {
       fail("Shin Se-min's personal report should preserve every worklog source field", `${label} missing`);
     }
   });
+  if (before.managerClassStats.stats?.paid?.today !== 2
+    || before.managerClassStats.stats?.paid?.month !== 5
+    || before.managerClassStats.stats?.free?.today !== 0
+    || before.managerClassStats.stats?.free?.month !== 1
+    || before.managerClassStats.labels[0] !== "유료PT"
+    || before.managerClassStats.labels[1] !== "무료PT"
+    || before.managerClassStats.values[0] !== "2/5"
+    || before.managerClassStats.values[1] !== "0/1"
+    || !before.managerClassStats.html.includes("2/5")
+    || !before.managerClassStats.html.includes("0/1")) {
+    fail("personal fitness report should separate paid/free PT as today/month totals", JSON.stringify(before.managerClassStats));
+  }
   ["pjhong1", "pjhong9"].forEach((retiredEmailPrefix) => {
     if (before.centerRows.some((row) => row.includes(retiredEmailPrefix))) {
       fail("fitness center roster should hide retired Park manager accounts", `${retiredEmailPrefix} leaked into ${JSON.stringify(before.centerRows)}`);

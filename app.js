@@ -17052,6 +17052,29 @@ function getFitnessReportIssueRowsHtml(model = {}) {
   `;
 }
 
+function getFitnessReportClassStats(employee = {}, dateKey = getActiveDateKey(), isCenter = false, dailyTotals = {}) {
+  const monthPrefix = String(dateKey || getActiveDateKey()).slice(0, 7);
+  const roster = isCenter ? getFitnessCenterEmployees() : [employee];
+  const monthly = roster
+    .filter(isAssignedWorklogEmployee)
+    .reduce((summary, item) => {
+      const row = buildFitnessCenterEmployeeMonthRow(item, monthPrefix);
+      summary.paid += numberValue(row.paidPtTotal) + numberValue(row.ops?.ptOther);
+      summary.free += numberValue(row.freePtTotal);
+      return summary;
+    }, { paid: 0, free: 0 });
+  return {
+    paid: {
+      today: numberValue(dailyTotals.ptRegular) + numberValue(dailyTotals.ptOther),
+      month: monthly.paid,
+    },
+    free: {
+      today: numberValue(dailyTotals.ptFree),
+      month: monthly.free,
+    },
+  };
+}
+
 function buildFitnessReportModel(options = {}) {
   const page = getCurrentFitnessLogPage();
   const dateKey = options.dateKey || getActiveDateKey();
@@ -17066,6 +17089,7 @@ function buildFitnessReportModel(options = {}) {
   const nextLogEntries = getFitnessReportLogEntries(getNextDateKey(dateKey), isCenter, employee);
   const entries = logEntries.flatMap(({ log }) => (log.schedule || []).filter((entry) => entry.time && (isCenter ? getScheduleEntryText(entry) : true)));
   const { rows: staffRows, totals } = summarizeFitnessReportRows(logEntries);
+  const classStats = getFitnessReportClassStats(employee, dateKey, isCenter, totals);
   const title = isCenter ? "< 비욘드 피트니스 운영일지 >" : "< 비욘드 피트니스 업무일지 >";
   const confirmation = isCenter ? getFitnessCenterReportRecord(dateKey) : null;
   const weatherEmployee = isCenter
@@ -17091,6 +17115,7 @@ function buildFitnessReportModel(options = {}) {
     weatherSiteKey,
     staffRows,
     totals,
+    classStats,
     approvalColumns: ["담당", "팀장", "센터장"],
     topTasks: getFitnessReportTaskRows(logEntries, { limit: isCenter ? 3 : Infinity, minRows: 3 }),
     tomorrowTasks: getFitnessReportTaskRows(nextLogEntries, { limit: isCenter ? 3 : Infinity, minRows: 3 }),
@@ -17099,12 +17124,12 @@ function buildFitnessReportModel(options = {}) {
       text: getScheduleEntryText(entry),
     })),
     kpis: [
-      ["수업", `${numberValue(totals.ptTotal)}건`],
+      ["유료PT", `${classStats.paid.today}/${classStats.paid.month}`],
+      ["무료PT", `${classStats.free.today}/${classStats.free.month}`],
       ["상담", `${numberValue(totals.consultation)}건`],
       ["계약", `${numberValue(totals.contractTotal)}건`],
       ["홍보", `${numberValue(totals.outbound)}건`],
       ["마케팅", `${numberValue(totals.outsideSales)}건`],
-      ["일일권", `${numberValue(totals.dayPass)}건`],
     ],
     issueRows: getFitnessReportRecordRows(logEntries, { isCenter, totals, weatherText }),
     coaching: getFitnessCoachingMessages(),
