@@ -155,9 +155,12 @@ async function checkPhoneWorklog(browser) {
       taskWidth: taskPanel?.getBoundingClientRect().width || 0,
       scheduleWidth: schedulePanel?.getBoundingClientRect().width || 0,
       reportDisplay: getComputedStyle(reportView).display,
+      taskAiBefore: getComputedStyle(document.querySelector(".day-task-panel .ai-section-button")).display,
+      scheduleAiBefore: getComputedStyle(document.querySelector(".day-schedule-panel .ai-section-button")).display,
     };
   });
   if (metrics.reportDisplay !== "none") fail("phone inactive report view leaked", metrics.reportDisplay);
+  if (metrics.taskAiBefore !== "none" || metrics.scheduleAiBefore !== "none") fail("worklog coaching buttons should stay hidden outside expanded panels", JSON.stringify(metrics));
   const widthRatio = metrics.taskWidth / Math.max(1, metrics.scheduleWidth);
   if (widthRatio < 0.82 || widthRatio > 1.18) fail("phone task/schedule split is not balanced", String(widthRatio));
 
@@ -174,8 +177,11 @@ async function checkPhoneWorklog(browser) {
 
   await page.click(".day-task-panel [data-mobile-focus-open='tasks']");
   await page.waitForTimeout(100);
-  const panelTapFocus = await page.evaluate(() => document.querySelector("#worklogMain")?.classList.contains("is-focus-tasks"));
-  if (!panelTapFocus) fail("phone worklog task expand button should open focus mode");
+  const panelTapFocus = await page.evaluate(() => ({
+    focused: document.querySelector("#worklogMain")?.classList.contains("is-focus-tasks"),
+    aiVisible: getComputedStyle(document.querySelector(".day-task-panel .ai-section-button")).display !== "none",
+  }));
+  if (!panelTapFocus.focused || !panelTapFocus.aiVisible) fail("phone worklog task expand button should open focus mode with coaching", JSON.stringify(panelTapFocus));
 
   const taskFocusScroll = await page.evaluate(() => {
     const panel = document.querySelector(".day-task-panel");
@@ -209,8 +215,11 @@ async function checkPhoneWorklog(browser) {
 
   await page.click(".day-task-panel [data-mobile-focus-close]");
   await page.waitForTimeout(150);
-  const taskRestored = await page.evaluate(() => !document.querySelector("#worklogMain")?.classList.contains("is-mobile-focus-active"));
-  if (!taskRestored) fail("phone worklog task focus close button did not restore split mode");
+  const taskRestored = await page.evaluate(() => ({
+    restored: !document.querySelector("#worklogMain")?.classList.contains("is-mobile-focus-active"),
+    aiHidden: getComputedStyle(document.querySelector(".day-task-panel .ai-section-button")).display === "none",
+  }));
+  if (!taskRestored.restored || !taskRestored.aiHidden) fail("phone worklog task focus close button did not restore split mode", JSON.stringify(taskRestored));
 
   await page.click(".day-schedule-panel [data-mobile-focus-open='schedule']");
   await page.waitForTimeout(100);
@@ -1535,6 +1544,83 @@ async function checkFitnessManagerCanEditOwnWorklog(browser) {
   if (parsed.scheduleTimes[0] !== "06:00" || parsed.scheduleTimes.at(-1) !== "24:00" || parsed.scheduleTimes.includes("08:00") === false) {
     fail("Park fitness manager schedule should follow 06:00-24:00 profile work hours", metrics);
   }
+  const fitnessAiBefore = await page.evaluate(() => ({
+    task: getComputedStyle(document.querySelector("#view-fitness-log .fitness-log-task-panel .ai-section-button")).display,
+    schedule: getComputedStyle(document.querySelector("#view-fitness-log .fitness-log-schedule-panel .ai-section-button")).display,
+  }));
+  if (fitnessAiBefore.task !== "none" || fitnessAiBefore.schedule !== "none") {
+    fail("fitness coaching buttons should stay hidden outside expanded panels", JSON.stringify(fitnessAiBefore));
+  }
+  await page.click('#view-fitness-log .fitness-log-task-panel [data-mobile-focus-open="tasks"]');
+  await page.waitForTimeout(120);
+  const fitnessTaskFocus = await page.evaluate(() => {
+    const view = document.querySelector("#view-fitness-log");
+    const panel = view?.querySelector(".fitness-log-task-panel");
+    const board = panel?.querySelector(".worklog-task-board");
+    const rect = panel?.getBoundingClientRect();
+    const close = panel?.querySelector("[data-mobile-focus-close]");
+    return {
+      focused: view?.classList.contains("is-focus-tasks") || false,
+      bodyLocked: document.body.classList.contains("is-fitness-focus-open"),
+      position: panel ? getComputedStyle(panel).position : "",
+      viewportFit: Boolean(rect && Math.abs(rect.left) < 2 && Math.abs(rect.top) < 2
+        && Math.abs(rect.width - innerWidth) < 2 && Math.abs(rect.height - innerHeight) < 2),
+      scheduleHidden: getComputedStyle(view.querySelector(".fitness-log-schedule-panel")).display === "none",
+      aiVisible: getComputedStyle(panel.querySelector(".ai-section-button")).display !== "none",
+      closeVisible: getComputedStyle(close).display !== "none",
+      closeLabel: close?.textContent?.trim() || "",
+      role: panel?.getAttribute("role") || "",
+      modal: panel?.getAttribute("aria-modal") || "",
+      scrollable: ["auto", "scroll"].includes(getComputedStyle(board).overflowY),
+    };
+  });
+  if (!fitnessTaskFocus.focused || !fitnessTaskFocus.bodyLocked || fitnessTaskFocus.position !== "fixed"
+    || !fitnessTaskFocus.viewportFit || !fitnessTaskFocus.scheduleHidden || !fitnessTaskFocus.aiVisible
+    || !fitnessTaskFocus.closeVisible || fitnessTaskFocus.closeLabel !== "닫기"
+    || fitnessTaskFocus.role !== "dialog" || fitnessTaskFocus.modal !== "true" || !fitnessTaskFocus.scrollable) {
+    fail("fitness priority-task expand button should open a full-screen coaching workspace", JSON.stringify(fitnessTaskFocus));
+  }
+  await page.click("#view-fitness-log .fitness-log-task-panel [data-mobile-focus-close]");
+  await page.waitForTimeout(120);
+  const fitnessTaskRestored = await page.evaluate(() => ({
+    restored: !document.querySelector("#view-fitness-log")?.classList.contains("is-mobile-focus-active"),
+    bodyUnlocked: !document.body.classList.contains("is-fitness-focus-open"),
+    aiHidden: getComputedStyle(document.querySelector("#view-fitness-log .fitness-log-task-panel .ai-section-button")).display === "none",
+  }));
+  if (!fitnessTaskRestored.restored || !fitnessTaskRestored.bodyUnlocked || !fitnessTaskRestored.aiHidden) {
+    fail("fitness priority-task close button should restore the normal worklog", JSON.stringify(fitnessTaskRestored));
+  }
+  await page.click('#view-fitness-log .fitness-log-schedule-panel [data-mobile-focus-open="schedule"]');
+  await page.waitForTimeout(120);
+  const fitnessScheduleFocus = await page.evaluate(() => {
+    const view = document.querySelector("#view-fitness-log");
+    const panel = view?.querySelector(".fitness-log-schedule-panel");
+    const list = panel?.querySelector(".worklog-appointment-list");
+    const rect = panel?.getBoundingClientRect();
+    const close = panel?.querySelector("[data-mobile-focus-close]");
+    return {
+      focused: view?.classList.contains("is-focus-schedule") || false,
+      bodyLocked: document.body.classList.contains("is-fitness-focus-open"),
+      position: panel ? getComputedStyle(panel).position : "",
+      viewportFit: Boolean(rect && Math.abs(rect.left) < 2 && Math.abs(rect.top) < 2
+        && Math.abs(rect.width - innerWidth) < 2 && Math.abs(rect.height - innerHeight) < 2),
+      taskHidden: getComputedStyle(view.querySelector(".fitness-log-task-panel")).display === "none",
+      aiVisible: getComputedStyle(panel.querySelector(".ai-section-button")).display !== "none",
+      closeVisible: getComputedStyle(close).display !== "none",
+      closeLabel: close?.textContent?.trim() || "",
+      role: panel?.getAttribute("role") || "",
+      modal: panel?.getAttribute("aria-modal") || "",
+      scrollable: ["auto", "scroll"].includes(getComputedStyle(list).overflowY),
+    };
+  });
+  if (!fitnessScheduleFocus.focused || !fitnessScheduleFocus.bodyLocked || fitnessScheduleFocus.position !== "fixed"
+    || !fitnessScheduleFocus.viewportFit || !fitnessScheduleFocus.taskHidden || !fitnessScheduleFocus.aiVisible
+    || !fitnessScheduleFocus.closeVisible || fitnessScheduleFocus.closeLabel !== "닫기"
+    || fitnessScheduleFocus.role !== "dialog" || fitnessScheduleFocus.modal !== "true" || !fitnessScheduleFocus.scrollable) {
+    fail("fitness schedule expand button should open a full-screen coaching workspace", JSON.stringify(fitnessScheduleFocus));
+  }
+  await page.click("#view-fitness-log .fitness-log-schedule-panel [data-mobile-focus-close]");
+  await page.waitForTimeout(120);
   await page.fill("#fitnessTaskBoard .task-text-input", "박주홍 센터 운영 입력 저장 확인");
   await page.click(".fitness-appointment-row .fitness-appointment-summary");
   await page.waitForTimeout(120);
@@ -2392,8 +2478,14 @@ async function checkSectionAiWorklogActions(browser) {
     window.switchView?.("bangju-log");
   });
   await page.waitForTimeout(250);
+  await page.click('.worklog-task-panel [data-mobile-focus-open="tasks"]');
+  await page.waitForTimeout(120);
   await page.click('.worklog-task-panel [data-section-ai="tasks"]');
   await page.waitForTimeout(250);
+  await page.click('.worklog-task-panel [data-mobile-focus-close]');
+  await page.waitForTimeout(120);
+  await page.click('.worklog-schedule-panel [data-mobile-focus-open="schedule"]');
+  await page.waitForTimeout(120);
   await page.click('.worklog-schedule-panel [data-section-ai="schedule"]');
   await page.waitForTimeout(250);
   const metrics = await page.evaluate(() => {

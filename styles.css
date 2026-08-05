@@ -24010,6 +24010,118 @@ body.physical-phone-device[data-active-view="worklog-overview"] .overview-date-n
   font-variant-numeric: tabular-nums !important;
 }
 
+/* Focused worklog editor: coaching actions belong to the expanded workspace. */
+#view-today .ai-section-button,
+#view-fitness-log .ai-section-button {
+  display: none !important;
+}
+
+#view-today .worklog-main.is-focus-tasks .day-task-panel .ai-section-button,
+#view-today .worklog-main.is-focus-schedule .day-schedule-panel .ai-section-button,
+#view-fitness-log.is-focus-tasks .fitness-log-task-panel .ai-section-button,
+#view-fitness-log.is-focus-schedule .fitness-log-schedule-panel .ai-section-button {
+  display: inline-flex !important;
+  align-items: center;
+  justify-content: center;
+}
+
+body[data-layout-mode="phone"] #view-today .worklog-main.is-mobile-focus-active .worklog-panel h3,
+body.physical-phone-device #view-today .worklog-main.is-mobile-focus-active .worklog-panel h3 {
+  grid-template-columns: 5px minmax(0, 1fr) repeat(4, auto) !important;
+}
+
+#view-fitness-log .mobile-focus-open {
+  display: inline-flex !important;
+}
+
+body.is-fitness-focus-open {
+  overflow: hidden !important;
+  overscroll-behavior: none;
+}
+
+body.is-fitness-focus-open::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: 11990;
+  background: rgba(10, 24, 18, 0.58);
+  backdrop-filter: blur(10px);
+}
+
+#view-fitness-log.is-focus-tasks .fitness-log-schedule-panel,
+#view-fitness-log.is-focus-schedule .fitness-log-task-panel {
+  display: none !important;
+}
+
+#view-fitness-log.is-focus-tasks .fitness-log-task-panel,
+#view-fitness-log.is-focus-schedule .fitness-log-schedule-panel {
+  position: fixed !important;
+  inset: 0 !important;
+  z-index: 12000 !important;
+  display: flex !important;
+  flex-direction: column;
+  width: 100vw !important;
+  max-width: none !important;
+  height: 100dvh !important;
+  max-height: none !important;
+  margin: 0 !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  background: var(--nordic-sheet) !important;
+  padding: max(10px, env(safe-area-inset-top)) max(10px, env(safe-area-inset-right)) max(10px, env(safe-area-inset-bottom)) max(10px, env(safe-area-inset-left)) !important;
+  overflow: hidden !important;
+  box-shadow: none !important;
+}
+
+#view-fitness-log.is-mobile-focus-active .fitness-log-task-panel h3,
+#view-fitness-log.is-mobile-focus-active .fitness-log-schedule-panel h3 {
+  position: sticky !important;
+  top: 0 !important;
+  z-index: 3;
+  flex: 0 0 auto;
+  min-height: 56px !important;
+  margin: 0 !important;
+  padding: 8px 4px 10px !important;
+  background: var(--nordic-sheet) !important;
+}
+
+#view-fitness-log.is-mobile-focus-active .worklog-task-board,
+#view-fitness-log.is-mobile-focus-active .worklog-appointment-list {
+  flex: 1 1 auto;
+  min-height: 0;
+  max-height: none !important;
+  padding: 8px 4px max(28px, env(safe-area-inset-bottom)) !important;
+  overflow-x: hidden !important;
+  overflow-y: auto !important;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+}
+
+#view-fitness-log.is-mobile-focus-active .mobile-focus-open {
+  display: none !important;
+}
+
+#view-fitness-log.is-mobile-focus-active .mobile-focus-done {
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  width: auto !important;
+  min-width: 58px !important;
+  min-height: 36px !important;
+  border-radius: 999px !important;
+  background: var(--fitness-green) !important;
+  color: var(--nordic-sheet) !important;
+  padding: 7px 14px !important;
+  font-size: 12px !important;
+  line-height: 1 !important;
+}
+
+#view-fitness-log.is-mobile-focus-active .mobile-focus-done::before,
+#view-fitness-log.is-mobile-focus-active .mobile-focus-done::after {
+  display: none !important;
+  content: none !important;
+}
+
 /* Keep this at the absolute end so page-specific display rules never stack
    inactive sections under the active view. */
 .worklog-shell > .worklog-view:not(.is-active) {

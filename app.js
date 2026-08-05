@@ -8559,7 +8559,10 @@ function setupMobileFocusOpenButtons() {
     button.onclick = (event) => {
       event.preventDefault();
       event.stopPropagation();
-      if (button.closest("#view-fitness-log")) return;
+      if (button.closest("#view-fitness-log")) {
+        setFitnessMobileFocusMode(button.dataset.mobileFocusOpen || "split");
+        return;
+      }
       setMobileDayFocusMode(button.dataset.mobileFocusOpen || "split");
     };
   });
@@ -8625,8 +8628,7 @@ function setupMobileFocusCloseButtons() {
   window.addEventListener("resize", () => {
     applyGlobalViewMode();
     applyMobileDayFocusMode();
-    if (!isMobilePhoneFocusLayout()) resetFitnessMobileFocusToSplit({ blur: false });
-    else applyFitnessMobileFocusMode();
+    applyFitnessMobileFocusMode();
   });
 }
 
@@ -8667,17 +8669,34 @@ function setMobileWorklogFocus(panel) {
 }
 
 function setFitnessMobileFocusMode(mode) {
-  fitnessMobileFocusMode = isMobilePhoneFocusLayout() ? mode : "split";
+  fitnessMobileFocusMode = mode || "split";
   applyFitnessMobileFocusMode();
+  if (fitnessMobileFocusMode !== "split") {
+    window.setTimeout(() => {
+      document.querySelector("#view-fitness-log.is-mobile-focus-active [data-mobile-focus-close]")?.focus();
+    }, 0);
+  }
 }
 
 function applyFitnessMobileFocusMode() {
   const view = document.getElementById("view-fitness-log");
-  const mode = isMobilePhoneFocusLayout() ? fitnessMobileFocusMode : "split";
+  const mode = fitnessMobileFocusMode;
   if (!view) return;
   view.classList.toggle("is-focus-tasks", mode === "tasks");
   view.classList.toggle("is-focus-schedule", mode === "schedule");
   view.classList.toggle("is-mobile-focus-active", mode !== "split");
+  document.body.classList.toggle("is-fitness-focus-open", mode !== "split" && activeView === "fitness-log");
+  view.querySelectorAll(".fitness-log-task-panel, .fitness-log-schedule-panel").forEach((panel) => {
+    const panelMode = panel.classList.contains("fitness-log-task-panel") ? "tasks" : "schedule";
+    const isActivePanel = mode === panelMode;
+    if (isActivePanel) {
+      panel.setAttribute("role", "dialog");
+      panel.setAttribute("aria-modal", "true");
+    } else {
+      panel.removeAttribute("role");
+      panel.removeAttribute("aria-modal");
+    }
+  });
 }
 
 function resetFitnessMobileFocusToSplit({ blur = true } = {}) {
@@ -17875,6 +17894,7 @@ function switchView(view) {
   if (view === "premium" && !canAccessPremiumOperations()) view = getUserWorklogView();
   if (view === "worklog") view = getUserWorklogView();
   view = view === "today" ? "bangju-log" : view;
+  if (view !== "fitness-log" && fitnessMobileFocusMode !== "split") resetFitnessMobileFocusToSplit({ blur: true });
   ensureSelectedEmployeeForWorklogView(view);
   activeView = view;
   document.body.dataset.activeView = view;
@@ -18919,6 +18939,9 @@ document.addEventListener("visibilitychange", () => {
     return;
   }
   if (activeView === "worklog-overview" && canAccessAllWorklogs()) refreshVisibleStaffWorklogsForActiveDate();
+});
+document.addEventListener("keydown", (event) => {
+  if (event.key === "Escape" && fitnessMobileFocusMode !== "split") resetFitnessMobileFocusToSplit({ blur: true });
 });
 window.addEventListener("pagehide", () => {
   flushPendingRemoteSaves();
