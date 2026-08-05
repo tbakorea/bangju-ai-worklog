@@ -1572,12 +1572,15 @@ async function checkFitnessManagerCanEditOwnWorklog(browser) {
       role: panel?.getAttribute("role") || "",
       modal: panel?.getAttribute("aria-modal") || "",
       scrollable: ["auto", "scroll"].includes(getComputedStyle(board).overflowY),
+      maxRowHeight: Math.max(0, ...[...panel.querySelectorAll(".task-row")].map((row) => row.getBoundingClientRect().height)),
+      boardAlign: getComputedStyle(board).alignContent,
     };
   });
   if (!fitnessTaskFocus.focused || !fitnessTaskFocus.bodyLocked || fitnessTaskFocus.position !== "fixed"
     || !fitnessTaskFocus.viewportFit || !fitnessTaskFocus.scheduleHidden || !fitnessTaskFocus.aiVisible
     || !fitnessTaskFocus.closeVisible || fitnessTaskFocus.closeLabel !== "닫기"
-    || fitnessTaskFocus.role !== "dialog" || fitnessTaskFocus.modal !== "true" || !fitnessTaskFocus.scrollable) {
+    || fitnessTaskFocus.role !== "dialog" || fitnessTaskFocus.modal !== "true" || !fitnessTaskFocus.scrollable
+    || fitnessTaskFocus.maxRowHeight > 72 || fitnessTaskFocus.boardAlign !== "start") {
     fail("fitness priority-task expand button should open a full-screen coaching workspace", JSON.stringify(fitnessTaskFocus));
   }
   await page.click("#view-fitness-log .fitness-log-task-panel [data-mobile-focus-close]");
@@ -1619,6 +1622,30 @@ async function checkFitnessManagerCanEditOwnWorklog(browser) {
     || fitnessScheduleFocus.role !== "dialog" || fitnessScheduleFocus.modal !== "true" || !fitnessScheduleFocus.scrollable) {
     fail("fitness schedule expand button should open a full-screen coaching workspace", JSON.stringify(fitnessScheduleFocus));
   }
+  await page.click("#view-fitness-log .fitness-log-schedule-panel .fitness-appointment-summary");
+  await page.waitForTimeout(120);
+  const fitnessScheduleEditorLayer = await page.evaluate(() => {
+    const panel = document.querySelector("#view-fitness-log .fitness-log-schedule-panel");
+    const editor = document.querySelector("#fitnessScheduleEditor");
+    const backdrop = document.querySelector("#fitnessScheduleEditorBackdrop");
+    const typeButton = editor?.querySelector("[data-fitness-schedule-type]");
+    const editorRect = editor?.getBoundingClientRect();
+    return {
+      editorVisible: Boolean(editor && !editor.hidden && getComputedStyle(editor).visibility !== "hidden" && Number(getComputedStyle(editor).opacity) > 0),
+      backdropVisible: Boolean(backdrop && !backdrop.hidden),
+      editorAbovePanel: Number(getComputedStyle(editor).zIndex) > Number(getComputedStyle(panel).zIndex),
+      backdropAbovePanel: Number(getComputedStyle(backdrop).zIndex) > Number(getComputedStyle(panel).zIndex),
+      typeButtonVisible: Boolean(typeButton && getComputedStyle(typeButton).display !== "none" && typeButton.getBoundingClientRect().height > 0),
+      insideViewport: Boolean(editorRect && editorRect.top >= 0 && editorRect.bottom <= innerHeight + 1),
+    };
+  });
+  if (!fitnessScheduleEditorLayer.editorVisible || !fitnessScheduleEditorLayer.backdropVisible
+    || !fitnessScheduleEditorLayer.editorAbovePanel || !fitnessScheduleEditorLayer.backdropAbovePanel
+    || !fitnessScheduleEditorLayer.typeButtonVisible || !fitnessScheduleEditorLayer.insideViewport) {
+    fail("fitness schedule type editor should stay visible above the full-screen schedule", JSON.stringify(fitnessScheduleEditorLayer));
+  }
+  await page.click("#fitnessScheduleEditorClose");
+  await page.waitForTimeout(120);
   await page.click("#view-fitness-log .fitness-log-schedule-panel [data-mobile-focus-close]");
   await page.waitForTimeout(120);
   await page.fill("#fitnessTaskBoard .task-text-input", "박주홍 센터 운영 입력 저장 확인");

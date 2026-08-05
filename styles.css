@@ -24097,6 +24097,25 @@ body.is-fitness-focus-open::before {
   -webkit-overflow-scrolling: touch;
 }
 
+#view-fitness-log.is-focus-tasks .worklog-task-board {
+  align-content: start !important;
+  grid-auto-rows: minmax(44px, auto);
+}
+
+#view-fitness-log.is-focus-tasks .worklog-task-board .task-row {
+  align-self: start;
+  width: 100%;
+  min-height: 44px !important;
+}
+
+body.is-fitness-focus-open .fitness-schedule-editor-backdrop {
+  z-index: 12010;
+}
+
+body.is-fitness-focus-open .fitness-schedule-editor {
+  z-index: 12011;
+}
+
 #view-fitness-log.is-mobile-focus-active .mobile-focus-open {
   display: none !important;
 }
