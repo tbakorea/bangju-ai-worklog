@@ -395,6 +395,8 @@ async function checkOverviewCommandBoard(browser) {
     const dateTitle = document.querySelector("#overviewDateTitle");
     const header = document.querySelector(".worklog-header");
     const hero = document.querySelector(".worklog-overview-hero");
+    const dateYear = document.querySelector("#overviewDateYear")?.getBoundingClientRect();
+    const dateDay = document.querySelector("#overviewDateDay")?.getBoundingClientRect();
     const headerRect = header?.getBoundingClientRect();
     const heroRect = hero?.getBoundingClientRect();
     const hiddenTaskChrome = [...document.querySelectorAll(".overview-task-marker, .overview-priority-box")]
@@ -408,6 +410,7 @@ async function checkOverviewCommandBoard(browser) {
       subtitleCount: document.querySelectorAll(".worklog-overview-hero > div:first-child > span").length,
       dateText: dateTitle?.textContent?.trim() || "",
       dateFits: dateTitle ? dateTitle.scrollWidth <= dateTitle.clientWidth + 2 : false,
+      dateSingleLine: Boolean(dateYear && dateDay && Math.abs(dateYear.top - dateDay.top) <= 2),
       headerHeroGap: headerRect && heroRect ? heroRect.top - headerRect.bottom : 0,
       heroHeight: heroRect?.height || 0,
       scopeCount: document.querySelectorAll("[data-overview-scope]").length,
@@ -439,6 +442,7 @@ async function checkOverviewCommandBoard(browser) {
   if (metrics.titleHeight > 45) fail("overview title wrapped or became too tall", `${metrics.titleHeight}px`);
   if (metrics.subtitleCount) fail("overview subtitle should be removed", String(metrics.subtitleCount));
   if (!metrics.dateFits) fail("overview date title is clipped", metrics.dateText);
+  if (!metrics.dateSingleLine) fail("overview date should stay on one line", metrics.dateText);
   if (metrics.dateText !== "2026.08.02(日)") fail("overview date should keep year, month, day, and weekday", metrics.dateText);
   if (metrics.headerHeroGap < 10) fail("overview header overlaps command board", `${metrics.headerHeroGap}px`);
   if (metrics.heroHeight > 190) fail("overview hero is too tall on phone mode", `${metrics.heroHeight}px`);
@@ -826,6 +830,52 @@ async function checkOverviewCommandBoard(browser) {
   })()`));
   if (localUnsyncedProtection !== "아직 전송되지 않은 이소미 업무") {
     fail("employee login should not overwrite a newer unsynced local worklog with an older remote snapshot", localUnsyncedProtection);
+  }
+  await page.setViewportSize({ width: 1366, height: 900 });
+  await page.evaluate(() => {
+    authState.user = { id: "owner-user", email: "j3010@ymail.com" };
+    state.profile = {
+      ...defaultProfile,
+      email: "j3010@ymail.com",
+      role: "대표",
+      name: "Benny",
+      nickname: "베니",
+      approvalStatus: "approved",
+    };
+    state.worklogOverviewScope = "all";
+    setSelectedDateKey("2026-08-02");
+    switchView("worklog-overview");
+    renderResponsiveMode();
+  });
+  await page.waitForTimeout(250);
+  const desktopMetrics = await page.evaluate(() => {
+    const shell = document.querySelector(".worklog-shell")?.getBoundingClientRect();
+    const hero = document.querySelector(".worklog-overview-hero")?.getBoundingClientRect();
+    const dateTitle = document.querySelector("#overviewDateTitle");
+    const dateYear = document.querySelector("#overviewDateYear")?.getBoundingClientRect();
+    const dateDay = document.querySelector("#overviewDateDay")?.getBoundingClientRect();
+    const kpiTops = [...document.querySelectorAll(".overview-all-kpis article")].map((node) => Math.round(node.getBoundingClientRect().top));
+    const businessTops = [...document.querySelectorAll(".overview-business-snapshot")].slice(0, 3).map((node) => Math.round(node.getBoundingClientRect().top));
+    return {
+      layoutMode: document.body.dataset.layoutMode || "",
+      shellWidth: shell?.width || 0,
+      heroHeight: hero?.height || 0,
+      dateText: dateTitle?.textContent?.trim() || "",
+      dateFits: dateTitle ? dateTitle.scrollWidth <= dateTitle.clientWidth + 2 : false,
+      dateSingleLine: Boolean(dateYear && dateDay && Math.abs(dateYear.top - dateDay.top) <= 2),
+      kpiColumns: new Set(kpiTops).size === 1 ? kpiTops.length : 0,
+      businessColumns: businessTops.filter((top) => top === businessTops[0]).length,
+      horizontalOverflow: document.documentElement.scrollWidth - document.documentElement.clientWidth,
+    };
+  });
+  if (desktopMetrics.layoutMode !== "wide" || desktopMetrics.shellWidth < 1100) {
+    fail("representative overview should use the desktop canvas", JSON.stringify(desktopMetrics));
+  }
+  if (!desktopMetrics.dateFits || !desktopMetrics.dateSingleLine || desktopMetrics.dateText !== "2026.08.02(日)") {
+    fail("desktop overview date should stay intact on one line", JSON.stringify(desktopMetrics));
+  }
+  if (desktopMetrics.heroHeight > 115 || desktopMetrics.kpiColumns !== 6 || desktopMetrics.businessColumns < 3 || desktopMetrics.horizontalOverflow > 2) {
+    fail("desktop overview should keep a compact information-dense grid", JSON.stringify(desktopMetrics));
   }
   if (errors.length) fail("overview page errors", errors.join(" | "));
   await page.close();

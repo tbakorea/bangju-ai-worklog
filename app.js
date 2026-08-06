@@ -3175,7 +3175,7 @@ function renderResponsiveMode() {
   const isPhoneWidth = window.matchMedia("(max-width: 640px)").matches;
   const mode = isNarrow ? "narrow" : "expanded";
   const viewMode = getGlobalViewMode();
-  const isExpandedWorklog = !isNarrow && ["today", "bangju-log", "beyond-log", "fitness-log"].includes(activeView);
+  const isExpandedWorklog = !isNarrow && ["today", "bangju-log", "beyond-log", "fitness-log", "worklog-overview"].includes(activeView);
   const layoutMode = isPhoneWidth || (!isExpandedWorklog && viewMode === "ceo") ? "phone" : "wide";
   localStorage.setItem(layoutModeStorageKey, layoutMode);
   document.body.dataset.deviceMode = mode;

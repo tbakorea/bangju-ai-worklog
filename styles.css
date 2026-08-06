@@ -24559,6 +24559,217 @@ body.is-fitness-focus-open .fitness-schedule-editor {
   }
 }
 
+/* Representative worklog overview: keep the date as one fluid line and use
+   the available canvas for information instead of preserving a phone frame. */
+.overview-date-nav #overviewDateTitle {
+  display: inline-flex;
+  flex-wrap: nowrap;
+  align-items: baseline;
+  justify-content: center;
+  min-width: 0;
+  max-width: 100%;
+  white-space: nowrap;
+}
+
+.overview-date-nav #overviewDateYear,
+.overview-date-nav #overviewDateDay {
+  display: inline;
+  flex: 0 0 auto;
+  font: inherit;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+@media (min-width: 761px) {
+  body[data-active-view="worklog-overview"]:not(.physical-phone-device) .worklog-shell {
+    width: min(1360px, calc(100vw - 28px)) !important;
+    max-width: none !important;
+    gap: 8px !important;
+    margin: 14px auto 28px !important;
+    padding: 0 !important;
+  }
+
+  body[data-active-view="worklog-overview"]:not(.physical-phone-device) .worklog-overview-view.is-active {
+    gap: 9px !important;
+    padding: 12px !important;
+  }
+
+  body[data-active-view="worklog-overview"]:not(.physical-phone-device) .worklog-overview-hero {
+    grid-template-columns: minmax(320px, 1fr) minmax(390px, 520px) !important;
+    align-items: center !important;
+    gap: 14px !important;
+    min-height: 82px !important;
+    padding: 12px 16px !important;
+    padding-right: 16px !important;
+    border-radius: 19px !important;
+  }
+
+  body[data-active-view="worklog-overview"]:not(.physical-phone-device) .worklog-overview-hero > div:first-child {
+    padding-right: 76px;
+  }
+
+  body[data-active-view="worklog-overview"]:not(.physical-phone-device) .worklog-overview-hero h2 {
+    font-size: clamp(29px, 3vw, 40px) !important;
+    line-height: 1 !important;
+    white-space: nowrap !important;
+  }
+
+  body[data-active-view="worklog-overview"]:not(.physical-phone-device) .overview-date-nav {
+    width: min(100%, 520px) !important;
+    gap: 6px !important;
+  }
+
+  body[data-active-view="worklog-overview"]:not(.physical-phone-device) .overview-date-nav #overviewDateTitle {
+    overflow: hidden;
+    font-size: clamp(18px, 1.9vw, 24px) !important;
+    text-overflow: clip;
+  }
+
+  body[data-active-view="worklog-overview"]:not(.physical-phone-device) .worklog-overview-modebar {
+    gap: 5px;
+    padding: 4px;
+    border-radius: 14px;
+  }
+
+  body[data-active-view="worklog-overview"]:not(.physical-phone-device) .worklog-overview-modebar button {
+    min-height: 30px;
+    padding-inline: 12px;
+    font-size: 11px;
+  }
+
+  body[data-active-view="worklog-overview"]:not(.physical-phone-device) #overviewSiteWeatherBoard {
+    padding: 7px 9px;
+  }
+
+  body[data-active-view="worklog-overview"]:not(.physical-phone-device) #overviewSiteWeatherBoard .site-weather-board-grid article {
+    flex-basis: 158px;
+    min-height: 48px;
+    padding: 6px 7px;
+  }
+
+  body[data-active-view="worklog-overview"]:not(.physical-phone-device) .worklog-overview-grid.is-overview-all {
+    gap: 8px;
+    padding-bottom: 8px;
+  }
+
+  body[data-active-view="worklog-overview"]:not(.physical-phone-device) .overview-all-command {
+    min-height: 82px;
+    padding: 11px 14px;
+    border-radius: 16px;
+  }
+
+  body[data-active-view="worklog-overview"]:not(.physical-phone-device) .overview-all-command h3 {
+    font-size: clamp(25px, 2.7vw, 34px);
+  }
+
+  body[data-active-view="worklog-overview"]:not(.physical-phone-device) .overview-all-kpis article {
+    min-height: 70px;
+    padding: 8px 9px;
+  }
+
+  body[data-active-view="worklog-overview"]:not(.physical-phone-device) .overview-all-kpis strong {
+    font-size: clamp(20px, 2.1vw, 27px);
+  }
+
+  body[data-active-view="worklog-overview"]:not(.physical-phone-device) .overview-business-snapshot {
+    gap: 6px;
+    padding: 9px;
+  }
+}
+
+@media (max-width: 760px) {
+  body[data-active-view="worklog-overview"] .worklog-overview-view.is-active {
+    gap: 7px !important;
+  }
+
+  body[data-active-view="worklog-overview"] .worklog-overview-hero {
+    gap: 9px !important;
+    min-height: 148px !important;
+    padding: 14px 13px 12px !important;
+  }
+
+  body[data-active-view="worklog-overview"] .worklog-overview-hero h2 {
+    overflow: hidden !important;
+    font-size: clamp(27px, 7.4vw, 32px) !important;
+    line-height: 1 !important;
+    text-overflow: ellipsis;
+    white-space: nowrap !important;
+  }
+
+  body[data-active-view="worklog-overview"] .overview-date-nav {
+    grid-template-columns: 36px minmax(0, 1fr) 36px 44px !important;
+    gap: 4px !important;
+  }
+
+  body[data-active-view="worklog-overview"] .overview-date-nav:has(#worklogOverviewTodayButton.is-current-date) {
+    grid-template-columns: 36px minmax(0, 1fr) 36px !important;
+  }
+
+  body[data-active-view="worklog-overview"] .overview-date-nav button,
+  body[data-active-view="worklog-overview"] .overview-date-nav #overviewDateButton {
+    min-height: 42px !important;
+  }
+
+  body[data-active-view="worklog-overview"] .overview-date-nav #overviewDateTitle {
+    display: inline-flex !important;
+    grid-template-columns: none !important;
+    overflow: hidden;
+    gap: 0;
+    font-size: clamp(13px, 3.8vw, 16px) !important;
+    line-height: 1 !important;
+    text-overflow: clip;
+    white-space: nowrap !important;
+  }
+
+  body[data-active-view="worklog-overview"] .overview-date-nav #overviewDateYear,
+  body[data-active-view="worklog-overview"] .overview-date-nav #overviewDateDay {
+    display: inline !important;
+    font: inherit !important;
+    line-height: 1 !important;
+  }
+
+  body[data-active-view="worklog-overview"] .worklog-overview-modebar {
+    gap: 4px;
+    padding: 4px;
+  }
+
+  body[data-active-view="worklog-overview"] .worklog-overview-modebar button {
+    min-height: 30px;
+    padding-inline: 10px;
+    font-size: 11px;
+  }
+
+  body[data-active-view="worklog-overview"] #overviewSiteWeatherBoard {
+    gap: 4px;
+    padding: 7px 8px;
+  }
+
+  body[data-active-view="worklog-overview"] #overviewSiteWeatherBoard > header {
+    align-items: center;
+    flex-direction: row;
+  }
+
+  body[data-active-view="worklog-overview"] #overviewSiteWeatherBoard .site-weather-board-grid article {
+    flex-basis: 148px;
+    min-height: 46px;
+    padding: 5px 7px;
+  }
+
+  body[data-active-view="worklog-overview"] .overview-all-command {
+    padding: 11px !important;
+  }
+
+  body[data-active-view="worklog-overview"] .overview-all-kpis article {
+    min-height: 72px !important;
+    padding: 7px 6px !important;
+  }
+
+  body[data-active-view="worklog-overview"] .overview-all-kpis em {
+    margin-top: 3px;
+    font-size: 9px;
+  }
+}
+
 /* Keep this at the absolute end so page-specific display rules never stack
    inactive sections under the active view. */
 .worklog-shell > .worklog-view:not(.is-active) {
