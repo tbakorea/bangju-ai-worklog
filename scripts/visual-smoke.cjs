@@ -1645,6 +1645,11 @@ async function checkFitnessManagerCanEditOwnWorklog(browser) {
   if (fitnessAiBefore.task !== "none" || fitnessAiBefore.schedule !== "none") {
     fail("fitness coaching buttons should stay hidden outside expanded panels", JSON.stringify(fitnessAiBefore));
   }
+  await page.setViewportSize({ width: 1024, height: 768 });
+  await page.evaluate(() => {
+    document.body.dataset.viewMode = "ceo";
+    renderResponsiveMode();
+  });
   await page.click('#view-fitness-log .fitness-log-task-panel [data-mobile-focus-open="tasks"]');
   await page.waitForTimeout(120);
   const fitnessTaskFocus = await page.evaluate(() => {
@@ -1676,6 +1681,40 @@ async function checkFitnessManagerCanEditOwnWorklog(browser) {
     || fitnessTaskFocus.role !== "dialog" || fitnessTaskFocus.modal !== "true" || !fitnessTaskFocus.scrollable
     || fitnessTaskFocus.maxRowHeight > 72 || fitnessTaskFocus.boardAlign !== "start") {
     fail("fitness priority-task expand button should open a full-screen coaching workspace", JSON.stringify(fitnessTaskFocus));
+  }
+  await page.click('#view-fitness-log .fitness-log-task-panel [data-section-ai="fitness-tasks"]');
+  await page.waitForTimeout(120);
+  const fitnessTaskCoaching = await page.evaluate(() => {
+    const panel = document.querySelector("#view-fitness-log .fitness-log-task-panel");
+    const sheet = document.querySelector("#fitnessCoachingSheet");
+    const backdrop = document.querySelector("#fitnessCoachingBackdrop");
+    const sheetRect = sheet?.getBoundingClientRect();
+    return {
+      visible: Boolean(sheet && !sheet.hidden && sheet.classList.contains("is-open") && Number(getComputedStyle(sheet).opacity) > 0),
+      backdropVisible: Boolean(backdrop && !backdrop.hidden),
+      abovePanel: Number(getComputedStyle(sheet).zIndex) > Number(getComputedStyle(panel).zIndex),
+      backdropAbovePanel: Number(getComputedStyle(backdrop).zIndex) > Number(getComputedStyle(panel).zIndex),
+      insideViewport: Boolean(sheetRect && sheetRect.top >= 0 && sheetRect.bottom <= innerHeight + 1),
+      subtitle: document.querySelector("#fitnessCoachingSheetSub")?.textContent?.trim() || "",
+      coachingCount: document.querySelectorAll("#fitnessCoachingDetailList article").length,
+      focusRemainsOpen: document.querySelector("#view-fitness-log")?.classList.contains("is-focus-tasks") || false,
+    };
+  });
+  if (!fitnessTaskCoaching.visible || !fitnessTaskCoaching.backdropVisible || !fitnessTaskCoaching.abovePanel
+    || !fitnessTaskCoaching.backdropAbovePanel || !fitnessTaskCoaching.insideViewport
+    || fitnessTaskCoaching.subtitle !== "오늘의 우선업무 실행 코칭" || fitnessTaskCoaching.coachingCount < 3
+    || !fitnessTaskCoaching.focusRemainsOpen) {
+    fail("fitness coaching sheet should stay visible above the expanded task workspace", JSON.stringify(fitnessTaskCoaching));
+  }
+  await page.click("#fitnessCoachingCloseButton");
+  await page.waitForTimeout(180);
+  const fitnessTaskCoachingClosed = await page.evaluate(() => ({
+    hidden: document.querySelector("#fitnessCoachingSheet")?.hidden ?? false,
+    focusRemainsOpen: document.querySelector("#view-fitness-log")?.classList.contains("is-focus-tasks") || false,
+    triggerFocused: document.activeElement?.matches?.('[data-section-ai="fitness-tasks"]') || false,
+  }));
+  if (!fitnessTaskCoachingClosed.hidden || !fitnessTaskCoachingClosed.focusRemainsOpen || !fitnessTaskCoachingClosed.triggerFocused) {
+    fail("closing fitness coaching should return to the expanded task workspace", JSON.stringify(fitnessTaskCoachingClosed));
   }
   await page.click("#view-fitness-log .fitness-log-task-panel [data-mobile-focus-close]");
   await page.waitForTimeout(120);
@@ -3600,6 +3639,21 @@ async function checkSiteWeatherAndGeneralDailyReport(browser) {
       todayWeatherButtonText: document.querySelector("#todayJumpButton")?.textContent?.replace(/\s+/g, "").trim() || "",
       todayWeatherButtonActive: document.querySelector("#todayJumpButton")?.classList.contains("is-weather-today") || false,
       todayWeatherButtonDisabled: document.querySelector("#todayJumpButton")?.disabled || false,
+      todayWeatherButtonLayout: (() => {
+        const button = document.querySelector("#todayJumpButton");
+        const icon = button?.querySelector("i");
+        const range = button?.querySelector("small");
+        const iconRect = icon?.getBoundingClientRect();
+        const rangeRect = range?.getBoundingClientRect();
+        return {
+          display: button ? getComputedStyle(button).display : "",
+          icon: icon?.textContent?.trim() || "",
+          range: range?.textContent?.trim() || "",
+          iconSize: icon ? Number.parseFloat(getComputedStyle(icon).fontSize) : 0,
+          singleLine: Boolean(iconRect && rangeRect && Math.abs((iconRect.top + iconRect.bottom) / 2 - (rangeRect.top + rangeRect.bottom) / 2) <= 3),
+          width: button?.getBoundingClientRect().width || 0,
+        };
+      })(),
       standaloneWeatherRowsHidden: ["worklogWeatherRow", "fitnessWeatherRow"].every((id) => getComputedStyle(document.getElementById(id)).display === "none"),
       snapshotHasWeather: Boolean(snapshot.siteWeatherAddresses && snapshot.weatherCache),
       fitnessReportPreserved: Boolean(document.querySelector("#fitnessReportMenuButton") && document.querySelector("#fitnessReportSheet")),
@@ -3658,6 +3712,14 @@ async function checkSiteWeatherAndGeneralDailyReport(browser) {
   }
   if (!metrics.todayWeatherButtonActive || !metrics.todayWeatherButtonDisabled || !metrics.todayWeatherButtonText.includes("☀️") || !metrics.todayWeatherButtonText.includes("23°/30°") || !metrics.standaloneWeatherRowsHidden) {
     fail("today date row should replace the Today button with compact weather", JSON.stringify(metrics));
+  }
+  if (metrics.todayWeatherButtonLayout.display !== "flex"
+    || metrics.todayWeatherButtonLayout.icon !== "☀️"
+    || metrics.todayWeatherButtonLayout.range !== "23°/30°"
+    || metrics.todayWeatherButtonLayout.iconSize < 14
+    || !metrics.todayWeatherButtonLayout.singleLine
+    || metrics.todayWeatherButtonLayout.width > 96) {
+    fail("today weather should use a compact one-line icon and low/high layout", JSON.stringify(metrics.todayWeatherButtonLayout));
   }
   if (dateWeatherMetrics.past.todayText !== "오늘" || dateWeatherMetrics.past.todayDisabled || !dateWeatherMetrics.past.worklogHistorical || !dateWeatherMetrics.past.fitnessHistorical || !dateWeatherMetrics.past.worklogWeatherText.includes("비 · 22°/27°")) {
     fail("past date should keep the Today return button and replace coaching with recorded weather", JSON.stringify(dateWeatherMetrics));

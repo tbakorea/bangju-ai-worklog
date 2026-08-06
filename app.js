@@ -9734,23 +9734,38 @@ function renderFitnessCoaching() {
   }
 }
 
+let fitnessCoachingCloseTimer = null;
+let fitnessCoachingReturnFocus = null;
+
 function openFitnessCoachingSheet() {
   renderFitnessCoaching();
   const backdrop = document.getElementById("fitnessCoachingBackdrop");
   const sheet = document.getElementById("fitnessCoachingSheet");
   if (!backdrop || !sheet) return;
+  if (fitnessCoachingCloseTimer) window.clearTimeout(fitnessCoachingCloseTimer);
+  fitnessCoachingCloseTimer = null;
+  fitnessCoachingReturnFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+  document.body.classList.add("is-fitness-coaching-open");
   backdrop.hidden = false;
   sheet.hidden = false;
-  requestAnimationFrame(() => sheet.classList.add("is-open"));
+  requestAnimationFrame(() => {
+    sheet.classList.add("is-open");
+    document.getElementById("fitnessCoachingCloseButton")?.focus();
+  });
 }
 
 function closeFitnessCoachingSheet() {
   const backdrop = document.getElementById("fitnessCoachingBackdrop");
   const sheet = document.getElementById("fitnessCoachingSheet");
   sheet?.classList.remove("is-open");
-  window.setTimeout(() => {
+  if (fitnessCoachingCloseTimer) window.clearTimeout(fitnessCoachingCloseTimer);
+  fitnessCoachingCloseTimer = window.setTimeout(() => {
     if (backdrop) backdrop.hidden = true;
     if (sheet) sheet.hidden = true;
+    document.body.classList.remove("is-fitness-coaching-open");
+    fitnessCoachingReturnFocus?.focus?.();
+    fitnessCoachingReturnFocus = null;
+    fitnessCoachingCloseTimer = null;
   }, 160);
 }
 
@@ -19117,6 +19132,12 @@ document.getElementById("fitnessCenterConfirmPanel")?.addEventListener("click", 
 document.querySelectorAll("[data-section-ai]").forEach((button) => {
   button.onclick = () => {
     const section = button.dataset.sectionAi || "";
+    if (section.startsWith("fitness-")) {
+      const subtitle = document.getElementById("fitnessCoachingSheetSub");
+      if (subtitle) subtitle.textContent = section.includes("schedule") ? "시간별일정 실행 코칭" : "오늘의 우선업무 실행 코칭";
+      openFitnessCoachingSheet();
+      return;
+    }
     if (section.includes("schedule")) runSectionAiAction("schedule");
     else runSectionAiAction("task");
   };
