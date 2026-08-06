@@ -805,6 +805,7 @@ const dailyEditingState = {
 const weatherRequestInFlight = new Set();
 const weatherBatchAttempted = new Set();
 const siteWeatherAddressTimers = new Map();
+const weatherFreshnessMs = 2 * 60 * 60 * 1000;
 
 function loadState() {
   try {
@@ -1355,7 +1356,7 @@ function getWeatherRecordForEmployee(employee = getSelectedEmployee(), dateKey =
 function getWeatherConditionLabel(code) {
   const value = Number(code);
   if ([0].includes(value)) return "맑음";
-  if ([1, 2].includes(value)) return "대체로 맑음";
+  if ([1, 2].includes(value)) return "구름 조금";
   if ([3].includes(value)) return "흐림";
   if ([45, 48].includes(value)) return "안개";
   if ([51, 53, 55, 56, 57].includes(value)) return "이슬비";
@@ -1368,8 +1369,8 @@ function getWeatherConditionLabel(code) {
 function formatWeatherSummary(record, { compact = false } = {}) {
   if (!record) return compact ? "날씨 미기록" : "사업장 주소 입력 후 날씨를 갱신하세요.";
   const temperatureText = Number.isFinite(Number(record.temperatureMin)) && Number.isFinite(Number(record.temperatureMax))
-    ? `${Math.round(Number(record.temperatureMin))}~${Math.round(Number(record.temperatureMax))}°C`
-    : Number.isFinite(Number(record.temperature)) ? `${Math.round(Number(record.temperature))}°C` : "";
+    ? `${Math.round(Number(record.temperatureMin))}°/${Math.round(Number(record.temperatureMax))}°`
+    : Number.isFinite(Number(record.temperature)) ? `${Math.round(Number(record.temperature))}°` : "";
   const parts = [
     record.condition || getWeatherConditionLabel(record.weatherCode),
     temperatureText,
@@ -1378,6 +1379,36 @@ function formatWeatherSummary(record, { compact = false } = {}) {
   ].filter(Boolean);
   const body = parts.join(" · ") || "날씨 기록";
   return compact ? body : `${record.siteKey || "사업장"} · ${body}`;
+}
+
+function isWeatherRecordFresh(record, maxAgeMs = weatherFreshnessMs) {
+  if (!record?.fetchedAt) return false;
+  const fetchedAt = Date.parse(record.fetchedAt);
+  return Number.isFinite(fetchedAt) && Date.now() - fetchedAt < maxAgeMs;
+}
+
+function needsWeatherRefresh(record, dateKey = getActiveDateKey()) {
+  if (!record) return true;
+  return dateKey === todayKey && !isWeatherRecordFresh(record);
+}
+
+function buildWeatherAdvice(record = {}) {
+  const temperature = Number(record.temperature);
+  const wind = Number(record.wind);
+  const precipitation = Number(record.precipitation);
+  const condition = record.condition || getWeatherConditionLabel(record.weatherCode);
+  if (/비|뇌우/.test(condition) || precipitation > 0) return "외부 일정은 이동 시간을 10~15분 더 확보하고 준비물을 먼저 확인하세요.";
+  if (/눈/.test(condition)) return "결빙과 지연 가능성을 반영해 외부 업무 사이에 안전 여유를 두세요.";
+  if (/안개/.test(condition)) return "오전 이동과 현장 방문은 평소보다 여유 있게 잡으세요.";
+  if (Number.isFinite(wind) && wind >= 9) return "강풍 가능성이 있어 외부 업무 전 안전과 이동 여유를 확인하세요.";
+  if (Number.isFinite(temperature) && temperature >= 30) return "집중 업무는 이른 시간에 배치하고 수분 보충 시간을 남기세요.";
+  if (Number.isFinite(temperature) && temperature <= 0) return "외부 이동 준비 시간을 확보하고 실내 집중 업무를 먼저 배치하세요.";
+  return "날씨 리스크가 낮습니다. 중요한 업무를 시간별 일정에 먼저 고정하세요.";
+}
+
+function getWeatherAccessibleTitle(record = {}, siteKey = "") {
+  if (!record) return `${siteKey || "사업장"} 날씨 미기록`;
+  return `${siteKey || record.siteKey || "사업장"} ${formatWeatherSummary(record, { compact: true })}. ${record.advice || buildWeatherAdvice(record)}`;
 }
 
 function getActiveWeatherEmployee(scope = activeView) {
@@ -1398,13 +1429,14 @@ function renderWeatherWidgets() {
 
 function getWeatherConditionIcon(record = {}) {
   const code = Number(record.weatherCode);
-  if ([0, 1].includes(code)) return "☀";
-  if ([2, 3].includes(code)) return "☁";
-  if ([45, 48].includes(code)) return "≋";
-  if ([51, 53, 55, 56, 57, 61, 63, 65, 66, 67, 80, 81, 82].includes(code)) return "☂";
-  if ([71, 73, 75, 77, 85, 86].includes(code)) return "❄";
-  if ([95, 96, 99].includes(code)) return "ϟ";
-  return record.condition ? "◉" : "–";
+  if ([0].includes(code)) return "☀️";
+  if ([1, 2].includes(code)) return "⛅";
+  if ([3].includes(code)) return "☁️";
+  if ([45, 48].includes(code)) return "🌫️";
+  if ([51, 53, 55, 56, 57, 61, 63, 65, 66, 67, 80, 81, 82].includes(code)) return "🌧️";
+  if ([71, 73, 75, 77, 85, 86].includes(code)) return "❄️";
+  if ([95, 96, 99].includes(code)) return "⛈️";
+  return record.condition ? "◇" : "–";
 }
 
 function getSiteWeatherBoardRows(dateKey = getActiveDateKey()) {
@@ -1452,13 +1484,13 @@ function renderSiteWeatherBoard(boardId, dateKey = getActiveDateKey()) {
     </header>
     <div class="site-weather-board-grid">
       ${visibleRows.map((row) => `
-        <article class="${row.record ? "has-weather" : row.address ? "is-pending" : "is-missing"}">
+        <article class="${row.record ? "has-weather" : row.address ? "is-pending" : "is-missing"}" title="${escapeAttr(getWeatherAccessibleTitle(row.record, row.key))}">
           <div>
             <span>${escapeHtml(row.label)}</span>
             <i aria-hidden="true">${escapeHtml(getWeatherConditionIcon(row.record || {}))}</i>
           </div>
           <strong>${escapeHtml(row.loading ? "날씨 확인 중" : formatWeatherSummary(row.record, { compact: true }))}</strong>
-          <p title="${escapeAttr(row.address || "주소 미입력")}">${escapeHtml(row.record?.location || row.address || "앱설정에서 주소를 입력해주세요.")}</p>
+          <p title="${escapeAttr(row.address || "주소 미입력")}">${escapeHtml(row.record ? (row.record.advice || buildWeatherAdvice(row.record)) : row.address || "앱설정에서 주소를 입력해주세요.")}</p>
           <button type="button" data-site-weather-refresh="${escapeAttr(row.key)}" ${row.address && !row.loading ? "" : "disabled"}>${row.record ? "새로고침" : row.address ? "불러오기" : "주소 필요"}</button>
         </article>
       `).join("")}
@@ -1495,17 +1527,25 @@ function renderWeatherWidget(scope, employee) {
   if (!row || !text || !button) return;
   const siteKey = getSiteWeatherKeyForEmployee(employee);
   const address = getSiteWeatherAddress(siteKey);
-  const record = getWeatherRecordForSite(siteKey, getActiveDateKey());
+  const dateKey = getActiveDateKey();
+  const record = getWeatherRecordForSite(siteKey, dateKey);
+  const loading = address && weatherRequestInFlight.has(getWeatherCacheKey(siteKey, dateKey));
   row.dataset.siteKey = siteKey;
   row.dataset.hasAddress = address ? "true" : "false";
   row.classList.toggle("is-missing", !address);
-  row.classList.toggle("is-loading", address && weatherRequestInFlight.has(getWeatherCacheKey(siteKey, getActiveDateKey())));
-  text.textContent = address
-    ? `${formatWeatherSummary(record, { compact: true })} · ${siteKey}`
-    : `${siteKey} 주소 입력 필요`;
+  row.classList.toggle("is-loading", loading);
+  const title = address ? getWeatherAccessibleTitle(record, siteKey) : `${siteKey} 주소 입력 필요`;
+  text.innerHTML = address
+    ? `<i aria-hidden="true">${escapeHtml(loading ? "…" : getWeatherConditionIcon(record || {}))}</i><b>${escapeHtml(loading && !record ? "날씨 확인 중" : formatWeatherSummary(record, { compact: true }))}</b><small>${escapeHtml(siteKey)}</small>`
+    : `<i aria-hidden="true">–</i><b>주소 필요</b><small>${escapeHtml(siteKey)}</small>`;
+  row.title = title;
+  row.setAttribute("aria-label", title);
   button.disabled = !address;
-  button.textContent = record ? "날씨 새로고침" : "날씨 갱신";
-  if (address && !record) {
+  button.textContent = "↻";
+  button.title = record ? "날씨 새로고침" : "날씨 불러오기";
+  button.setAttribute("aria-label", button.title);
+  if (address && needsWeatherRefresh(record, dateKey) && !loading) {
+    weatherBatchAttempted.add(getWeatherCacheKey(siteKey, dateKey));
     requestWeatherForSite(siteKey, address, getActiveDateKey(), { silent: true, scope });
   }
 }
@@ -1519,7 +1559,7 @@ function getConfiguredWeatherSites() {
 function ensureWeatherRecordsForConfiguredSites(dateKey = getActiveDateKey()) {
   getConfiguredWeatherSites().forEach(({ siteKey, address }) => {
     const requestKey = getWeatherCacheKey(siteKey, dateKey);
-    if (getWeatherRecordForSite(siteKey, dateKey) || weatherRequestInFlight.has(requestKey) || weatherBatchAttempted.has(requestKey)) return;
+    if (!needsWeatherRefresh(getWeatherRecordForSite(siteKey, dateKey), dateKey) || weatherRequestInFlight.has(requestKey) || weatherBatchAttempted.has(requestKey)) return;
     weatherBatchAttempted.add(requestKey);
     requestWeatherForSite(siteKey, address, dateKey, { silent: true, scope: "" });
   });
@@ -1529,7 +1569,7 @@ function buildWeatherRequestUrl(place, dateKey = getActiveDateKey()) {
   const latitude = encodeURIComponent(place.latitude);
   const longitude = encodeURIComponent(place.longitude);
   if (dateKey === todayKey) {
-    return `https://api.open-meteo.com/v1/forecast?latitude=${latitude}&longitude=${longitude}&current=temperature_2m,relative_humidity_2m,precipitation,weather_code,wind_speed_10m&timezone=Asia%2FSeoul`;
+    return `https://api.open-meteo.com/v1/forecast?latitude=${latitude}&longitude=${longitude}&current=temperature_2m,relative_humidity_2m,precipitation,weather_code,wind_speed_10m&daily=temperature_2m_max,temperature_2m_min&forecast_days=1&timezone=Asia%2FSeoul`;
   }
   const baseUrl = dateKey < todayKey
     ? "https://archive-api.open-meteo.com/v1/archive"
@@ -1585,7 +1625,14 @@ async function requestWeatherForSite(siteKey, address, dateKey = getActiveDateKe
     }
     if (!place) throw new Error("주소 좌표를 찾지 못했습니다.");
     const weatherUrl = buildWeatherRequestUrl(place, dateKey);
-    const weatherResponse = await fetch(weatherUrl);
+    const controller = new AbortController();
+    const timeout = window.setTimeout(() => controller.abort(), 5000);
+    let weatherResponse;
+    try {
+      weatherResponse = await fetch(weatherUrl, { signal: controller.signal });
+    } finally {
+      window.clearTimeout(timeout);
+    }
     if (!weatherResponse.ok) throw new Error("날씨 정보를 불러오지 못했습니다.");
     const weather = await weatherResponse.json();
     if (getSiteWeatherAddress(siteKey) !== trimmedAddress) {
@@ -1618,6 +1665,7 @@ async function requestWeatherForSite(siteKey, address, dateKey = getActiveDateKe
       weatherCode,
       condition: getWeatherConditionLabel(weatherCode),
     };
+    record.advice = buildWeatherAdvice(record);
     state.weatherCache = { ...(state.weatherCache || {}), [requestKey]: record };
     saveState({ fastSave: true });
     renderWeatherWidgets();

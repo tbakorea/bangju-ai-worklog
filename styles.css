@@ -1622,19 +1622,48 @@ body[data-device-mode="narrow"] .os-mode-switch span[data-device-mode="narrow"] 
 }
 
 .worklog-weather-row span {
+  display: grid;
+  grid-template-columns: auto auto minmax(0, 1fr);
+  gap: 5px;
+  align-items: center;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
+.worklog-weather-row span i {
+  min-width: 18px;
+  font-size: 15px;
+  font-style: normal;
+  line-height: 1;
+  text-align: center;
+}
+
+.worklog-weather-row span b {
+  color: var(--fitness-green);
+  font-size: 11px;
+  font-weight: 950;
+  white-space: nowrap;
+}
+
+.worklog-weather-row span small {
+  overflow: hidden;
+  color: rgba(47, 65, 56, 0.68);
+  font-size: 10px;
+  font-weight: 820;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .worklog-weather-row button {
+  width: 27px;
   min-height: 26px;
   border: 1px solid rgba(15, 59, 46, 0.12);
   border-radius: 999px;
   background: rgba(255, 254, 250, 0.94);
   color: var(--fitness-green);
-  padding: 0 10px;
-  font-size: 11px;
+  padding: 0;
+  font-size: 15px;
   font-weight: 950;
 }
 
@@ -20288,9 +20317,10 @@ body[data-layout-mode="phone"] #view-fitness-log .fitness-log-pager {
   }
 
   .worklog-weather-row button {
+    width: 27px;
     min-height: 24px;
-    padding: 0 8px;
-    font-size: 10px;
+    padding: 0;
+    font-size: 15px;
   }
 
   .site-address-card {

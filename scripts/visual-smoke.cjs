@@ -822,7 +822,10 @@ async function checkControlTower(browser) {
           condition: index % 2 ? "흐림" : "맑음",
           weatherCode: index % 2 ? 3 : 0,
           temperature: 24 + index,
-          humidity: 55 + index
+          temperatureMin: 20 + index,
+          temperatureMax: 28 + index,
+          humidity: 55 + index,
+          fetchedAt: new Date().toISOString(),
         };
       });
       switchView("control");
@@ -3469,7 +3472,10 @@ async function checkSiteWeatherAndGeneralDailyReport(browser) {
       dateKey: todayKey,
       condition: "맑음",
       temperature: 27,
+      temperatureMin: 23,
+      temperatureMax: 30,
       humidity: 61,
+      fetchedAt: new Date().toISOString(),
     };
     renderEntries();
   });
@@ -3482,6 +3488,11 @@ async function checkSiteWeatherAndGeneralDailyReport(browser) {
     const archive = buildEmployeeArchiveReport(employee, todayKey);
     const pastUrl = buildWeatherRequestUrl({ latitude: 35.5, longitude: 129.3 }, "2026-07-31");
     const futureUrl = buildWeatherRequestUrl({ latitude: 35.5, longitude: 129.3 }, "2026-08-31");
+    const todayUrl = buildWeatherRequestUrl({ latitude: 35.5, longitude: 129.3 }, todayKey);
+    const weatherExpression = formatWeatherSummary({ weatherCode: 2, temperatureMin: 21, temperatureMax: 29 }, { compact: true });
+    const rainAdvice = buildWeatherAdvice({ weatherCode: 61, condition: "비", precipitation: 1 });
+    const freshWeather = isWeatherRecordFresh({ fetchedAt: new Date().toISOString() });
+    const staleWeather = isWeatherRecordFresh({ fetchedAt: new Date(Date.now() - weatherFreshnessMs - 1000).toISOString() });
     const snapshot = buildRemoteSnapshot();
     return {
       sheetOpen: !sheet.hidden && sheet.classList.contains("is-open"),
@@ -3490,6 +3501,11 @@ async function checkSiteWeatherAndGeneralDailyReport(browser) {
       archiveHasDesignedReport: archive.html.includes("worklog-daily-report-page"),
       pastUsesArchive: pastUrl.includes("archive-api.open-meteo.com") && pastUrl.includes("start_date=2026-07-31"),
       futureUsesForecast: pastUrl !== futureUrl && futureUrl.includes("api.open-meteo.com/v1/forecast") && futureUrl.includes("start_date=2026-08-31"),
+      todayUsesBeyondWeatherRange: todayUrl.includes("daily=temperature_2m_max,temperature_2m_min") && todayUrl.includes("forecast_days=1"),
+      weatherExpression,
+      rainAdvice,
+      freshWeather,
+      staleWeather,
       snapshotHasWeather: Boolean(snapshot.siteWeatherAddresses && snapshot.weatherCache),
       fitnessReportPreserved: Boolean(document.querySelector("#fitnessReportMenuButton") && document.querySelector("#fitnessReportSheet")),
       exportButtons: ["worklogReportImageButton", "worklogReportPdfButton", "worklogReportShareButton", "worklogReportPrintButton"]
@@ -3508,6 +3524,9 @@ async function checkSiteWeatherAndGeneralDailyReport(browser) {
   if (!metrics.sheetOpen || metrics.previewOverflow < 0) fail("general daily report sheet should open and remain scrollable", JSON.stringify(metrics));
   if (!metrics.archiveHasDesignedReport || !metrics.pastUsesArchive || !metrics.futureUsesForecast || !metrics.snapshotHasWeather || !metrics.fitnessReportPreserved || !metrics.exportButtons) {
     fail("site weather and general report data flow should remain connected without changing fitness report", JSON.stringify(metrics));
+  }
+  if (!metrics.todayUsesBeyondWeatherRange || metrics.weatherExpression !== "구름 조금 · 21°/29°" || !metrics.rainAdvice.includes("10~15분") || !metrics.freshWeather || metrics.staleWeather) {
+    fail("weather should mirror Beyond Work range, advice, and two-hour refresh logic", JSON.stringify(metrics));
   }
   if (exportMetrics.width !== 1240 || exportMetrics.height < 1754 || exportMetrics.pngSize < 10000 || exportMetrics.pdfSize < 10000 || exportMetrics.pdfType !== "application/pdf") {
     fail("general worklog report should export valid PNG and PDF artifacts", JSON.stringify(exportMetrics));
