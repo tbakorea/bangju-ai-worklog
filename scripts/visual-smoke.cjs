@@ -43,6 +43,80 @@ async function seedApprovedBangjuEmployee(page) {
   });
 }
 
+async function checkTabletRepresentativeWorklogChrome(browser) {
+  const { page, errors } = await openPage(browser, { width: 1024, height: 768 });
+  await page.evaluate(() => {
+    window.eval(`
+      authState.user = { id: "qa-representative", email: "j3010@ymail.com" };
+      state.profile = {
+        ...state.profile,
+        email: "j3010@ymail.com",
+        org: "(주)방주",
+        role: "대표",
+        name: "정찬훈",
+        approvalStatus: "approved",
+        accessPreset: "representative",
+        permissions: {}
+      };
+      state.selectedEmployeeId = "bangju-finance-manager";
+      normalizeState();
+      switchView("bangju-log");
+      document.body.classList.remove("physical-phone-device");
+      const exitButton = document.getElementById("returnToWorklogOverviewButton");
+      if (exitButton) exitButton.hidden = false;
+      const modeButton = document.getElementById("globalViewModeButton");
+      if (modeButton) modeButton.hidden = false;
+      dockGlobalHeaderActions("today");
+      const weatherButton = document.getElementById("todayJumpButton");
+      if (weatherButton) {
+        weatherButton.hidden = false;
+        weatherButton.disabled = true;
+        weatherButton.classList.add("is-weather-today");
+        weatherButton.dataset.weatherStatus = "ready";
+        weatherButton.innerHTML = '<i aria-hidden="true">☀️</i><small>24°/31°</small>';
+      }
+    `);
+  });
+  await page.waitForTimeout(180);
+
+  const metrics = await page.evaluate(() => {
+    const rect = (selector) => {
+      const node = document.querySelector(selector);
+      if (!node) return null;
+      const box = node.getBoundingClientRect();
+      return { left: box.left, top: box.top, right: box.right, bottom: box.bottom, width: box.width, height: box.height };
+    };
+    const overlaps = (a, b) => Boolean(a && b && a.left < b.right && a.right > b.left && a.top < b.bottom && a.bottom > b.top);
+    const exit = rect("#returnToWorklogOverviewButton");
+    const dock = rect("#view-today > .section-menu-dock");
+    const weather = rect("#todayJumpButton");
+    const title = rect("#view-today .worklog-today-title");
+    const icon = document.querySelector("#todayJumpButton i");
+    const range = document.querySelector("#todayJumpButton small");
+    return {
+      exit,
+      dock,
+      weather,
+      title,
+      exitDockOverlap: overlaps(exit, dock),
+      weatherWidth: weather?.width || 0,
+      weatherIconSize: icon ? Number.parseFloat(getComputedStyle(icon).fontSize) : 0,
+      weatherRangeSize: range ? Number.parseFloat(getComputedStyle(range).fontSize) : 0,
+      horizontalOverflow: document.documentElement.scrollWidth - window.innerWidth,
+    };
+  });
+
+  if (!metrics.exit || !metrics.dock || metrics.exitDockOverlap) {
+    fail("tablet representative return action should not overlap the section menu dock", JSON.stringify(metrics));
+  }
+  if (metrics.weatherWidth < 120 || metrics.weatherIconSize < 27 || metrics.weatherRangeSize < 14) {
+    fail("tablet current-day weather should use the available date-row space", JSON.stringify(metrics));
+  }
+  if (metrics.horizontalOverflow > 2) fail("tablet employee worklog has horizontal overflow", JSON.stringify(metrics));
+  if (errors.length) fail("tablet representative worklog page errors", errors.join(" | "));
+  await page.close();
+}
+
 async function checkDesktopEmployeeWorklog(browser) {
   const { page, errors } = await openPage(browser, { width: 1440, height: 900 });
   await seedApprovedBangjuEmployee(page);
@@ -3624,6 +3698,20 @@ async function checkSiteWeatherAndGeneralDailyReport(browser) {
     const freshWeather = isWeatherRecordFresh({ fetchedAt: new Date().toISOString() });
     const staleWeather = isWeatherRecordFresh({ fetchedAt: new Date(Date.now() - weatherFreshnessMs - 1000).toISOString() });
     const snapshot = buildRemoteSnapshot();
+    const retryKey = getWeatherCacheKey(getSiteWeatherKeyForEmployee(employee), todayKey);
+    const savedWeather = state.weatherCache[retryKey];
+    delete state.weatherCache[retryKey];
+    markWeatherRequestFailure(retryKey, new Error("QA weather delay"));
+    renderWeatherDateButton(document.querySelector("#todayJumpButton"), employee, todayKey);
+    const weatherRetryState = {
+      status: document.querySelector("#todayJumpButton")?.dataset.weatherStatus || "",
+      text: document.querySelector("#todayJumpButton")?.textContent?.replace(/\s+/g, "").trim() || "",
+      blocked: !canAutomaticallyRequestWeather(retryKey),
+      helperReady: typeof fetchWeatherJson === "function",
+    };
+    clearWeatherRequestFailure(retryKey);
+    state.weatherCache[retryKey] = savedWeather;
+    renderWeatherDateButton(document.querySelector("#todayJumpButton"), employee, todayKey);
     return {
       sheetOpen: !sheet.hidden && sheet.classList.contains("is-open"),
       previewText: preview.textContent || "",
@@ -3636,6 +3724,7 @@ async function checkSiteWeatherAndGeneralDailyReport(browser) {
       rainAdvice,
       freshWeather,
       staleWeather,
+      weatherRetryState,
       todayWeatherButtonText: document.querySelector("#todayJumpButton")?.textContent?.replace(/\s+/g, "").trim() || "",
       todayWeatherButtonActive: document.querySelector("#todayJumpButton")?.classList.contains("is-weather-today") || false,
       todayWeatherButtonDisabled: document.querySelector("#todayJumpButton")?.disabled || false,
@@ -3709,6 +3798,10 @@ async function checkSiteWeatherAndGeneralDailyReport(browser) {
   }
   if (!metrics.todayUsesBeyondWeatherRange || metrics.weatherExpression !== "구름 조금 · 21°/29°" || !metrics.rainAdvice.includes("10~15분") || !metrics.freshWeather || metrics.staleWeather) {
     fail("weather should mirror Beyond Work range, advice, and two-hour refresh logic", JSON.stringify(metrics));
+  }
+  if (metrics.weatherRetryState.status !== "retry" || metrics.weatherRetryState.text !== "↻재시도"
+    || !metrics.weatherRetryState.blocked || !metrics.weatherRetryState.helperReady) {
+    fail("weather failures should render a retry state and pause repeated requests", JSON.stringify(metrics.weatherRetryState));
   }
   if (!metrics.todayWeatherButtonActive || !metrics.todayWeatherButtonDisabled || !metrics.todayWeatherButtonText.includes("☀️") || !metrics.todayWeatherButtonText.includes("23°/30°") || !metrics.standaloneWeatherRowsHidden) {
     fail("today date row should replace the Today button with compact weather", JSON.stringify(metrics));
@@ -4190,6 +4283,7 @@ async function checkFitnessRosterHoursAndCompactTotals(browser) {
     ...(localChrome ? { executablePath: localChrome } : {}),
   });
   try {
+    await checkTabletRepresentativeWorklogChrome(browser);
     await checkDesktopEmployeeWorklog(browser);
     await checkPhoneWorklog(browser);
     await checkExplicitWorklogExpandOutsidePhoneMode(browser);

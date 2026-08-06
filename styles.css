@@ -24495,6 +24495,20 @@ body.is-fitness-focus-open.is-fitness-coaching-open .fitness-coaching-sheet {
   white-space: nowrap;
 }
 
+#view-today #todayJumpButton.is-weather-today[data-weather-status="loading"] small,
+#view-today #todayJumpButton.is-weather-today[data-weather-status="retry"] small,
+#view-fitness-log #fitnessTodayButton.is-weather-today[data-weather-status="loading"] small,
+#view-fitness-log #fitnessTodayButton.is-weather-today[data-weather-status="retry"] small {
+  font-size: 10px;
+  letter-spacing: -0.04em;
+}
+
+.site-weather-board-grid article.is-error {
+  border-color: rgba(166, 105, 39, 0.28);
+  background: rgba(255, 248, 232, 0.88);
+  box-shadow: inset 0 3px 0 rgba(190, 128, 47, 0.44);
+}
+
 #view-today .worklog-pulse.is-historical-weather,
 #view-fitness-log .fitness-coaching-ticker.is-historical-weather {
   cursor: default;
@@ -24781,6 +24795,46 @@ body.is-fitness-focus-open.is-fitness-coaching-open .fitness-coaching-sheet {
   body[data-active-view="worklog-overview"] .overview-all-kpis em {
     margin-top: 3px;
     font-size: 9px;
+  }
+}
+
+/* Tablet/desktop employee worklog chrome: keep the overview return action
+   clear of the absolute section menu dock and let weather use the room that
+   is available outside the phone layout. */
+@media (min-width: 761px) {
+  #view-today .representative-worklog-toolbar:has(.worklog-overview-exit-button:not([hidden])),
+  #view-fitness-log .representative-worklog-toolbar:has(.worklog-overview-exit-button:not([hidden])) {
+    justify-content: flex-start;
+    min-height: 64px;
+    margin-bottom: 8px;
+    padding: 10px 230px 0 12px;
+  }
+
+  #view-today .worklog-overview-exit-button,
+  #view-fitness-log .worklog-overview-exit-button {
+    min-height: 44px;
+    padding-inline: 16px;
+    font-size: 13px;
+  }
+
+  #view-today #todayJumpButton.is-weather-today,
+  #view-fitness-log #fitnessTodayButton.is-weather-today {
+    width: auto !important;
+    min-width: 128px !important;
+    min-height: 54px !important;
+    gap: 9px;
+    padding-inline: 14px !important;
+  }
+
+  #view-today #todayJumpButton.is-weather-today i,
+  #view-fitness-log #fitnessTodayButton.is-weather-today i {
+    font-size: 29px;
+  }
+
+  #view-today #todayJumpButton.is-weather-today small,
+  #view-fitness-log #fitnessTodayButton.is-weather-today small {
+    font-size: 15px;
+    letter-spacing: 0;
   }
 }
 

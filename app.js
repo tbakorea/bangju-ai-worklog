@@ -804,8 +804,11 @@ const dailyEditingState = {
 };
 const weatherRequestInFlight = new Set();
 const weatherBatchAttempted = new Set();
+const weatherRequestFailures = new Map();
+const weatherRetryTimers = new Map();
 const siteWeatherAddressTimers = new Map();
 const weatherFreshnessMs = 2 * 60 * 60 * 1000;
+const weatherRetryBaseMs = 30 * 1000;
 
 function loadState() {
   try {
@@ -1344,6 +1347,38 @@ function getWeatherCacheKey(siteKey = "", dateKey = getActiveDateKey()) {
   return `${dateKey}::${siteKey || "기타"}`;
 }
 
+function canAutomaticallyRequestWeather(requestKey = "") {
+  const failure = weatherRequestFailures.get(requestKey);
+  return !failure || Date.now() >= Number(failure.retryAt || 0);
+}
+
+function clearWeatherRequestFailure(requestKey = "") {
+  weatherRequestFailures.delete(requestKey);
+  const timer = weatherRetryTimers.get(requestKey);
+  if (timer) window.clearTimeout(timer);
+  weatherRetryTimers.delete(requestKey);
+}
+
+function markWeatherRequestFailure(requestKey = "", error) {
+  const previous = weatherRequestFailures.get(requestKey);
+  const attempts = Math.min(6, Number(previous?.attempts || 0) + 1);
+  const retryDelay = Math.min(10 * 60 * 1000, weatherRetryBaseMs * (2 ** (attempts - 1)));
+  const failure = {
+    attempts,
+    message: String(error?.message || "날씨 정보를 불러오지 못했습니다."),
+    retryAt: Date.now() + retryDelay,
+  };
+  weatherRequestFailures.set(requestKey, failure);
+  const previousTimer = weatherRetryTimers.get(requestKey);
+  if (previousTimer) window.clearTimeout(previousTimer);
+  weatherRetryTimers.set(requestKey, window.setTimeout(() => {
+    weatherRetryTimers.delete(requestKey);
+    weatherBatchAttempted.delete(requestKey);
+    renderWeatherWidgets();
+  }, retryDelay + 50));
+  return failure;
+}
+
 function getWeatherRecordForSite(siteKey = "", dateKey = getActiveDateKey()) {
   return state.weatherCache?.[getWeatherCacheKey(siteKey, dateKey)] || null;
 }
@@ -1456,11 +1491,15 @@ function renderWeatherDateButton(button, employee, dateKey = getActiveDateKey())
   const siteKey = getSiteWeatherKeyForEmployee(employee);
   const address = getSiteWeatherAddress(siteKey);
   const record = getWeatherRecordForSite(siteKey, dateKey);
-  const loading = Boolean(address && weatherRequestInFlight.has(getWeatherCacheKey(siteKey, dateKey)));
-  const icon = loading && !record ? "…" : getWeatherConditionIcon(record || {});
-  const range = record ? formatWeatherTemperatureRange(record) : "--°/--°";
+  const requestKey = getWeatherCacheKey(siteKey, dateKey);
+  const loading = Boolean(address && weatherRequestInFlight.has(requestKey));
+  const failed = Boolean(address && !record && weatherRequestFailures.has(requestKey));
+  const icon = loading && !record ? "…" : failed ? "↻" : getWeatherConditionIcon(record || {});
+  const range = record ? formatWeatherTemperatureRange(record) : loading ? "확인중" : failed ? "재시도" : "--°/--°";
+  button.dataset.weatherStatus = record ? "ready" : loading ? "loading" : failed ? "retry" : address ? "pending" : "missing";
   button.innerHTML = `<i aria-hidden="true">${escapeHtml(icon)}</i><small>${escapeHtml(range)}</small>`;
-  const title = address ? getWeatherAccessibleTitle(record, siteKey) : `${siteKey} 주소 입력 필요`;
+  const failureMessage = weatherRequestFailures.get(requestKey)?.message;
+  const title = failureMessage ? `${siteKey} 날씨 조회 지연 · 자동 재시도 중` : address ? getWeatherAccessibleTitle(record, siteKey) : `${siteKey} 주소 입력 필요`;
   button.title = title;
   button.setAttribute("aria-label", title);
 }
@@ -1539,6 +1578,7 @@ function getSiteWeatherBoardRows(dateKey = getActiveDateKey()) {
       address,
       record,
       loading: Boolean(address && weatherRequestInFlight.has(requestKey)),
+      failure: weatherRequestFailures.get(requestKey) || null,
     };
   });
 }
@@ -1574,12 +1614,12 @@ function renderSiteWeatherBoard(boardId, dateKey = getActiveDateKey()) {
     </header>
     <div class="site-weather-board-grid">
       ${visibleRows.map((row) => `
-        <article class="${row.record ? "has-weather" : row.address ? "is-pending" : "is-missing"}" title="${escapeAttr(getWeatherAccessibleTitle(row.record, row.key))}">
+        <article class="${row.record ? "has-weather" : row.failure ? "is-error" : row.address ? "is-pending" : "is-missing"}" title="${escapeAttr(row.failure ? `${row.key} 날씨 조회 지연 · 자동 재시도 중` : getWeatherAccessibleTitle(row.record, row.key))}">
           <div>
             <span>${escapeHtml(row.label)}</span>
             <i aria-hidden="true">${escapeHtml(getWeatherConditionIcon(row.record || {}))}</i>
           </div>
-          <strong>${escapeHtml(row.loading ? "날씨 확인 중" : formatWeatherSummary(row.record, { compact: true }))}</strong>
+          <strong>${escapeHtml(row.loading ? "날씨 확인 중" : row.failure && !row.record ? "잠시 후 자동 재시도" : formatWeatherSummary(row.record, { compact: true }))}</strong>
           <p title="${escapeAttr(row.address || "주소 미입력")}">${escapeHtml(row.record ? (row.record.advice || buildWeatherAdvice(row.record)) : row.address || "앱설정에서 주소를 입력해주세요.")}</p>
           <button type="button" data-site-weather-refresh="${escapeAttr(row.key)}" ${row.address && !row.loading ? "" : "disabled"}>${row.record ? "새로고침" : row.address ? "불러오기" : "주소 필요"}</button>
         </article>
@@ -1588,7 +1628,9 @@ function renderSiteWeatherBoard(boardId, dateKey = getActiveDateKey()) {
   `;
   board.querySelector("[data-site-weather-refresh-all]")?.addEventListener("click", () => {
     rows.filter((row) => row.address).forEach((row) => {
-      weatherBatchAttempted.delete(getWeatherCacheKey(row.key, dateKey));
+      const requestKey = getWeatherCacheKey(row.key, dateKey);
+      weatherBatchAttempted.delete(requestKey);
+      clearWeatherRequestFailure(requestKey);
       requestWeatherForSite(row.key, row.address, dateKey, { silent: true, scope: "" });
     });
     renderRepresentativeSiteWeatherBoards();
@@ -1597,7 +1639,9 @@ function renderSiteWeatherBoard(boardId, dateKey = getActiveDateKey()) {
     button.addEventListener("click", () => {
       const siteKey = button.dataset.siteWeatherRefresh || "";
       const address = getSiteWeatherAddress(siteKey);
-      weatherBatchAttempted.delete(getWeatherCacheKey(siteKey, dateKey));
+      const requestKey = getWeatherCacheKey(siteKey, dateKey);
+      weatherBatchAttempted.delete(requestKey);
+      clearWeatherRequestFailure(requestKey);
       requestWeatherForSite(siteKey, address, dateKey, { silent: false, scope: "" });
       renderRepresentativeSiteWeatherBoards();
     });
@@ -1619,14 +1663,16 @@ function renderWeatherWidget(scope, employee) {
   const address = getSiteWeatherAddress(siteKey);
   const dateKey = getActiveDateKey();
   const record = getWeatherRecordForSite(siteKey, dateKey);
-  const loading = address && weatherRequestInFlight.has(getWeatherCacheKey(siteKey, dateKey));
+  const requestKey = getWeatherCacheKey(siteKey, dateKey);
+  const loading = address && weatherRequestInFlight.has(requestKey);
+  const failure = weatherRequestFailures.get(requestKey);
   row.dataset.siteKey = siteKey;
   row.dataset.hasAddress = address ? "true" : "false";
   row.classList.toggle("is-missing", !address);
   row.classList.toggle("is-loading", loading);
-  const title = address ? getWeatherAccessibleTitle(record, siteKey) : `${siteKey} 주소 입력 필요`;
+  const title = failure && !record ? `${siteKey} 날씨 조회 지연 · 자동 재시도 중` : address ? getWeatherAccessibleTitle(record, siteKey) : `${siteKey} 주소 입력 필요`;
   text.innerHTML = address
-    ? `<i aria-hidden="true">${escapeHtml(loading ? "…" : getWeatherConditionIcon(record || {}))}</i><b>${escapeHtml(loading && !record ? "날씨 확인 중" : formatWeatherSummary(record, { compact: true }))}</b><small>${escapeHtml(siteKey)}</small>`
+    ? `<i aria-hidden="true">${escapeHtml(loading ? "…" : failure && !record ? "↻" : getWeatherConditionIcon(record || {}))}</i><b>${escapeHtml(loading && !record ? "날씨 확인 중" : failure && !record ? "잠시 후 자동 재시도" : formatWeatherSummary(record, { compact: true }))}</b><small>${escapeHtml(siteKey)}</small>`
     : `<i aria-hidden="true">–</i><b>주소 필요</b><small>${escapeHtml(siteKey)}</small>`;
   row.title = title;
   row.setAttribute("aria-label", title);
@@ -1634,8 +1680,8 @@ function renderWeatherWidget(scope, employee) {
   button.textContent = "↻";
   button.title = record ? "날씨 새로고침" : "날씨 불러오기";
   button.setAttribute("aria-label", button.title);
-  if (address && needsWeatherRefresh(record, dateKey) && !loading) {
-    weatherBatchAttempted.add(getWeatherCacheKey(siteKey, dateKey));
+  if (address && needsWeatherRefresh(record, dateKey) && !loading && canAutomaticallyRequestWeather(requestKey)) {
+    weatherBatchAttempted.add(requestKey);
     requestWeatherForSite(siteKey, address, getActiveDateKey(), { silent: true, scope });
   }
 }
@@ -1649,7 +1695,7 @@ function getConfiguredWeatherSites() {
 function ensureWeatherRecordsForConfiguredSites(dateKey = getActiveDateKey()) {
   getConfiguredWeatherSites().forEach(({ siteKey, address }) => {
     const requestKey = getWeatherCacheKey(siteKey, dateKey);
-    if (!needsWeatherRefresh(getWeatherRecordForSite(siteKey, dateKey), dateKey) || weatherRequestInFlight.has(requestKey) || weatherBatchAttempted.has(requestKey)) return;
+    if (!needsWeatherRefresh(getWeatherRecordForSite(siteKey, dateKey), dateKey) || weatherRequestInFlight.has(requestKey) || weatherBatchAttempted.has(requestKey) || !canAutomaticallyRequestWeather(requestKey)) return;
     weatherBatchAttempted.add(requestKey);
     requestWeatherForSite(siteKey, address, dateKey, { silent: true, scope: "" });
   });
@@ -1667,6 +1713,18 @@ function buildWeatherRequestUrl(place, dateKey = getActiveDateKey()) {
   return `${baseUrl}?latitude=${latitude}&longitude=${longitude}&start_date=${encodeURIComponent(dateKey)}&end_date=${encodeURIComponent(dateKey)}&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_sum,wind_speed_10m_max&timezone=Asia%2FSeoul`;
 }
 
+async function fetchWeatherJson(url, timeoutMs = 6500) {
+  const controller = new AbortController();
+  const timeout = window.setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const response = await fetch(url, { signal: controller.signal });
+    if (!response.ok) throw new Error(`날씨 서비스 응답 오류 (${response.status})`);
+    return await response.json();
+  } finally {
+    window.clearTimeout(timeout);
+  }
+}
+
 async function requestWeatherForSite(siteKey, address, dateKey = getActiveDateKey(), { silent = false, scope = "worklog" } = {}) {
   const trimmedAddress = String(address || "").trim();
   if (!trimmedAddress) {
@@ -1682,8 +1740,12 @@ async function requestWeatherForSite(siteKey, address, dateKey = getActiveDateKe
       : null;
     if (!place) {
       const geoUrl = `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(trimmedAddress)}&count=1&language=ko&format=json`;
-      const geoResponse = await fetch(geoUrl);
-      const geo = geoResponse.ok ? await geoResponse.json() : {};
+      let geo = {};
+      try {
+        geo = await fetchWeatherJson(geoUrl);
+      } catch (_error) {
+        geo = {};
+      }
       place = geo?.results?.[0]
       ? {
           latitude: geo.results[0].latitude,
@@ -1694,8 +1756,12 @@ async function requestWeatherForSite(siteKey, address, dateKey = getActiveDateKe
       : null;
       if (!place) {
         const fallbackGeoUrl = `https://nominatim.openstreetmap.org/search?format=json&limit=1&accept-language=ko&q=${encodeURIComponent(trimmedAddress)}`;
-        const fallbackResponse = await fetch(fallbackGeoUrl);
-        const fallbackGeo = fallbackResponse.ok ? await fallbackResponse.json() : [];
+        let fallbackGeo = [];
+        try {
+          fallbackGeo = await fetchWeatherJson(fallbackGeoUrl);
+        } catch (_error) {
+          fallbackGeo = [];
+        }
         const fallbackPlace = Array.isArray(fallbackGeo) ? fallbackGeo[0] : null;
         if (fallbackPlace) {
           place = {
@@ -1757,6 +1823,8 @@ async function requestWeatherForSite(siteKey, address, dateKey = getActiveDateKe
     };
     record.advice = buildWeatherAdvice(record);
     state.weatherCache = { ...(state.weatherCache || {}), [requestKey]: record };
+    clearWeatherRequestFailure(requestKey);
+    weatherBatchAttempted.delete(requestKey);
     saveState({ fastSave: true });
     renderWeatherWidgets();
     if (document.getElementById("fitnessReportSheet")?.classList.contains("is-open")) {
@@ -1766,17 +1834,22 @@ async function requestWeatherForSite(siteKey, address, dateKey = getActiveDateKe
     if (document.getElementById("worklogReportSheet")?.classList.contains("is-open")) renderOpenWorklogReport();
     return record;
   } catch (error) {
+    weatherBatchAttempted.delete(requestKey);
+    markWeatherRequestFailure(requestKey, error);
     if (!silent) alert(error.message || "날씨 정보를 불러오지 못했습니다.");
     return null;
   } finally {
     weatherRequestInFlight.delete(requestKey);
-    if (scope) renderWeatherWidgets();
+    renderWeatherWidgets();
   }
 }
 
 function refreshWeatherForScope(scope = activeView) {
   const employee = getActiveWeatherEmployee(scope);
   const siteKey = getSiteWeatherKeyForEmployee(employee);
+  const requestKey = getWeatherCacheKey(siteKey, getActiveDateKey());
+  weatherBatchAttempted.delete(requestKey);
+  clearWeatherRequestFailure(requestKey);
   return requestWeatherForSite(siteKey, getSiteWeatherAddress(siteKey), getActiveDateKey(), { scope });
 }
 
@@ -18929,6 +19002,9 @@ document.getElementById("siteAddressList")?.addEventListener("input", (event) =>
   delete state.weatherLocationCache?.[key];
   Array.from(weatherBatchAttempted).forEach((requestKey) => {
     if (requestKey.endsWith(cacheSuffix)) weatherBatchAttempted.delete(requestKey);
+  });
+  Array.from(weatherRequestFailures.keys()).forEach((requestKey) => {
+    if (requestKey.endsWith(cacheSuffix)) clearWeatherRequestFailure(requestKey);
   });
   saveState({ fastSave: true });
   window.clearTimeout(siteWeatherAddressTimers.get(key));
