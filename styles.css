@@ -9797,6 +9797,286 @@ textarea:focus-visible {
   background: linear-gradient(135deg, rgba(233, 248, 241, 0.92), rgba(252, 252, 247, 0.9));
 }
 
+.representative-employee-analysis {
+  display: grid;
+  gap: 10px;
+  width: 100%;
+  min-width: 0;
+  border: 1px solid rgba(15, 59, 46, 0.16);
+  border-radius: 18px;
+  background:
+    radial-gradient(circle at 92% 0, rgba(211, 228, 218, 0.72), transparent 34%),
+    linear-gradient(145deg, rgba(255, 254, 250, 0.98), rgba(240, 246, 241, 0.94));
+  box-shadow: 0 16px 34px rgba(15, 59, 46, 0.08);
+  padding: 13px;
+}
+
+.representative-employee-analysis[hidden] {
+  display: none !important;
+}
+
+.representative-analysis-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-width: 0;
+  border-bottom: 1px solid rgba(15, 59, 46, 0.1);
+  padding-bottom: 9px;
+}
+
+.representative-analysis-head > div {
+  display: grid;
+  min-width: 0;
+}
+
+.representative-analysis-head span {
+  color: rgba(15, 83, 64, 0.68);
+  font-size: 9px;
+  font-weight: 950;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.representative-analysis-head strong {
+  color: var(--ink);
+  font-size: clamp(17px, 2vw, 21px);
+  font-weight: 950;
+  line-height: 1.2;
+}
+
+.representative-analysis-head small {
+  overflow: hidden;
+  color: rgba(38, 50, 56, 0.62);
+  font-size: 10px;
+  font-weight: 760;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.representative-analysis-head > b {
+  flex: 0 0 auto;
+  border: 1px solid rgba(15, 83, 64, 0.14);
+  border-radius: 999px;
+  background: rgba(15, 83, 64, 0.09);
+  color: var(--fitness-green);
+  padding: 5px 9px;
+  font-size: 10px;
+  font-weight: 950;
+  white-space: nowrap;
+}
+
+.representative-analysis-head > b[data-confidence="자료 축적 중"] {
+  border-color: rgba(173, 117, 26, 0.18);
+  background: rgba(255, 244, 221, 0.78);
+  color: #80591b;
+}
+
+.representative-analysis-kpis {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 7px;
+}
+
+.representative-analysis-kpis article {
+  display: grid;
+  min-width: 0;
+  border: 1px solid rgba(15, 59, 46, 0.09);
+  border-radius: 12px;
+  background: rgba(255, 254, 250, 0.72);
+  padding: 8px;
+}
+
+.representative-analysis-kpis span {
+  overflow: hidden;
+  color: rgba(15, 59, 46, 0.68);
+  font-size: 10px;
+  font-weight: 900;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.representative-analysis-kpis strong {
+  color: var(--fitness-green);
+  font-size: clamp(18px, 2.4vw, 24px);
+  font-weight: 950;
+  letter-spacing: -0.04em;
+  line-height: 1.05;
+}
+
+.representative-analysis-kpis em {
+  overflow: hidden;
+  color: rgba(38, 50, 56, 0.56);
+  font-size: 9px;
+  font-style: normal;
+  font-weight: 760;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.representative-analysis-body {
+  display: grid;
+  grid-template-columns: minmax(0, 1.15fr) minmax(0, 0.85fr);
+  gap: 8px;
+  min-width: 0;
+}
+
+.representative-competency-panel,
+.representative-analysis-guidance {
+  min-width: 0;
+  border: 1px solid rgba(15, 59, 46, 0.09);
+  border-radius: 13px;
+  background: rgba(255, 254, 250, 0.68);
+  padding: 9px;
+}
+
+.representative-competency-panel > header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 7px;
+}
+
+.representative-competency-panel > header strong {
+  overflow: hidden;
+  color: var(--ink);
+  font-size: 11px;
+  font-weight: 950;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.representative-competency-panel > header em {
+  border-radius: 999px;
+  background: var(--fitness-green);
+  color: var(--nordic-sheet);
+  padding: 3px 7px;
+  font-size: 9px;
+  font-style: normal;
+  font-weight: 950;
+  white-space: nowrap;
+}
+
+.representative-competency-panel > div {
+  display: grid;
+  gap: 5px;
+}
+
+.representative-competency-panel label {
+  display: grid;
+  grid-template-columns: minmax(70px, 0.72fr) minmax(70px, 1fr) 24px;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.representative-competency-panel label > span {
+  overflow: hidden;
+  color: rgba(38, 50, 56, 0.76);
+  font-size: 9px;
+  font-weight: 850;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.representative-competency-panel label > i {
+  height: 6px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: rgba(15, 83, 64, 0.1);
+}
+
+.representative-competency-panel label > i > b {
+  display: block;
+  width: var(--analysis-score, 0%);
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, #0f533f, #79a890);
+}
+
+.representative-competency-panel label > em {
+  color: var(--fitness-green);
+  font-size: 9px;
+  font-style: normal;
+  font-weight: 950;
+  text-align: right;
+}
+
+.representative-analysis-guidance {
+  display: grid;
+  gap: 6px;
+}
+
+.representative-analysis-guidance article {
+  display: grid;
+  align-content: start;
+  gap: 2px;
+  border-radius: 10px;
+  background: rgba(236, 248, 240, 0.82);
+  padding: 7px;
+}
+
+.representative-analysis-guidance article[data-tone="attention"] {
+  background: rgba(255, 242, 235, 0.78);
+}
+
+.representative-analysis-guidance span {
+  color: rgba(15, 59, 46, 0.62);
+  font-size: 8px;
+  font-weight: 950;
+  letter-spacing: 0.05em;
+}
+
+.representative-analysis-guidance strong {
+  color: var(--fitness-green);
+  font-size: 11px;
+  font-weight: 950;
+}
+
+.representative-analysis-guidance p {
+  margin: 0;
+  color: rgba(38, 50, 56, 0.72);
+  font-size: 9px;
+  font-weight: 760;
+  line-height: 1.35;
+}
+
+.representative-employee-analysis > footer {
+  color: rgba(38, 50, 56, 0.55);
+  font-size: 8px;
+  font-weight: 720;
+  line-height: 1.35;
+}
+
+@media (max-width: 760px) {
+  .representative-analysis-kpis {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .representative-analysis-body {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+body[data-layout-mode="phone"] .representative-employee-analysis,
+body.physical-phone-device .representative-employee-analysis {
+  gap: 7px;
+  border-radius: 15px;
+  padding: 9px;
+}
+
+body[data-layout-mode="phone"] .representative-analysis-kpis,
+body.physical-phone-device .representative-analysis-kpis {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 5px;
+}
+
+body[data-layout-mode="phone"] .representative-analysis-body,
+body.physical-phone-device .representative-analysis-body {
+  grid-template-columns: minmax(0, 1fr);
+}
+
 .worklog-edit-lock-banner div {
   display: grid;
   gap: 2px;

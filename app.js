@@ -3826,6 +3826,222 @@ function renderOverviewInsightPanel(employee, log, context = {}) {
   `;
 }
 
+function getRepresentativeAnalysisRoleTrack(employee = {}) {
+  const source = `${employee.org || ""} ${employee.workplace || ""} ${employee.role || ""} ${employee.position || ""} ${employee.primaryWork || ""}`;
+  if (/대표|총괄|CEO|owner/i.test(source)) return "executive";
+  if (/재무|자금|회계|세무/.test(source)) return "finance";
+  if (/센터장|피트니스|트레이너|인포|PT|상담|계약/i.test(source)) return "fitness";
+  if (/TBA|욕실|바스|인테리어|시공|현장|공사/i.test(source)) return "project";
+  if (/공유|오피스|창고|WorkBase|WorkBox/i.test(source)) return "shared";
+  return "operator";
+}
+
+function getExistingEmployeeLogForAnalysis(employee = {}, dateKey = getActiveDateKey()) {
+  const logs = state.employeeLogs?.[dateKey] || {};
+  const ids = new Set([
+    employee.id,
+    employee.mappedEmployeeId,
+    getEmployeeWorklogId(employee),
+    ...getEmployeeWorklogAliases(employee),
+    ...(getRepresentativeAnalysisRoleTrack(employee) === "fitness" ? getFitnessEmployeeLogCandidateIds(employee) : []),
+  ].filter(Boolean));
+  const candidates = [...ids].map((id) => logs[id]).filter(Boolean);
+  return candidates.find(hasSubmittableWorklogContent) || candidates[0] || null;
+}
+
+function getRepresentativeAnalysisDateKeys(endDateKey = getActiveDateKey(), days = 30) {
+  const safeEndKey = endDateKey > todayKey ? todayKey : endDateKey;
+  const end = parseDateKey(safeEndKey);
+  return Array.from({ length: days }, (_, index) => {
+    const date = new Date(end);
+    date.setDate(end.getDate() - (days - index - 1));
+    return formatDateKey(date);
+  });
+}
+
+function buildRepresentativeEmployeeAnalysis(employee = {}, endDateKey = getActiveDateKey()) {
+  const dateKeys = getRepresentativeAnalysisDateKeys(endDateKey, 30);
+  const track = getRepresentativeAnalysisRoleTrack(employee);
+  const trackProfile = getGrowthTrackProfile(track);
+  const rows = dateKeys.map((dateKey) => {
+    const log = getExistingEmployeeLogForAnalysis(employee, dateKey) || {};
+    const hours = getOverviewScheduledWorkHours(employee, dateKey, log);
+    const off = isOffWorkHours(hours) || /비번|휴무/.test(String(log.attendanceStatus || ""));
+    const isPast = dateKey < todayKey;
+    const attendanceRecorded = hasAttendanceRecord(log);
+    const attendanceStatus = attendanceRecorded ? getAttendanceStatusForLog(employee, log, dateKey, parseDateKey(dateKey)) : "미기록";
+    const tasks = (log.tasks || []).filter((task) => String(task.text || "").trim());
+    const completed = tasks.filter((task) => task.done || task.status === "완료").length;
+    const schedule = (log.schedule || []).filter((entry) => String(getScheduleEntryText(entry) || "").trim());
+    const reportText = String(log.report || log.memo || log.record || "").trim();
+    const worklogRecorded = hasOverviewWorklogRecord(log);
+    const combined = `${tasks.map((task) => task.text).join(" ")} ${schedule.map(getScheduleEntryText).join(" ")} ${reportText}`;
+    const ops = { ...createFitnessOps(), ...(log.fitnessOps || {}) };
+    const fitnessActions = ["ptRegular", "ptFree", "ptOther", "consultation", "customerNew", "customerRenewal", "outbound", "outsideSales"]
+      .reduce((sum, key) => sum + numberValue(ops[key]), 0);
+    const rolePattern = {
+      finance: /자금|회계|세무|증빙|급여|마감|정산|계약/,
+      fitness: /PT|피티|상담|회원|재등록|청소|시설|센터/,
+      project: /현장|공정|품질|원가|도면|시공|공사|안전/,
+      shared: /입주|공실|임대|계약|고객|공간|청결|민원/,
+      executive: /판단|위임|지시|검토|승인|전략|매출/,
+      operator: /완료|점검|정리|보고|개선|고객/,
+    }[track];
+    return {
+      dateKey,
+      off,
+      isPast,
+      attendanceRecorded,
+      attendanceStatus,
+      attendanceMissing: !off && isPast && !attendanceRecorded,
+      late: /지각/.test(attendanceStatus),
+      early: /조퇴/.test(attendanceStatus),
+      absent: /결근|결석/.test(String(log.attendanceStatus || "")),
+      worklogRecorded,
+      tasks: tasks.length,
+      completed,
+      scheduleRecorded: schedule.length > 0,
+      reportRecorded: Boolean(reportText),
+      reportLength: reportText.length,
+      learningEvidence: /개선|학습|연습|훈련|피드백|매뉴얼|배운|보완/.test(combined),
+      roleEvidence: fitnessActions > 0 || rolePattern.test(combined),
+    };
+  });
+  const eligibleRows = rows.filter((row) => !row.off && (row.isPast || row.attendanceRecorded || row.worklogRecorded));
+  const scheduledDays = eligibleRows.length;
+  const attendanceDays = eligibleRows.filter((row) => row.attendanceRecorded).length;
+  const normalDays = eligibleRows.filter((row) => row.attendanceRecorded && !row.late && !row.early && !row.absent).length;
+  const missingAttendanceDays = eligibleRows.filter((row) => row.attendanceMissing).length;
+  const lateDays = eligibleRows.filter((row) => row.late).length;
+  const earlyDays = eligibleRows.filter((row) => row.early).length;
+  const absentDays = eligibleRows.filter((row) => row.absent).length;
+  const worklogDays = eligibleRows.filter((row) => row.worklogRecorded).length;
+  const reportDays = eligibleRows.filter((row) => row.reportRecorded).length;
+  const scheduleDays = eligibleRows.filter((row) => row.scheduleRecorded).length;
+  const taskTotal = eligibleRows.reduce((sum, row) => sum + row.tasks, 0);
+  const completedTotal = eligibleRows.reduce((sum, row) => sum + row.completed, 0);
+  const learningDays = eligibleRows.filter((row) => row.learningEvidence).length;
+  const roleEvidenceDays = eligibleRows.filter((row) => row.roleEvidence).length;
+  const evidenceDays = eligibleRows.filter((row) => row.attendanceRecorded || row.worklogRecorded).length;
+  const ratio = (value, total) => total ? value / total : 0;
+  const attendanceRate = ratio(attendanceDays, scheduledDays);
+  const punctualityRate = ratio(normalDays, attendanceDays);
+  const worklogRate = ratio(worklogDays, scheduledDays);
+  const completionRate = ratio(completedTotal, taskTotal);
+  const scheduleRate = ratio(scheduleDays, scheduledDays);
+  const reportRate = ratio(reportDays, Math.max(1, worklogDays));
+  const learningRate = ratio(learningDays, Math.max(1, worklogDays));
+  const roleRate = ratio(roleEvidenceDays, Math.max(1, worklogDays));
+  const evidenceFactor = Math.min(1, evidenceDays / 8);
+  const rawScores = [
+    completionRate * 55 + worklogRate * 25 + reportRate * 20,
+    scheduleRate * 50 + punctualityRate * 30 + completionRate * 20,
+    reportRate * 50 + worklogRate * 30 + learningRate * 20,
+    roleRate * 50 + completionRate * 30 + worklogRate * 20,
+    learningRate * 50 + reportRate * 25 + completionRate * 25,
+  ];
+  const competencyScores = trackProfile.competencies.map((name, index) => ({
+    name,
+    score: clampScore((rawScores[index] || 0) * evidenceFactor),
+  }));
+  const overallScore = scheduledDays ? clampScore(competencyScores.reduce((sum, item) => sum + item.score, 0) / competencyScores.length) : 0;
+  const sortedCompetencies = [...competencyScores].sort((a, b) => b.score - a.score);
+  const strongest = sortedCompetencies[0];
+  const attention = [];
+  if (missingAttendanceDays) attention.push(`근태 미기록 ${missingAttendanceDays}일을 확인하세요.`);
+  if (lateDays || earlyDays || absentDays) attention.push(`지각 ${lateDays}일 · 조퇴 ${earlyDays}일 · 결근확정 ${absentDays}일입니다.`);
+  if (scheduledDays >= 3 && worklogRate < 0.7) attention.push(`업무일지 작성률 ${Math.round(worklogRate * 100)}%로 기록 보완이 필요합니다.`);
+  if (taskTotal && completionRate < 0.6) attention.push(`우선업무 완료율 ${Math.round(completionRate * 100)}%로 미완료 원인을 확인하세요.`);
+  if (worklogDays >= 3 && reportRate < 0.5) attention.push("업무보고·회고 기록을 보강하면 역량 분석 정확도가 높아집니다.");
+  if (!attention.length) attention.push("최근 기록에서 즉시 확인할 근태·실행 위험 신호가 없습니다.");
+  const periodStart = dateKeys[0]?.slice(5).replace("-", ".") || "";
+  const periodEnd = dateKeys.at(-1)?.slice(5).replace("-", ".") || "";
+  return {
+    employee,
+    trackProfile,
+    periodLabel: `${periodStart}–${periodEnd}`,
+    scheduledDays,
+    evidenceDays,
+    attendanceDays,
+    normalDays,
+    missingAttendanceDays,
+    lateDays,
+    earlyDays,
+    absentDays,
+    worklogDays,
+    reportDays,
+    taskTotal,
+    completedTotal,
+    attendanceRate,
+    punctualityRate,
+    worklogRate,
+    completionRate,
+    competencyScores,
+    overallScore,
+    strongest,
+    attention: attention.slice(0, 2),
+    confidenceLabel: evidenceDays >= 8 ? "분석 가능" : evidenceDays >= 3 ? "추세 확인" : "자료 축적 중",
+  };
+}
+
+function renderRepresentativeEmployeeAnalysis(viewName = activeView) {
+  const fitnessView = viewName === "fitness-log";
+  const panel = document.getElementById(fitnessView ? "fitnessRepresentativeEmployeeAnalysis" : "representativeEmployeeAnalysis");
+  if (!panel) return;
+  const fitnessPage = fitnessView ? getCurrentFitnessLogPage() : null;
+  const employee = fitnessView ? fitnessPage?.employee : getSelectedEmployee();
+  const visible = Boolean(canAccessWorklogOverview() && employee && (!fitnessView || fitnessPage?.type === "employee"));
+  panel.hidden = !visible;
+  if (!visible) {
+    panel.innerHTML = "";
+    return;
+  }
+  const model = buildRepresentativeEmployeeAnalysis(employee, getActiveDateKey());
+  const percent = (value) => `${Math.round(value * 100)}%`;
+  panel.innerHTML = `
+    <header class="representative-analysis-head">
+      <div>
+        <span>Employee Performance Lens</span>
+        <strong>근태·역량 분석</strong>
+        <small>${escapeHtml(model.periodLabel)} · 최근 30일 업무기록 기준</small>
+      </div>
+      <b data-confidence="${escapeAttr(model.confidenceLabel)}">${escapeHtml(model.confidenceLabel)}</b>
+    </header>
+    <div class="representative-analysis-kpis" aria-label="직원 근태 및 실행 지표">
+      <article><span>근태 기록</span><strong>${model.attendanceDays}/${model.scheduledDays}</strong><em>미기록 ${model.missingAttendanceDays}일</em></article>
+      <article><span>정시 기록</span><strong>${model.attendanceDays ? percent(model.punctualityRate) : "–"}</strong><em>지각 ${model.lateDays} · 조퇴 ${model.earlyDays}</em></article>
+      <article><span>업무일지</span><strong>${model.worklogDays}/${model.scheduledDays}</strong><em>작성률 ${percent(model.worklogRate)}</em></article>
+      <article><span>업무 실행</span><strong>${model.completedTotal}/${model.taskTotal}</strong><em>완료율 ${model.taskTotal ? percent(model.completionRate) : "–"}</em></article>
+    </div>
+    <div class="representative-analysis-body">
+      <section class="representative-competency-panel">
+        <header><strong>${escapeHtml(model.trackProfile.title)}</strong><em>종합 ${model.overallScore}</em></header>
+        <div>
+          ${model.competencyScores.map((item) => `
+            <label>
+              <span>${escapeHtml(item.name)}</span>
+              <i><b style="--analysis-score:${item.score}%"></b></i>
+              <em>${item.score}</em>
+            </label>
+          `).join("")}
+        </div>
+      </section>
+      <section class="representative-analysis-guidance">
+        <article data-tone="strength">
+          <span>관찰된 강점</span>
+          <strong>${escapeHtml(model.strongest?.name || "자료 축적 중")}</strong>
+          <p>${model.evidenceDays >= 3 ? `현재 기록에서 가장 안정적인 역량 신호는 ${escapeHtml(model.strongest?.name || "업무 실행")}입니다.` : "업무일지가 3일 이상 쌓이면 역할별 강점 흐름을 표시합니다."}</p>
+        </article>
+        <article data-tone="attention">
+          <span>대표 확인 포인트</span>
+          ${model.attention.map((item) => `<p>${escapeHtml(item)}</p>`).join("")}
+        </article>
+      </section>
+    </div>
+    <footer>업무일지와 출결 기록을 바탕으로 한 운영 참고자료입니다. ‘미기록’은 결근 판정이 아니며 실제 근태 확인 후 판단하세요.</footer>
+  `;
+}
+
 function renderOverviewTaskMini(task) {
   return `
     <li class="overview-task-mini ${task.done || task.status === "완료" ? "is-done" : ""}">
@@ -8961,6 +9177,7 @@ function renderEntries() {
   renderWeatherWidgets();
   renderDateNav();
   renderTodayContext();
+  renderRepresentativeEmployeeAnalysis(activeView);
   renderReport();
   applyMobileDayFocusMode();
   applyCurrentWorklogPermissionState();
@@ -9007,6 +9224,7 @@ function renderFitnessWorklog(log = getSelectedLog()) {
   document.querySelector(".fitness-log-task-panel")?.toggleAttribute("hidden", isCenter);
   document.querySelector(".fitness-log-schedule-panel")?.toggleAttribute("hidden", isCenter);
   document.querySelector(".fitness-ops-section")?.toggleAttribute("hidden", isCenter);
+  renderRepresentativeEmployeeAnalysis("fitness-log");
   applyFitnessLogPermissionState();
   if (isCenter) return;
   renderFitnessTaskBoard(log);

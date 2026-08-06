@@ -886,6 +886,10 @@ async function checkOverviewCommandBoard(browser) {
       taskRows: document.querySelectorAll("#worklogTaskBoard .worklog-task-row").length,
       scheduleText,
       exitVisible: Boolean(exitButton && !exitButton.hidden),
+      analysisVisible: !document.querySelector("#representativeEmployeeAnalysis")?.hidden,
+      analysisKpis: document.querySelectorAll("#representativeEmployeeAnalysis .representative-analysis-kpis article").length,
+      analysisCompetencies: document.querySelectorAll("#representativeEmployeeAnalysis .representative-competency-panel label").length,
+      analysisText: document.querySelector("#representativeEmployeeAnalysis")?.textContent?.replace(/\s+/g, " ").trim() || "",
       commonFirst,
       commonText,
       employeeOrder,
@@ -906,6 +910,10 @@ async function checkOverviewCommandBoard(browser) {
     || overviewDetailMetrics.taskRows !== 3
     || !overviewDetailMetrics.scheduleText
     || !overviewDetailMetrics.exitVisible
+    || !overviewDetailMetrics.analysisVisible
+    || overviewDetailMetrics.analysisKpis !== 4
+    || overviewDetailMetrics.analysisCompetencies !== 5
+    || !overviewDetailMetrics.analysisText.includes("결근 판정이 아니며")
     || !overviewDetailMetrics.commonFirst
     || !overviewDetailMetrics.commonText.includes("전 사업장 공통 보고")
     || overviewDetailMetrics.employeeOrder[0] !== "beyond-company-leader"
@@ -1217,6 +1225,10 @@ async function checkRepresentativeProfileSeparation(browser) {
       exitHitTarget: exitRect
         ? document.elementFromPoint(exitRect.left + (exitRect.width / 2), exitRect.top + (exitRect.height / 2))?.id || ""
         : "",
+      analysisVisible: !document.querySelector("#fitnessRepresentativeEmployeeAnalysis")?.hidden,
+      analysisKpis: document.querySelectorAll("#fitnessRepresentativeEmployeeAnalysis .representative-analysis-kpis article").length,
+      analysisCompetencies: document.querySelectorAll("#fitnessRepresentativeEmployeeAnalysis .representative-competency-panel label").length,
+      analysisText: document.querySelector("#fitnessRepresentativeEmployeeAnalysis")?.textContent?.replace(/\s+/g, " ").trim() || "",
       taskRows: document.querySelectorAll("#fitnessTaskBoard .worklog-task-row").length,
       firstScheduleText: filledScheduleRow?.querySelector(".fitness-appointment-summary")?.textContent?.replace(/\s+/g, " ").trim() || "",
       smartScheduleText: smartScheduleRow.querySelector(".fitness-appointment-summary")?.textContent?.replace(/\s+/g, " ").trim() || "",
@@ -1239,6 +1251,11 @@ async function checkRepresentativeProfileSeparation(browser) {
   if (!metrics.exitVisible
     || metrics.exitIdentityOverlap
     || metrics.exitHitTarget !== "returnToFitnessWorklogOverviewButton"
+    || !metrics.analysisVisible
+    || metrics.analysisKpis !== 4
+    || metrics.analysisCompetencies !== 5
+    || !metrics.analysisText.includes("근태·역량 분석")
+    || !metrics.analysisText.includes("결근 판정이 아니며")
     || metrics.taskRows !== 3) {
     fail("representative fitness detail should provide an overview exit and keep only three blank priority rows", JSON.stringify(metrics));
   }
@@ -1798,6 +1815,7 @@ async function checkFitnessManagerCanEditOwnWorklog(browser) {
     ownPageClass: document.querySelector("#view-fitness-log")?.classList.contains("is-own-page") || false,
     ownPanelBackground: getComputedStyle(document.querySelector("#view-fitness-log .fitness-log-task-panel")).backgroundImage,
     personalMonthHidden: document.querySelector("#fitnessPersonalMonthSummary")?.hidden ?? false,
+    representativeAnalysisHidden: document.querySelector("#fitnessRepresentativeEmployeeAnalysis")?.hidden ?? false,
     compactTotals: [...document.querySelectorAll("#fitnessOpsSummaryButton .ops-summary-metric strong")].map((node) => node.textContent.trim()),
     julyManager: buildFitnessCenterEmployeeMonthRow(getFitnessCenterEmployees().find((employee) => isFitnessManagerRosterIdentity(employee)), "2026-07").ops,
     augustManager: buildFitnessCenterEmployeeMonthRow(getFitnessCenterEmployees().find((employee) => isFitnessManagerRosterIdentity(employee)), "2026-08").ops,
@@ -1827,6 +1845,9 @@ async function checkFitnessManagerCanEditOwnWorklog(browser) {
     || Number(parsed.julyManager.ptRegular) !== 5 || Number(parsed.julyManager.consultation) !== 3
     || Number(parsed.augustManager.ptRegular) !== 11 || Number(parsed.julyTrainer.ptRegular) !== 7) {
     fail("fitness personal totals must accumulate within the selected month and reset for the next month", metrics);
+  }
+  if (!parsed.representativeAnalysisHidden) {
+    fail("employee own worklog must not expose representative attendance and competency analysis", metrics);
   }
   if (parsed.scheduleTimes[0] !== "06:00" || parsed.scheduleTimes.at(-1) !== "24:00" || parsed.scheduleTimes.includes("08:00") === false) {
     fail("Park fitness manager schedule should follow 06:00-24:00 profile work hours", metrics);
