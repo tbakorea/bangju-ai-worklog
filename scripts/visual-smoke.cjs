@@ -576,6 +576,11 @@ async function checkOverviewCommandBoard(browser) {
       allCommandCount: document.querySelectorAll(".overview-all-command").length,
       businessBoardCount: document.querySelectorAll(".overview-all-business-board").length,
       businessSnapshotCount: document.querySelectorAll(".overview-business-snapshot").length,
+      signalReportCount: document.querySelectorAll(".representative-signal-report").length,
+      signalSummaryCount: document.querySelectorAll(".representative-signal-summary article").length,
+      signalRowCount: document.querySelectorAll(".representative-signal-list > article").length,
+      signalActionCount: document.querySelectorAll(".representative-signal-list [data-overview-employee]").length,
+      signalText: document.querySelector(".representative-signal-report")?.textContent?.replace(/\s+/g, " ").trim() || "",
       improvementCount: document.querySelectorAll(".overview-improvement-strip span").length,
       hiddenTaskChrome,
       hiddenReserveSheets: !/예비|미배정|spare/i.test(document.querySelector("#worklogOverviewGrid")?.textContent || ""),
@@ -602,6 +607,15 @@ async function checkOverviewCommandBoard(browser) {
   }
   if (!metrics.allCommandCount) fail("overview all-scope command board is missing");
   if (!metrics.businessBoardCount || metrics.businessSnapshotCount < 3) fail("overview all-scope business snapshots are missing", JSON.stringify(metrics));
+  if (metrics.signalReportCount !== 1
+    || metrics.signalSummaryCount !== 4
+    || metrics.signalRowCount < 1
+    || metrics.signalRowCount > 8
+    || metrics.signalActionCount !== metrics.signalRowCount
+    || !metrics.signalText.includes("직원 이상신호 자동 보고")
+    || !metrics.signalText.includes("인사평가나 징계 판정이 아닙니다")) {
+    fail("representative overview should render an evidence-based employee signal report", JSON.stringify(metrics));
+  }
   if (metrics.improvementCount < 10) fail("overview should show today's 10 improvements", String(metrics.improvementCount));
   if (!metrics.hiddenTaskChrome) fail("overview task markers/priorities should be hidden");
   if (!metrics.hiddenReserveSheets) fail("overview should hide reserve/unassigned sheets");
@@ -758,6 +772,29 @@ async function checkOverviewCommandBoard(browser) {
   const allStaffSyncMetrics = JSON.parse(allStaffSync);
   if (allStaffSyncMetrics.failures.length) {
     fail("representative overview should synchronize every assigned employee through canonical worklog IDs", allStaffSync);
+  }
+  const signalDetection = await page.evaluate(() => window.eval(`(() => {
+    const dateKey = "2026-08-02";
+    const employeeId = "bangju-finance-manager";
+    const employee = findEmployeeRecordById(employeeId);
+    const group = getWorklogOverviewGroups().find((item) => item.id === "bangju");
+    const log = getEmployeeLogForDate(employeeId, dateKey);
+    const previousStatus = log.attendanceStatus;
+    const previousReport = log.report;
+    log.attendanceStatus = "결석";
+    log.report = "현장 안전사고 및 환불 민원 확인 필요";
+    const model = getOverviewEmployeeSummaryModel(group, employeeId, employee, dateKey);
+    const signals = detectRepresentativeEmployeeSignals(model, dateKey);
+    log.attendanceStatus = previousStatus;
+    log.report = previousReport;
+    return JSON.stringify(signals.map(({ level, category, title, evidence, action }) => ({ level, category, title, evidence, action })));
+  })()`));
+  const signalDetectionMetrics = JSON.parse(signalDetection);
+  if (!signalDetectionMetrics.some((item) => item.level === "critical" && item.category === "근태")
+    || !signalDetectionMetrics.some((item) => item.level === "critical" && item.category === "안전·운영")
+    || !signalDetectionMetrics.some((item) => item.category === "고객·금전")
+    || signalDetectionMetrics.some((item) => !item.evidence || !item.action)) {
+    fail("employee signal engine should classify attendance, safety, and customer risks with evidence and actions", signalDetection);
   }
   const overviewProjection = await page.evaluate(() => window.eval(`(() => {
     const dateKey = "2026-08-02";

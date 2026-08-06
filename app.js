@@ -3947,6 +3947,23 @@ function buildRepresentativeEmployeeAnalysis(employee = {}, endDateKey = getActi
   const overallScore = scheduledDays ? clampScore(competencyScores.reduce((sum, item) => sum + item.score, 0) / competencyScores.length) : 0;
   const sortedCompetencies = [...competencyScores].sort((a, b) => b.score - a.score);
   const strongest = sortedCompetencies[0];
+  const summarizeExecutionWindow = (windowRows) => {
+    const activeRows = windowRows.filter((row) => !row.off && (row.isPast || row.attendanceRecorded || row.worklogRecorded));
+    const evidenceRows = activeRows.filter((row) => row.attendanceRecorded || row.worklogRecorded);
+    const windowTasks = activeRows.reduce((sum, row) => sum + row.tasks, 0);
+    const windowCompleted = activeRows.reduce((sum, row) => sum + row.completed, 0);
+    const windowWorklogRate = ratio(activeRows.filter((row) => row.worklogRecorded).length, activeRows.length);
+    const windowCompletionRate = ratio(windowCompleted, windowTasks);
+    const windowScheduleRate = ratio(activeRows.filter((row) => row.scheduleRecorded).length, activeRows.length);
+    return {
+      evidenceDays: evidenceRows.length,
+      score: clampScore((windowWorklogRate * 0.45 + windowCompletionRate * 0.4 + windowScheduleRate * 0.15) * 100),
+    };
+  };
+  const recentExecution = summarizeExecutionWindow(rows.slice(-7));
+  const previousExecution = summarizeExecutionWindow(rows.slice(-14, -7));
+  const executionTrendAvailable = recentExecution.evidenceDays >= 2 && previousExecution.evidenceDays >= 2;
+  const executionTrendDelta = executionTrendAvailable ? recentExecution.score - previousExecution.score : 0;
   const attention = [];
   if (missingAttendanceDays) attention.push(`근태 미기록 ${missingAttendanceDays}일을 확인하세요.`);
   if (lateDays || earlyDays || absentDays) attention.push(`지각 ${lateDays}일 · 조퇴 ${earlyDays}일 · 결근확정 ${absentDays}일입니다.`);
@@ -3979,6 +3996,10 @@ function buildRepresentativeEmployeeAnalysis(employee = {}, endDateKey = getActi
     competencyScores,
     overallScore,
     strongest,
+    recentExecutionScore: recentExecution.score,
+    previousExecutionScore: previousExecution.score,
+    executionTrendAvailable,
+    executionTrendDelta,
     attention: attention.slice(0, 2),
     confidenceLabel: evidenceDays >= 8 ? "분석 가능" : evidenceDays >= 3 ? "추세 확인" : "자료 축적 중",
   };
@@ -4039,6 +4060,131 @@ function renderRepresentativeEmployeeAnalysis(viewName = activeView) {
       </section>
     </div>
     <footer>업무일지와 출결 기록을 바탕으로 한 운영 참고자료입니다. ‘미기록’은 결근 판정이 아니며 실제 근태 확인 후 판단하세요.</footer>
+  `;
+}
+
+function detectRepresentativeEmployeeSignals(model = {}, dateKey = getActiveDateKey()) {
+  const employee = model.employee || {};
+  const dayLog = model.dayLog || getExistingEmployeeLogForAnalysis(employee, dateKey) || {};
+  const analysis = buildRepresentativeEmployeeAnalysis(employee, dateKey);
+  const taskText = (dayLog.tasks || []).map((task) => task.text || "").join(" ");
+  const scheduleText = (dayLog.schedule || []).map((entry) => getScheduleEntryText(entry)).join(" ");
+  const reportText = String(dayLog.report || dayLog.memo || dayLog.record || "");
+  const combined = `${taskText} ${scheduleText} ${reportText}`;
+  const signals = [];
+  const add = (level, category, title, evidence, action) => {
+    const key = `${level}:${category}`;
+    if (!signals.some((item) => item.key === key)) signals.push({ key, level, category, title, evidence, action });
+  };
+
+  if (/결근|결석/.test(String(dayLog.attendanceStatus || ""))) {
+    add("critical", "근태", "확정 근태 신호", `${formatShortDate(dateKey)} 업무일지에 결근 또는 결석 상태가 기록되었습니다.`, "사유와 복귀 계획을 확인하고 노무 기록과 대조하세요.");
+  }
+  if (/사고|부상|안전사고|화재|누전|파손|분실|도난/.test(combined)) {
+    add("critical", "안전·운영", "즉시 확인할 운영 위험", "당일 업무기록에서 사고·안전·시설 손상 관련 표현이 감지되었습니다.", "현장 사실관계를 확인하고 책임자·조치기한을 지정하세요.");
+  }
+  if (/민원|클레임|환불|분쟁|미수|미납|과오납/.test(combined)) {
+    add("warning", "고객·금전", "고객 또는 금전 처리 신호", "민원·환불·미수 등 후속 확인이 필요한 표현이 기록되었습니다.", "처리 담당자와 완료 기준을 지정하고 다음 보고에서 결과를 확인하세요.");
+  }
+  if (analysis.missingAttendanceDays >= 3) {
+    add("warning", "근태", "근태 기록 반복 누락", `최근 30일 근무 예정일 중 근태 미기록이 ${analysis.missingAttendanceDays}일입니다.`, "실제 근무 여부를 확인한 뒤 누락된 출결만 정정하도록 요청하세요.");
+  }
+  if (analysis.lateDays + analysis.earlyDays >= 2) {
+    add("warning", "근태", "지각·조퇴 반복 신호", `최근 30일 지각 ${analysis.lateDays}일, 조퇴 ${analysis.earlyDays}일이 기록되었습니다.`, "근무시간과 사유를 확인하고 반복 원인에 대한 면담 여부를 판단하세요.");
+  }
+  if (analysis.scheduledDays >= 5 && analysis.worklogRate < 0.5) {
+    add("warning", "기록 습관", "업무일지 작성 저하", `최근 30일 업무일지 작성률이 ${Math.round(analysis.worklogRate * 100)}%입니다.`, "업무 수행 여부와 기록 누락을 구분해 확인하고 최소 기록 기준을 안내하세요.");
+  }
+  if (analysis.taskTotal >= 4 && analysis.completionRate < 0.5) {
+    add("warning", "업무 실행", "우선업무 완료율 저하", `등록 업무 ${analysis.taskTotal}건 중 ${analysis.completedTotal}건이 완료 처리되었습니다.`, "미완료 원인을 업무량·우선순위·지원 필요로 나눠 확인하세요.");
+  }
+  if (analysis.executionTrendAvailable && analysis.executionTrendDelta <= -25) {
+    add("warning", "업무 흐름", "최근 실행 흐름 급감", `최근 7일 실행지수가 직전 7일보다 ${Math.abs(analysis.executionTrendDelta)}점 낮아졌습니다.`, "일시적 업무변화인지 장애요인인지 확인하고 필요한 지원을 배치하세요.");
+  }
+  if (analysis.evidenceDays >= 5 && analysis.reportDays / Math.max(1, analysis.worklogDays) < 0.4) {
+    add("watch", "보고 역량", "보고·회고 근거 부족", `업무일지 작성 ${analysis.worklogDays}일 중 보고·메모 기록은 ${analysis.reportDays}일입니다.`, "완료사항·문제·다음 행동을 한 줄씩 기록하도록 코칭하세요.");
+  }
+  if (analysis.evidenceDays >= 5 && analysis.overallScore < 35) {
+    add("watch", "역량 근거", "역량 판단 근거 부족", `역할별 역량지수가 ${analysis.overallScore}점이며 기록 근거가 고르지 않습니다.`, "능력 저하로 단정하지 말고 실제 성과와 업무 난이도를 함께 확인하세요.");
+  }
+  if (!signals.length && analysis.evidenceDays < 3) {
+    add("watch", "데이터", "분석 자료 축적 중", `최근 30일 확인 가능한 업무·근태 기록이 ${analysis.evidenceDays}일입니다.`, "최소 3일 이상 기록 후 추세를 판단하세요.");
+  }
+  return signals.map((signal) => ({
+    ...signal,
+    employee,
+    employeeId: model.employeeId || getEmployeeWorklogId(employee) || employee.id,
+    view: model.group?.view || getStaffSiteGroupForEmployee(employee)?.view || "bangju-log",
+    analysis,
+  }));
+}
+
+function buildRepresentativeSignalReport(groups = getWorklogOverviewGroups(), dateKey = getActiveDateKey()) {
+  const reports = groups.flatMap((group) => getOverviewGroupEmployeeEntries(group).flatMap(({ employeeId, employee }) => {
+    const model = getOverviewEmployeeSummaryModel(group, employeeId, employee, dateKey);
+    return detectRepresentativeEmployeeSignals(model, dateKey);
+  }));
+  const levelOrder = { critical: 0, warning: 1, watch: 2 };
+  reports.sort((a, b) => (levelOrder[a.level] ?? 9) - (levelOrder[b.level] ?? 9)
+    || getOverviewRoleRank(a.employee) - getOverviewRoleRank(b.employee)
+    || String(a.employee.name || "").localeCompare(String(b.employee.name || ""), "ko"));
+  const employeeLevels = new Map();
+  reports.forEach((item) => {
+    const current = employeeLevels.get(item.employeeId);
+    if (!current || (levelOrder[item.level] ?? 9) < (levelOrder[current] ?? 9)) employeeLevels.set(item.employeeId, item.level);
+  });
+  const counts = { critical: 0, warning: 0, watch: 0 };
+  employeeLevels.forEach((level) => { counts[level] += 1; });
+  return { reports, counts, employeeLevels };
+}
+
+function renderRepresentativeSignalReportBoard(groups, dateKey) {
+  const report = buildRepresentativeSignalReport(groups, dateKey);
+  const visibleReports = report.reports.slice(0, 8);
+  const totalEmployees = groups.reduce((sum, group) => sum + getOverviewGroupEmployeeEntries(group).length, 0);
+  const signaledEmployees = report.employeeLevels.size;
+  const normalEmployees = Math.max(0, totalEmployees - signaledEmployees);
+  const levelLabel = { critical: "긴급", warning: "주의", watch: "관찰" };
+  return `
+    <section class="representative-signal-report" aria-label="직원 이상신호 자동 보고">
+      <header>
+        <div>
+          <span>Employee Signal Report</span>
+          <strong>직원 이상신호 자동 보고</strong>
+          <p>근태·업무일지·완료율·최근 실행변화를 함께 감지해 대표 확인 순서로 정리합니다.</p>
+        </div>
+        <em>${escapeHtml(formatShortDate(dateKey))} 기준</em>
+      </header>
+      <div class="representative-signal-summary" aria-label="이상신호 요약">
+        <article data-level="critical"><span>긴급</span><strong>${report.counts.critical}</strong><em>즉시 확인</em></article>
+        <article data-level="warning"><span>주의</span><strong>${report.counts.warning}</strong><em>원인 확인</em></article>
+        <article data-level="watch"><span>관찰</span><strong>${report.counts.watch}</strong><em>추세 확인</em></article>
+        <article data-level="normal"><span>정상</span><strong>${normalEmployees}</strong><em>특이신호 없음</em></article>
+      </div>
+      <div class="representative-signal-list">
+        ${visibleReports.length ? visibleReports.map((item) => `
+          <article data-level="${escapeAttr(item.level)}">
+            <div class="representative-signal-person">
+              <span>${escapeHtml(levelLabel[item.level] || "관찰")} · ${escapeHtml(item.category)}</span>
+              <strong>${escapeHtml(getEmployeeAdminLabel(item.employee))}</strong>
+              <em>${escapeHtml(item.employee.workplace || item.employee.org || "사업장 미지정")}</em>
+            </div>
+            <div class="representative-signal-copy">
+              <strong>${escapeHtml(item.title)}</strong>
+              <p>${escapeHtml(item.evidence)}</p>
+              <small>${escapeHtml(item.action)}</small>
+            </div>
+            <button type="button" data-overview-employee="${escapeAttr(item.employeeId)}" data-overview-view="${escapeAttr(item.view)}">업무일지 열기</button>
+          </article>
+        `).join("") : `
+          <div class="representative-signal-empty">
+            <strong>확인할 이상신호가 없습니다.</strong>
+            <span>근태와 업무 실행 기록이 정상 범위입니다.</span>
+          </div>
+        `}
+      </div>
+      <footer>자동 보고는 인사평가나 징계 판정이 아닙니다. 기록 누락·업무 난이도·실제 상황을 직원과 확인한 뒤 판단하세요.</footer>
+    </section>
   `;
 }
 
@@ -4392,6 +4538,7 @@ function renderOverviewAllScopeBoard(groups, dateKey, dateLabel) {
       <article><span>시간일정</span><strong>${scheduleTotal}건</strong><em>배치된 일정</em></article>
       <article><span>피트니스</span><strong>${paidPt}건</strong><em>유료PT</em></article>
     </section>
+    ${renderRepresentativeSignalReportBoard(groups, dateKey)}
     <section class="overview-improvement-strip" aria-label="오늘 개선 10">
       <strong>오늘 개선 10</strong>
       <div>${improvements.map((item, index) => `<span>${String(index + 1).padStart(2, "0")} ${escapeHtml(item)}</span>`).join("")}</div>
