@@ -1190,6 +1190,9 @@ async function checkRepresentativeProfileSeparation(browser) {
     const pager = document.querySelector("#fitnessLogPagerTitle")?.textContent?.trim() || "";
     const view = document.querySelector("#view-fitness-log");
     const exitButton = document.querySelector("#returnToFitnessWorklogOverviewButton");
+    const identityBadge = document.querySelector("#fitnessIdentityBadge");
+    const exitRect = exitButton?.getBoundingClientRect();
+    const identityRect = identityBadge?.getBoundingClientRect();
     const firstScheduleRow = document.querySelector("#fitnessAppointmentList .fitness-appointment-row");
     const filledScheduleRow = document.querySelector("#fitnessAppointmentList .fitness-appointment-row.is-filled");
     const firstScheduleTime = firstScheduleRow?.querySelector(".appointment-time");
@@ -1208,6 +1211,12 @@ async function checkRepresentativeProfileSeparation(browser) {
       pageType: view?.dataset.fitnessPageType || "",
       selectedEmployeeId: window.state?.selectedEmployeeId || "",
       exitVisible: Boolean(exitButton && !exitButton.hidden),
+      exitIdentityOverlap: Boolean(exitRect && identityRect
+        && exitRect.left < identityRect.right && exitRect.right > identityRect.left
+        && exitRect.top < identityRect.bottom && exitRect.bottom > identityRect.top),
+      exitHitTarget: exitRect
+        ? document.elementFromPoint(exitRect.left + (exitRect.width / 2), exitRect.top + (exitRect.height / 2))?.id || ""
+        : "",
       taskRows: document.querySelectorAll("#fitnessTaskBoard .worklog-task-row").length,
       firstScheduleText: filledScheduleRow?.querySelector(".fitness-appointment-summary")?.textContent?.replace(/\s+/g, " ").trim() || "",
       smartScheduleText: smartScheduleRow.querySelector(".fitness-appointment-summary")?.textContent?.replace(/\s+/g, " ").trim() || "",
@@ -1227,7 +1236,10 @@ async function checkRepresentativeProfileSeparation(browser) {
   if (metrics.permission !== "readonly" || metrics.pageType !== "coworker") {
     fail("representative should only read the fitness manager sheet", `${metrics.permission}/${metrics.pageType}`);
   }
-  if (!metrics.exitVisible || metrics.taskRows !== 3) {
+  if (!metrics.exitVisible
+    || metrics.exitIdentityOverlap
+    || metrics.exitHitTarget !== "returnToFitnessWorklogOverviewButton"
+    || metrics.taskRows !== 3) {
     fail("representative fitness detail should provide an overview exit and keep only three blank priority rows", JSON.stringify(metrics));
   }
   if (metrics.smartScheduleText !== "(시설청결) 웨이트존 청소기, 웨이트존 거울 닦기") {

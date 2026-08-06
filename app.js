@@ -4233,6 +4233,7 @@ function setupWorklogOverviewInteractions(grid, dateKey) {
       }
       saveState({ fastSave: true });
       switchView(targetView);
+      window.scrollTo({ top: 0, left: 0, behavior: "auto" });
     });
   });
   grid.querySelectorAll("[data-overview-directive-add]").forEach((button) => {

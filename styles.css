@@ -22613,6 +22613,15 @@ body.physical-phone-device #view-today:has(#returnToWorklogOverviewButton:not([h
   padding: 0 4px;
 }
 
+body[data-layout-mode="phone"] #view-fitness-log:has(#returnToFitnessWorklogOverviewButton:not([hidden])) .fitness-person-chip,
+body.physical-phone-device #view-fitness-log:has(#returnToFitnessWorklogOverviewButton:not([hidden])) .fitness-person-chip {
+  position: static;
+  width: 100%;
+  max-width: 100%;
+  min-height: 30px;
+  padding: 0 4px;
+}
+
 body[data-layout-mode="phone"] #view-fitness-log .fitness-coaching-row,
 body[data-layout-mode="phone"] #view-fitness-log .fitness-log-title,
 body[data-layout-mode="phone"] #view-fitness-log .fitness-log-pager,
