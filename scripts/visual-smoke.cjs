@@ -88,6 +88,7 @@ async function checkTabletRepresentativeWorklogChrome(browser) {
     };
     const overlaps = (a, b) => Boolean(a && b && a.left < b.right && a.right > b.left && a.top < b.bottom && a.bottom > b.top);
     const exit = rect("#returnToWorklogOverviewButton");
+    const identity = rect("#worklogIdentityBadge");
     const dock = rect("#view-today > .section-menu-dock");
     const weather = rect("#todayJumpButton");
     const title = rect("#view-today .worklog-today-title");
@@ -95,10 +96,15 @@ async function checkTabletRepresentativeWorklogChrome(browser) {
     const range = document.querySelector("#todayJumpButton small");
     return {
       exit,
+      identity,
       dock,
       weather,
       title,
       exitDockOverlap: overlaps(exit, dock),
+      exitIdentityOverlap: overlaps(exit, identity),
+      exitHitTarget: exit
+        ? document.elementFromPoint(exit.left + (exit.width / 2), exit.top + (exit.height / 2))?.id || ""
+        : "",
       weatherWidth: weather?.width || 0,
       weatherIconSize: icon ? Number.parseFloat(getComputedStyle(icon).fontSize) : 0,
       weatherRangeSize: range ? Number.parseFloat(getComputedStyle(range).fontSize) : 0,
@@ -108,6 +114,9 @@ async function checkTabletRepresentativeWorklogChrome(browser) {
 
   if (!metrics.exit || !metrics.dock || metrics.exitDockOverlap) {
     fail("tablet representative return action should not overlap the section menu dock", JSON.stringify(metrics));
+  }
+  if (metrics.exitIdentityOverlap || metrics.exitHitTarget !== "returnToWorklogOverviewButton") {
+    fail("tablet representative return action should remain unobstructed by the employee identity badge", JSON.stringify(metrics));
   }
   if (metrics.weatherWidth < 120 || metrics.weatherIconSize < 27 || metrics.weatherRangeSize < 14) {
     fail("tablet current-day weather should use the available date-row space", JSON.stringify(metrics));
@@ -696,6 +705,7 @@ async function checkOverviewCommandBoard(browser) {
       ["fitness-weekday-info-idabin", "이다빈", "(주)방주 / 비욘드 피트니스 지사", "인포데스크", "idabin@example.com"],
       ["fitness-info-kimyoungchae", "김영채", "(주)방주 / 비욘드 피트니스 지사", "인포데스크", "yckim1558@naver.com"],
       ["fitness-info-shinsemin", "신세민", "(주)방주 / 비욘드 피트니스 지사", "인포데스크", "tpals2990@naver.com"],
+      ["fitness-weekday-info", "홍길동", "(주)방주 / 비욘드 피트니스 지사", "인포데스크", "projch@naver.com"],
       ["beyond-company-leader", "김성민", "(주)비욘드컴퍼니", "실장", "ksm@example.com"],
       ["beyond-shared-manager", "추소영", "(주)비욘드컴퍼니 / 공유사업부", "공유사업부 매니저", "choo@example.com"]
     ];
@@ -748,6 +758,38 @@ async function checkOverviewCommandBoard(browser) {
   const allStaffSyncMetrics = JSON.parse(allStaffSync);
   if (allStaffSyncMetrics.failures.length) {
     fail("representative overview should synchronize every assigned employee through canonical worklog IDs", allStaffSync);
+  }
+  const overviewProjection = await page.evaluate(() => window.eval(`(() => {
+    const dateKey = "2026-08-02";
+    const writtenId = "bangju-finance-manager";
+    const blankId = "bangju-finance-assistant";
+    const written = getEmployeeLogForDate(writtenId, dateKey);
+    written.report = "";
+    written.tasks[0].text = "보고서 문장 없이 작성한 업무일지";
+    const blank = getEmployeeLogForDate(blankId, dateKey);
+    blank.report = "";
+    blank.tasks = Array.from({ length: 8 }, (_, index) => ({ id: "blank-task-" + index, text: "", status: "예정", done: false }));
+    blank.schedule = Array.from({ length: 11 }, (_, index) => ({ id: "blank-schedule-" + index, time: String(8 + index).padStart(2, "0") + ":00", text: "" }));
+    state.worklogOverviewScope = "all";
+    renderWorklogOverview();
+    const worklogKpi = [...document.querySelectorAll(".overview-all-kpis article")]
+      .find((node) => node.querySelector("span")?.textContent.trim() === "업무일지");
+    state.worklogOverviewScope = "bangju";
+    renderWorklogOverview();
+    const blankCard = [...document.querySelectorAll(".worklog-overview-employee-sheet")]
+      .find((item) => item.querySelector("h3")?.textContent.includes("이소미"));
+    return JSON.stringify({
+      kpiText: worklogKpi?.textContent?.replace(/\\s+/g, " ").trim() || "",
+      taskRows: blankCard?.querySelectorAll(".overview-task-mini").length ?? -1,
+      scheduleRows: blankCard?.querySelectorAll(".overview-schedule-mini").length ?? -1,
+    });
+  })()`));
+  const overviewProjectionMetrics = JSON.parse(overviewProjection);
+  if (!overviewProjectionMetrics.kpiText.includes("업무일지")
+    || !overviewProjectionMetrics.kpiText.match(/[1-9][0-9]*\/10/)
+    || overviewProjectionMetrics.taskRows !== 3
+    || overviewProjectionMetrics.scheduleRows !== 3) {
+    fail("representative overview should count any written worklog and keep empty previews compact", overviewProjection);
   }
   const bangjuCoworkerNavigation = await page.evaluate(() => window.eval(`(() => {
     state.selectedEmployeeId = "bangju-finance-manager";

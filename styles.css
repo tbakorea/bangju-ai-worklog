@@ -22572,6 +22572,7 @@ body.physical-phone-device #view-fitness-log::before {
   line-height: 1.15;
   text-overflow: ellipsis;
   white-space: nowrap;
+  pointer-events: none;
 }
 
 #view-today .worklog-person-chip,
@@ -22598,6 +22599,18 @@ body.physical-phone-device #view-fitness-log .fitness-person-chip {
   color: rgba(14, 47, 37, 0.9);
   font-size: 17px;
   font-weight: 950;
+}
+
+/* Representative detail pages need both identity and the return action.
+   Stack the passive identity badge above the button instead of letting the
+   phone/CEO absolute badge cover the button's hit area. */
+body[data-layout-mode="phone"] #view-today:has(#returnToWorklogOverviewButton:not([hidden])) .worklog-person-chip,
+body.physical-phone-device #view-today:has(#returnToWorklogOverviewButton:not([hidden])) .worklog-person-chip {
+  position: static;
+  width: 100%;
+  max-width: 100%;
+  min-height: 30px;
+  padding: 0 4px;
 }
 
 body[data-layout-mode="phone"] #view-fitness-log .fitness-coaching-row,

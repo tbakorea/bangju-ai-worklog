@@ -3662,16 +3662,16 @@ function getOverviewSiteSummary(group, dateKey) {
   const entries = getOverviewGroupEmployeeEntries(group);
   const employeeCount = entries.length;
   const logs = entries.map(({ employeeId }) => state.employeeLogs?.[dateKey]?.[employeeId]).filter(Boolean);
-  const reportCount = logs.filter((log) => getOverviewReportText(log)).length;
+  const worklogCount = logs.filter(hasOverviewWorklogRecord).length;
   const attendanceSignals = logs.filter((log) => /결석|지각|조퇴|미기록/.test(formatAttendanceSummary(log) || log.attendanceStatus || "")).length;
   if (group.id === "fitness") {
     const paidPt = logs.reduce((sum, log) => {
       const ops = { ...createFitnessOps(), ...(log.fitnessOps || {}) };
       return sum + numberValue(ops.ptRegular) + numberValue(ops.ptOther);
     }, 0);
-    return `직원 ${employeeCount}명 · 보고 ${reportCount}건 · 유료PT ${paidPt}건`;
+    return `직원 ${employeeCount}명 · 일지 ${worklogCount}건 · 유료PT ${paidPt}건`;
   }
-  return `직원 ${employeeCount}명 · 보고 ${reportCount}건 · 확인 ${attendanceSignals}건`;
+  return `직원 ${employeeCount}명 · 일지 ${worklogCount}건 · 확인 ${attendanceSignals}건`;
 }
 
 function getOverviewFitnessOps(log) {
@@ -3725,12 +3725,13 @@ function renderOverviewDirectivePanel(employee, log, employeeId, context = {}) {
 
 function getOverviewActiveTasks(log) {
   const active = (log.tasks || []).filter((task) => String(task.text || "").trim());
-  return (active.length ? active : log.tasks || []).slice(0, 8);
+  return (active.length ? active : log.tasks || []).slice(0, active.length ? 8 : 3);
 }
 
 function getOverviewScheduleRows(log) {
   const filled = (log.schedule || []).filter((item) => getScheduleEntryText(item));
   const base = filled.length ? filled : log.schedule || [];
+  if (!filled.length) return base.slice(0, 3);
   if (fitnessEmployeeIds.includes(log?.employeeId)) return base;
   return base.slice(0, 12);
 }
@@ -4053,6 +4054,7 @@ function getOverviewEmployeeSummaryModel(group, employeeId, employee, dateKey) {
   const reportText = getOverviewReportText(dayLog);
   const ops = { ...createFitnessOps(), ...(dayLog.fitnessOps || {}) };
   const paidPt = numberValue(ops.ptRegular) + numberValue(ops.ptOther);
+  const hasWorklogRecord = hasOverviewWorklogRecord(dayLog);
   const signalCount = [
     /결석|지각|조퇴|미기록/.test(attendance),
     !reportText,
@@ -4070,6 +4072,7 @@ function getOverviewEmployeeSummaryModel(group, employeeId, employee, dateKey) {
     attendance,
     workStatus,
     reportText,
+    hasWorklogRecord,
     paidPt,
     signalCount,
   };
@@ -4091,7 +4094,7 @@ function getOverviewSignalLabel(model) {
 function renderOverviewBusinessSnapshot({ group, dateKey, dateLabel }) {
   const models = getOverviewGroupEmployeeEntries(group).map(({ employeeId, employee }) => getOverviewEmployeeSummaryModel(group, employeeId, employee, dateKey));
   const employeeCount = models.length;
-  const reportCount = models.filter((model) => model.reportText).length;
+  const worklogCount = models.filter((model) => model.hasWorklogRecord).length;
   const riskCount = models.filter((model) => getOverviewSignalTone(model) === "risk").length;
   const done = models.reduce((sum, model) => sum + model.done, 0);
   const taskTotal = models.reduce((sum, model) => sum + model.tasks.length, 0);
@@ -4103,7 +4106,7 @@ function renderOverviewBusinessSnapshot({ group, dateKey, dateLabel }) {
     <li class="overview-person-row is-${escapeAttr(getOverviewSignalTone(model))}">
       <span>${String(index + 1).padStart(2, "0")}</span>
       <strong>${escapeHtml(getEmployeeAdminLabel(model.employee))}</strong>
-      <em>${escapeHtml(model.reportText ? "보고" : "미보고")}</em>
+      <em>${escapeHtml(model.hasWorklogRecord ? "작성" : "미작성")}</em>
       <em class="overview-person-shift" data-shift-status="${escapeAttr(model.workStatus.key)}" title="${escapeAttr(model.workStatus.detail)}">${escapeHtml(model.workStatus.label)}</em>
       <button type="button" data-overview-employee="${escapeAttr(model.employeeId)}" data-overview-view="${escapeAttr(group.view)}">열기</button>
     </li>
@@ -4120,13 +4123,13 @@ function renderOverviewBusinessSnapshot({ group, dateKey, dateLabel }) {
       </header>
       <div class="overview-business-metrics">
         <span><b>${employeeCount}</b><small>직원</small></span>
-        <span><b>${reportCount}/${employeeCount}</b><small>보고</small></span>
+        <span><b>${worklogCount}/${employeeCount}</b><small>일지</small></span>
         <span><b>${taskTotal ? `${done}/${taskTotal}` : "0/0"}</b><small>업무</small></span>
         <span><b>${metricValue}</b><small>${metricLabel}</small></span>
       </div>
       <div class="overview-signal-line">
         <strong>${riskCount ? `대표 확인 ${riskCount}명` : "운영 신호 정상"}</strong>
-        <span>${riskCount ? "미보고, 출결, 일정 공백을 먼저 확인하세요." : "직원 업무 흐름이 안정적으로 기록되고 있습니다."}</span>
+        <span>${riskCount ? "미작성, 출결, 일정 공백을 먼저 확인하세요." : "직원 업무 흐름이 안정적으로 기록되고 있습니다."}</span>
       </div>
       <ul class="overview-person-list">
         ${rows || `<li class="overview-person-empty">등록된 직원이 없습니다.</li>`}
@@ -4138,21 +4141,21 @@ function renderOverviewBusinessSnapshot({ group, dateKey, dateLabel }) {
 function renderOverviewAllScopeBoard(groups, dateKey, dateLabel) {
   const models = groups.flatMap((group) => getOverviewGroupEmployeeEntries(group).map(({ employeeId, employee }) => getOverviewEmployeeSummaryModel(group, employeeId, employee, dateKey)));
   const totalEmployees = models.length;
-  const reportCount = models.filter((model) => model.reportText).length;
+  const worklogCount = models.filter((model) => model.hasWorklogRecord).length;
   const riskCount = models.filter((model) => getOverviewSignalTone(model) === "risk").length;
   const taskTotal = models.reduce((sum, model) => sum + model.tasks.length, 0);
   const doneTotal = models.reduce((sum, model) => sum + model.done, 0);
   const scheduleTotal = models.reduce((sum, model) => sum + model.scheduleCount, 0);
   const paidPt = models.reduce((sum, model) => sum + model.paidPt, 0);
   const improvements = [
-    "미보고 직원 먼저 확인",
+    "미작성 직원 먼저 확인",
     "출결 미기록 즉시 보완",
     "시간표 공백 업무지시",
     "피트니스 PT 실적 추적",
     "대표 개입사항만 선별",
     "사업장별 담당자 확인",
     "공통일정 이월 점검",
-    "업무보고 품질 확인",
+    "업무일지 품질 확인",
     "노무자료 누락 방지",
     "내일 우선업무 예약",
   ];
@@ -4161,14 +4164,14 @@ function renderOverviewAllScopeBoard(groups, dateKey, dateLabel) {
       <div>
         <span>Executive Worklog Radar</span>
         <h3>전사업장 오늘 현황</h3>
-        <p>${escapeHtml(dateLabel)} 기준 · 사업장별 직원 업무보고와 실행 신호를 한눈에 봅니다.</p>
+        <p>${escapeHtml(dateLabel)} 기준 · 사업장별 직원 업무일지와 실행 신호를 한눈에 봅니다.</p>
       </div>
       <button type="button" data-view="executive">대표경영</button>
     </section>
     <section class="overview-all-kpis" aria-label="전사업장 핵심지표">
       <article><span>전체 직원</span><strong>${totalEmployees}명</strong><em>승인·배정 기준</em></article>
-      <article><span>업무보고</span><strong>${reportCount}/${totalEmployees}</strong><em>오늘 작성</em></article>
-      <article class="${riskCount ? "is-alert" : ""}"><span>확인 신호</span><strong>${riskCount}명</strong><em>출결·공백·미보고</em></article>
+      <article><span>업무일지</span><strong>${worklogCount}/${totalEmployees}</strong><em>오늘 작성</em></article>
+      <article class="${riskCount ? "is-alert" : ""}"><span>확인 신호</span><strong>${riskCount}명</strong><em>출결·공백·미작성</em></article>
       <article><span>주요업무</span><strong>${doneTotal}/${taskTotal || 0}</strong><em>완료/전체</em></article>
       <article><span>시간일정</span><strong>${scheduleTotal}건</strong><em>배치된 일정</em></article>
       <article><span>피트니스</span><strong>${paidPt}건</strong><em>유료PT</em></article>
