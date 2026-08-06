@@ -24838,6 +24838,186 @@ body.is-fitness-focus-open.is-fitness-coaching-open .fitness-coaching-sheet {
   }
 }
 
+/* The date-row focus banner leads with one fixed signal while one concise
+   action line flows beside it. This keeps the banner recognizable even while
+   its message is between marquee cycles. */
+#view-today .worklog-pulse {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: stretch;
+  min-height: 46px;
+  border: 1px solid rgba(8, 43, 32, 0.42);
+  background:
+    radial-gradient(circle at 88% 20%, rgba(220, 184, 88, 0.18), transparent 28%),
+    linear-gradient(105deg, #082f24 0%, #0f4a37 62%, #163f31 100%);
+  box-shadow:
+    0 10px 22px rgba(8, 48, 35, 0.16),
+    inset 0 1px 0 rgba(255, 255, 255, 0.1);
+}
+
+#view-today .worklog-pulse::before {
+  content: "오늘 집중";
+  position: relative;
+  z-index: 2;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 78px;
+  border-right: 1px solid rgba(255, 254, 250, 0.2);
+  background: rgba(4, 31, 23, 0.74);
+  color: #f4d47d;
+  padding-inline: 12px;
+  font-size: 11px;
+  font-weight: 950;
+  letter-spacing: 0.08em;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+#view-today .worklog-pulse[data-pulse-tone="clear"]::before {
+  color: #cfe8d7;
+}
+
+#view-today .worklog-pulse.is-historical-weather::before {
+  content: "기록 날씨";
+  color: #dbe9df;
+}
+
+#view-today .worklog-pulse span {
+  align-self: center;
+  padding-block: 9px;
+  font-size: 13px;
+  font-weight: 900;
+  letter-spacing: -0.01em;
+  line-height: 1.15;
+  animation-duration: 18s;
+}
+
+@media (max-width: 640px) {
+  #view-today .worklog-pulse {
+    min-height: 42px;
+  }
+
+  #view-today .worklog-pulse::before {
+    min-width: 54px;
+    padding-inline: 7px;
+    font-size: 9px;
+    letter-spacing: 0;
+  }
+
+  #view-today .worklog-pulse span {
+    padding-block: 8px;
+    font-size: 11px;
+  }
+}
+
+/* Beyond Planner mode model for worklogs.
+   CEO mode keeps a stable focus rail; Classic mode alone owns the wide canvas. */
+@media (min-width: 641px) {
+  body[data-view-mode="ceo"]:not(.physical-phone-device)[data-active-view="worklog-overview"] .worklog-shell,
+  body[data-view-mode="ceo"]:not(.physical-phone-device)[data-active-view="bangju-log"] .worklog-shell,
+  body[data-view-mode="ceo"]:not(.physical-phone-device)[data-active-view="beyond-log"] .worklog-shell,
+  body[data-view-mode="ceo"]:not(.physical-phone-device)[data-active-view="fitness-log"] .worklog-shell {
+    width: min(clamp(430px, 38vw, 640px), calc(100vw - 28px)) !important;
+    max-width: none !important;
+    margin: 14px auto 30px 14px !important;
+  }
+
+  body[data-view-mode="ceo"]:not(.physical-phone-device)[data-active-view="worklog-overview"] .worklog-overview-view.is-active {
+    gap: 8px !important;
+    padding: 10px !important;
+  }
+
+  body[data-view-mode="ceo"]:not(.physical-phone-device)[data-active-view="worklog-overview"] .worklog-overview-hero {
+    grid-template-columns: minmax(0, 1fr) !important;
+    gap: 10px !important;
+    min-height: 196px !important;
+    padding: 16px 14px 14px !important;
+  }
+
+  body[data-view-mode="ceo"]:not(.physical-phone-device)[data-active-view="worklog-overview"] .worklog-overview-hero > div:first-child {
+    min-width: 0;
+    padding-right: 82px !important;
+  }
+
+  body[data-view-mode="ceo"]:not(.physical-phone-device)[data-active-view="worklog-overview"] .worklog-overview-hero p,
+  body[data-view-mode="ceo"]:not(.physical-phone-device)[data-active-view="worklog-overview"] .worklog-overview-hero h2 {
+    overflow: hidden !important;
+    max-width: 100% !important;
+    text-overflow: ellipsis !important;
+    white-space: nowrap !important;
+    word-break: keep-all !important;
+  }
+
+  body[data-view-mode="ceo"]:not(.physical-phone-device)[data-active-view="worklog-overview"] .worklog-overview-hero p {
+    font-size: 10px !important;
+    letter-spacing: 0.08em !important;
+  }
+
+  body[data-view-mode="ceo"]:not(.physical-phone-device)[data-active-view="worklog-overview"] .worklog-overview-hero h2 {
+    font-size: clamp(27px, 3.4vw, 36px) !important;
+  }
+
+  body[data-view-mode="ceo"]:not(.physical-phone-device)[data-active-view="worklog-overview"] .overview-date-nav,
+  body[data-view-mode="ceo"]:not(.physical-phone-device)[data-active-view="worklog-overview"] .overview-date-nav:has(#worklogOverviewTodayButton.is-current-date) {
+    justify-self: stretch !important;
+    width: 100% !important;
+    min-width: 0 !important;
+  }
+
+  body[data-view-mode="ceo"]:not(.physical-phone-device)[data-active-view="worklog-overview"] .overview-date-nav {
+    grid-template-columns: 40px minmax(0, 1fr) 40px 48px !important;
+  }
+
+  body[data-view-mode="ceo"]:not(.physical-phone-device)[data-active-view="worklog-overview"] .overview-date-nav:has(#worklogOverviewTodayButton.is-current-date) {
+    grid-template-columns: 40px minmax(0, 1fr) 40px !important;
+  }
+
+  body[data-view-mode="ceo"]:not(.physical-phone-device)[data-active-view="worklog-overview"] .overview-date-nav #overviewDateTitle {
+    font-size: clamp(16px, 2.2vw, 21px) !important;
+  }
+
+  body[data-view-mode="ceo"]:not(.physical-phone-device) #view-today.is-active {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+
+  body[data-view-mode="ceo"]:not(.physical-phone-device) #view-today > *,
+  body[data-view-mode="ceo"]:not(.physical-phone-device) #view-today .worklog-today {
+    grid-column: 1 !important;
+    min-width: 0 !important;
+  }
+
+  body[data-view-mode="ceo"]:not(.physical-phone-device) #view-today .worklog-main[data-today-page="daily"] {
+    display: block !important;
+  }
+
+  body[data-view-mode="ceo"]:not(.physical-phone-device) #view-today .worklog-main[data-today-page="daily"] .worklog-daily-page {
+    display: grid !important;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) !important;
+    gap: 6px !important;
+  }
+
+  body[data-view-mode="ceo"]:not(.physical-phone-device) #view-today .worklog-main[data-today-page="daily"] .worklog-coworker-page,
+  body[data-view-mode="ceo"]:not(.physical-phone-device) #view-fitness-log .fitness-desktop-coworker-board {
+    display: none !important;
+  }
+
+  body[data-view-mode="ceo"]:not(.physical-phone-device) #view-fitness-log .fitness-desktop-worklog-grid {
+    display: contents !important;
+  }
+}
+
+@media (min-width: 1025px) {
+  body[data-view-mode="classic"]:not(.physical-phone-device)[data-active-view="worklog-overview"] .worklog-shell,
+  body[data-view-mode="classic"]:not(.physical-phone-device)[data-active-view="bangju-log"] .worklog-shell,
+  body[data-view-mode="classic"]:not(.physical-phone-device)[data-active-view="beyond-log"] .worklog-shell,
+  body[data-view-mode="classic"]:not(.physical-phone-device)[data-active-view="fitness-log"] .worklog-shell {
+    width: min(1380px, calc(100vw - 40px)) !important;
+    max-width: none !important;
+    margin: 18px auto 36px !important;
+  }
+}
+
 /* Keep this at the absolute end so page-specific display rules never stack
    inactive sections under the active view. */
 .worklog-shell > .worklog-view:not(.is-active) {

@@ -9,7 +9,7 @@ const supabaseConfig = {
   anonKey: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InpsbHBmYWlqYWh5ZnBwaXZreHp1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODMzMzQxNTUsImV4cCI6MjA5ODkxMDE1NX0.C4omaj-e_9PM-iF3-5GUUVX47Wo06UsNTOYMlMMVcZU",
 };
 const supabaseClient = window.supabase?.createClient(supabaseConfig.url, supabaseConfig.anonKey) || null;
-const todayKey = formatDateKey(new Date());
+let todayKey = formatDateKey(new Date());
 const worklogViewAliases = {
   worklog: "worklog",
   today: "bangju-log",
@@ -821,10 +821,22 @@ function loadState() {
 }
 
 function resetStartupDateToToday() {
+  todayKey = formatDateKey(new Date());
   state.selectedDateKey = todayKey;
   calendarViewDate = parseDateKey(todayKey);
   state.fitnessCenterMonth = todayKey.slice(0, 7);
   state.fitnessCenterMonthSourceDateKey = todayKey;
+}
+
+function restoreTodayAfterAppResume() {
+  const liveTodayKey = formatDateKey(new Date());
+  const needsReset = todayKey !== liveTodayKey || state.selectedDateKey !== liveTodayKey;
+  if (!needsReset) return;
+  resetStartupDateToToday();
+  normalizeState();
+  localStorage.setItem(storageKey, JSON.stringify(state));
+  renderAll();
+  if (authState.user) loadRemoteWorklogForActiveDate();
 }
 
 function createState() {
@@ -3248,8 +3260,7 @@ function renderResponsiveMode() {
   const isPhoneWidth = window.matchMedia("(max-width: 640px)").matches;
   const mode = isNarrow ? "narrow" : "expanded";
   const viewMode = getGlobalViewMode();
-  const isExpandedWorklog = !isNarrow && ["today", "bangju-log", "beyond-log", "fitness-log", "worklog-overview"].includes(activeView);
-  const layoutMode = isPhoneWidth || (!isExpandedWorklog && viewMode === "ceo") ? "phone" : "wide";
+  const layoutMode = isPhoneWidth || viewMode === "ceo" ? "phone" : "wide";
   localStorage.setItem(layoutModeStorageKey, layoutMode);
   document.body.dataset.deviceMode = mode;
   document.body.dataset.layoutMode = layoutMode;
@@ -3284,8 +3295,9 @@ function applyGlobalViewMode() {
     button.hidden = isPhone;
     button.classList.toggle("is-classic", mode === "classic");
     button.setAttribute("aria-pressed", String(mode === "ceo"));
+    button.title = `${mode === "ceo" ? "클래식" : "CEO"} 모드로 전환`;
   }
-  if (label) label.textContent = mode === "ceo" ? "CEO" : "클래식";
+  if (label) label.textContent = mode === "ceo" ? "클래식" : "CEO";
 }
 
 function toggleGlobalViewMode() {
@@ -9919,13 +9931,23 @@ function renderWorklogSummary(log) {
   const pulseText = document.getElementById("worklogPulseText");
   const pulse = document.getElementById("worklogPulse");
   if (pulseText) {
-    const employee = getSelectedEmployee();
-    pulseText.textContent = `${getPersonalizedWelcomeMessage(employee, log)} · 오늘 실행 ${completed}/${tasks.length} · 다음 일정 ${nextEntry ? `${nextEntry.time} ${getScheduleEntryText(nextEntry)}` : "없음"} · 미완료 ${pending} · 운영 신호 ${pending ? "추적" : "정상"}`;
+    const nextScheduleText = nextEntry
+      ? String(getScheduleEntryText(nextEntry) || "일정 확인").replace(/\s+/g, " ").trim()
+      : "";
+    const compactNextSchedule = nextScheduleText.length > 22
+      ? `${nextScheduleText.slice(0, 22).trim()}…`
+      : nextScheduleText;
+    pulseText.textContent = nextEntry
+      ? `다음 ${nextEntry.time} · ${compactNextSchedule}`
+      : pending
+        ? `미완료 ${pending}건 · 우선업무를 마무리하세요`
+        : "오늘 업무 완료 · 보고서를 정리하세요";
   }
   if (pulse) {
     pulse.classList.remove("is-historical-weather");
+    pulse.dataset.pulseTone = pending ? "attention" : "clear";
     pulse.disabled = false;
-    pulse.setAttribute("aria-label", "업무 도움 열기");
+    pulse.setAttribute("aria-label", `AI 코칭 열기 · ${pulseText?.textContent || "오늘 업무 확인"}`);
   }
   const unitButton = document.getElementById("scheduleUnitButton");
   if (unitButton) unitButton.textContent = log.scheduleUnit === "60" ? "1시간" : "30분";
@@ -11070,7 +11092,7 @@ function renderScheduleTypeOptions(selected = "업무") {
 }
 
 function renderWorklogAppointments(log) {
-  normalizeWorklogSchedule(log);
+  normalizeWorklogSchedule(log, getActiveDateKey());
   const list = document.getElementById("worklogAppointmentList");
   list.innerHTML = "";
   (log.schedule || []).forEach((entry, index) => {
@@ -11080,7 +11102,7 @@ function renderWorklogAppointments(log) {
 }
 
 function renderFitnessAppointments(log) {
-  normalizeWorklogSchedule(log);
+  normalizeWorklogSchedule(log, getActiveDateKey());
   const list = document.getElementById("fitnessAppointmentList");
   if (!list) return;
   list.innerHTML = "";
@@ -11496,12 +11518,12 @@ function findScheduleEntry(log, slot) {
   return (log.schedule || []).find((entry) => entry.time === slot);
 }
 
-function normalizeWorklogSchedule(log) {
+function normalizeWorklogSchedule(log, dateKey = getActiveDateKey()) {
   const byTime = new Map((log.schedule || []).map((entry) => [entry.time, entry]));
   log.manualScheduleSlots = Array.isArray(log.manualScheduleSlots)
     ? Array.from(new Set(log.manualScheduleSlots.map(normalizeScheduleTimeInput).filter(Boolean))).sort((a, b) => timeToMinutes(a) - timeToMinutes(b))
     : [];
-  log.schedule = getWorklogScheduleSlots(log).map((time) => {
+  log.schedule = getWorklogScheduleSlots(log, dateKey).map((time) => {
     const entry = byTime.get(time) || { time, text: "", status: "예정", mergeDown: false, items: [createScheduleItem()] };
     entry.time = time;
     normalizeScheduleEntryItems(entry);
@@ -11513,7 +11535,8 @@ function normalizeWorklogSchedule(log) {
 
 function getWorklogScheduleSlots(log, dateKey = getActiveDateKey()) {
   const unit = log?.scheduleUnit === "60" ? 60 : 30;
-  const baseTimes = getScheduleTimes(getEmployeeWorkHours(log?.employeeId, state?.profile, dateKey));
+  const workHours = getEmployeeWorkHours(log?.employeeId, state?.profile, dateKey);
+  const baseTimes = getScheduleTimes(workHours);
   const manualTimes = (Array.isArray(log?.manualScheduleSlots) ? log.manualScheduleSlots : [])
     .map(normalizeScheduleTimeInput)
     .filter(Boolean);
@@ -11522,22 +11545,25 @@ function getWorklogScheduleSlots(log, dateKey = getActiveDateKey()) {
     .map((entry) => entry.time)
     .filter(Boolean);
   const taskTimes = (log?.tasks || []).map((task) => extractWorklogTaskTimeHint(task.text)?.slot).filter(Boolean);
-  const allTimes = [...baseTimes, ...manualTimes, ...scheduleTimes, ...taskTimes];
-  if (!allTimes.length) allTimes.push(...getScheduleTimes(defaultProfile.workHours));
+  const baseSlots = [];
   let start = Infinity;
   let end = -Infinity;
-  allTimes.forEach((time) => {
+  baseTimes.forEach((time) => {
     const minutes = timeToMinutes(time);
     if (!Number.isFinite(minutes)) return;
     start = Math.min(start, Math.floor(minutes / unit) * unit);
     end = Math.max(end, Math.floor(minutes / unit) * unit);
   });
-  if (!Number.isFinite(start) || !Number.isFinite(end)) return [];
-  const slots = [];
-  for (let minute = start; minute <= end; minute += unit) {
-    slots.push(minutesToTime(minute));
+  if (Number.isFinite(start) && Number.isFinite(end)) {
+    for (let minute = start; minute <= end; minute += unit) {
+      baseSlots.push(minutesToTime(minute));
+    }
   }
-  return [...new Set([...slots, ...manualTimes, ...scheduleTimes, ...taskTimes])]
+  const supplementalTimes = [...manualTimes, ...scheduleTimes, ...taskTimes];
+  const fallbackTimes = !baseSlots.length && !supplementalTimes.length && !isOffWorkHours(workHours)
+    ? getScheduleTimes(defaultProfile.workHours)
+    : [];
+  return [...new Set([...baseSlots, ...supplementalTimes, ...fallbackTimes])]
     .filter(Boolean)
     .sort((a, b) => timeToMinutes(a) - timeToMinutes(b));
 }
@@ -11604,13 +11630,13 @@ function renderFitnessOpsSummaryButton(log = getSelectedLog()) {
   const monthlyConsultationTotal = numberValue(monthOps.consultation);
   const monthlyContractTotal = ["customerNew", "customerRenewal", "dayPass"].reduce((sum, key) => sum + numberValue(monthOps[key]), 0);
   const memoState = ops.shiftNote || ops.specialReport ? "메모 있음" : "메모 없음";
+  button.classList.toggle("has-memo", Boolean(ops.shiftNote || ops.specialReport));
   button.innerHTML = `
     <span class="ops-summary-title">업무요약</span>
     <span class="ops-summary-metric"><b>유료PT</b><strong>${paidPtTotal}/${monthlyPaidPtTotal}</strong></span>
     <span class="ops-summary-metric"><b>무료PT</b><strong>${freePtTotal}/${monthlyFreePtTotal}</strong></span>
     <span class="ops-summary-metric"><b>상담</b><strong>${numberValue(ops.consultation)}/${monthlyConsultationTotal}</strong></span>
     <span class="ops-summary-metric"><b>계약</b><strong>${contractTotal}/${monthlyContractTotal}</strong></span>
-    <span class="ops-summary-note">${memoState}</span>
   `;
   button.setAttribute("aria-label", `업무요약. 오늘/월 누계 기준. 유료 PT ${paidPtTotal}/${monthlyPaidPtTotal}건, 무료 PT ${freePtTotal}/${monthlyFreePtTotal}건, 상담 ${numberValue(ops.consultation)}/${monthlyConsultationTotal}건, 계약 ${contractTotal}/${monthlyContractTotal}건, 홍보 마케팅 오늘 ${marketingTotal}건, ${memoState}`);
 }
@@ -19472,7 +19498,11 @@ document.addEventListener("visibilitychange", () => {
     flushPendingRemoteSaves();
     return;
   }
+  restoreTodayAfterAppResume();
   if (activeView === "worklog-overview" && canAccessAllWorklogs()) refreshVisibleStaffWorklogsForActiveDate();
+});
+window.addEventListener("pageshow", (event) => {
+  if (event.persisted) restoreTodayAfterAppResume();
 });
 document.addEventListener("keydown", (event) => {
   if (event.key === "Escape" && fitnessMobileFocusMode !== "split") resetFitnessMobileFocusToSplit({ blur: true });

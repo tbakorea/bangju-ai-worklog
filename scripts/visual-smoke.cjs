@@ -113,6 +113,61 @@ async function checkTabletRepresentativeWorklogChrome(browser) {
     fail("tablet current-day weather should use the available date-row space", JSON.stringify(metrics));
   }
   if (metrics.horizontalOverflow > 2) fail("tablet employee worklog has horizontal overflow", JSON.stringify(metrics));
+  await page.evaluate(() => switchView("worklog-overview"));
+  await page.waitForTimeout(160);
+  const ceoOverview = await page.evaluate(() => {
+    const shell = document.querySelector(".worklog-shell")?.getBoundingClientRect();
+    const eyebrow = document.querySelector(".worklog-overview-hero p");
+    const title = document.querySelector(".worklog-overview-hero h2");
+    return {
+      mode: document.body.dataset.viewMode || "",
+      layout: document.body.dataset.layoutMode || "",
+      shellWidth: shell?.width || 0,
+      eyebrowHeight: eyebrow?.getBoundingClientRect().height || 0,
+      eyebrowFits: !eyebrow || eyebrow.scrollWidth <= eyebrow.clientWidth + 2,
+      titleHeight: title?.getBoundingClientRect().height || 0,
+      titleFits: !title || title.scrollWidth <= title.clientWidth + 2,
+      modeLabel: document.getElementById("globalViewModeLabel")?.textContent?.trim() || "",
+      horizontalOverflow: document.documentElement.scrollWidth - window.innerWidth,
+    };
+  });
+  if (ceoOverview.mode !== "ceo" || ceoOverview.layout !== "phone"
+    || ceoOverview.shellWidth < 425 || ceoOverview.shellWidth > 650
+    || ceoOverview.eyebrowHeight > 24 || !ceoOverview.eyebrowFits
+    || ceoOverview.titleHeight > 48 || !ceoOverview.titleFits
+    || ceoOverview.modeLabel !== "클래식" || ceoOverview.horizontalOverflow > 2) {
+    fail("CEO worklog overview should keep a stable Beyond Planner focus rail", JSON.stringify(ceoOverview));
+  }
+  await page.evaluate(() => toggleGlobalViewMode());
+  await page.waitForTimeout(160);
+  const classicOverview = await page.evaluate(() => ({
+    mode: document.body.dataset.viewMode || "",
+    layout: document.body.dataset.layoutMode || "",
+    shellWidth: document.querySelector(".worklog-shell")?.getBoundingClientRect().width || 0,
+    modeLabel: document.getElementById("globalViewModeLabel")?.textContent?.trim() || "",
+    horizontalOverflow: document.documentElement.scrollWidth - window.innerWidth,
+  }));
+  if (classicOverview.mode !== "classic" || classicOverview.layout !== "wide"
+    || classicOverview.shellWidth < 900 || classicOverview.modeLabel !== "CEO"
+    || classicOverview.horizontalOverflow > 2) {
+    fail("Classic worklog overview should use the available desktop canvas", JSON.stringify(classicOverview));
+  }
+  const resumedDate = await page.evaluate(() => {
+    authState.user = null;
+    state.selectedDateKey = getPreviousDateKey(todayKey);
+    localStorage.setItem(storageKey, JSON.stringify(state));
+    const resumeEvent = new Event("pageshow");
+    Object.defineProperty(resumeEvent, "persisted", { value: true });
+    window.dispatchEvent(resumeEvent);
+    return {
+      selectedDateKey: state.selectedDateKey,
+      todayKey,
+      storedDateKey: JSON.parse(localStorage.getItem(storageKey) || "{}").selectedDateKey || "",
+    };
+  });
+  if (resumedDate.selectedDateKey !== resumedDate.todayKey || resumedDate.storedDateKey !== resumedDate.todayKey) {
+    fail("reopened tablet app should restore the live today date", JSON.stringify(resumedDate));
+  }
   if (errors.length) fail("tablet representative worklog page errors", errors.join(" | "));
   await page.close();
 }
@@ -121,7 +176,7 @@ async function checkDesktopEmployeeWorklog(browser) {
   const { page, errors } = await openPage(browser, { width: 1440, height: 900 });
   await seedApprovedBangjuEmployee(page);
   await page.evaluate(() => {
-    localStorage.setItem("beyond-worklog-global-view-mode", "ceo");
+    localStorage.setItem("beyond-worklog-global-view-mode", "classic");
     window.switchView?.("bangju-log");
     document.body.classList.remove("physical-phone-device");
   });
@@ -139,6 +194,8 @@ async function checkDesktopEmployeeWorklog(browser) {
     const coworkerPanel = document.querySelector(".worklog-coworker-page");
     const taskRect = taskPanel?.getBoundingClientRect();
     const coworkerRect = coworkerPanel?.getBoundingClientRect();
+    const pulse = document.querySelector("#worklogPulse");
+    const pulseText = document.querySelector("#worklogPulseText")?.textContent?.replace(/\s+/g, " ").trim() || "";
     return {
       activeView: document.body.dataset.activeView,
       layoutMode: document.body.dataset.layoutMode,
@@ -155,6 +212,9 @@ async function checkDesktopEmployeeWorklog(browser) {
       coworkerBesideDaily: Boolean(taskRect && coworkerRect && coworkerRect.left > taskRect.right && Math.abs(coworkerRect.top - taskRect.top) < 5),
       scrollHeight: document.documentElement.scrollHeight,
       viewportHeight: window.innerHeight,
+      pulseText,
+      pulseLabel: pulse ? getComputedStyle(pulse, "::before").content : "",
+      pulseHeight: pulse?.getBoundingClientRect().height || 0,
     };
   });
 
@@ -171,6 +231,10 @@ async function checkDesktopEmployeeWorklog(browser) {
     fail("desktop worklog should show coworker worklogs beside the personal worklog", JSON.stringify(metrics));
   }
   if (metrics.scrollHeight > metrics.viewportHeight * 1.9) fail("desktop worklog still has excessive vertical tail", `${metrics.scrollHeight}/${metrics.viewportHeight}`);
+  if (!metrics.pulseLabel.includes("오늘 집중") || metrics.pulseHeight < 42
+    || /오늘 실행|운영 신호|님,/.test(metrics.pulseText) || metrics.pulseText.length > 42) {
+    fail("worklog focus banner should be short, prominent, and action-oriented", JSON.stringify(metrics));
+  }
 
   await page.evaluate(() => {
     window.setSelectedDateKey?.("2026-07-22");
@@ -917,6 +981,7 @@ async function checkOverviewCommandBoard(browser) {
       approvalStatus: "approved",
     };
     state.worklogOverviewScope = "all";
+    localStorage.setItem("beyond-worklog-global-view-mode", "classic");
     setSelectedDateKey("2026-08-02");
     switchView("worklog-overview");
     renderResponsiveMode();

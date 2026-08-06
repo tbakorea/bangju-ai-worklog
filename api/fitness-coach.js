@@ -102,7 +102,7 @@ module.exports = async function handler(request, response) {
     return;
   }
 
-  const model = process.env.OPENAI_COACH_MODEL || "gpt-5.6";
+  const model = process.env.OPENAI_COACH_MODEL || "gpt-5.4-mini";
   const safetyIdentifier = createHash("sha256").update(`bangju-worklog:${user.id}`).digest("hex").slice(0, 32);
   const openaiResponse = await fetch("https://api.openai.com/v1/responses", {
     method: "POST",

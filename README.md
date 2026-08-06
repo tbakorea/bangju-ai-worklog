@@ -76,7 +76,7 @@ Set these variables in Vercel Project Settings > Environment Variables and redep
 
 ```text
 OPENAI_API_KEY=...
-OPENAI_COACH_MODEL=gpt-5.6
+OPENAI_COACH_MODEL=gpt-5.4-mini
 ```
 
 `OPENAI_COACH_MODEL` is optional. When the API is unavailable, the report keeps the local rule-based praise, feedback, next action, and role-manual reminder.
