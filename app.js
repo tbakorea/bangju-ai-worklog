@@ -1381,6 +1381,16 @@ function formatWeatherSummary(record, { compact = false } = {}) {
   return compact ? body : `${record.siteKey || "사업장"} · ${body}`;
 }
 
+function formatWeatherTemperatureRange(record = {}) {
+  const temperatureMin = Number(record.temperatureMin);
+  const temperatureMax = Number(record.temperatureMax);
+  if (Number.isFinite(temperatureMin) && Number.isFinite(temperatureMax)) {
+    return `${Math.round(temperatureMin)}°/${Math.round(temperatureMax)}°`;
+  }
+  const temperature = Number(record.temperature);
+  return Number.isFinite(temperature) ? `${Math.round(temperature)}°` : "--°/--°";
+}
+
 function isWeatherRecordFresh(record, maxAgeMs = weatherFreshnessMs) {
   if (!record?.fetchedAt) return false;
   const fetchedAt = Date.parse(record.fetchedAt);
@@ -1425,6 +1435,78 @@ function renderWeatherWidgets() {
   renderWeatherWidget("fitness", getActiveWeatherEmployee("fitness-log"));
   ensureWeatherRecordsForConfiguredSites(getActiveDateKey());
   renderRepresentativeSiteWeatherBoards();
+  renderWeatherDateButtons();
+  renderHistoricalWeatherBanners();
+}
+
+function renderWeatherDateButton(button, employee, dateKey = getActiveDateKey()) {
+  if (!button) return;
+  const isToday = dateKey === todayKey;
+  button.hidden = false;
+  button.disabled = isToday;
+  button.classList.toggle("is-current-date", isToday);
+  button.classList.toggle("is-weather-today", isToday);
+  button.setAttribute("aria-disabled", String(isToday));
+  if (!isToday) {
+    button.textContent = "오늘";
+    button.title = "오늘 날짜로 이동";
+    button.setAttribute("aria-label", "오늘 날짜로 이동");
+    return;
+  }
+  const siteKey = getSiteWeatherKeyForEmployee(employee);
+  const address = getSiteWeatherAddress(siteKey);
+  const record = getWeatherRecordForSite(siteKey, dateKey);
+  const loading = Boolean(address && weatherRequestInFlight.has(getWeatherCacheKey(siteKey, dateKey)));
+  const icon = loading && !record ? "…" : getWeatherConditionIcon(record || {});
+  const range = record ? formatWeatherTemperatureRange(record) : "--°/--°";
+  button.innerHTML = `<i aria-hidden="true">${escapeHtml(icon)}</i><small>${escapeHtml(range)}</small>`;
+  const title = address ? getWeatherAccessibleTitle(record, siteKey) : `${siteKey} 주소 입력 필요`;
+  button.title = title;
+  button.setAttribute("aria-label", title);
+}
+
+function renderWeatherDateButtons(dateKey = getActiveDateKey()) {
+  renderWeatherDateButton(document.getElementById("todayJumpButton"), getSelectedEmployee(), dateKey);
+  renderWeatherDateButton(document.getElementById("fitnessTodayButton"), getActiveWeatherEmployee("fitness-log"), dateKey);
+}
+
+function getHistoricalWeatherBannerMarkup(record, siteKey = "") {
+  const icon = getWeatherConditionIcon(record || {});
+  const summary = record
+    ? `${record.condition || getWeatherConditionLabel(record.weatherCode)} · ${formatWeatherTemperatureRange(record)}`
+    : "날씨 확인 중";
+  const location = record?.location || siteKey || "사업장";
+  return `<i aria-hidden="true">${escapeHtml(icon)}</i><b>${escapeHtml(summary)}</b><small>${escapeHtml(location)}</small>`;
+}
+
+function renderHistoricalWeatherBanners(dateKey = getActiveDateKey()) {
+  if (dateKey >= todayKey) return;
+  const worklogEmployee = getSelectedEmployee();
+  const worklogSiteKey = getSiteWeatherKeyForEmployee(worklogEmployee);
+  const worklogRecord = getWeatherRecordForSite(worklogSiteKey, dateKey);
+  const pulse = document.getElementById("worklogPulse");
+  const pulseText = document.getElementById("worklogPulseText");
+  if (pulse && pulseText) {
+    pulse.classList.add("is-historical-weather");
+    pulse.disabled = true;
+    pulseText.innerHTML = getHistoricalWeatherBannerMarkup(worklogRecord, worklogSiteKey);
+    pulse.setAttribute("aria-label", getWeatherAccessibleTitle(worklogRecord, worklogSiteKey));
+  }
+
+  const fitnessEmployee = getActiveWeatherEmployee("fitness-log");
+  const fitnessSiteKey = getSiteWeatherKeyForEmployee(fitnessEmployee);
+  const fitnessRecord = getWeatherRecordForSite(fitnessSiteKey, dateKey);
+  const ticker = document.getElementById("fitnessCoachingTicker");
+  const tickerLabel = ticker?.querySelector("b");
+  const tickerText = document.getElementById("fitnessCoachingTickerText");
+  if (ticker && tickerLabel && tickerText) {
+    ticker.classList.add("is-historical-weather");
+    ticker.disabled = true;
+    tickerLabel.textContent = "기록 날씨";
+    tickerText.innerHTML = getHistoricalWeatherBannerMarkup(fitnessRecord, fitnessSiteKey);
+    tickerText.dataset.tickerText = "";
+    ticker.setAttribute("aria-label", getWeatherAccessibleTitle(fitnessRecord, fitnessSiteKey));
+  }
 }
 
 function getWeatherConditionIcon(record = {}) {
@@ -1436,7 +1518,15 @@ function getWeatherConditionIcon(record = {}) {
   if ([51, 53, 55, 56, 57, 61, 63, 65, 66, 67, 80, 81, 82].includes(code)) return "🌧️";
   if ([71, 73, 75, 77, 85, 86].includes(code)) return "❄️";
   if ([95, 96, 99].includes(code)) return "⛈️";
-  return record.condition ? "◇" : "–";
+  const condition = String(record.condition || "");
+  if (/맑/.test(condition)) return "☀️";
+  if (/구름|대체로 맑/.test(condition)) return "⛅";
+  if (/흐림|흐린/.test(condition)) return "☁️";
+  if (/안개/.test(condition)) return "🌫️";
+  if (/비|이슬비|소나기/.test(condition)) return "🌧️";
+  if (/눈/.test(condition)) return "❄️";
+  if (/뇌우|번개/.test(condition)) return "⛈️";
+  return condition ? "◇" : "–";
 }
 
 function getSiteWeatherBoardRows(dateKey = getActiveDateKey()) {
@@ -5529,12 +5619,7 @@ function renderDateNav() {
   }
   selectedDateButton?.setAttribute("aria-label", `${formatKoreanDate(activeDateKey)} 업무일지 날짜 선택`);
   overviewDateButton?.setAttribute("aria-label", `${formatKoreanDate(activeDateKey)} 전체 업무일지 날짜 선택`);
-  if (todayJumpButton) {
-    todayJumpButton.hidden = false;
-    todayJumpButton.disabled = isToday;
-    todayJumpButton.classList.toggle("is-current-date", isToday);
-    todayJumpButton.setAttribute("aria-disabled", String(isToday));
-  }
+  renderWeatherDateButton(todayJumpButton, getSelectedEmployee(), activeDateKey);
   if (overviewTodayButton) {
     const isToday = activeDateKey === todayKey;
     overviewTodayButton.disabled = isToday;
@@ -8811,13 +8896,7 @@ function renderFitnessWorklog(log = getSelectedLog()) {
   const input = document.getElementById("fitnessDateInput");
   if (input) input.value = getActiveDateKey();
   const todayButton = document.getElementById("fitnessTodayButton");
-  if (todayButton) {
-    const isToday = getActiveDateKey() === todayKey;
-    todayButton.hidden = false;
-    todayButton.disabled = isToday;
-    todayButton.classList.toggle("is-current-date", isToday);
-    todayButton.setAttribute("aria-disabled", String(isToday));
-  }
+  renderWeatherDateButton(todayButton, getActiveWeatherEmployee("fitness-log"), getActiveDateKey());
   const unitButton = document.getElementById("fitnessScheduleUnitButton");
   if (unitButton) unitButton.textContent = log.scheduleUnit === "60" ? "1시간" : "30분";
   updateWorklogScheduleControlLabels(log, "fitness");
@@ -9576,11 +9655,18 @@ function getFitnessCoachingMessages(context = {}) {
 
 function renderFitnessCoaching() {
   const messages = getFitnessCoachingMessages();
+  const tickerButton = document.getElementById("fitnessCoachingTicker");
   const ticker = document.getElementById("fitnessCoachingTickerText");
   if (ticker) {
     const tickerText = messages.map(([title, text]) => `${title}: ${text}`).join("   ·   ");
     ticker.textContent = tickerText;
     ticker.dataset.tickerText = tickerText;
+  }
+  if (tickerButton) {
+    tickerButton.classList.remove("is-historical-weather");
+    tickerButton.disabled = false;
+    tickerButton.querySelector("b").textContent = "AI 코칭";
+    tickerButton.setAttribute("aria-label", "AI 코칭 자세히 보기");
   }
   const detail = document.getElementById("fitnessCoachingDetailList");
   if (detail) {
@@ -9683,9 +9769,15 @@ function renderWorklogSummary(log) {
   document.getElementById("worklogDayTitle").textContent = formatKoreanDate(getActiveDateKey());
   document.getElementById("worklogCompletion").textContent = `${completed}/${tasks.length}`;
   const pulseText = document.getElementById("worklogPulseText");
+  const pulse = document.getElementById("worklogPulse");
   if (pulseText) {
     const employee = getSelectedEmployee();
     pulseText.textContent = `${getPersonalizedWelcomeMessage(employee, log)} · 오늘 실행 ${completed}/${tasks.length} · 다음 일정 ${nextEntry ? `${nextEntry.time} ${getScheduleEntryText(nextEntry)}` : "없음"} · 미완료 ${pending} · 운영 신호 ${pending ? "추적" : "정상"}`;
+  }
+  if (pulse) {
+    pulse.classList.remove("is-historical-weather");
+    pulse.disabled = false;
+    pulse.setAttribute("aria-label", "업무 도움 열기");
   }
   const unitButton = document.getElementById("scheduleUnitButton");
   if (unitButton) unitButton.textContent = log.scheduleUnit === "60" ? "1시간" : "30분";

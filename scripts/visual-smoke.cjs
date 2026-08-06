@@ -3506,6 +3506,10 @@ async function checkSiteWeatherAndGeneralDailyReport(browser) {
       rainAdvice,
       freshWeather,
       staleWeather,
+      todayWeatherButtonText: document.querySelector("#todayJumpButton")?.textContent?.replace(/\s+/g, "").trim() || "",
+      todayWeatherButtonActive: document.querySelector("#todayJumpButton")?.classList.contains("is-weather-today") || false,
+      todayWeatherButtonDisabled: document.querySelector("#todayJumpButton")?.disabled || false,
+      standaloneWeatherRowsHidden: ["worklogWeatherRow", "fitnessWeatherRow"].every((id) => getComputedStyle(document.getElementById(id)).display === "none"),
       snapshotHasWeather: Boolean(snapshot.siteWeatherAddresses && snapshot.weatherCache),
       fitnessReportPreserved: Boolean(document.querySelector("#fitnessReportMenuButton") && document.querySelector("#fitnessReportSheet")),
       exportButtons: ["worklogReportImageButton", "worklogReportPdfButton", "worklogReportShareButton", "worklogReportPrintButton"]
@@ -3518,6 +3522,39 @@ async function checkSiteWeatherAndGeneralDailyReport(browser) {
     const pdf = createPdfBlobFromCanvas(canvas);
     return { width: canvas.width, height: canvas.height, pngSize: png.size, pdfSize: pdf.size, pdfType: pdf.type };
   });
+  const dateWeatherMetrics = await page.evaluate(() => {
+    const employee = getSelectedEmployee();
+    const siteKey = getSiteWeatherKeyForEmployee(employee);
+    state.selectedDateKey = "2026-07-31";
+    state.weatherCache[getWeatherCacheKey(siteKey, state.selectedDateKey)] = {
+      siteKey,
+      dateKey: state.selectedDateKey,
+      location: "울산 남구",
+      condition: "비",
+      weatherCode: 61,
+      temperatureMin: 22,
+      temperatureMax: 27,
+      precipitation: 3,
+      fetchedAt: new Date().toISOString(),
+    };
+    renderEntries();
+    const past = {
+      todayText: document.getElementById("todayJumpButton")?.textContent?.trim() || "",
+      todayDisabled: document.getElementById("todayJumpButton")?.disabled || false,
+      worklogHistorical: document.getElementById("worklogPulse")?.classList.contains("is-historical-weather") || false,
+      worklogWeatherText: document.getElementById("worklogPulseText")?.textContent?.replace(/\s+/g, " ").trim() || "",
+      fitnessHistorical: document.getElementById("fitnessCoachingTicker")?.classList.contains("is-historical-weather") || false,
+    };
+    state.selectedDateKey = "2026-08-31";
+    renderEntries();
+    const future = {
+      todayText: document.getElementById("todayJumpButton")?.textContent?.trim() || "",
+      todayDisabled: document.getElementById("todayJumpButton")?.disabled || false,
+      worklogHistorical: document.getElementById("worklogPulse")?.classList.contains("is-historical-weather") || false,
+      fitnessHistorical: document.getElementById("fitnessCoachingTicker")?.classList.contains("is-historical-weather") || false,
+    };
+    return { past, future };
+  });
   ["업무 진행 현황", "시간대별 실행 내역", "이슈·리스크·지원 요청", "명일 계획·인수인계", "Bangju Action Brief", "맑음", "월 마감 자료 검토", "거래처 증빙 대조", "재무 자료 취합", "세금계산서 원장 대조", "회계 원장 실행기록을 저장했습니다.", "명일 거래처 확인이 필요합니다."].forEach((label) => {
     if (!metrics.previewText.includes(label)) fail("general daily report should include corporate and Bangju report sections", `${label} missing`);
   });
@@ -3527,6 +3564,15 @@ async function checkSiteWeatherAndGeneralDailyReport(browser) {
   }
   if (!metrics.todayUsesBeyondWeatherRange || metrics.weatherExpression !== "구름 조금 · 21°/29°" || !metrics.rainAdvice.includes("10~15분") || !metrics.freshWeather || metrics.staleWeather) {
     fail("weather should mirror Beyond Work range, advice, and two-hour refresh logic", JSON.stringify(metrics));
+  }
+  if (!metrics.todayWeatherButtonActive || !metrics.todayWeatherButtonDisabled || !metrics.todayWeatherButtonText.includes("☀️") || !metrics.todayWeatherButtonText.includes("23°/30°") || !metrics.standaloneWeatherRowsHidden) {
+    fail("today date row should replace the Today button with compact weather", JSON.stringify(metrics));
+  }
+  if (dateWeatherMetrics.past.todayText !== "오늘" || dateWeatherMetrics.past.todayDisabled || !dateWeatherMetrics.past.worklogHistorical || !dateWeatherMetrics.past.fitnessHistorical || !dateWeatherMetrics.past.worklogWeatherText.includes("비 · 22°/27°")) {
+    fail("past date should keep the Today return button and replace coaching with recorded weather", JSON.stringify(dateWeatherMetrics));
+  }
+  if (dateWeatherMetrics.future.todayText !== "오늘" || dateWeatherMetrics.future.todayDisabled || dateWeatherMetrics.future.worklogHistorical || dateWeatherMetrics.future.fitnessHistorical) {
+    fail("future date should keep the Today return button and regular coaching", JSON.stringify(dateWeatherMetrics));
   }
   if (exportMetrics.width !== 1240 || exportMetrics.height < 1754 || exportMetrics.pngSize < 10000 || exportMetrics.pdfSize < 10000 || exportMetrics.pdfType !== "application/pdf") {
     fail("general worklog report should export valid PNG and PDF artifacts", JSON.stringify(exportMetrics));
