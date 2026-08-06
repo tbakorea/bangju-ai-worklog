@@ -3175,7 +3175,8 @@ function renderResponsiveMode() {
   const isPhoneWidth = window.matchMedia("(max-width: 640px)").matches;
   const mode = isNarrow ? "narrow" : "expanded";
   const viewMode = getGlobalViewMode();
-  const layoutMode = isPhoneWidth || viewMode === "ceo" ? "phone" : "wide";
+  const isExpandedWorklog = !isNarrow && ["today", "bangju-log", "beyond-log", "fitness-log"].includes(activeView);
+  const layoutMode = isPhoneWidth || (!isExpandedWorklog && viewMode === "ceo") ? "phone" : "wide";
   localStorage.setItem(layoutModeStorageKey, layoutMode);
   document.body.dataset.deviceMode = mode;
   document.body.dataset.layoutMode = layoutMode;
@@ -8901,6 +8902,7 @@ function renderFitnessWorklog(log = getSelectedLog()) {
   if (unitButton) unitButton.textContent = log.scheduleUnit === "60" ? "1시간" : "30분";
   updateWorklogScheduleControlLabels(log, "fitness");
   renderFitnessLogPager();
+  renderFitnessDesktopCoworkers(page);
   const hasGuidance = Boolean((state.fitnessDailyGuidance?.[getActiveDateKey()] || []).length);
   if (isCenter && canManageDagymOperations() && !hasGuidance && getPreviousDagymOperatingDate()) {
     generateTodayFitnessGuidance({ silent: true });
@@ -8942,6 +8944,64 @@ function renderFitnessLogPager() {
     next.textContent = getFitnessPagerSideLabel("next", pageIndex, pages);
     next.disabled = pageIndex === pages.length - 1;
   }
+}
+
+function renderFitnessDesktopCoworkers(currentPage = getCurrentFitnessLogPage()) {
+  const board = document.getElementById("fitnessDesktopCoworkerBoard");
+  if (!board) return;
+  const pages = getFitnessLogPages();
+  const dateKey = getActiveDateKey();
+  const rows = currentPage?.type === "employee"
+    ? pages
+      .map((page, pageIndex) => ({ page, pageIndex }))
+      .filter(({ page }) => page.type === "employee" && page.id !== currentPage.id)
+      .slice(0, 8)
+      .map(({ page, pageIndex }) => {
+        const employee = page.employee;
+        const log = getFitnessEmployeeLogForDate(employee, dateKey) || getEmployeeLogForDate(page.id, dateKey);
+        const tasks = getWorklogTaskRefs(log).map((ref) => ref.task).filter(isActiveTask);
+        const schedule = (log.schedule || []).filter((entry) => getScheduleEntryText(entry));
+        const completed = tasks.filter((task) => task.done || task.status === "완료").length;
+        const worked = Boolean(log.clockIn || log.clockOut || tasks.length || schedule.length);
+        return { employee, pageIndex, tasks: tasks.slice(0, 3), schedule: schedule.slice(0, 2), completed, worked };
+      })
+    : [];
+  board.hidden = !rows.length;
+  if (!rows.length) {
+    board.innerHTML = "";
+    return;
+  }
+  board.innerHTML = `
+    <header>
+      <div>
+        <span>COWORKER WORKLOG</span>
+        <strong>동료 업무일지</strong>
+      </div>
+      <em>${rows.length}명</em>
+    </header>
+    <div class="fitness-desktop-coworker-list">
+      ${rows.map((row) => `
+        <article class="fitness-desktop-coworker-card ${row.worked ? "has-worklog" : "is-empty"}">
+          <header>
+            <div>
+              <b>${escapeHtml(getEmployeeAdminLabel(row.employee))}</b>
+              <small>${escapeHtml(row.worked ? `${row.completed}/${row.tasks.length} 완료` : "기록 대기")}</small>
+            </div>
+            <button type="button" data-fitness-desktop-open="${row.pageIndex}">열기</button>
+          </header>
+          ${row.tasks.length
+            ? `<ul>${row.tasks.map((task) => `<li class="${task.done || task.status === "완료" ? "is-done" : ""}">${escapeHtml(task.text || "업무")}</li>`).join("")}</ul>`
+            : `<p>등록된 우선업무가 없습니다.</p>`}
+          ${row.schedule.length
+            ? `<div class="fitness-desktop-coworker-schedule">${row.schedule.map((entry) => `<span><b>${escapeHtml(entry.time || "--:--")}</b>${escapeHtml(getScheduleEntryText(entry))}</span>`).join("")}</div>`
+            : ""}
+        </article>
+      `).join("")}
+    </div>
+  `;
+  board.querySelectorAll("[data-fitness-desktop-open]").forEach((button) => {
+    button.addEventListener("click", () => setFitnessLogPage(Number(button.dataset.fitnessDesktopOpen)));
+  });
 }
 
 function getFitnessPagerSideLabel(direction, pageIndex, pages = getFitnessLogPages()) {
@@ -18269,6 +18329,7 @@ function switchView(view) {
   ensureSelectedEmployeeForWorklogView(view);
   activeView = view;
   document.body.dataset.activeView = view;
+  renderResponsiveMode();
   closeMainMenuPopover();
   document.querySelectorAll(".worklog-tabs button").forEach((button) => {
     const isWorklogActive = button.dataset.view === "worklog" && ["fitness-log", "bangju-log", "beyond-log", "worklog-overview"].includes(view);

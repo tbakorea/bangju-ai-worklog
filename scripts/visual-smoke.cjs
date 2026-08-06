@@ -47,10 +47,9 @@ async function checkDesktopEmployeeWorklog(browser) {
   const { page, errors } = await openPage(browser, { width: 1440, height: 900 });
   await seedApprovedBangjuEmployee(page);
   await page.evaluate(() => {
+    localStorage.setItem("beyond-worklog-global-view-mode", "ceo");
     window.switchView?.("bangju-log");
     document.body.classList.remove("physical-phone-device");
-    document.body.dataset.layoutMode = "classic";
-    document.body.dataset.viewMode = "classic";
   });
   await page.waitForTimeout(250);
 
@@ -63,8 +62,12 @@ async function checkDesktopEmployeeWorklog(browser) {
     const memoBox = document.querySelector("#employeeMemo");
     const taskPanel = document.querySelector(".worklog-task-panel");
     const schedulePanel = document.querySelector(".worklog-schedule-panel");
+    const coworkerPanel = document.querySelector(".worklog-coworker-page");
+    const taskRect = taskPanel?.getBoundingClientRect();
+    const coworkerRect = coworkerPanel?.getBoundingClientRect();
     return {
       activeView: document.body.dataset.activeView,
+      layoutMode: document.body.dataset.layoutMode,
       shellWidth: shell?.getBoundingClientRect().width || 0,
       reportDisplay: getComputedStyle(reportView).display,
       todayDisplay: getComputedStyle(today).display,
@@ -73,19 +76,26 @@ async function checkDesktopEmployeeWorklog(browser) {
       memoHeight: memoBox?.getBoundingClientRect().height || 0,
       taskWidth: taskPanel?.getBoundingClientRect().width || 0,
       scheduleWidth: schedulePanel?.getBoundingClientRect().width || 0,
+      coworkerDisplay: coworkerPanel ? getComputedStyle(coworkerPanel).display : "none",
+      coworkerWidth: coworkerRect?.width || 0,
+      coworkerBesideDaily: Boolean(taskRect && coworkerRect && coworkerRect.left > taskRect.right && Math.abs(coworkerRect.top - taskRect.top) < 5),
       scrollHeight: document.documentElement.scrollHeight,
       viewportHeight: window.innerHeight,
     };
   });
 
   if (metrics.activeView !== "bangju-log") fail("desktop active view mismatch", metrics.activeView);
+  if (metrics.layoutMode !== "wide") fail("desktop worklog should automatically use wide classic layout", metrics.layoutMode);
   if (metrics.reportDisplay !== "none") fail("inactive report view leaked under worklog", metrics.reportDisplay);
   if (metrics.todayDisplay !== "grid") fail("desktop worklog should use compact grid", metrics.todayDisplay);
   if (metrics.dateFont > 36) fail("desktop date font is too large", `${metrics.dateFont}px`);
-  if (metrics.shellWidth > 1140) fail("desktop employee shell is too wide", `${metrics.shellWidth}px`);
+  if (metrics.shellWidth < 1200 || metrics.shellWidth > 1400) fail("desktop employee shell should use the available classic width", `${metrics.shellWidth}px`);
   if (metrics.reportHeight > 100 || metrics.memoHeight > 100) fail("report/memo tail is too tall", `${metrics.reportHeight}/${metrics.memoHeight}`);
   const widthRatio = metrics.taskWidth / Math.max(1, metrics.scheduleWidth);
   if (widthRatio < 0.88 || widthRatio > 1.12) fail("task/schedule columns are not balanced", String(widthRatio));
+  if (metrics.coworkerDisplay === "none" || metrics.coworkerWidth < 260 || !metrics.coworkerBesideDaily) {
+    fail("desktop worklog should show coworker worklogs beside the personal worklog", JSON.stringify(metrics));
+  }
   if (metrics.scrollHeight > metrics.viewportHeight * 1.9) fail("desktop worklog still has excessive vertical tail", `${metrics.scrollHeight}/${metrics.viewportHeight}`);
 
   await page.evaluate(() => {
@@ -132,6 +142,37 @@ async function checkDesktopEmployeeWorklog(browser) {
   if (!commonSchedule.hasAddButton) fail("common page should expose add controls for editable common sections", JSON.stringify(commonSchedule));
   if (commonSchedule.hasPriorityControl) fail("common schedule should not expose priority controls", JSON.stringify(commonSchedule));
   if (commonSchedule.hasLegacyWeeklyCopy) fail("legacy weekly summary copy leaked into common schedule", JSON.stringify(commonSchedule));
+
+  await page.evaluate(() => {
+    state.fitnessLogPage = 1;
+    window.switchView?.("fitness-log");
+  });
+  await page.waitForTimeout(220);
+  const fitnessDesktop = await page.evaluate(() => {
+    const rect = (selector) => document.querySelector(selector)?.getBoundingClientRect() || null;
+    const task = rect("#view-fitness-log .fitness-log-task-panel");
+    const schedule = rect("#view-fitness-log .fitness-log-schedule-panel");
+    const coworkers = rect("#fitnessDesktopCoworkerBoard");
+    return {
+      activeView: document.body.dataset.activeView,
+      layoutMode: document.body.dataset.layoutMode,
+      shellWidth: document.querySelector(".worklog-shell")?.getBoundingClientRect().width || 0,
+      desktopGridDisplay: getComputedStyle(document.querySelector(".fitness-desktop-worklog-grid")).display,
+      coworkerDisplay: getComputedStyle(document.querySelector("#fitnessDesktopCoworkerBoard")).display,
+      coworkerCount: document.querySelectorAll("#fitnessDesktopCoworkerBoard .fitness-desktop-coworker-card").length,
+      columnsAligned: Boolean(task && schedule && coworkers && Math.abs(task.top - schedule.top) < 5 && Math.abs(task.top - coworkers.top) < 5 && task.right <= schedule.left && schedule.right <= coworkers.left),
+      taskRect: task ? { left: task.left, top: task.top, right: task.right, width: task.width } : null,
+      scheduleRect: schedule ? { left: schedule.left, top: schedule.top, right: schedule.right, width: schedule.width } : null,
+      coworkerRect: coworkers ? { left: coworkers.left, top: coworkers.top, right: coworkers.right, width: coworkers.width } : null,
+      openButtonCount: document.querySelectorAll("#fitnessDesktopCoworkerBoard [data-fitness-desktop-open]").length,
+    };
+  });
+  if (fitnessDesktop.activeView !== "fitness-log" || fitnessDesktop.layoutMode !== "wide" || fitnessDesktop.shellWidth < 1200) {
+    fail("desktop fitness worklog should open in the wide classic surface", JSON.stringify(fitnessDesktop));
+  }
+  if (fitnessDesktop.desktopGridDisplay !== "grid" || fitnessDesktop.coworkerDisplay !== "grid" || fitnessDesktop.coworkerCount < 2 || !fitnessDesktop.columnsAligned || fitnessDesktop.openButtonCount !== fitnessDesktop.coworkerCount) {
+    fail("desktop fitness worklog should align personal tasks, schedule, and coworker worklogs", JSON.stringify(fitnessDesktop));
+  }
 
   if (errors.length) fail("desktop page errors", errors.join(" | "));
   await page.close();
