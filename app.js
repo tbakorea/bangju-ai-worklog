@@ -257,6 +257,15 @@ const weeklyWorkDayOptions = [
   ["fri", "金"],
   ["sat", "土"],
 ];
+const fitnessManagerWeeklyWorkHours = Object.freeze({
+  sun: "06:00-24:00",
+  mon: "06:00-24:00",
+  tue: "06:00-24:00",
+  wed: "06:00-24:00",
+  thu: "06:00-24:00",
+  fri: "06:00-24:00",
+  sat: "06:00-24:00",
+});
 const siteWeatherAddressTargets = [
   { key: "비욘드 피트니스", label: "비욘드 피트니스", hint: "예: 울산광역시 남구 옥동 ..." },
   { key: "(주)방주 · 재무", label: "(주)방주 · 재무", hint: "본사 또는 재무팀 근무지 주소" },
@@ -335,6 +344,7 @@ const profilePlacementOverrides = {
     secondaryWork: "센터 운영관리",
     employmentType: "직원",
     workHours: "06:00-24:00",
+    weeklyWorkHours: fitnessManagerWeeklyWorkHours,
     accessPreset: "site_manager",
     permissions: {},
     mappedEmployeeId: "beyond-fitness-manager",
@@ -588,7 +598,7 @@ const employees = [
   { id: "bangju-finance-assistant", name: "이소미", org: "(주)방주", role: "재무 대리", primaryWork: "지출, 정산, 문서" },
   { id: "construction-finance-assistant", name: "비제이 재무 예비", org: "(주)비제이종합건설", role: "예비", primaryWork: "건설현장 지출, 정산, 노무자료" },
   { id: "bangju-spare-1", name: "방주 예비", org: "(주)방주", role: "예비", primaryWork: "공통 지원" },
-  { id: "beyond-fitness-manager", name: "박주홍", nickname: "센터장", org: "(주)방주 / 비욘드 피트니스 지사", role: "센터장", workHours: "06:00-24:00", primaryWork: "운영총괄, PT 수업" },
+  { id: "beyond-fitness-manager", name: "박주홍", nickname: "센터장", org: "(주)방주 / 비욘드 피트니스 지사", role: "센터장", workHours: "06:00-24:00", weeklyWorkHours: fitnessManagerWeeklyWorkHours, primaryWork: "운영총괄, PT 수업" },
   { id: "fitness-trainer-1", name: "홍현규", nickname: "홍트", email: "gusrd1005@gmail.com", org: "(주)방주 / 비욘드 피트니스 지사", role: "트레이너", workHours: "06:00-24:00", primaryWork: "PT 수업", employmentType: "프리랜서" },
   { id: "fitness-weekday-info", name: "주중 인포", nickname: "주중인포", org: "(주)방주 / 비욘드 피트니스 지사", role: "인포데스크", workHours: "16:00-20:00", primaryWork: "고객응대, 센터관리" },
   { id: "fitness-weekday-info-idabin", name: "이다빈", nickname: "이다빈", org: "(주)방주 / 비욘드 피트니스 지사", role: "인포데스크", workHours: "16:00-20:00", primaryWork: "고객응대, 센터관리" },
@@ -1333,6 +1343,7 @@ function getProfileEmployee() {
     joinDate: profile.joinDate || "",
     payDay: profile.payDay || "",
     workHours: profile.workHours || defaultProfile.workHours,
+    weeklyWorkHours: { ...(profile.weeklyWorkHours || {}) },
     mappedEmployeeId: getProfileMappedEmployeeId(profile),
     assignedMission: profile.assignedMission || "",
     assignedMissionVisible: profile.assignedMissionVisible !== false,
@@ -1383,7 +1394,8 @@ function getEmployeeWorkHoursOverride(employeeId = state?.selectedEmployeeId, da
 function getProfileWorkHoursForDate(profile = state?.profile, dateKey = getActiveDateKey()) {
   const dayKey = getWorkdayKey(dateKey);
   const weeklyHours = profile?.weeklyWorkHours || {};
-  return String(weeklyHours[dayKey] || "").trim() || String(profile?.workHours || "").trim();
+  if (Object.keys(weeklyHours).length && !Object.prototype.hasOwnProperty.call(weeklyHours, dayKey)) return "휴무";
+  return normalizeWorkHoursText(weeklyHours[dayKey] || profile?.workHours || defaultProfile.workHours);
 }
 
 function getWorkdayKey(dateKey = getActiveDateKey()) {
@@ -2260,6 +2272,7 @@ function normalizeFitnessEmployeeForWorklog(employee = {}) {
     primaryWork: employee.primaryWork || base.primaryWork || "",
     workplace: employee.workplace || base.workplace || "비욘드 피트니스",
     workHours: employee.workHours || base.workHours || defaultProfile.workHours,
+    weeklyWorkHours: { ...(employee.weeklyWorkHours || employee.weekly_work_hours || base.weeklyWorkHours || {}) },
   };
 }
 
@@ -2890,9 +2903,10 @@ function getEmployeeLogForDate(employeeId, key = getActiveDateKey()) {
 function findEmployeeRecordById(employeeId) {
   const id = String(employeeId || "").trim();
   if (!id) return null;
-  return getEmployeeOptions().find((item) => item.id === id)
+  const directory = getEmployeeOptions();
+  return directory.find((item) => item.id === id)
+    || directory.find((item) => item.mappedEmployeeId === id)
     || employees.find((item) => item.id === id)
-    || getStaffDirectoryEmployees().find((item) => item.id === id || item.mappedEmployeeId === id)
     || null;
 }
 
@@ -3633,6 +3647,8 @@ function hasOverviewWorklogRecord(dayLog = {}) {
 function getOverviewWorkStatus(employee = {}, dayLog = {}, dateKey = getActiveDateKey(), now = new Date()) {
   const hours = getOverviewScheduledWorkHours(employee, dateKey, dayLog);
   const attendance = String(dayLog.attendanceStatus || "");
+  const isScheduledOff = isOffWorkHours(hours) || /비번|휴무/.test(attendance);
+  const hasSubstituteAttendance = Boolean(dayLog.clockIn || dayLog.clockOut);
   const today = formatDateKey(now);
   const hasAttendanceRecord = Boolean(
     dayLog.clockIn
@@ -3641,7 +3657,9 @@ function getOverviewWorkStatus(employee = {}, dayLog = {}, dateKey = getActiveDa
     || (dayLog.attendanceBreaks || []).some((record) => record?.start || record?.end)
   );
   const hasWorklogRecord = hasOverviewWorklogRecord(dayLog);
-  if (isOffWorkHours(hours) || /비번|휴무/.test(attendance)) return { key: "off", label: "비번", detail: "휴무" };
+  if (isScheduledOff && !hasSubstituteAttendance) return { key: "off", label: "비번", detail: "휴무" };
+  if (isScheduledOff && dayLog.clockOut) return { key: "worked", label: "대체근무", detail: `${dayLog.clockIn || "출근 미기록"} ~ ${dayLog.clockOut}` };
+  if (isScheduledOff && dayLog.clockIn) return { key: "working", label: "대체근무중", detail: `${dayLog.clockIn} 출근 · 퇴근 전` };
   if (/결근|결석/.test(attendance)) return { key: "absent", label: "결근", detail: hours || "근무시간 미정" };
   if (dateKey < today) {
     if (hasAttendanceRecord || hasWorklogRecord) {
@@ -4179,9 +4197,10 @@ function detectRepresentativeEmployeeSignals(model = {}, dateKey = getActiveDate
   const reportText = String(dayLog.report || dayLog.memo || dayLog.record || "");
   const combined = `${taskText} ${scheduleText} ${reportText}`;
   const signals = [];
+  const hasSubstituteAttendance = Boolean(dayLog.clockIn || dayLog.clockOut);
   const isOffDay = model.workStatus?.key === "off"
-    || isOffWorkHours(getOverviewScheduledWorkHours(employee, dateKey, dayLog))
-    || /비번|휴무/.test(String(dayLog.attendanceStatus || ""));
+    || (isOffWorkHours(getOverviewScheduledWorkHours(employee, dateKey, dayLog)) && !hasSubstituteAttendance)
+    || (/비번|휴무/.test(String(dayLog.attendanceStatus || "")) && !hasSubstituteAttendance);
   const add = (level, category, title, evidence, action) => {
     const key = `${level}:${category}`;
     if (!signals.some((item) => item.key === key)) signals.push({ key, level, category, title, evidence, action });
@@ -9941,7 +9960,7 @@ function buildFitnessCenterEmployeeMonthRow(employee, monthPrefix) {
     workMinutes += minutes;
     if (log.clockIn && (!firstClockIn || log.clockIn < firstClockIn)) firstClockIn = log.clockIn;
     if (log.clockOut && (!lastClockOut || log.clockOut > lastClockOut)) lastClockOut = log.clockOut;
-    const status = getAttendanceStatusForLog(employee, log);
+    const status = getAttendanceStatusForLog(employee, log, dateKey);
     if (status.includes("지각")) lateCount += 1;
     if (status.includes("조퇴")) earlyCount += 1;
     if (status.includes("결근")) absenceCount += 1;
@@ -12333,13 +12352,31 @@ function getWorklogScheduleSlots(log, dateKey = getActiveDateKey()) {
       baseSlots.push(minutesToTime(minute));
     }
   }
-  const supplementalTimes = [...manualTimes, ...scheduleTimes, ...taskTimes];
+  const attendanceTimes = getAttendanceScheduleSlots(log, unit);
+  const supplementalTimes = [...attendanceTimes, ...manualTimes, ...scheduleTimes, ...taskTimes];
   const fallbackTimes = !baseSlots.length && !supplementalTimes.length && !isOffWorkHours(workHours)
     ? getScheduleTimes(defaultProfile.workHours)
     : [];
   return [...new Set([...baseSlots, ...supplementalTimes, ...fallbackTimes])]
     .filter(Boolean)
     .sort((a, b) => timeToMinutes(a) - timeToMinutes(b));
+}
+
+function getAttendanceScheduleSlots(log = {}, unit = 30) {
+  if (!String(log.clockIn || "").trim()) return [];
+  const clockInMinutes = timeToMinutes(log.clockIn);
+  if (!Number.isFinite(clockInMinutes)) return [];
+  const hasClockOut = Boolean(String(log.clockOut || "").trim());
+  const clockOutMinutes = hasClockOut ? timeToMinutes(log.clockOut) : NaN;
+  const start = Math.max(0, Math.floor(clockInMinutes / unit) * unit);
+  let end = Number.isFinite(clockOutMinutes) ? clockOutMinutes : clockInMinutes;
+  if (end < clockInMinutes) end += 24 * 60;
+  end = Math.min(24 * 60, Math.floor(end / unit) * unit);
+  const slots = [];
+  for (let minute = start; minute <= Math.max(start, end); minute += unit) {
+    slots.push(minutesToTime(minute));
+  }
+  return slots;
 }
 
 function timeToMinutes(value) {
@@ -12586,6 +12623,7 @@ function applyAttendancePopoverSelection() {
     log.attendanceBreaks.push({ type: "외출", start: primary, end: secondary });
     log.attendanceStatus = "외출";
   }
+  normalizeEmployeeLogRows(log, getActiveDateKey());
   syncAttendanceRecordFromLog(employee, log);
   saveState();
   renderAll();
@@ -12622,6 +12660,7 @@ function applyAttendanceCycle() {
     log.attendanceStatus = "조퇴";
     log.attendanceStep = "early";
   }
+  normalizeEmployeeLogRows(log, getActiveDateKey());
   syncAttendanceRecordFromLog(getSelectedEmployee(), log);
   saveState();
   renderClockPanel();
@@ -12630,9 +12669,14 @@ function applyAttendanceCycle() {
 }
 
 function getAttendanceStatusForLog(employee, log = getEmployeeLogForDate(employee.id), dateKey = getActiveDateKey(), now = new Date()) {
+  const workHours = getOverviewScheduledWorkHours(employee, dateKey, log);
+  if (isOffWorkHours(workHours)) {
+    if (!log.clockIn && !log.clockOut) return "휴무";
+    return log.clockOut ? "대체근무 완료" : "대체근무";
+  }
   if (log.attendanceStatus === "조퇴") return "조퇴";
   if (log.clockIn) {
-    const [start] = String(employee.workHours || getEmployeeWorkHours(employee.id)).split("-");
+    const [start] = String(workHours).split("-");
     const startMinutes = timeToMinutes(start);
     const inMinutes = timeToMinutes(log.clockIn);
     const isLate = Number.isFinite(startMinutes) && Number.isFinite(inMinutes) && inMinutes > startMinutes + 5;
@@ -12643,7 +12687,7 @@ function getAttendanceStatusForLog(employee, log = getEmployeeLogForDate(employe
   }
   const today = formatDateKey(now);
   const todayMinutes = now.getHours() * 60 + now.getMinutes();
-  const [start] = String(employee.workHours || getEmployeeWorkHours(employee.id)).split("-");
+  const [start] = String(workHours).split("-");
   const startMinutes = timeToMinutes(start);
   if (dateKey > today) return "예정";
   if (dateKey < today || (dateKey === today && Number.isFinite(startMinutes) && todayMinutes > startMinutes + 30)) return "결석";
@@ -12653,7 +12697,7 @@ function getAttendanceStatusForLog(employee, log = getEmployeeLogForDate(employe
 function syncAttendanceRecordFromLog(employee = getSelectedEmployee(), log = getEmployeeLogForDate(employee.id)) {
   state.attendance ||= {};
   state.attendance[getActiveDateKey()] ||= [];
-  const status = getAttendanceStatusForLog(employee, log);
+  const status = getAttendanceStatusForLog(employee, log, getActiveDateKey());
   const note = formatAttendanceSummary(log);
   const rows = state.attendance[getActiveDateKey()];
   const index = rows.findIndex((item) => item.employeeId === employee.id);
@@ -13369,9 +13413,7 @@ function getLaborRealtimeSnapshot(selectedEmployee = getOwnLaborEmployee(), now 
     const employeeId = getLaborEmployeeLogId(employee);
     const log = state.employeeLogs?.[todayKey]?.[employeeId] || createEmployeeLog({ ...employee, id: employeeId }, state.profile, todayKey);
     const workHours = getEmployeeWorkHours(employeeId, getLaborProfileForEmployee(employee), todayKey);
-    const status = getWorkHoursDurationMinutes(workHours)
-      ? getAttendanceStatusForLog({ ...employee, workHours }, log, todayKey, now)
-      : "휴무";
+    const status = getAttendanceStatusForLog({ ...employee, workHours }, log, todayKey, now);
     return { employee, employeeId, log, status };
   });
   const selectedId = getLaborEmployeeLogId(selectedEmployee);
@@ -13619,6 +13661,7 @@ function getLaborProfileForEmployee(employee) {
     dailyWage: employee.dailyWage || "",
     employmentType: employee.employmentType || "직원",
     workHours: employee.workHours || defaultProfile.workHours,
+    weeklyWorkHours: { ...(employee.weeklyWorkHours || employee.weekly_work_hours || {}) },
   };
 }
 
@@ -13898,7 +13941,8 @@ function buildMonthlyLaborSummary(employeeId, employee, monthPrefix = getActiveD
     const logsByEmployee = state.employeeLogs?.[dateKey] || {};
     if (!dateKey.startsWith(monthPrefix)) return;
     const dayLog = logsByEmployee?.[employeeId];
-    const scheduled = getWorkHoursDurationMinutes(getEmployeeWorkHours(employeeId, state.profile, dateKey));
+    const scheduledWorkHours = getOverviewScheduledWorkHours(employee, dateKey, dayLog || {});
+    const scheduled = getWorkHoursDurationMinutes(scheduledWorkHours);
     scheduledMinutes += scheduled;
     let worked = 0;
     let ops = createFitnessOps();
@@ -18427,17 +18471,23 @@ function getFitnessReportAttendanceWarnings(logEntries = [], dateKey = getActive
   if (dateKey > currentDateKey) return [];
   return logEntries.flatMap(({ employee, log }) => {
     const hours = getOverviewScheduledWorkHours(employee, dateKey, log);
-    if (isOffWorkHours(hours) || /비번|휴무|결근|결석/.test(String(log.attendanceStatus || ""))) return [];
+    const scheduledOff = isOffWorkHours(hours) || /비번|휴무/.test(String(log.attendanceStatus || ""));
+    const substituteAttendance = Boolean(log.clockIn || log.clockOut);
+    if ((scheduledOff && !substituteAttendance) || /결근|결석/.test(String(log.attendanceStatus || ""))) return [];
     let requireClockIn = dateKey < currentDateKey;
     let requireClockOut = dateKey < currentDateKey;
     const match = String(hours || "").match(/(\d{2}):(\d{2})\s*[-~]\s*(\d{2}):(\d{2})/);
-    if (dateKey === currentDateKey && match) {
+    if (dateKey === currentDateKey && match && !scheduledOff) {
       const currentMinutes = now.getHours() * 60 + now.getMinutes();
       const startMinutes = Number(match[1]) * 60 + Number(match[2]);
       let endMinutes = Number(match[3]) * 60 + Number(match[4]);
       if (endMinutes < startMinutes) endMinutes += 24 * 60;
       requireClockIn = currentMinutes >= startMinutes;
       requireClockOut = currentMinutes > endMinutes;
+    }
+    if (dateKey === currentDateKey && scheduledOff) {
+      requireClockIn = Boolean(log.clockOut);
+      requireClockOut = false;
     }
     const missing = [];
     if (requireClockIn && !log.clockIn) missing.push("출근");
@@ -20301,6 +20351,7 @@ document.getElementById("clockInTime")?.addEventListener("input", (event) => {
   log.clockIn = event.target.value;
   log.attendanceStep = event.target.value ? "in" : "ready";
   log.attendanceStatus = event.target.value ? "출근" : "";
+  normalizeEmployeeLogRows(log, getActiveDateKey());
   syncAttendanceRecordFromLog(getSelectedEmployee(), log);
   saveState();
   renderClockPanel();
@@ -20313,6 +20364,7 @@ document.getElementById("clockOutTime")?.addEventListener("input", (event) => {
   log.clockOut = event.target.value;
   log.attendanceStep = event.target.value ? "out" : "in";
   log.attendanceStatus = event.target.value ? "퇴근" : "출근";
+  normalizeEmployeeLogRows(log, getActiveDateKey());
   syncAttendanceRecordFromLog(getSelectedEmployee(), log);
   saveState();
   renderClockPanel();

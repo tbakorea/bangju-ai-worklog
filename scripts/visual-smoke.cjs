@@ -4682,6 +4682,20 @@ async function checkFitnessRosterHoursAndCompactTotals(browser) {
       state.selectedDateKey = "2026-08-04";
       state.fitnessWritableEmployeeId = "beyond-fitness-manager";
       state.selectedEmployeeId = "beyond-fitness-manager";
+      authState.approvalRows = [{
+        id: "qa-saturday-profile",
+        email: "saturday-only@example.com",
+        name: "토요 근무자",
+        nickname: "토요 근무자",
+        org: "(주)방주 / 비욘드 피트니스 지사",
+        workplace: "비욘드 피트니스",
+        role: "토요 인포",
+        primary_work: "토요일 고객응대, 센터관리",
+        work_hours: "10:00-18:00",
+        weekly_work_hours: { sat: "10:00-18:00" },
+        approval_status: "approved"
+      }];
+      authState.approvalRowsLoaded = true;
       const manager = employees.find((item) => item.id === "beyond-fitness-manager");
       const kim = employees.find((item) => item.id === "fitness-info-kimyoungchae");
       const ida = employees.find((item) => item.id === "fitness-weekday-info-idabin");
@@ -4712,10 +4726,58 @@ async function checkFitnessRosterHoursAndCompactTotals(browser) {
       const managerLog = getFitnessEmployeeLogForDate(manager, "2026-08-04");
       const kimLog = getFitnessEmployeeLogForDate(kim, "2026-08-04");
       const idaLog = getFitnessEmployeeLogForDate(ida, "2026-08-04");
+      const managerSundayLog = createEmployeeLog(manager, state.profile, "2026-08-02");
+      managerSundayLog.scheduleUnit = "60";
+      normalizeEmployeeLogRows(managerSundayLog, "2026-08-02");
+      const saturdayOnlyEmployee = getStaffDirectoryEmployees().find((item) => item.sourceProfileId === "qa-saturday-profile");
+      const saturdayOnlyId = getEmployeeWorklogId(saturdayOnlyEmployee);
+      const fridayLog = createEmployeeLog(saturdayOnlyEmployee, state.profile, "2026-08-07");
+      const saturdayLog = createEmployeeLog(saturdayOnlyEmployee, state.profile, "2026-08-08");
+      saturdayLog.scheduleUnit = "60";
+      normalizeEmployeeLogRows(saturdayLog, "2026-08-08");
+      state.employeeLogs["2026-08-07"] = { [saturdayOnlyId]: fridayLog };
+      state.employeeLogs["2026-08-08"] = { [saturdayOnlyId]: saturdayLog };
+      const fridayOffHours = getOverviewScheduledWorkHours(saturdayOnlyEmployee, "2026-08-07", fridayLog);
+      const fridayOffStatus = getAttendanceStatusForLog(saturdayOnlyEmployee, fridayLog, "2026-08-07", new Date("2026-08-08T12:00:00+09:00"));
+      const fridayOffTimes = fridayLog.schedule.map((entry) => entry.time);
+      const fridayOffWarnings = getFitnessReportAttendanceWarnings([{ employee: saturdayOnlyEmployee, log: fridayLog }], "2026-08-07", new Date("2026-08-08T12:00:00+09:00"));
+      fridayLog.clockIn = "09:35";
+      fridayLog.attendanceStatus = "출근";
+      fridayLog.attendanceStep = "in";
+      normalizeEmployeeLogRows(fridayLog, "2026-08-07");
+      const substituteActive = {
+        status: getAttendanceStatusForLog(saturdayOnlyEmployee, fridayLog, "2026-08-07", new Date("2026-08-08T12:00:00+09:00")),
+        overview: getOverviewWorkStatus(saturdayOnlyEmployee, fridayLog, "2026-08-07", new Date("2026-08-08T12:00:00+09:00")).label,
+        times: fridayLog.schedule.map((entry) => entry.time)
+      };
+      fridayLog.clockOut = "13:20";
+      fridayLog.attendanceStatus = "퇴근";
+      fridayLog.attendanceStep = "out";
+      normalizeEmployeeLogRows(fridayLog, "2026-08-07");
+      const saturdayLabor = buildMonthlyLaborSummary(saturdayOnlyId, saturdayOnlyEmployee, "2026-08");
       window.__fitnessRosterHoursQA = {
         manager: { id: managerLog.employeeId, unit: managerLog.scheduleUnit, times: managerLog.schedule.map((entry) => entry.time) },
+        managerSunday: { hours: getOverviewScheduledWorkHours(manager, "2026-08-02", managerSundayLog), times: managerSundayLog.schedule.map((entry) => entry.time) },
         kim: { id: kimLog.employeeId, unit: kimLog.scheduleUnit, times: kimLog.schedule.map((entry) => entry.time) },
-        ida: { id: idaLog.employeeId, unit: idaLog.scheduleUnit, times: idaLog.schedule.map((entry) => entry.time) }
+        ida: { id: idaLog.employeeId, unit: idaLog.scheduleUnit, times: idaLog.schedule.map((entry) => entry.time) },
+        saturdayOnly: {
+          fridayHours: fridayOffHours,
+          fridayStatus: fridayOffStatus,
+          fridayTimes: fridayOffTimes,
+          fridayWarnings: fridayOffWarnings.length,
+          fridayScheduled: saturdayLabor.dayRows.find((row) => row.dateKey === "2026-08-07")?.scheduled,
+          substituteActive,
+          substituteDone: {
+            status: getAttendanceStatusForLog(saturdayOnlyEmployee, fridayLog, "2026-08-07", new Date("2026-08-08T12:00:00+09:00")),
+            overview: getOverviewWorkStatus(saturdayOnlyEmployee, fridayLog, "2026-08-07", new Date("2026-08-08T12:00:00+09:00")).label,
+            times: fridayLog.schedule.map((entry) => entry.time),
+            worked: saturdayLabor.dayRows.find((row) => row.dateKey === "2026-08-07")?.worked,
+            laborStatus: saturdayLabor.dayRows.find((row) => row.dateKey === "2026-08-07")?.status
+          },
+          saturdayHours: getOverviewScheduledWorkHours(saturdayOnlyEmployee, "2026-08-08", saturdayLog),
+          saturdayTimes: saturdayLog.schedule.map((entry) => entry.time),
+          saturdayScheduled: saturdayLabor.dayRows.find((row) => row.dateKey === "2026-08-08")?.scheduled
+        }
       };
       state.fitnessLogPage = getFitnessLogPages().findIndex((entry) => entry.id === "beyond-fitness-manager");
       switchView("fitness-log");
@@ -4739,6 +4801,23 @@ async function checkFitnessRosterHoursAndCompactTotals(browser) {
       fail("fitness schedule should follow each employee's roster hours", `${key}: ${JSON.stringify(item)}`);
     }
   });
+  const managerSunday = metrics.schedules?.managerSunday;
+  if (managerSunday?.hours !== "06:00-24:00" || managerSunday?.times?.[0] !== "06:00" || managerSunday?.times?.at(-1) !== "24:00" || managerSunday?.times?.length !== 19) {
+    fail("fitness manager should use 06:00-24:00 on all seven days", JSON.stringify(managerSunday));
+  }
+  const saturdayOnly = metrics.schedules?.saturdayOnly;
+  if (saturdayOnly?.fridayHours !== "휴무" || saturdayOnly?.fridayStatus !== "휴무" || saturdayOnly?.fridayTimes?.length !== 0 || saturdayOnly?.fridayWarnings !== 0 || saturdayOnly?.fridayScheduled !== 0
+    || saturdayOnly?.saturdayHours !== "10:00-18:00" || saturdayOnly?.saturdayTimes?.[0] !== "10:00" || saturdayOnly?.saturdayTimes?.at(-1) !== "18:00"
+    || saturdayOnly?.saturdayTimes?.length !== 9 || saturdayOnly?.saturdayScheduled !== 480) {
+    fail("worklog, attendance, and center labor views should share each employee's weekly hours", JSON.stringify(saturdayOnly));
+  }
+  if (saturdayOnly?.substituteActive?.status !== "대체근무" || saturdayOnly?.substituteActive?.overview !== "대체근무중"
+    || saturdayOnly?.substituteActive?.times?.join("|") !== "09:00"
+    || saturdayOnly?.substituteDone?.status !== "대체근무 완료" || saturdayOnly?.substituteDone?.overview !== "대체근무"
+    || saturdayOnly?.substituteDone?.times?.join("|") !== "09:00|10:00|11:00|12:00|13:00"
+    || saturdayOnly?.substituteDone?.worked !== 225 || saturdayOnly?.substituteDone?.laborStatus !== "대체근무 완료") {
+    fail("off-day attendance should become substitute work and open only the actual attendance time range", JSON.stringify(saturdayOnly));
+  }
   if (metrics.summaryValues[0] !== "3/13" || !metrics.monthlyPanelHidden || !metrics.summaryFits) {
     fail("fitness totals should use compact today/month notation without another panel", JSON.stringify(metrics));
   }
