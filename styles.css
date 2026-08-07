@@ -25588,3 +25588,172 @@ body.is-fitness-focus-open.is-fitness-coaching-open .fitness-coaching-sheet {
 .worklog-shell > #view-attendance.is-active {
   display: grid !important;
 }
+
+/* Automatic orientation canvas.
+   Portrait keeps the focused single-page rail. A landscape window uses the
+   available width as a continuous work surface, even when CEO mode was the
+   last saved preference. Short landscape windows also receive a denser rhythm
+   so useful rows, rather than empty paper, fill the visible height. */
+@media (min-width: 600px) {
+  body[data-responsive-flow="landscape"] {
+    --responsive-canvas-gap: clamp(6px, 0.8vw, 12px);
+  }
+
+  body[data-responsive-flow="landscape"] .worklog-shell,
+  body[data-responsive-flow="landscape"][data-view-mode="ceo"]:not(.physical-phone-device) .worklog-shell {
+    width: min(1480px, calc(100vw - 16px)) !important;
+    max-width: none !important;
+    min-height: calc(100dvh - 16px);
+    margin: 8px auto !important;
+    padding: 0 !important;
+  }
+
+  body[data-responsive-flow="landscape"] .worklog-overview-view.is-active,
+  body[data-responsive-flow="landscape"][data-view-mode="ceo"]:not(.physical-phone-device) .worklog-overview-view.is-active {
+    gap: var(--responsive-canvas-gap) !important;
+    min-height: calc(100dvh - 16px);
+    padding: var(--responsive-canvas-gap) !important;
+  }
+
+  body[data-responsive-flow="landscape"] .worklog-overview-hero,
+  body[data-responsive-flow="landscape"][data-view-mode="ceo"]:not(.physical-phone-device) .worklog-overview-hero {
+    grid-template-columns: minmax(300px, 1fr) minmax(360px, 0.9fr) !important;
+    align-items: center !important;
+    gap: 12px !important;
+    min-height: clamp(76px, 15dvh, 104px) !important;
+    padding: 10px 14px !important;
+  }
+
+  body[data-responsive-flow="landscape"] .worklog-overview-hero > div:first-child,
+  body[data-responsive-flow="landscape"][data-view-mode="ceo"]:not(.physical-phone-device) .worklog-overview-hero > div:first-child {
+    min-width: 0;
+    padding-right: 72px !important;
+  }
+
+  body[data-responsive-flow="landscape"] .worklog-overview-hero p,
+  body[data-responsive-flow="landscape"] .worklog-overview-hero h2,
+  body[data-responsive-flow="landscape"][data-view-mode="ceo"]:not(.physical-phone-device) .worklog-overview-hero p,
+  body[data-responsive-flow="landscape"][data-view-mode="ceo"]:not(.physical-phone-device) .worklog-overview-hero h2 {
+    writing-mode: horizontal-tb !important;
+    word-break: keep-all !important;
+    overflow-wrap: normal !important;
+    white-space: nowrap !important;
+  }
+
+  body[data-responsive-flow="landscape"] .worklog-overview-hero h2,
+  body[data-responsive-flow="landscape"][data-view-mode="ceo"]:not(.physical-phone-device) .worklog-overview-hero h2 {
+    overflow: hidden !important;
+    font-size: clamp(25px, 3.3vw, 39px) !important;
+    line-height: 1 !important;
+    text-overflow: ellipsis !important;
+  }
+
+  body[data-responsive-flow="landscape"] .overview-date-nav,
+  body[data-responsive-flow="landscape"] .overview-date-nav:has(#worklogOverviewTodayButton.is-current-date),
+  body[data-responsive-flow="landscape"][data-view-mode="ceo"]:not(.physical-phone-device) .overview-date-nav,
+  body[data-responsive-flow="landscape"][data-view-mode="ceo"]:not(.physical-phone-device) .overview-date-nav:has(#worklogOverviewTodayButton.is-current-date) {
+    justify-self: stretch !important;
+    width: 100% !important;
+  }
+
+  body[data-responsive-flow="landscape"] #view-today.is-active,
+  body[data-responsive-flow="landscape"][data-view-mode="ceo"]:not(.physical-phone-device) #view-today.is-active {
+    grid-template-columns: minmax(0, 1fr) !important;
+    gap: var(--responsive-canvas-gap) !important;
+  }
+
+  body[data-responsive-flow="landscape"] #view-today .worklog-main[data-today-page="daily"],
+  body[data-responsive-flow="landscape"][data-view-mode="ceo"]:not(.physical-phone-device) #view-today .worklog-main[data-today-page="daily"] {
+    display: grid !important;
+    grid-template-columns: minmax(0, 2fr) minmax(230px, 0.72fr) !important;
+    gap: var(--responsive-canvas-gap) !important;
+    align-items: start;
+  }
+
+  body[data-responsive-flow="landscape"] #view-today .worklog-main[data-today-page="daily"] .worklog-daily-page,
+  body[data-responsive-flow="landscape"][data-view-mode="ceo"]:not(.physical-phone-device) #view-today .worklog-main[data-today-page="daily"] .worklog-daily-page {
+    display: grid !important;
+    grid-column: 1;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) !important;
+    gap: var(--responsive-canvas-gap) !important;
+  }
+
+  body[data-responsive-flow="landscape"] #view-today .worklog-main[data-today-page="daily"] .worklog-coworker-page,
+  body[data-responsive-flow="landscape"][data-view-mode="ceo"]:not(.physical-phone-device) #view-today .worklog-main[data-today-page="daily"] .worklog-coworker-page {
+    display: block !important;
+    grid-column: 2;
+    min-height: 0 !important;
+    max-height: calc(100dvh - 238px);
+    overflow: auto;
+  }
+
+  body[data-responsive-flow="landscape"] #view-fitness-log .fitness-desktop-worklog-grid,
+  body[data-responsive-flow="landscape"][data-view-mode="ceo"]:not(.physical-phone-device) #view-fitness-log .fitness-desktop-worklog-grid {
+    display: grid !important;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(230px, 0.72fr) !important;
+    gap: var(--responsive-canvas-gap) !important;
+    align-items: start;
+  }
+
+  body[data-responsive-flow="landscape"] #view-fitness-log .fitness-desktop-coworker-board:not([hidden]),
+  body[data-responsive-flow="landscape"][data-view-mode="ceo"]:not(.physical-phone-device) #view-fitness-log .fitness-desktop-coworker-board:not([hidden]) {
+    display: grid !important;
+  }
+}
+
+@media (min-width: 600px) and (max-height: 720px) {
+  body[data-responsive-flow="landscape"][data-viewport-density="high"] .worklog-shell {
+    font-size: 0.92rem;
+  }
+
+  body[data-responsive-flow="landscape"][data-viewport-density="high"] .worklog-header {
+    min-height: 48px;
+    padding: 8px 12px;
+  }
+
+  body[data-responsive-flow="landscape"][data-viewport-density="high"] .worklog-overview-hero,
+  body[data-responsive-flow="landscape"][data-viewport-density="high"][data-view-mode="ceo"]:not(.physical-phone-device) .worklog-overview-hero {
+    min-height: 72px !important;
+    padding-block: 8px !important;
+  }
+
+  body[data-responsive-flow="landscape"][data-viewport-density="high"] .worklog-overview-modebar,
+  body[data-responsive-flow="landscape"][data-viewport-density="high"] #overviewSiteWeatherBoard,
+  body[data-responsive-flow="landscape"][data-viewport-density="high"] .overview-all-command,
+  body[data-responsive-flow="landscape"][data-viewport-density="high"] .overview-business-snapshot {
+    padding-block: 5px !important;
+  }
+
+  body[data-responsive-flow="landscape"][data-viewport-density="high"] .overview-all-kpis article {
+    min-height: 58px !important;
+    padding: 6px 8px !important;
+  }
+
+  body[data-responsive-flow="landscape"][data-viewport-density="high"] #view-today .worklog-main[data-today-page="daily"] .worklog-panel,
+  body[data-responsive-flow="landscape"][data-viewport-density="high"] #view-today .worklog-main[data-today-page="daily"] .worklog-coworker-page,
+  body[data-responsive-flow="landscape"][data-viewport-density="high"] #view-fitness-log .fitness-log-task-panel,
+  body[data-responsive-flow="landscape"][data-viewport-density="high"] #view-fitness-log .fitness-log-schedule-panel,
+  body[data-responsive-flow="landscape"][data-viewport-density="high"] #view-fitness-log .fitness-desktop-coworker-board {
+    max-height: calc(100dvh - 214px) !important;
+  }
+}
+
+/* Final display guard: responsive canvas rules must never reveal inactive pages. */
+.worklog-shell > .worklog-view:not(.is-active) {
+  display: none !important;
+}
+
+.worklog-shell > .worklog-view.is-active {
+  display: block !important;
+}
+
+.worklog-shell > .report-backup-view.is-active {
+  display: grid !important;
+}
+
+.worklog-shell > .premium-operating-view.is-active,
+.worklog-shell > .fitness-log-view.is-active,
+.worklog-shell > #view-today.is-active,
+.worklog-shell > #view-attendance.is-active {
+  display: grid !important;
+}

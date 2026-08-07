@@ -3256,14 +3256,19 @@ function setupAttendancePopover() {
 }
 
 function renderResponsiveMode() {
-  const isNarrow = window.matchMedia("(max-width: 760px)").matches;
-  const isPhoneWidth = window.matchMedia("(max-width: 640px)").matches;
+  const viewportWidth = Math.max(document.documentElement.clientWidth || 0, window.innerWidth || 0);
+  const viewportHeight = Math.max(document.documentElement.clientHeight || 0, window.innerHeight || 0);
+  const isLandscapeFlow = viewportWidth >= 600 && viewportWidth > viewportHeight * 1.08;
+  const isNarrow = viewportWidth <= 760 && !isLandscapeFlow;
+  const isPhoneWidth = viewportWidth <= 640 && !isLandscapeFlow;
   const mode = isNarrow ? "narrow" : "expanded";
   const viewMode = getGlobalViewMode();
-  const layoutMode = isPhoneWidth || viewMode === "ceo" ? "phone" : "wide";
+  const layoutMode = isLandscapeFlow ? "wide" : (isPhoneWidth || viewMode === "ceo" ? "phone" : "wide");
   localStorage.setItem(layoutModeStorageKey, layoutMode);
   document.body.dataset.deviceMode = mode;
   document.body.dataset.layoutMode = layoutMode;
+  document.body.dataset.responsiveFlow = isLandscapeFlow ? "landscape" : "portrait";
+  document.body.dataset.viewportDensity = viewportHeight <= 720 && isLandscapeFlow ? "high" : "regular";
   document.body.classList.toggle("smartphone-device", layoutMode === "phone" || isPhoneWidth);
   document.body.classList.toggle("physical-phone-device", isPhoneWidth);
   applyGlobalViewMode();
@@ -3277,7 +3282,9 @@ function renderResponsiveMode() {
 }
 
 function isPhysicalPhoneLayout() {
-  return window.matchMedia("(max-width: 640px)").matches;
+  const viewportWidth = Math.max(document.documentElement.clientWidth || 0, window.innerWidth || 0);
+  const viewportHeight = Math.max(document.documentElement.clientHeight || 0, window.innerHeight || 0);
+  return viewportWidth <= 640 && !(viewportWidth >= 600 && viewportWidth > viewportHeight * 1.08);
 }
 
 function getGlobalViewMode() {

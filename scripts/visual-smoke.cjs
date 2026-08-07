@@ -131,6 +131,7 @@ async function checkTabletRepresentativeWorklogChrome(browser) {
     return {
       mode: document.body.dataset.viewMode || "",
       layout: document.body.dataset.layoutMode || "",
+      responsiveFlow: document.body.dataset.responsiveFlow || "",
       shellWidth: shell?.width || 0,
       eyebrowHeight: eyebrow?.getBoundingClientRect().height || 0,
       eyebrowFits: !eyebrow || eyebrow.scrollWidth <= eyebrow.clientWidth + 2,
@@ -140,12 +141,12 @@ async function checkTabletRepresentativeWorklogChrome(browser) {
       horizontalOverflow: document.documentElement.scrollWidth - window.innerWidth,
     };
   });
-  if (ceoOverview.mode !== "ceo" || ceoOverview.layout !== "phone"
-    || ceoOverview.shellWidth < 425 || ceoOverview.shellWidth > 650
+  if (ceoOverview.mode !== "ceo" || ceoOverview.layout !== "wide" || ceoOverview.responsiveFlow !== "landscape"
+    || ceoOverview.shellWidth < 980 || ceoOverview.shellWidth > 1024
     || ceoOverview.eyebrowHeight > 24 || !ceoOverview.eyebrowFits
     || ceoOverview.titleHeight > 48 || !ceoOverview.titleFits
     || ceoOverview.modeLabel !== "클래식" || ceoOverview.horizontalOverflow > 2) {
-    fail("CEO worklog overview should keep a stable Beyond Planner focus rail", JSON.stringify(ceoOverview));
+    fail("landscape CEO overview should automatically use the continuous wide canvas", JSON.stringify(ceoOverview));
   }
   await page.evaluate(() => toggleGlobalViewMode());
   await page.waitForTimeout(160);
@@ -160,6 +161,52 @@ async function checkTabletRepresentativeWorklogChrome(browser) {
     || classicOverview.shellWidth < 900 || classicOverview.modeLabel !== "CEO"
     || classicOverview.horizontalOverflow > 2) {
     fail("Classic worklog overview should use the available desktop canvas", JSON.stringify(classicOverview));
+  }
+  await page.setViewportSize({ width: 1000, height: 600 });
+  await page.evaluate(() => {
+    localStorage.setItem("beyond-worklog-global-view-mode", "ceo");
+    renderResponsiveMode();
+    switchView("worklog-overview");
+  });
+  await page.waitForTimeout(180);
+  const shortLandscapeOverview = await page.evaluate(() => {
+    const shell = document.querySelector(".worklog-shell")?.getBoundingClientRect();
+    const hero = document.querySelector(".worklog-overview-hero")?.getBoundingClientRect();
+    const title = document.querySelector(".worklog-overview-hero h2");
+    return {
+      flow: document.body.dataset.responsiveFlow || "",
+      density: document.body.dataset.viewportDensity || "",
+      layout: document.body.dataset.layoutMode || "",
+      shellWidth: shell?.width || 0,
+      heroHeight: hero?.height || 0,
+      titleFits: !title || title.scrollWidth <= title.clientWidth + 2,
+      titleWritingMode: title ? getComputedStyle(title).writingMode : "",
+      horizontalOverflow: document.documentElement.scrollWidth - window.innerWidth,
+    };
+  });
+  if (shortLandscapeOverview.flow !== "landscape" || shortLandscapeOverview.density !== "high"
+    || shortLandscapeOverview.layout !== "wide" || shortLandscapeOverview.shellWidth < 970
+    || shortLandscapeOverview.heroHeight > 100 || !shortLandscapeOverview.titleFits
+    || shortLandscapeOverview.titleWritingMode !== "horizontal-tb" || shortLandscapeOverview.horizontalOverflow > 2) {
+    fail("short landscape window should fill width with a high-density horizontal command board", JSON.stringify(shortLandscapeOverview));
+  }
+  await page.evaluate(() => switchView("bangju-log"));
+  await page.waitForTimeout(180);
+  const shortLandscapeWorklog = await page.evaluate(() => {
+    const task = document.querySelector("#view-today .worklog-task-panel")?.getBoundingClientRect();
+    const schedule = document.querySelector("#view-today .worklog-schedule-panel")?.getBoundingClientRect();
+    const coworker = document.querySelector("#view-today .worklog-coworker-page")?.getBoundingClientRect();
+    return {
+      taskBesideSchedule: Boolean(task && schedule && schedule.left > task.left && Math.abs(task.top - schedule.top) < 6),
+      coworkerBesideDaily: Boolean(schedule && coworker && coworker.left > schedule.right && Math.abs(task?.top - coworker.top) < 8),
+      coworkerDisplay: document.querySelector("#view-today .worklog-coworker-page")
+        ? getComputedStyle(document.querySelector("#view-today .worklog-coworker-page")).display : "none",
+      horizontalOverflow: document.documentElement.scrollWidth - window.innerWidth,
+    };
+  });
+  if (!shortLandscapeWorklog.taskBesideSchedule || !shortLandscapeWorklog.coworkerBesideDaily
+    || shortLandscapeWorklog.coworkerDisplay === "none" || shortLandscapeWorklog.horizontalOverflow > 2) {
+    fail("short landscape employee worklog should show personal and coworker pages continuously", JSON.stringify(shortLandscapeWorklog));
   }
   const resumedDate = await page.evaluate(() => {
     authState.user = null;
