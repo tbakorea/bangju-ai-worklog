@@ -34,6 +34,19 @@ check("fitness coach api exists and parses", Boolean(fitnessCoachApi) && fitness
 check("fitness coach keeps OpenAI key server-side", fitnessCoachApi.includes("process.env.OPENAI_API_KEY") && !js.includes("OPENAI_API_KEY"));
 check("fitness coach verifies signed-in user", fitnessCoachApi.includes("/auth/v1/user") && fitnessCoachApi.includes("Authorization"));
 check("fitness coach uses structured Responses output", fitnessCoachApi.includes("/v1/responses") && fitnessCoachApi.includes('type: "json_schema"'));
+check(
+  "fitness center report keeps manager ownership, Dagym analysis, weather refresh, and attendance warnings",
+  /function canConfirmFitnessCenterReport[\s\S]{0,260}return isFitnessCenterManagerEmployee\(actor\)/.test(js)
+    && js.includes("getFitnessReportDagymSummary")
+    && js.includes("refreshFitnessReportWeather")
+    && js.includes("getFitnessReportAttendanceWarnings")
+    && css.includes(".fitness-paper-dagym")
+    && css.includes(".fitness-paper-warning-banner")
+);
+check(
+  "worklog editing remains open for 48 hours after the workday",
+  /function isWithinWorklogEditWindow[\s\S]{0,420}workday\.getDate\(\) \+ 3[\s\S]{0,120}now < editDeadline/.test(js)
+);
 
 const ids = findAll(/id="([^"]+)"/g, html);
 const duplicateIds = unique(ids.filter((id, index) => ids.indexOf(id) !== index));

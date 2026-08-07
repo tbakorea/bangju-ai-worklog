@@ -2575,9 +2575,9 @@ async function checkPriorityCarryoverAndDateRules(browser) {
       postponedPreview,
       postponedMaterializedStatus: postponedMaterialized.status,
       postponedMaterializedDate: postponedMaterialized.postponeDate,
-      previousBeforeNoon: isWithinWorklogEditWindow("2026-08-02", new Date(2026, 7, 3, 11, 59)),
-      previousAtNoon: isWithinWorklogEditWindow("2026-08-02", new Date(2026, 7, 3, 12, 0)),
-      olderDate: isWithinWorklogEditWindow("2026-08-01", new Date(2026, 7, 3, 9, 0)),
+      within48Hours: isWithinWorklogEditWindow("2026-08-01", new Date(2026, 7, 3, 23, 59)),
+      at48HourDeadline: isWithinWorklogEditWindow("2026-08-01", new Date(2026, 7, 4, 0, 0)),
+      olderDate: isWithinWorklogEditWindow("2026-07-31", new Date(2026, 7, 3, 9, 0)),
       futureDate: isWithinWorklogEditWindow("2026-08-10", new Date(2026, 7, 3, 15, 0))
     });
   })()`));
@@ -2614,8 +2614,8 @@ async function checkPriorityCarryoverAndDateRules(browser) {
     || parsed.cycleGuideLabels.join(",") !== "완료,진행중,해제") {
     fail("delegation and postponement should exist once in the priority menu and never in checkbox cycling", metrics);
   }
-  if (!parsed.previousBeforeNoon || parsed.previousAtNoon || parsed.olderDate || !parsed.futureDate) {
-    fail("worklog edit window should allow future dates and only the first 12 hours after a past workday", metrics);
+  if (!parsed.within48Hours || parsed.at48HourDeadline || parsed.olderDate || !parsed.futureDate) {
+    fail("worklog edit window should allow future dates and 48 hours after a past workday ends", metrics);
   }
   const employeeFutureMatrix = await page.evaluate(() => window.eval(`(() => {
     const cases = [
@@ -3404,6 +3404,26 @@ async function checkFitnessCenterReportConfirmation(browser) {
       const priorManagerLog = getEmployeeLogForDate("beyond-fitness-manager", "2026-07-23");
       priorManagerLog.fitnessOps = { ...createFitnessOps(), ptRegular: "3", ptFree: "1" };
       priorManagerLog.fitnessOpsManual = { ...createFitnessOpsManual(), ptRegular: true, ptFree: true };
+      state.dagymDaily = {
+        ...(state.dagymDaily || {}),
+        "2026-07-23": { ...createDagymDailyRecord("2026-07-23"), status: "closed", visits: "110", newMembers: "4", renewals: "8", expiring: "9", ptBookings: "8", noShows: "1", sales: "1500000", closedAt: "2026-07-23T14:00:00.000Z" },
+        "2026-07-24": { ...createDagymDailyRecord("2026-07-24"), status: "closed", visits: "95", newMembers: "2", renewals: "3", expiring: "12", ptBookings: "9", noShows: "3", sales: "900000", closedAt: "2026-07-24T14:00:00.000Z" }
+      };
+      state.siteWeatherAddresses = { ...(state.siteWeatherAddresses || {}), "비욘드 피트니스": "울산광역시 남구" };
+      state.weatherCache = {
+        ...(state.weatherCache || {}),
+        [getWeatherCacheKey("비욘드 피트니스", "2026-07-24")]: {
+          siteKey: "비욘드 피트니스",
+          address: "울산광역시 남구",
+          location: "울산 남구",
+          dateKey: "2026-07-24",
+          condition: "맑음",
+          weatherCode: 0,
+          temperatureMin: 24,
+          temperatureMax: 31,
+          fetchedAt: new Date().toISOString()
+        }
+      };
       const dabinLog = getEmployeeLogForDate("fitness-weekday-info", "2026-07-24");
       dabinLog.clockIn = "16:00";
       dabinLog.clockOut = "20:00";
@@ -3585,6 +3605,15 @@ async function checkFitnessCenterReportConfirmation(browser) {
     previewText: document.querySelector("#fitnessReportPreview")?.textContent?.trim() || "",
     coachButtonAbsent: !document.querySelector("#fitnessReportCoachButton"),
     aiStatusText: document.querySelector("#fitnessReportAiStatus")?.textContent?.trim() || "",
+    ownerText: document.querySelector("#fitnessReportPreview .fitness-paper-owner")?.textContent?.replace(/\s+/g, " ").trim() || "",
+    dagymText: document.querySelector("#fitnessReportPreview .fitness-paper-dagym")?.textContent?.replace(/\s+/g, " ").trim() || "",
+    attendanceWarningText: document.querySelector("#fitnessReportPreview .fitness-paper-warning-banner")?.textContent?.replace(/\s+/g, " ").trim() || "",
+    warningColor: getComputedStyle(document.querySelector("#fitnessReportPreview .fitness-paper-warning-banner") || document.body).color,
+    weatherText: document.querySelector("#fitnessReportPreview .fitness-paper-approval")?.textContent?.replace(/\s+/g, " ").trim() || "",
+    reportContentFits: (() => {
+      const report = document.querySelector("#fitnessReportPreview .fitness-report-page");
+      return !report || report.scrollHeight <= report.clientHeight + 2;
+    })(),
   }));
   if (reportState.buttonHidden || reportState.buttonText !== "확정 취소" || !reportState.previewText.includes("확정")) {
     fail("fitness report preview should expose confirmation state", JSON.stringify(reportState));
@@ -3592,10 +3621,23 @@ async function checkFitnessCenterReportConfirmation(browser) {
   if (!aiCoachRequest?.context?.manual?.guidelines?.length
     || !reportState.coachButtonAbsent
     || reportState.aiStatusText !== "AI 코칭 반영 완료"
+    || !reportState.ownerText.includes("담당자")
+    || !reportState.ownerText.includes("박주홍")
+    || !aiCoachRequest.context.dagym?.metrics?.length
     || !reportState.previewText.includes("AI 코칭 · ChatGPT")
     || !reportState.previewText.includes("직원 운영기록을 빠짐없이 취합한 점이 좋습니다.")
     || !reportState.previewText.includes("센터장 매뉴얼의 마감 인수인계 기준을 확인해주세요.")) {
     fail("fitness report should replace fallback guidance with authenticated ChatGPT coaching", JSON.stringify({ aiCoachRequest, reportState }));
+  }
+  if (!reportState.dagymText.includes("다짐 운영현황·변이 분석")
+    || !reportState.dagymText.includes("-600,000")
+    || !reportState.dagymText.includes("원인·개선 방향")
+    || !reportState.attendanceWarningText.includes("48시간")
+    || !reportState.warningColor.includes("177, 38, 38")
+    || !reportState.reportContentFits
+    || !reportState.weatherText.includes("맑음")
+    || !reportState.weatherText.includes("24°/31°")) {
+    fail("center report should show current weather, Dagym changes, red warnings, and 48-hour attendance correction guidance", JSON.stringify(reportState));
   }
   ["명일 예정업무", "전체 직원 운영기록", "유료PT", "무료PT", "기타PT", "신규", "재등록", "상담", "아웃바운드", "인바운드", "특이사항", "오늘의 기록", "담당", "팀장", "센터장"].forEach((label) => {
     if (!reportState.previewText.includes(label)) {
@@ -4160,6 +4202,7 @@ async function checkSiteWeatherAndGeneralDailyReport(browser) {
       reportPrintIsolated: typeof printReportCanvas === "function"
         && !String(printWorklogDailyReport).includes("window.print")
         && !String(printFitnessReport).includes("window.print"),
+      reportOwnerText: preview.querySelector(".worklog-report-owner")?.textContent?.replace(/\s+/g, " ").trim() || "",
     };
   });
   const exportMetrics = await page.evaluate(async () => {
@@ -4205,7 +4248,7 @@ async function checkSiteWeatherAndGeneralDailyReport(browser) {
     if (!metrics.previewText.includes(label)) fail("general daily report should include corporate and Bangju report sections", `${label} missing`);
   });
   if (!metrics.sheetOpen || metrics.previewOverflow < 0) fail("general daily report sheet should open and remain scrollable", JSON.stringify(metrics));
-  if (!metrics.archiveHasDesignedReport || !metrics.pastUsesArchive || !metrics.futureUsesForecast || !metrics.snapshotHasWeather || !metrics.fitnessReportPreserved || !metrics.exportButtons || !metrics.reportPrintIsolated) {
+  if (!metrics.archiveHasDesignedReport || !metrics.pastUsesArchive || !metrics.futureUsesForecast || !metrics.snapshotHasWeather || !metrics.fitnessReportPreserved || !metrics.exportButtons || !metrics.reportPrintIsolated || !metrics.reportOwnerText.includes("담당자")) {
     fail("site weather and general report data flow should remain connected without changing fitness report", JSON.stringify(metrics));
   }
   if (!metrics.todayUsesBeyondWeatherRange || metrics.weatherExpression !== "구름 조금 · 21°/29°" || !metrics.rainAdvice.includes("10~15분") || !metrics.freshWeather || metrics.staleWeather) {

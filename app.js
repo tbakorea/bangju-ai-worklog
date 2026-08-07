@@ -2451,26 +2451,6 @@ function isFitnessCenterManagerEmployee(employee = {}) {
   return employee.id === "beyond-fitness-manager" || /센터장|운영총괄|manager/.test(source);
 }
 
-function hasFitnessWorkedOnDate(employeeId = "", dateKey = getActiveDateKey()) {
-  if (!employeeId || !fitnessEmployeeIds.includes(employeeId)) return false;
-  const log = getEmployeeLogForDate(employeeId, dateKey);
-  const ops = { ...createFitnessOps(), ...(log.fitnessOps || {}) };
-  const hasAttendance = Boolean(
-    log.clockIn
-    || log.clockOut
-    || log.attendanceStatus
-    || (log.attendanceBreaks || []).some((record) => record.start || record.end)
-  );
-  const hasWorkRecord = Boolean(
-    String(log.report || log.memo || log.record || "").trim()
-    || getWorklogTaskRefs(log).some(({ task }) => isActiveTask(task))
-    || (log.schedule || []).some((entry) => String(getScheduleEntryText(entry) || "").trim())
-    || Object.entries(ops).some(([key, value]) => !["shiftNote", "specialReport"].includes(key) && numberValue(value))
-    || String(ops.shiftNote || ops.specialReport || "").trim()
-  );
-  return hasAttendance || hasWorkRecord;
-}
-
 function getCurrentFitnessActorEmployee() {
   const mappedId = getProfileMappedEmployeeId();
   const mappedEmployee = getFitnessEmployees().find((employee) => employee.id === mappedId || employee.mappedEmployeeId === mappedId);
@@ -2484,7 +2464,7 @@ function canConfirmFitnessCenterReport(dateKey = getActiveDateKey()) {
   if (!authState.user || isExplicitlySignedOut()) return false;
   const actor = getCurrentFitnessActorEmployee();
   if (!actor) return false;
-  return isFitnessCenterManagerEmployee(actor) || hasFitnessWorkedOnDate(actor.id, dateKey);
+  return isFitnessCenterManagerEmployee(actor);
 }
 
 function formatFitnessCenterConfirmationTime(value = "") {
@@ -2504,7 +2484,7 @@ function toggleFitnessCenterReportConfirmation(dateKey = getActiveDateKey()) {
   const actor = getCurrentFitnessActorEmployee();
   const existing = getFitnessCenterReportRecord(dateKey);
   if (!canConfirmFitnessCenterReport(dateKey) || !actor) {
-    showAppToast("센터장 또는 해당일 근무 직원만 센터 업무보고서를 확정할 수 있습니다");
+    showAppToast("센터운영일지 보고서는 센터장이 확인하고 확정합니다");
     return;
   }
   state.fitnessCenterReports ||= {};
@@ -2613,11 +2593,9 @@ function isWithinWorklogEditWindow(dateKey = getActiveDateKey(), now = new Date(
   if (!dateKey) return false;
   const currentKey = formatDateKey(now);
   if (dateKey >= currentKey) return true;
-  if (dateKey === getPreviousDateKey(currentKey)) {
-    const limit = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 12, 0, 0, 0);
-    return now < limit;
-  }
-  return false;
+  const workday = parseDateKey(dateKey);
+  const editDeadline = new Date(workday.getFullYear(), workday.getMonth(), workday.getDate() + 3, 0, 0, 0, 0);
+  return now < editDeadline;
 }
 
 function getWorklogCorrectionKey(employeeId = "", dateKey = getActiveDateKey()) {
@@ -9776,7 +9754,7 @@ function renderFitnessCenterConfirmPanel() {
   panel.innerHTML = `
     <div>
       <b>${confirmed ? "센터 업무보고서 확정" : "센터 업무보고서 미확정"}</b>
-      <span>${escapeHtml(confirmed ? getFitnessCenterReportStatusText(dateKey) : "센터장 또는 해당일 근무자가 최종 확인합니다.")}</span>
+      <span>${escapeHtml(confirmed ? getFitnessCenterReportStatusText(dateKey) : "센터장이 작성 내용을 최종 확인합니다.")}</span>
     </div>
     <button type="button" data-fitness-center-report-confirm ${canConfirm ? "" : "disabled"}>
       ${confirmed ? "확정 취소" : "확정"}
@@ -17433,6 +17411,15 @@ function buildFitnessReportLines() {
     "",
     "[운영 KPI]",
     ...model.kpis.map(([label, value]) => `- ${label}: ${value}`),
+    ...(model.isCenter ? [
+      "",
+      `[다짐 운영현황 · ${model.dagymSummary?.sourceDateKey || "자료 미연결"}]`,
+      ...(model.dagymSummary?.rows || []).map((row) => `- ${row.label}: ${formatFitnessDagymReportValue(row)} (${formatFitnessDagymReportDelta(row)})`),
+      ...(model.dagymSummary?.insights || []).map((item) => `- ${item.title}: ${item.text}`),
+      "",
+      "[출퇴근 기록 경고]",
+      ...(model.attendanceWarnings.length ? model.attendanceWarnings.map((item) => `- ${item.message}`) : ["- 누락 없음"]),
+    ] : []),
     "",
     "[특이사항 및 인수인계]",
     ...model.issueRows.map((row) => `- ${row}`),
@@ -17500,6 +17487,7 @@ function summarizeFitnessReportRows(logEntries = []) {
     const workMinutes = getReportClockMinutes(log.clockIn, log.clockOut);
     return {
       no: index + 1,
+      employeeId: getEmployeeWorklogId(employee),
       role: employee.role || "직원",
       name: employee.name || getEmployeeOwnLabel(employee),
       clockIn: formatReportClock(log.clockIn),
@@ -17678,6 +17666,7 @@ function renderWorklogDailyReportTemplate(model = buildWorklogDailyReportModel()
         <div>
           <small>Bangju Operating Report · Daily Execution Record</small>
           <h2>${escapeHtml(model.title)}</h2>
+          <p class="worklog-report-owner"><span>담당자</span><b>${escapeHtml(model.writer)}</b><em>${escapeHtml(model.role)}</em></p>
           <p>${escapeHtml(model.workplace)} · ${escapeHtml(model.address || "사업장 주소 입력 필요")}</p>
         </div>
         <table aria-label="결재선"><thead><tr><th>작성</th><th>검토</th><th>승인</th></tr></thead><tbody><tr><td>${escapeHtml(model.writer)}</td><td></td><td></td></tr></tbody></table>
@@ -17796,6 +17785,10 @@ function getWorklogReportExportCss(height = 1754) {
     .worklog-report-paper-header small { color: #527064; font-size: 17px; font-weight: 800; letter-spacing: .08em; }
     .worklog-report-paper-header h2 { margin: 8px 0; color: #123d2f; font-size: 38px; line-height: 1.15; }
     .worklog-report-paper-header p { margin: 0; color: #64736c; font-size: 17px; font-weight: 700; }
+    .worklog-report-paper-header .worklog-report-owner { display: flex; align-items: baseline; gap: 10px; margin: 8px 0 5px; color: #173f32; }
+    .worklog-report-owner span { font-size: 15px; font-weight: 900; }
+    .worklog-report-owner b { font-size: 26px; font-weight: 950; }
+    .worklog-report-owner em { color: #527064; font-size: 15px; font-style: normal; font-weight: 850; }
     table { width: 100%; border-collapse: collapse; table-layout: fixed; }
     th, td { border: 1px solid #9cad9f; padding: 9px 10px; font-size: 16px; line-height: 1.35; vertical-align: middle; overflow-wrap: anywhere; }
     th { background: #e9f0e9; color: #214b3c; font-weight: 900; }
@@ -17987,7 +17980,7 @@ function getFitnessReportAiFingerprint(context = {}) {
   return (hash >>> 0).toString(36);
 }
 
-function buildFitnessReportAiContext({ dateKey, isCenter, employee, sourceLog, logEntries, totals, classStats, manual }) {
+function buildFitnessReportAiContext({ dateKey, isCenter, employee, sourceLog, logEntries, totals, classStats, manual, dagymSummary, attendanceWarnings = [] }) {
   const taskRefs = logEntries.flatMap(({ log }) => getWorklogTaskRefs(log));
   const tasks = taskRefs.map(({ task }) => ({
     text: sanitizeFitnessCoachText(task.text),
@@ -18028,6 +18021,13 @@ function buildFitnessReportAiContext({ dateKey, isCenter, employee, sourceLog, l
       promotion: numberValue(totals.outbound),
       marketing: numberValue(totals.outsideSales),
     },
+    dagym: dagymSummary ? {
+      sourceDateKey: dagymSummary.sourceDateKey,
+      comparisonDateKey: dagymSummary.comparisonDateKey,
+      metrics: dagymSummary.rows.map((row) => ({ label: row.label, value: row.value, delta: row.delta })),
+      analysis: dagymSummary.insights.map((item) => `${item.title}: ${item.text}`),
+    } : null,
+    attendanceWarnings: attendanceWarnings.map((item) => item.message),
     reportNotes: getFitnessReportRecordRows(logEntries, { isCenter, totals })
       .map(sanitizeFitnessCoachText)
       .filter(Boolean)
@@ -18078,6 +18078,96 @@ function getFitnessReportCoachingRows(model = {}) {
   ];
 }
 
+const fitnessDagymReportFields = [
+  ["visits", "출석"],
+  ["newMembers", "신규"],
+  ["renewals", "재등록"],
+  ["expiring", "만료예정"],
+  ["ptBookings", "PT예약"],
+  ["noShows", "노쇼·취소"],
+  ["sales", "매출"],
+];
+
+function getFitnessReportDagymSummary(dateKey = getActiveDateKey(), staffTotals = {}) {
+  const current = getDagymOpsForDate(dateKey, { create: false });
+  const currentReady = hasDagymDailyActivity(current);
+  const sourceDateKey = currentReady ? dateKey : getPreviousDagymOperatingDate(dateKey);
+  const source = sourceDateKey ? getDagymOpsForDate(sourceDateKey, { create: false }) : null;
+  const comparisonDateKey = sourceDateKey ? getPreviousDagymOperatingDate(sourceDateKey) : "";
+  const comparison = comparisonDateKey ? getDagymOpsForDate(comparisonDateKey, { create: false }) : null;
+  const rows = fitnessDagymReportFields.map(([key, label]) => {
+    const value = numberValue(source?.[key]);
+    const previous = comparison ? numberValue(comparison[key]) : null;
+    return { key, label, value, previous, delta: previous === null ? null : value - previous };
+  });
+  const insights = [];
+  const add = (level, title, text) => insights.push({ level, title, text });
+  if (!sourceDateKey) {
+    add("danger", "다짐 자료 미연결", "다짐 운영현황에 전일 마감자료를 붙여넣고 마감 확정해야 운영 변이를 분석할 수 있습니다.");
+    return { sourceDateKey: "", comparisonDateKey: "", sourceStatus: "missing", rows, insights };
+  }
+  const visits = numberValue(source.visits);
+  const renewals = numberValue(source.renewals);
+  const expiring = numberValue(source.expiring);
+  const noShows = numberValue(source.noShows);
+  const ptBookings = numberValue(source.ptBookings);
+  const recordedPt = numberValue(staffTotals.ptRegular) + numberValue(staffTotals.ptFree) + numberValue(staffTotals.ptOther);
+  const sales = numberValue(source.sales);
+  const previousSales = comparison ? numberValue(comparison.sales) : 0;
+  if (noShows > 0) add("danger", "노쇼 회복 필요", `노쇼·취소 ${noShows}건의 재예약, 보류, 연락불가 결과를 구분해 기록하세요.`);
+  if (expiring > renewals) add("danger", "만료 대응 부족", `만료예정 ${expiring}건 대비 재등록 ${renewals}건입니다. 미상담 대상을 우선 배정하세요.`);
+  if (ptBookings > recordedPt) add("danger", "수업 대조 필요", `다짐 PT예약 ${ptBookings}건과 직원 수업기록 ${recordedPt}건의 차이 ${ptBookings - recordedPt}건을 확인하세요.`);
+  if (comparison && previousSales > 0 && sales < previousSales) add("danger", "매출 변이 확인", `직전 마감 대비 매출이 ${(previousSales - sales).toLocaleString()}원 감소했습니다. 상담수, 재등록, 결제 보류를 함께 대조하세요.`);
+  if (visits > 0 && numberValue(source.newMembers) + renewals === 0) add("danger", "전환행동 점검", `출석 ${visits}명 중 신규·재등록 기록이 없습니다. 상담 미실시 또는 결과 기록 누락 여부를 확인하세요.`);
+  if (!insights.length) add("good", "운영 흐름 안정", "다짐 핵심지표에서 즉시 경고할 변이가 없습니다. 상담 결과와 매출 발생 원인을 계속 남겨주세요.");
+  const cause = ptBookings > recordedPt
+    ? "원인 후보: 노쇼, 일정 변경, 수업 완료 누락 중 하나일 수 있으므로 예약 원장과 직원 기록을 건별 대조합니다."
+    : expiring > renewals
+      ? "원인 후보: 만료 안내 지연, 상담 미배정, 보류 결과 누락 여부를 확인합니다."
+      : "원인 분석: 출석·상담·재등록·매출의 연결 기록을 유지하면 변동 원인을 더 정확히 판별할 수 있습니다.";
+  add(insights.some((item) => item.level === "danger") ? "danger" : "good", "원인·개선 방향", cause);
+  const causeInsight = insights.find((item) => item.title === "원인·개선 방향");
+  const reportInsights = insights.filter((item) => item.title !== "원인·개선 방향").slice(0, 3);
+  if (causeInsight) reportInsights.push(causeInsight);
+  return {
+    sourceDateKey,
+    comparisonDateKey,
+    sourceStatus: currentReady ? source.status || "draft" : "previous-closed",
+    rows,
+    insights: reportInsights,
+  };
+}
+
+function getFitnessReportAttendanceWarnings(logEntries = [], dateKey = getActiveDateKey(), now = new Date()) {
+  const currentDateKey = formatDateKey(now);
+  if (dateKey > currentDateKey) return [];
+  return logEntries.flatMap(({ employee, log }) => {
+    const hours = getOverviewScheduledWorkHours(employee, dateKey, log);
+    if (isOffWorkHours(hours) || /비번|휴무|결근|결석/.test(String(log.attendanceStatus || ""))) return [];
+    let requireClockIn = dateKey < currentDateKey;
+    let requireClockOut = dateKey < currentDateKey;
+    const match = String(hours || "").match(/(\d{2}):(\d{2})\s*[-~]\s*(\d{2}):(\d{2})/);
+    if (dateKey === currentDateKey && match) {
+      const currentMinutes = now.getHours() * 60 + now.getMinutes();
+      const startMinutes = Number(match[1]) * 60 + Number(match[2]);
+      let endMinutes = Number(match[3]) * 60 + Number(match[4]);
+      if (endMinutes < startMinutes) endMinutes += 24 * 60;
+      requireClockIn = currentMinutes >= startMinutes;
+      requireClockOut = currentMinutes > endMinutes;
+    }
+    const missing = [];
+    if (requireClockIn && !log.clockIn) missing.push("출근");
+    if (requireClockOut && !log.clockOut) missing.push("퇴근");
+    if (!missing.length) return [];
+    return [{
+      employeeId: getEmployeeWorklogId(employee),
+      name: employee.name || getEmployeeOwnLabel(employee),
+      missing,
+      message: `${employee.name || getEmployeeOwnLabel(employee)} ${missing.join("·")}시간 미기록`,
+    }];
+  });
+}
+
 function buildFitnessReportModel(options = {}) {
   const page = getCurrentFitnessLogPage();
   const dateKey = options.dateKey || getActiveDateKey();
@@ -18092,21 +18182,31 @@ function buildFitnessReportModel(options = {}) {
   const nextLogEntries = getFitnessReportLogEntries(getNextDateKey(dateKey), isCenter, employee);
   const entries = logEntries.flatMap(({ log }) => (log.schedule || []).filter((entry) => entry.time && (isCenter ? getScheduleEntryText(entry) : true)));
   const { rows: staffRows, totals } = summarizeFitnessReportRows(logEntries);
+  const attendanceWarnings = isCenter ? getFitnessReportAttendanceWarnings(logEntries, dateKey) : [];
+  const warningByEmployeeId = new Map(attendanceWarnings.map((item) => [item.employeeId, item]));
+  staffRows.forEach((row) => { row.attendanceWarning = warningByEmployeeId.get(row.employeeId) || null; });
+  const dagymSummary = isCenter ? getFitnessReportDagymSummary(dateKey, totals) : null;
   const classStats = getFitnessReportClassStats(employee, dateKey, isCenter, totals);
   const title = isCenter ? "< 비욘드 피트니스 운영일지 >" : "< 비욘드 피트니스 업무일지 >";
   const confirmation = isCenter ? getFitnessCenterReportRecord(dateKey) : null;
+  const centerManager = isCenter
+    ? logEntries.map((item) => item.employee).find(isFitnessCenterManagerEmployee) || employees.find((item) => item.id === "beyond-fitness-manager") || employee
+    : employee;
   const weatherEmployee = isCenter
-    ? employees.find((item) => item.id === "beyond-fitness-manager") || employee
+    ? centerManager
     : employee;
   const weatherSiteKey = getSiteWeatherKeyForEmployee(weatherEmployee);
   const weather = getWeatherRecordForSite(weatherSiteKey, dateKey);
-  const weatherText = formatWeatherSummary(weather, { compact: true });
+  const weatherAddress = getSiteWeatherAddress(weatherSiteKey);
+  const weatherText = weather
+    ? formatWeatherSummary(weather, { compact: true })
+    : weatherAddress ? "날씨 확인 중" : "날씨 미기록";
   const { key: manualRoleKey, template: manualTemplate } = getFitnessReportManualTemplate(employee);
   const manual = {
     ...manualTemplate,
     text: getManualSettings().customByRole?.[manualRoleKey] || manualTemplate.text,
   };
-  const aiContext = buildFitnessReportAiContext({ dateKey, isCenter, employee, sourceLog, logEntries, totals, classStats, manual });
+  const aiContext = buildFitnessReportAiContext({ dateKey, isCenter, employee, sourceLog, logEntries, totals, classStats, manual, dagymSummary, attendanceWarnings });
   const aiKey = `${dateKey}:${isCenter ? "center" : employee.id}:${getFitnessReportAiFingerprint(aiContext)}`;
   const aiCacheEntry = getFitnessAiCoachingCache()[aiKey] || null;
   const model = {
@@ -18116,15 +18216,16 @@ function buildFitnessReportModel(options = {}) {
     confirmation,
     canConfirmCenterReport: isCenter && canConfirmFitnessCenterReport(dateKey),
     dateLabel: formatKoreanDate(dateKey),
-    writer: isCenter ? "센터 전체" : employee.name || getEmployeeOwnLabel(employee),
-    role: isCenter ? "운영 취합" : employee.role || "직원",
-    ownerLabel: isCenter ? "담당 : 센터 운영 취합" : `담당 : ${employee.role || "직원"} ${employee.name || getEmployeeOwnLabel(employee)}`,
+    writer: isCenter ? centerManager.name || getEmployeeOwnLabel(centerManager) || "센터장" : employee.name || getEmployeeOwnLabel(employee),
+    role: isCenter ? centerManager.role || "센터장" : employee.role || "직원",
     clock: isCenter ? "센터 취합" : `${sourceLog.clockIn || "-"} ~ ${sourceLog.clockOut || "-"}`,
     weather,
     weatherText,
-    weatherAddress: getSiteWeatherAddress(weatherSiteKey),
+    weatherAddress,
     weatherSiteKey,
     staffRows,
+    attendanceWarnings,
+    dagymSummary,
     totals,
     classStats,
     approvalColumns: ["담당", "팀장", "센터장"],
@@ -18164,6 +18265,38 @@ function formatReportTime(value = "") {
   return `${label} ${String(displayHour).padStart(2, "0")}:${String(minute).padStart(2, "0")}`;
 }
 
+function formatFitnessDagymReportValue(row = {}) {
+  const value = numberValue(row.value);
+  return row.key === "sales" ? `${value.toLocaleString()}원` : `${value}건`;
+}
+
+function formatFitnessDagymReportDelta(row = {}) {
+  if (row.delta === null) return "비교 없음";
+  if (!row.delta) return "변동 없음";
+  const prefix = row.delta > 0 ? "+" : "";
+  return `${prefix}${Number(row.delta).toLocaleString()}`;
+}
+
+function renderFitnessDagymReportHtml(model = {}) {
+  if (!model.isCenter || !model.dagymSummary) return "";
+  const summary = model.dagymSummary;
+  const sourceLabel = summary.sourceDateKey
+    ? `${formatShortDate(summary.sourceDateKey)} ${summary.sourceStatus === "previous-closed" ? "전일 마감자료" : "다짐 현황"}`
+    : "다짐 자료 미연결";
+  const comparisonLabel = summary.comparisonDateKey ? `직전 ${formatShortDate(summary.comparisonDateKey)} 대비` : "최초 기록";
+  return `
+    <section class="fitness-paper-dagym">
+      <header><h3>다짐 운영현황·변이 분석</h3><span>${escapeHtml(sourceLabel)} · ${escapeHtml(comparisonLabel)}</span></header>
+      <div class="fitness-paper-dagym-metrics">
+        ${summary.rows.map((row) => `<div><span>${escapeHtml(row.label)}</span><strong>${escapeHtml(formatFitnessDagymReportValue(row))}</strong><small>${escapeHtml(formatFitnessDagymReportDelta(row))}</small></div>`).join("")}
+      </div>
+      <div class="fitness-paper-dagym-insights">
+        ${summary.insights.map((item) => `<p class="${item.level === "danger" ? "is-report-warning" : "is-report-good"}"><b>${escapeHtml(item.title)}</b><span>${escapeHtml(item.text)}</span></p>`).join("")}
+      </div>
+    </section>
+  `;
+}
+
 function renderFitnessReportTemplate(model = buildFitnessReportModel()) {
   const scheduleRows = getFitnessReportScheduleRows(model.schedule);
   const taskRows = model.topTasks.map((task, index) => `<p><b>${index + 1}</b><span>${escapeHtml(task || "")}</span></p>`).join("");
@@ -18175,8 +18308,8 @@ function renderFitnessReportTemplate(model = buildFitnessReportModel()) {
       <td>${escapeHtml(row.no)}</td>
       <td>${escapeHtml(row.role)}</td>
       <td>${escapeHtml(row.name)}</td>
-      <td>${escapeHtml(row.clockIn)}</td>
-      <td>${escapeHtml(row.clockOut)}</td>
+      <td class="${row.attendanceWarning?.missing?.includes("출근") ? "is-report-warning" : ""}">${escapeHtml(row.clockIn)}</td>
+      <td class="${row.attendanceWarning?.missing?.includes("퇴근") ? "is-report-warning" : ""}">${escapeHtml(row.clockOut)}</td>
       <td>${escapeHtml(row.workDuration)}</td>
       <td>${escapeHtml(row.ptRegular || "")}</td>
       <td>${escapeHtml(row.ptFree || "")}</td>
@@ -18194,7 +18327,7 @@ function renderFitnessReportTemplate(model = buildFitnessReportModel()) {
       <header class="fitness-paper-top">
         <div>
           <strong>${escapeHtml(model.title)}</strong>
-          <span>${escapeHtml(model.ownerLabel)}</span>
+          <span class="fitness-paper-owner"><small>담당자</small><b>${escapeHtml(model.writer)}</b><em>${escapeHtml(model.role)}</em></span>
         </div>
         <dl>
           <dt>작성일</dt><dd>${escapeHtml(model.dateLabel)}</dd>
@@ -18218,6 +18351,7 @@ function renderFitnessReportTemplate(model = buildFitnessReportModel()) {
             <tbody><tr>${approvalBlanks}</tr></tbody>
           </table>
         </section>
+        ${model.attendanceWarnings.length ? `<aside class="fitness-paper-warning-banner" role="alert"><b>출퇴근 기록 보완</b><span>${escapeHtml(model.attendanceWarnings.map((item) => item.message).join(" · "))}</span><em>업무일지는 근무일 종료 후 48시간까지 본인이 수정할 수 있습니다.</em></aside>` : ""}
       ` : ""}
 
       <section class="fitness-paper-summary">
@@ -18259,6 +18393,8 @@ function renderFitnessReportTemplate(model = buildFitnessReportModel()) {
           </tbody>
         </table>
       </section>` : ""}
+
+      ${renderFitnessDagymReportHtml(model)}
 
       <section class="fitness-paper-footer-grid">
         <div>
@@ -18304,6 +18440,15 @@ function refreshOpenFitnessReport(model = buildFitnessReportModel()) {
   preview.innerHTML = renderFitnessReportTemplate(model);
   updateFitnessReportConfirmButton(model);
   fitFitnessReportPreview();
+}
+
+function refreshFitnessReportWeather(model = buildFitnessReportModel()) {
+  if (!model?.weatherSiteKey || !model.weatherAddress) return null;
+  const requestKey = getWeatherCacheKey(model.weatherSiteKey, model.dateKey);
+  if (!needsWeatherRefresh(getWeatherRecordForSite(model.weatherSiteKey, model.dateKey), model.dateKey)
+    || weatherRequestInFlight.has(requestKey)
+    || !canAutomaticallyRequestWeather(requestKey)) return null;
+  return requestWeatherForSite(model.weatherSiteKey, model.weatherAddress, model.dateKey, { silent: true, scope: "" });
 }
 
 async function requestFitnessReportAiCoaching(model = buildFitnessReportModel(), { force = false, silent = false } = {}) {
@@ -18369,6 +18514,10 @@ function openFitnessReportSheet() {
   requestAnimationFrame(() => {
     sheet.classList.add("is-open");
     fitFitnessReportPreview();
+    if (model.isCenter && model.attendanceWarnings.length) {
+      showAppToast(`출퇴근 미기록 ${model.attendanceWarnings.length}명 · 48시간 이내 보완이 필요합니다`);
+    }
+    refreshFitnessReportWeather(model);
     requestFitnessReportAiCoaching(model, { silent: true });
   });
 }
@@ -18381,7 +18530,7 @@ function updateFitnessReportConfirmButton(model = buildFitnessReportModel()) {
   const confirmed = Boolean(model.confirmation?.confirmedAt);
   button.textContent = confirmed ? "확정 취소" : "센터 보고 확정";
   button.disabled = !model.canConfirmCenterReport;
-  button.title = model.canConfirmCenterReport ? "" : "센터장 또는 해당일 근무 직원만 확정할 수 있습니다";
+  button.title = model.canConfirmCenterReport ? "" : "센터운영일지 보고서는 센터장만 확정할 수 있습니다";
 }
 
 function fitFitnessReportPreview() {
@@ -18493,6 +18642,10 @@ function getFitnessReportExportCss(reportHeight = 1754) {
       line-height: 1.25;
       font-weight: 900;
     }
+    .fitness-paper-owner { display: flex; align-items: baseline; gap: 12px; }
+    .fitness-paper-owner small { font-size: 18px; font-weight: 850; }
+    .fitness-paper-owner b { font-size: 29px; font-weight: 950; }
+    .fitness-paper-owner em { font-size: 18px; font-style: normal; font-weight: 850; }
     .fitness-paper-top dl {
       display: grid;
       grid-template-columns: 110px minmax(0, 1fr);
@@ -18529,7 +18682,8 @@ function getFitnessReportExportCss(reportHeight = 1754) {
     .fitness-report-page.is-center-report .fitness-paper-summary,
     .fitness-report-page.is-center-report .fitness-paper-wide-table,
     .fitness-report-page.is-center-report .fitness-paper-footer-grid,
-    .fitness-report-page.is-center-report .fitness-paper-approval {
+    .fitness-report-page.is-center-report .fitness-paper-approval,
+    .fitness-report-page.is-center-report .fitness-paper-dagym {
       margin-top: 0 !important;
     }
     .fitness-paper-tasks,
@@ -18545,6 +18699,40 @@ function getFitnessReportExportCss(reportHeight = 1754) {
       overflow: hidden;
       background: rgba(255, 254, 250, 0.95);
     }
+    .fitness-paper-warning-banner {
+      display: grid;
+      grid-template-columns: auto minmax(0, 1fr) auto;
+      gap: 12px;
+      align-items: center;
+      border: 2px solid rgba(174, 36, 36, 0.42);
+      border-radius: 12px;
+      background: #fff0ec;
+      padding: 10px 14px;
+      color: #b12626;
+      font-size: 15px;
+      line-height: 1.2;
+      font-weight: 900;
+    }
+    .fitness-paper-warning-banner em { font-style: normal; }
+    .fitness-report-page .is-report-warning { color: #b12626 !important; -webkit-text-fill-color: #b12626 !important; }
+    .fitness-paper-center-ops-table td.is-report-warning { background: #ffe8e4; font-weight: 950; }
+    .fitness-paper-dagym {
+      overflow: hidden;
+      border: 2px solid rgba(18, 59, 45, 0.22);
+      border-radius: 14px;
+      background: rgba(255, 254, 250, 0.95);
+    }
+    .fitness-paper-dagym > header { display: flex; justify-content: space-between; gap: 16px; align-items: center; background: rgba(237, 244, 224, 0.86); padding: 8px 14px; }
+    .fitness-paper-dagym h3, .fitness-paper-dagym header span { margin: 0; font-size: 15px; font-weight: 950; }
+    .fitness-paper-dagym-metrics { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); }
+    .fitness-paper-dagym-metrics > div { min-width: 0; border-top: 2px solid rgba(18, 59, 45, 0.12); border-right: 2px solid rgba(18, 59, 45, 0.12); padding: 7px 8px; }
+    .fitness-paper-dagym-metrics span, .fitness-paper-dagym-metrics small, .fitness-paper-dagym-metrics strong { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .fitness-paper-dagym-metrics span, .fitness-paper-dagym-metrics small { color: rgba(17, 20, 17, 0.62); font-size: 12px; font-weight: 850; }
+    .fitness-paper-dagym-metrics strong { margin: 2px 0; font-size: 17px; font-weight: 950; }
+    .fitness-paper-dagym-insights { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .fitness-paper-dagym-insights p { display: grid; grid-template-columns: 110px minmax(0, 1fr); min-height: 40px; margin: 0; border-top: 2px solid rgba(18, 59, 45, 0.12); padding: 7px 10px; font-size: 13px; line-height: 1.2; }
+    .fitness-paper-dagym-insights p b { font-weight: 950; }
+    .fitness-paper-dagym-insights p.is-report-good { color: #1d654b; }
     .fitness-paper-tasks h3,
     .fitness-paper-center-ops-table h3,
     .fitness-paper-attendance-table h3,
