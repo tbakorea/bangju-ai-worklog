@@ -3767,6 +3767,8 @@ function buildOverviewDirectiveSuggestion(employee, log, context = {}) {
   const scheduleCount = context.scheduleCount ?? (log.schedule || []).filter((item) => getScheduleEntryText(item)).length;
   const tasks = context.tasks || (log.tasks || []).filter(isActiveTask);
   const attendance = context.attendance ?? formatAttendanceSummary(log) ?? "";
+  if (context.workStatus?.key === "off") return "비근무일입니다. 근태·업무일지 확인 대상에서 제외합니다.";
+  if (context.workStatus?.key === "scheduled") return "근무 시작 전에는 출결과 업무일지 공백을 확인 신호로 올리지 않습니다.";
   if (/결석|지각|조퇴|미기록/.test(attendance)) return "출결 기록을 먼저 확인하고, 사유와 복귀/보완 계획을 업무보고에 남겨주세요.";
   if (!reportText) return "오늘 업무보고에 완료사항, 이슈, 지원요청을 3줄로 정리해 주세요.";
   if (!tasks.length) return "오늘 핵심 업무 1건을 우선업무에 올리고 완료 조건을 함께 적어주세요.";
@@ -3839,6 +3841,7 @@ function isPhoneField(field) {
 
 function buildEmployeeInsightAlerts(employee, log, context = {}) {
   if (!canAccessWorklogOverview()) return [];
+  if (["off", "scheduled"].includes(context.workStatus?.key)) return [];
   const tasks = context.tasks || (log.tasks || []).filter(isActiveTask);
   const scheduleRows = log.schedule || [];
   const scheduleCount = context.scheduleCount ?? scheduleRows.filter((item) => getScheduleEntryText(item)).length;
@@ -4150,12 +4153,15 @@ function detectRepresentativeEmployeeSignals(model = {}, dateKey = getActiveDate
   const reportText = String(dayLog.report || dayLog.memo || dayLog.record || "");
   const combined = `${taskText} ${scheduleText} ${reportText}`;
   const signals = [];
+  const isOffDay = model.workStatus?.key === "off"
+    || isOffWorkHours(getOverviewScheduledWorkHours(employee, dateKey, dayLog))
+    || /비번|휴무/.test(String(dayLog.attendanceStatus || ""));
   const add = (level, category, title, evidence, action) => {
     const key = `${level}:${category}`;
     if (!signals.some((item) => item.key === key)) signals.push({ key, level, category, title, evidence, action });
   };
 
-  if (/결근|결석/.test(String(dayLog.attendanceStatus || ""))) {
+  if (!isOffDay && /결근|결석/.test(String(dayLog.attendanceStatus || ""))) {
     add("critical", "근태", "확정 근태 신호", `${formatShortDate(dateKey)} 업무일지에 결근 또는 결석 상태가 기록되었습니다.`, "사유와 복귀 계획을 확인하고 노무 기록과 대조하세요.");
   }
   if (/사고|부상|안전사고|화재|누전|파손|분실|도난/.test(combined)) {
@@ -4395,8 +4401,10 @@ function renderOverviewFitnessEmployeeSheet({ group, employee, employeeId, index
         <div>
           <span>${escapeHtml(employee.role || "직원")} · 직급순 ${index + 1}</span>
           <h3>${escapeHtml(getEmployeeAdminLabel(employee))}</h3>
-          ${renderOverviewWorkStatus(context.workStatus)}
-          <p>${escapeHtml(context.attendance)}</p>
+          <div class="overview-fitness-presence-row">
+            ${renderOverviewWorkStatus(context.workStatus)}
+            <p>${escapeHtml(context.attendance)}</p>
+          </div>
         </div>
         <button type="button" data-overview-employee="${escapeAttr(employeeId)}" data-overview-view="${escapeAttr(group.view)}">열기</button>
       </header>
@@ -4489,18 +4497,21 @@ function getOverviewEmployeeSummaryModel(group, employeeId, employee, dateKey) {
   const tasks = (dayLog.tasks || []).filter(isActiveTask);
   const done = tasks.filter((task) => task.done || task.status === "완료").length;
   const scheduleCount = (dayLog.schedule || []).filter((item) => getScheduleEntryText(item)).length;
-  const attendance = formatAttendanceSummary(dayLog) || dayLog.attendanceStatus || "출결 미기록";
   const workStatus = getOverviewWorkStatus(employee, dayLog, dateKey);
+  const attendance = workStatus.key === "off"
+    ? "근태 확인 제외"
+    : formatAttendanceSummary(dayLog) || dayLog.attendanceStatus || "출결 미기록";
   const reportText = getOverviewReportText(dayLog);
   const ops = { ...createFitnessOps(), ...(dayLog.fitnessOps || {}) };
   const paidPt = numberValue(ops.ptRegular) + numberValue(ops.ptOther);
   const hasWorklogRecord = hasOverviewWorklogRecord(dayLog);
-  const signalCount = [
-    /결석|지각|조퇴|미기록/.test(attendance),
-    !reportText,
-    tasks.length === 0,
-    scheduleCount === 0,
-  ].filter(Boolean).length;
+  const shouldMonitorDailyRecord = !["off", "scheduled"].includes(workStatus.key);
+  const signalCount = shouldMonitorDailyRecord ? [
+      /결석|지각|조퇴|미기록/.test(attendance),
+      !reportText,
+      tasks.length === 0,
+      scheduleCount === 0,
+    ].filter(Boolean).length : 0;
   return {
     group,
     employee,

@@ -25808,6 +25808,125 @@ body.is-fitness-focus-open.is-fitness-coaching-open .fitness-coaching-sheet {
   align-items: flex-start !important;
 }
 
+/* Dense representative fitness cards: preserve the same information while
+   fitting more employees and operating signals in narrow desktop windows. */
+.worklog-overview-grid.is-fitness-scope .overview-site-carousel > .is-fitness-native-projection {
+  flex-basis: min(352px, calc(100vw - 44px)) !important;
+  max-width: min(352px, calc(100vw - 44px)) !important;
+  gap: 6px !important;
+  padding: 7px !important;
+  border-radius: 15px !important;
+}
+
+.is-fitness-native-projection .overview-fitness-native-head {
+  min-height: 56px;
+  padding: 7px 8px;
+  border-radius: 14px;
+}
+
+.is-fitness-native-projection .overview-fitness-native-head h3 {
+  margin-block: 1px;
+  font-size: 18px;
+  line-height: 1.05;
+}
+
+.is-fitness-native-projection .overview-fitness-native-head p {
+  margin-top: 2px;
+  font-size: 10px;
+}
+
+.is-fitness-native-projection .overview-fitness-presence-row {
+  display: flex;
+  gap: 5px;
+  align-items: center;
+  min-width: 0;
+}
+
+.is-fitness-native-projection .overview-fitness-presence-row .overview-work-status {
+  flex: 0 1 auto;
+  margin: 1px 0 0;
+}
+
+.is-fitness-native-projection .overview-fitness-presence-row .overview-work-status span {
+  max-width: 108px;
+}
+
+.is-fitness-native-projection .overview-fitness-presence-row > p {
+  flex: 1 1 auto;
+  margin: 1px 0 0;
+}
+
+.is-fitness-native-projection .overview-fitness-summary {
+  gap: 5px;
+  padding: 7px;
+  border-radius: 15px;
+}
+
+.is-fitness-native-projection .overview-fitness-summary header span {
+  font-size: 16px;
+}
+
+.is-fitness-native-projection .overview-fitness-summary > div {
+  gap: 3px;
+  padding: 4px;
+  border-radius: 12px;
+}
+
+.is-fitness-native-projection .overview-fitness-summary > div span {
+  min-height: 39px;
+  padding: 5px 3px;
+  border-radius: 9px;
+}
+
+.is-fitness-native-projection .overview-fitness-summary strong {
+  font-size: 18px;
+}
+
+.is-fitness-native-projection .overview-insight-panel,
+.is-fitness-native-projection .overview-directive-panel {
+  gap: 4px;
+  padding: 5px;
+  border-radius: 10px;
+}
+
+.is-fitness-native-projection .overview-insight-panel article,
+.is-fitness-native-projection .overview-directive-list article,
+.is-fitness-native-projection .overview-directive-empty {
+  padding: 4px 5px;
+  border-radius: 7px;
+}
+
+.is-fitness-native-projection .overview-insight-panel p,
+.is-fitness-native-projection .overview-directive-list p,
+.is-fitness-native-projection .overview-directive-empty {
+  font-size: 9.5px;
+  line-height: 1.2;
+  -webkit-line-clamp: 1;
+}
+
+.is-fitness-native-projection .overview-directive-compose input,
+.is-fitness-native-projection .overview-directive-compose button {
+  min-height: 27px;
+}
+
+.is-fitness-native-projection .overview-fitness-native-panel {
+  border-radius: 15px;
+}
+
+.is-fitness-native-projection .overview-fitness-native-panel > header {
+  min-height: 44px;
+  padding: 6px 8px;
+}
+
+.is-fitness-native-projection .overview-fitness-native-panel ul {
+  padding: 0 9px 7px;
+}
+
+.is-fitness-native-projection .overview-fitness-native-panel .overview-task-mini,
+.is-fitness-native-projection .overview-fitness-native-panel .overview-schedule-mini {
+  min-height: 31px;
+}
+
 .worklog-overview-grid.is-fitness-scope .overview-fitness-center-sheet {
   align-self: flex-start !important;
 }

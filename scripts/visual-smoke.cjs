@@ -228,6 +228,24 @@ async function checkTabletRepresentativeWorklogChrome(browser) {
       switchView("worklog-overview");
       return document.querySelector(".overview-fitness-center-sheet")?.getBoundingClientRect();
     })();
+    const employeeSheet = document.querySelector(".is-fitness-native-projection");
+    const employeeHead = employeeSheet?.querySelector(".overview-fitness-native-head")?.getBoundingClientRect();
+    const summaryCell = employeeSheet?.querySelector(".overview-fitness-summary > div span")?.getBoundingClientRect();
+    const saturdayEmployee = {
+      ...findEmployeeRecordById("fitness-weekday-info-idabin"),
+      id: "fitness-saturday-only-qa",
+      name: "토요일 근무자",
+      weeklyWorkHours: { sat: "10:00-18:00" }
+    };
+    state.employeeLogs[todayKey] ||= {};
+    state.employeeLogs[todayKey][saturdayEmployee.id] = createEmployeeLog(saturdayEmployee, state.profile, todayKey);
+    const saturdayModel = getOverviewEmployeeSummaryModel(
+      getWorklogOverviewGroups().find((group) => group.id === "fitness"),
+      saturdayEmployee.id,
+      saturdayEmployee,
+      todayKey
+    );
+    const saturdayAlerts = buildEmployeeInsightAlerts(saturdayEmployee, saturdayModel.dayLog, saturdayModel);
     return {
       selectedPageId: currentPage?.id || "",
       intendedPageId: employeePage?.id || "",
@@ -237,6 +255,13 @@ async function checkTabletRepresentativeWorklogChrome(browser) {
       timeText: time?.textContent?.trim() || "",
       timeSingleLine: !time || time.scrollHeight <= time.clientHeight + 2,
       centerSheetHeight: centerSheet?.height || 0,
+      employeeSheetWidth: employeeSheet?.getBoundingClientRect().width || 0,
+      employeeHeadHeight: employeeHead?.height || 0,
+      summaryCellHeight: summaryCell?.height || 0,
+      saturdayWorkStatus: saturdayModel.workStatus?.key || "",
+      saturdayAttendance: saturdayModel.attendance || "",
+      saturdaySignalCount: saturdayModel.signalCount,
+      saturdayAlertTitles: saturdayAlerts.map((item) => item.title),
       horizontalOverflow: document.documentElement.scrollWidth - window.innerWidth,
     };
   });
@@ -250,6 +275,18 @@ async function checkTabletRepresentativeWorklogChrome(browser) {
   }
   if (liveFitnessMetrics.centerSheetHeight > 560 || liveFitnessMetrics.horizontalOverflow > 2) {
     fail("fitness center overview should not reserve a tall empty sheet", JSON.stringify(liveFitnessMetrics));
+  }
+  if (liveFitnessMetrics.saturdayWorkStatus !== "off"
+    || liveFitnessMetrics.saturdayAttendance !== "근태 확인 제외"
+    || liveFitnessMetrics.saturdaySignalCount !== 0
+    || liveFitnessMetrics.saturdayAlertTitles.includes("근태 확인")
+    || liveFitnessMetrics.saturdayAlertTitles.includes("업무일지 공백")) {
+    fail("off-duty employees should not receive attendance or blank-worklog warnings", JSON.stringify(liveFitnessMetrics));
+  }
+  if (liveFitnessMetrics.employeeSheetWidth > 360
+    || liveFitnessMetrics.employeeHeadHeight > 74
+    || liveFitnessMetrics.summaryCellHeight > 45) {
+    fail("representative fitness cards should use a compact horizontal and vertical density", JSON.stringify(liveFitnessMetrics));
   }
   const rolloverDate = await page.evaluate(() => {
     const liveDateKey = formatDateKey(new Date());

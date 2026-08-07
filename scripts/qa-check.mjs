@@ -503,6 +503,14 @@ check(
 );
 
 check(
+  "off-duty employees are excluded from daily warning signals",
+  /function buildEmployeeInsightAlerts[\s\S]{0,260}\["off", "scheduled"\]\.includes\(context\.workStatus\?\.key\)/.test(js)
+    && /function getOverviewEmployeeSummaryModel[\s\S]{0,800}workStatus\.key === "off"[\s\S]{0,520}shouldMonitorDailyRecord/.test(js)
+    && css.includes("Dense representative fitness cards"),
+  "non-working days must not create attendance or blank-worklog warnings, and fitness cards should stay compact"
+);
+
+check(
   "dates use hanja weekday ordering",
   js.includes('const hanjaWeekdays = ["日", "月", "火", "水", "木", "金", "土"]')
     && /formatKoreanDate\(key\)[\s\S]{0,260}date\.getFullYear\(\)[\s\S]{0,220}hanjaWeekdays\[date\.getDay\(\)\]/.test(js)
