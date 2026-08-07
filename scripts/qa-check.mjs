@@ -511,6 +511,18 @@ check(
 );
 
 check(
+  "schedule types are scoped by business site and role",
+  js.includes("const scheduleTypeCatalog =")
+    && js.includes('finance: ["회계/장부", "자금/이체", "세무/신고", "급여/노무", "증빙/정산"')
+    && js.includes('project: ["고객/상담", "견적/계약", "설계/디자인", "발주/구매", "시공/현장"')
+    && js.includes('shared: ["입주/상담", "계약/수납", "공간/시설"')
+    && js.includes('construction: ["공정/시공", "안전/점검", "품질/하자"')
+    && /function getScheduleTypeCatalogKey[\s\S]{0,800}return "finance"/.test(js)
+    && /appointment-merge-button[\s\S]{0,1800}openWorklogScheduleEditor\(entry, log\)/.test(js),
+  "finance worklogs must not use fitness labels, and every site needs its own detailed schedule categories"
+);
+
+check(
   "dates use hanja weekday ordering",
   js.includes('const hanjaWeekdays = ["日", "月", "火", "水", "木", "金", "土"]')
     && /formatKoreanDate\(key\)[\s\S]{0,260}date\.getFullYear\(\)[\s\S]{0,220}hanjaWeekdays\[date\.getDay\(\)\]/.test(js)

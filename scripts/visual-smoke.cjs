@@ -910,6 +910,43 @@ async function checkOverviewCommandBoard(browser) {
   if (allStaffSyncMetrics.failures.length) {
     fail("representative overview should synchronize every assigned employee through canonical worklog IDs", allStaffSync);
   }
+  const scheduleTypeCatalogMetrics = await page.evaluate(() => window.eval(`(() => {
+    const finance = findEmployeeRecordById("bangju-finance-manager");
+    const project = findEmployeeRecordById("beyond-company-leader");
+    const shared = findEmployeeRecordById("beyond-shared-manager");
+    const fitness = findEmployeeRecordById("beyond-fitness-manager");
+    const construction = { id: "construction-qa", org: "(주)비제이종합건설", role: "공사부장", workplace: "동천체육관 현장" };
+    const options = (employee) => getScheduleTypeOptionsForLog({ employeeId: employee.id });
+    return JSON.stringify({
+      financeKey: getScheduleTypeCatalogKey(finance),
+      finance: options(finance),
+      project: options(project),
+      shared: options(shared),
+      fitness: options(fitness),
+      construction: scheduleTypeCatalog[getScheduleTypeCatalogKey(construction)],
+      financeInference: inferScheduleType("세금계산서 증빙 정산", options(finance)),
+      projectInference: inferScheduleType("욕실 시공 현장 확인", options(project)),
+      sharedInference: inferScheduleType("신규 입주 상담", options(shared)),
+      constructionInference: inferScheduleType("현장 안전 점검", scheduleTypeCatalog.construction),
+      generalEditorConnected: /openWorklogScheduleEditor/.test(document.documentElement.innerHTML) || typeof openWorklogScheduleEditor === "function"
+    });
+  })()`));
+  const scheduleTypeCatalog = JSON.parse(scheduleTypeCatalogMetrics);
+  if (scheduleTypeCatalog.financeKey !== "finance"
+    || scheduleTypeCatalog.finance.includes("유료PT")
+    || scheduleTypeCatalog.finance.includes("무료PT")
+    || !["회계/장부", "자금/이체", "세무/신고", "급여/노무", "증빙/정산"].every((item) => scheduleTypeCatalog.finance.includes(item))
+    || !["견적/계약", "설계/디자인", "시공/현장"].every((item) => scheduleTypeCatalog.project.includes(item))
+    || !["입주/상담", "계약/수납", "공간/시설"].every((item) => scheduleTypeCatalog.shared.includes(item))
+    || !["유료PT", "무료PT", "회원관리"].every((item) => scheduleTypeCatalog.fitness.includes(item))
+    || !["공정/시공", "안전/점검", "자재/발주"].every((item) => scheduleTypeCatalog.construction.includes(item))
+    || scheduleTypeCatalog.financeInference !== "증빙/정산"
+    || scheduleTypeCatalog.projectInference !== "시공/현장"
+    || scheduleTypeCatalog.sharedInference !== "입주/상담"
+    || scheduleTypeCatalog.constructionInference !== "안전/점검"
+    || !scheduleTypeCatalog.generalEditorConnected) {
+    fail("schedule type catalog should follow each employee's business site and role", scheduleTypeCatalogMetrics);
+  }
   const signalDetection = await page.evaluate(() => window.eval(`(() => {
     const dateKey = "2026-08-02";
     const employeeId = "bangju-finance-manager";

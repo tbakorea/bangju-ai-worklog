@@ -70,7 +70,16 @@ const priorityOptions = [
   ["?", "?"],
 ];
 const taskPriorityOptions = ["?", "A", "B", "C", "위임", "연기", "취소"];
-const scheduleTypeOptions = ["업무", "유료PT", "무료PT", "고객/상담", "영업/홍보", "시설/청결", "행정/정산", "오픈/마감", "휴게"];
+const scheduleTypeCatalog = {
+  fitness: ["유료PT", "무료PT", "고객/상담", "회원관리", "영업/홍보", "시설/청결", "행정/정산", "오픈/마감", "휴게"],
+  finance: ["회계/장부", "자금/이체", "세무/신고", "급여/노무", "증빙/정산", "계약/문서", "보고/결재", "은행/기관", "휴게"],
+  project: ["고객/상담", "견적/계약", "설계/디자인", "발주/구매", "시공/현장", "품질/하자", "영업/홍보", "행정/정산", "휴게"],
+  shared: ["입주/상담", "계약/수납", "공간/시설", "청소/점검", "고객/민원", "홍보/영업", "행정/보고", "오픈/마감", "휴게"],
+  construction: ["공정/시공", "안전/점검", "품질/하자", "자재/발주", "인력/장비", "도면/설계", "기성/정산", "대관/보고", "휴게"],
+  corporate: ["핵심업무", "고객/거래처", "계약/문서", "회의/협업", "영업/홍보", "운영/점검", "행정/정산", "보고/결재", "휴게"],
+};
+const scheduleTypeOptions = scheduleTypeCatalog.fitness;
+const allScheduleTypeOptions = ["업무", ...new Set(Object.values(scheduleTypeCatalog).flat())];
 const taskStatusCycle = ["미완료", "완료", "진행중"];
 const taskStatusGuideLabels = {
   "완료": "완료",
@@ -11437,20 +11446,49 @@ function updateTaskRowTags(row, task) {
   cell.appendChild(node);
 }
 
-function inferScheduleType(text = "") {
-  if (/무료|체험|서비스|무상/.test(text) && /pt|p\/t|피티|수업|운동지도/i.test(text)) return "무료PT";
-  if (/유료|정규|결제|pt|p\/t|피티|수업|운동지도/i.test(text)) return "유료PT";
-  if (/센터관리|센타관리|기구|시설|냉난방|조명|청소|세탁|쓰레기|샤워실|탈의실|정리|위생/.test(text)) return "시설/청결";
-  if (/상담|회원|고객|문의|재등록|민원/.test(text)) return "고객/상담";
-  if (/영업|홍보|마케팅|아웃바운드|전화|콜|체험권|매출|결제/.test(text)) return "영업/홍보";
-  if (/정산|보고|업무일지|서류|행정|인수인계/.test(text)) return "행정/정산";
-  if (/오픈|마감/.test(text)) return "오픈/마감";
-  if (/식사|휴식|대기/.test(text)) return "휴게";
-  return "업무";
+function getScheduleTypeCatalogKey(employee = getSelectedEmployee()) {
+  const source = `${employee?.id || ""} ${employee?.org || ""} ${employee?.workplace || ""} ${employee?.role || ""} ${employee?.position || ""} ${employee?.primaryWork || ""}`.toLowerCase();
+  if (/피트니스|fitness|트레이너|인포데스크|pt/.test(source)) return "fitness";
+  if (/재무|회계|자금|세무|급여/.test(source)) return "finance";
+  if (/공유사업|공유오피스|워크베이스|워크박스|입주/.test(source)) return "shared";
+  if (/종합건설|건설|공사|현장|공무|안전부장|기성/.test(source)) return "construction";
+  if (/비욘드컴퍼니|tba|studio|욕실|인테리어|시공|디자인|쇼룸/.test(source)) return "project";
+  return "corporate";
+}
+
+function getScheduleTypeOptionsForLog(log = {}) {
+  const employee = findEmployeeRecordById(log.employeeId) || getSelectedEmployee();
+  return scheduleTypeCatalog[getScheduleTypeCatalogKey(employee)] || scheduleTypeCatalog.corporate;
+}
+
+function inferScheduleType(text = "", options = allScheduleTypeOptions) {
+  const choose = (type, fallback = "업무") => options.includes(type) ? type : fallback;
+  if (/식사|휴식|대기/.test(text)) return choose("휴게");
+  if (/분개|전표|원장|장부|회계/.test(text)) return choose("회계/장부", choose("행정/정산"));
+  if (/이체|자금|예금|대출|현금|은행/.test(text)) return choose("자금/이체", choose("은행/기관", choose("행정/정산")));
+  if (/증빙|영수증|세금계산서|정산/.test(text)) return choose("증빙/정산", choose("기성/정산", choose("행정/정산")));
+  if (/세금|세무|부가세|원천세|법인세|신고/.test(text)) return choose("세무/신고", choose("행정/정산"));
+  if (/급여|4대보험|노무|근로계약/.test(text)) return choose("급여/노무", choose("행정/정산"));
+  if (/무료|체험|서비스|무상/.test(text) && /pt|p\/t|피티|수업|운동지도/i.test(text)) return choose("무료PT");
+  if (/유료|정규|pt|p\/t|피티|수업|운동지도/i.test(text)) return choose("유료PT");
+  if (/견적|계약/.test(text)) return choose("견적/계약", choose("계약/수납", choose("계약/문서")));
+  if (/설계|도면|디자인/.test(text)) return choose("설계/디자인", choose("도면/설계"));
+  if (/발주|구매|자재/.test(text)) return choose("발주/구매", choose("자재/발주"));
+  if (/안전|위험|점검/.test(text)) return choose("안전/점검", choose("운영/점검"));
+  if (/공정|시공|현장|공사/.test(text)) return choose("공정/시공", choose("시공/현장"));
+  if (/하자|품질/.test(text)) return choose("품질/하자");
+  if (/입주|수납|공실|임대/.test(text)) return choose("입주/상담", choose("계약/수납"));
+  if (/센터관리|센타관리|기구|시설|냉난방|조명|청소|세탁|쓰레기|샤워실|탈의실|정리|위생/.test(text)) return choose("시설/청결", choose("공간/시설", choose("청소/점검", choose("운영/점검"))));
+  if (/상담|회원|고객|문의|재등록|민원/.test(text)) return choose("고객/상담", choose("고객/민원", choose("고객/거래처")));
+  if (/영업|홍보|마케팅|아웃바운드|전화|콜|체험권|매출/.test(text)) return choose("영업/홍보", choose("홍보/영업"));
+  if (/보고|결재/.test(text)) return choose("보고/결재", choose("행정/보고", choose("대관/보고", choose("행정/정산"))));
+  if (/서류|행정|인수인계/.test(text)) return choose("행정/정산", choose("행정/보고"));
+  if (/오픈|마감/.test(text)) return choose("오픈/마감");
+  return options[0] || "업무";
 }
 
 function normalizeScheduleType(type = "업무", text = "") {
-  if (scheduleTypeOptions.includes(type)) return type;
+  if (allScheduleTypeOptions.includes(type)) return type;
   const aliases = {
     PT: "유료PT",
     "P/T": "유료PT",
@@ -11473,6 +11511,15 @@ function normalizeScheduleType(type = "업무", text = "") {
     정산: "행정/정산",
     인수인계: "행정/정산",
     오픈마감: "오픈/마감",
+    회계: "회계/장부",
+    자금: "자금/이체",
+    세무: "세무/신고",
+    급여: "급여/노무",
+    증빙: "증빙/정산",
+    견적: "견적/계약",
+    시공: "시공/현장",
+    공정: "공정/시공",
+    안전: "안전/점검",
   };
   return aliases[type] || inferScheduleType(text);
 }
@@ -11632,7 +11679,7 @@ function renderAppointmentRow(entry, log, scope = "worklog") {
       if (!guardWorklogEdit()) return;
       item.text = text.value;
       promptAttendanceBeforeWorklogInput(log, item.text);
-      if (item.type === "업무") item.type = inferScheduleType(text.value);
+      if (item.type === "업무") item.type = inferScheduleType(text.value, getScheduleTypeOptionsForLog(log));
       syncScheduleEntryText(entry);
       saveState({ fastSave: true });
       renderWorklogSummary(log);
@@ -11659,14 +11706,7 @@ function renderAppointmentRow(entry, log, scope = "worklog") {
       });
     };
   });
-  row.querySelector(".appointment-merge-button").onclick = () => {
-    if (!guardWorklogEdit()) return;
-    items.push(createScheduleItem());
-    syncScheduleEntryText(entry);
-    saveState();
-    renderWorklogAppointments(log);
-    renderFitnessAppointments(log);
-  };
+  row.querySelector(".appointment-merge-button").onclick = () => openWorklogScheduleEditor(entry, log);
   return row;
 }
 
@@ -11686,7 +11726,7 @@ function getOrCreateFitnessScheduleEditor() {
   editor.hidden = true;
   editor.setAttribute("role", "dialog");
   editor.setAttribute("aria-modal", "true");
-  editor.setAttribute("aria-label", "피트니스 시간별 일정 입력");
+  editor.setAttribute("aria-label", "시간별 일정 업무종류 입력");
   editor.innerHTML = `
     <header class="fitness-schedule-editor-header">
       <div>
@@ -11726,14 +11766,23 @@ function getOrCreateFitnessScheduleEditor() {
 }
 
 function openFitnessScheduleEditor(entry, log) {
-  if (!canEditCurrentWorklog("fitness-log")) {
-    guardWorklogEdit("fitness-log");
+  openScheduleTypeEditor(entry, log, "fitness-log");
+}
+
+function openWorklogScheduleEditor(entry, log) {
+  openScheduleTypeEditor(entry, log, activeView);
+}
+
+function openScheduleTypeEditor(entry, log, viewName = activeView) {
+  if (!canEditCurrentWorklog(viewName)) {
+    guardWorklogEdit(viewName);
     return;
   }
   normalizeScheduleEntryItems(entry);
   fitnessScheduleEditorState = {
     entry,
     log,
+    viewName,
     selectedType: "",
   };
   const { backdrop, editor } = getOrCreateFitnessScheduleEditor();
@@ -11787,7 +11836,8 @@ function renderFitnessScheduleEditor() {
     };
   });
 
-  typeGrid.innerHTML = scheduleTypeOptions.map((type) => `
+  const scheduleTypes = getScheduleTypeOptionsForLog(fitnessScheduleEditorState.log);
+  typeGrid.innerHTML = scheduleTypes.map((type) => `
     <button class="${type === selectedType ? "is-selected" : ""}" type="button" data-fitness-schedule-type="${escapeAttr(type)}">
       ${escapeHtml(formatScheduleTypeLabel(type))}
     </button>
@@ -11805,8 +11855,9 @@ function renderFitnessScheduleEditor() {
 }
 
 function addFitnessScheduleEditorItem({ close = false } = {}) {
-  if (!canEditCurrentWorklog("fitness-log")) {
-    guardWorklogEdit("fitness-log");
+  const viewName = fitnessScheduleEditorState?.viewName || "fitness-log";
+  if (!canEditCurrentWorklog(viewName)) {
+    guardWorklogEdit(viewName);
     return;
   }
   if (!fitnessScheduleEditorState) return;
