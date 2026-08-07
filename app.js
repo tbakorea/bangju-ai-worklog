@@ -17848,8 +17848,9 @@ async function renderWorklogReportCanvas() {
 
 async function saveWorklogReportImage() {
   const model = buildWorklogDailyReportModel();
-  const blob = await canvasToBlob(await renderWorklogReportCanvas(), "image/png");
-  downloadBlob(blob, `${getWorklogReportFileBase(model)}.png`);
+  const blob = await canvasToBlob(await renderWorklogReportCanvas(), "image/jpeg", 0.94);
+  downloadBlob(blob, `${getWorklogReportFileBase(model)}.jpg`);
+  showAppToast("보고서를 JPEG 이미지로 저장했습니다");
 }
 
 async function saveWorklogReportPdf() {
@@ -17861,13 +17862,9 @@ async function saveWorklogReportPdf() {
 async function shareWorklogDailyReport() {
   const model = buildWorklogDailyReportModel();
   const canvas = await renderWorklogReportCanvas();
-  const pngBlob = await canvasToBlob(canvas, "image/png");
-  const pdfBlob = createPdfBlobFromCanvas(canvas);
+  const jpegBlob = await canvasToBlob(canvas, "image/jpeg", 0.94);
   const base = getWorklogReportFileBase(model);
-  const files = [
-    new File([pngBlob], `${base}.png`, { type: "image/png" }),
-    new File([pdfBlob], `${base}.pdf`, { type: "application/pdf" }),
-  ];
+  const files = [new File([jpegBlob], `${base}.jpg`, { type: "image/jpeg" })];
   if (navigator.canShare?.({ files }) && navigator.share) {
     await navigator.share({ title: model.title, text: `${model.dateLabel} ${model.writer} 업무보고서`, files });
     return;
@@ -17905,10 +17902,8 @@ function openWorklogReportArchive() {
   switchView("report");
 }
 
-function printWorklogDailyReport() {
-  document.body.classList.add("is-printing-worklog-report");
-  window.print();
-  window.setTimeout(() => document.body.classList.remove("is-printing-worklog-report"), 500);
+async function printWorklogDailyReport() {
+  await printReportCanvas(await renderWorklogReportCanvas(), "Bangju Daily Work Report");
 }
 
 function getFitnessReportIssueTitle(model = {}) {
@@ -18290,18 +18285,17 @@ function getFitnessReportScheduleRows(schedule = []) {
   return rows;
 }
 
-function setFitnessReportCoachButtonState(stateName = "ready") {
-  const button = document.getElementById("fitnessReportCoachButton");
-  if (!button) return;
+function setFitnessReportAiStatus(stateName = "ready") {
+  const status = document.getElementById("fitnessReportAiStatus");
+  if (!status) return;
   const labels = {
-    ready: "ChatGPT 코칭",
-    cached: "AI 코칭 새로고침",
-    loading: "AI 코칭 생성 중…",
-    unavailable: "AI 코칭 연결 필요",
+    ready: "AI 코칭 자동 반영",
+    cached: "AI 코칭 반영 완료",
+    loading: "AI 코칭 자동 생성 중…",
+    unavailable: "기본 코칭 자동 반영",
   };
-  button.textContent = labels[stateName] || labels.ready;
-  button.disabled = stateName === "loading";
-  button.dataset.aiState = stateName;
+  status.textContent = labels[stateName] || labels.ready;
+  status.dataset.aiState = stateName;
 }
 
 function refreshOpenFitnessReport(model = buildFitnessReportModel()) {
@@ -18316,20 +18310,20 @@ async function requestFitnessReportAiCoaching(model = buildFitnessReportModel(),
   if (!model?.aiKey || !model?.aiContext) return null;
   activeFitnessReportAiKey = model.aiKey;
   if (model.aiCoaching && !force) {
-    setFitnessReportCoachButtonState("cached");
+    setFitnessReportAiStatus("cached");
     return model.aiCoaching;
   }
   if (!force && fitnessReportAiAttempted.has(model.aiKey)) return null;
   const accessToken = authState.session?.access_token;
   if (!accessToken) {
-    setFitnessReportCoachButtonState("unavailable");
+    setFitnessReportAiStatus("unavailable");
     if (!silent) showAppToast("로그인 후 실제 AI 코칭을 사용할 수 있습니다");
     return null;
   }
 
   fitnessReportAiAttempted.add(model.aiKey);
   const requestId = ++fitnessReportAiRequestId;
-  setFitnessReportCoachButtonState("loading");
+  setFitnessReportAiStatus("loading");
   try {
     const coachResponse = await fetch("/api/fitness-coach", {
       method: "POST",
@@ -18348,11 +18342,11 @@ async function requestFitnessReportAiCoaching(model = buildFitnessReportModel(),
     });
     if (requestId === fitnessReportAiRequestId && activeFitnessReportAiKey === model.aiKey) {
       refreshOpenFitnessReport(buildFitnessReportModel());
-      setFitnessReportCoachButtonState("cached");
+      setFitnessReportAiStatus("cached");
     }
     return result.coaching;
   } catch (error) {
-    if (requestId === fitnessReportAiRequestId) setFitnessReportCoachButtonState("unavailable");
+    if (requestId === fitnessReportAiRequestId) setFitnessReportAiStatus("unavailable");
     if (!silent) showAppToast(error.message || "기본 코칭으로 보고서를 유지합니다");
     return null;
   }
@@ -18369,7 +18363,7 @@ function openFitnessReportSheet() {
   if (subtitle) subtitle.textContent = `${formatKoreanDate(getActiveDateKey())} 보고서`;
   preview.innerHTML = renderFitnessReportTemplate(model);
   updateFitnessReportConfirmButton(model);
-  setFitnessReportCoachButtonState(model.aiCoaching ? "cached" : "ready");
+  setFitnessReportAiStatus(model.aiCoaching ? "cached" : "ready");
   backdrop.hidden = false;
   sheet.hidden = false;
   requestAnimationFrame(() => {
@@ -18414,10 +18408,8 @@ function closeFitnessReportSheet() {
   }, 160);
 }
 
-function printFitnessReport() {
-  document.body.classList.add("is-printing-fitness-report");
-  window.print();
-  window.setTimeout(() => document.body.classList.remove("is-printing-fitness-report"), 500);
+async function printFitnessReport() {
+  await printReportCanvas(await renderFitnessReportCanvas(), "Beyond Fitness Daily Report");
 }
 
 function getFitnessReportFileBase() {
@@ -18844,6 +18836,38 @@ function downloadBlob(blob, filename) {
   window.setTimeout(() => URL.revokeObjectURL(url), 500);
 }
 
+async function printReportCanvas(canvas, title = "Daily Report") {
+  const blob = await canvasToBlob(canvas, "image/jpeg", 0.96);
+  const imageUrl = URL.createObjectURL(blob);
+  const frame = document.createElement("iframe");
+  frame.title = `${title} 인쇄 전용 문서`;
+  frame.setAttribute("aria-hidden", "true");
+  frame.style.cssText = "position:fixed;right:100%;bottom:0;width:1px;height:1px;border:0;opacity:0;pointer-events:none";
+  document.body.appendChild(frame);
+  const cleanup = () => {
+    URL.revokeObjectURL(imageUrl);
+    frame.remove();
+  };
+  const printDocument = frame.contentDocument;
+  printDocument.open();
+  printDocument.write(`<!doctype html><html lang="ko"><head><meta charset="utf-8"><title>${escapeHtml(title)}</title><style>@page{size:A4 portrait;margin:0}html,body{margin:0;padding:0;background:#fff}body{width:210mm;min-height:297mm;display:grid;place-items:start center}img{display:block;width:210mm;height:297mm;object-fit:contain;object-position:top center}</style></head><body><img alt="${escapeHtml(title)}" src="${imageUrl}"></body></html>`);
+  printDocument.close();
+  const image = printDocument.querySelector("img");
+  await new Promise((resolve, reject) => {
+    if (image.complete && image.naturalWidth) {
+      resolve();
+      return;
+    }
+    image.addEventListener("load", resolve, { once: true });
+    image.addEventListener("error", () => reject(new Error("인쇄용 보고서 이미지를 준비하지 못했습니다.")), { once: true });
+  });
+  const printWindow = frame.contentWindow;
+  printWindow.addEventListener("afterprint", cleanup, { once: true });
+  printWindow.focus();
+  printWindow.print();
+  window.setTimeout(cleanup, 60000);
+}
+
 function concatUint8Arrays(parts) {
   const total = parts.reduce((sum, part) => sum + part.length, 0);
   const merged = new Uint8Array(total);
@@ -18906,30 +18930,21 @@ function createPdfBlobFromCanvas(canvas) {
 
 async function saveFitnessReportImage() {
   const canvas = await renderFitnessReportCanvas();
-  const blob = await canvasToBlob(canvas, "image/png");
-  downloadBlob(blob, `${getFitnessReportFileBase()}.png`);
+  const blob = await canvasToBlob(canvas, "image/jpeg", 0.94);
+  downloadBlob(blob, `${getFitnessReportFileBase()}.jpg`);
+  showAppToast("보고서를 JPEG 이미지로 저장했습니다");
 }
 
 async function shareFitnessReport() {
   const canvas = await renderFitnessReportCanvas();
-  const pngBlob = await canvasToBlob(canvas, "image/png");
-  const pdfBlob = createPdfBlobFromCanvas(canvas);
+  const jpegBlob = await canvasToBlob(canvas, "image/jpeg", 0.94);
   const base = getFitnessReportFileBase();
-  const pngFile = new File([pngBlob], `${base}.png`, { type: "image/png" });
-  const pdfFile = new File([pdfBlob], `${base}.pdf`, { type: "application/pdf" });
-  if (navigator.canShare?.({ files: [pngFile, pdfFile] }) && navigator.share) {
+  const jpegFile = new File([jpegBlob], `${base}.jpg`, { type: "image/jpeg" });
+  if (navigator.canShare?.({ files: [jpegFile] }) && navigator.share) {
     await navigator.share({
       title: "Beyond Fitness Report",
-      text: "비욘드 피트니스 업무보고서 PNG/PDF 파일입니다.",
-      files: [pngFile, pdfFile],
-    });
-    return;
-  }
-  if (navigator.canShare?.({ files: [pngFile] }) && navigator.share) {
-    await navigator.share({
-      title: "Beyond Fitness Report",
-      text: "비욘드 피트니스 업무보고서 이미지입니다.",
-      files: [pngFile],
+      text: "비욘드 피트니스 업무보고서입니다.",
+      files: [jpegFile],
     });
     return;
   }
@@ -19728,18 +19743,17 @@ document.getElementById("fitnessCoachingAiButton")?.addEventListener("click", ()
 document.getElementById("fitnessReportMenuButton")?.addEventListener("click", openFitnessReportSheet);
 document.getElementById("fitnessReportCloseButton")?.addEventListener("click", closeFitnessReportSheet);
 document.getElementById("fitnessReportBackdrop")?.addEventListener("click", closeFitnessReportSheet);
-document.getElementById("fitnessReportPrintButton")?.addEventListener("click", printFitnessReport);
-document.getElementById("fitnessReportConfirmButton")?.addEventListener("click", toggleFitnessCenterReportConfirmation);
-document.getElementById("fitnessReportCoachButton")?.addEventListener("click", () => {
-  const model = buildFitnessReportModel();
-  fitnessReportAiAttempted.delete(model.aiKey);
-  requestFitnessReportAiCoaching(model, { force: true, silent: false });
+document.getElementById("fitnessReportPrintButton")?.addEventListener("click", () => {
+  printFitnessReport().catch(() => alert("인쇄용 보고서를 준비하지 못했습니다. JPEG 저장을 이용해주세요."));
 });
+document.getElementById("fitnessReportConfirmButton")?.addEventListener("click", toggleFitnessCenterReportConfirmation);
 document.getElementById("fitnessReportImageButton")?.addEventListener("click", () => {
-  saveFitnessReportImage().catch(() => alert("이미지 파일을 만들지 못했습니다. 출력 메뉴에서 PDF 저장을 이용해주세요."));
+  saveFitnessReportImage().catch(() => alert("JPEG 이미지를 만들지 못했습니다. 잠시 후 다시 시도해주세요."));
 });
 document.getElementById("fitnessReportShareButton")?.addEventListener("click", () => {
-  shareFitnessReport().catch(() => alert("공유 기능을 사용할 수 없어 보고서 미리보기를 확인해주세요."));
+  shareFitnessReport().catch((error) => {
+    if (error?.name !== "AbortError") alert("공유 기능을 사용할 수 없어 보고서 미리보기를 확인해주세요.");
+  });
 });
 document.getElementById("worklogReportMenuButton")?.addEventListener("click", openWorklogReportSheet);
 document.getElementById("worklogReportCloseButton")?.addEventListener("click", closeWorklogReportSheet);
@@ -19751,10 +19765,14 @@ document.getElementById("worklogReportPdfButton")?.addEventListener("click", () 
   saveWorklogReportPdf().catch(() => alert("PDF 파일을 만들지 못했습니다. 출력 메뉴에서 PDF 저장을 이용해주세요."));
 });
 document.getElementById("worklogReportShareButton")?.addEventListener("click", () => {
-  shareWorklogDailyReport().catch(() => alert("보내기 기능을 사용할 수 없어 보고서 미리보기를 유지합니다."));
+  shareWorklogDailyReport().catch((error) => {
+    if (error?.name !== "AbortError") alert("보내기 기능을 사용할 수 없어 보고서 미리보기를 유지합니다.");
+  });
 });
 document.getElementById("worklogReportArchiveButton")?.addEventListener("click", openWorklogReportArchive);
-document.getElementById("worklogReportPrintButton")?.addEventListener("click", printWorklogDailyReport);
+document.getElementById("worklogReportPrintButton")?.addEventListener("click", () => {
+  printWorklogDailyReport().catch(() => alert("인쇄용 보고서를 준비하지 못했습니다. JPEG 또는 PDF 저장을 이용해주세요."));
+});
 document.getElementById("fitnessCenterConfirmPanel")?.addEventListener("click", (event) => {
   if (event.target.closest("[data-fitness-center-report-confirm]")) toggleFitnessCenterReportConfirmation();
 });

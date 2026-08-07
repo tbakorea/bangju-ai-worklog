@@ -237,13 +237,14 @@ async function checkTabletRepresentativeWorklogChrome(browser) {
       name: "토요일 근무자",
       weeklyWorkHours: { sat: "10:00-18:00" }
     };
-    state.employeeLogs[todayKey] ||= {};
-    state.employeeLogs[todayKey][saturdayEmployee.id] = createEmployeeLog(saturdayEmployee, state.profile, todayKey);
+    const offDutyDateKey = "2026-08-10";
+    state.employeeLogs[offDutyDateKey] ||= {};
+    state.employeeLogs[offDutyDateKey][saturdayEmployee.id] = createEmployeeLog(saturdayEmployee, state.profile, offDutyDateKey);
     const saturdayModel = getOverviewEmployeeSummaryModel(
       getWorklogOverviewGroups().find((group) => group.id === "fitness"),
       saturdayEmployee.id,
       saturdayEmployee,
-      todayKey
+      offDutyDateKey
     );
     const saturdayAlerts = buildEmployeeInsightAlerts(saturdayEmployee, saturdayModel.dayLog, saturdayModel);
     return {
@@ -3582,13 +3583,15 @@ async function checkFitnessCenterReportConfirmation(browser) {
     buttonHidden: document.querySelector("#fitnessReportConfirmButton")?.hidden ?? true,
     buttonText: document.querySelector("#fitnessReportConfirmButton")?.textContent?.trim() || "",
     previewText: document.querySelector("#fitnessReportPreview")?.textContent?.trim() || "",
-    coachButtonText: document.querySelector("#fitnessReportCoachButton")?.textContent?.trim() || "",
+    coachButtonAbsent: !document.querySelector("#fitnessReportCoachButton"),
+    aiStatusText: document.querySelector("#fitnessReportAiStatus")?.textContent?.trim() || "",
   }));
   if (reportState.buttonHidden || reportState.buttonText !== "확정 취소" || !reportState.previewText.includes("확정")) {
     fail("fitness report preview should expose confirmation state", JSON.stringify(reportState));
   }
   if (!aiCoachRequest?.context?.manual?.guidelines?.length
-    || reportState.coachButtonText !== "AI 코칭 새로고침"
+    || !reportState.coachButtonAbsent
+    || reportState.aiStatusText !== "AI 코칭 반영 완료"
     || !reportState.previewText.includes("AI 코칭 · ChatGPT")
     || !reportState.previewText.includes("직원 운영기록을 빠짐없이 취합한 점이 좋습니다.")
     || !reportState.previewText.includes("센터장 매뉴얼의 마감 인수인계 기준을 확인해주세요.")) {
@@ -4154,13 +4157,16 @@ async function checkSiteWeatherAndGeneralDailyReport(browser) {
       fitnessReportPreserved: Boolean(document.querySelector("#fitnessReportMenuButton") && document.querySelector("#fitnessReportSheet")),
       exportButtons: ["worklogReportImageButton", "worklogReportPdfButton", "worklogReportShareButton", "worklogReportPrintButton"]
         .every((id) => Boolean(document.getElementById(id))),
+      reportPrintIsolated: typeof printReportCanvas === "function"
+        && !String(printWorklogDailyReport).includes("window.print")
+        && !String(printFitnessReport).includes("window.print"),
     };
   });
   const exportMetrics = await page.evaluate(async () => {
     const canvas = await renderWorklogReportCanvas();
-    const png = await canvasToBlob(canvas, "image/png");
+    const jpeg = await canvasToBlob(canvas, "image/jpeg", 0.94);
     const pdf = createPdfBlobFromCanvas(canvas);
-    return { width: canvas.width, height: canvas.height, pngSize: png.size, pdfSize: pdf.size, pdfType: pdf.type };
+    return { width: canvas.width, height: canvas.height, jpegSize: jpeg.size, jpegType: jpeg.type, pdfSize: pdf.size, pdfType: pdf.type };
   });
   const dateWeatherMetrics = await page.evaluate(() => {
     const employee = getSelectedEmployee();
@@ -4199,7 +4205,7 @@ async function checkSiteWeatherAndGeneralDailyReport(browser) {
     if (!metrics.previewText.includes(label)) fail("general daily report should include corporate and Bangju report sections", `${label} missing`);
   });
   if (!metrics.sheetOpen || metrics.previewOverflow < 0) fail("general daily report sheet should open and remain scrollable", JSON.stringify(metrics));
-  if (!metrics.archiveHasDesignedReport || !metrics.pastUsesArchive || !metrics.futureUsesForecast || !metrics.snapshotHasWeather || !metrics.fitnessReportPreserved || !metrics.exportButtons) {
+  if (!metrics.archiveHasDesignedReport || !metrics.pastUsesArchive || !metrics.futureUsesForecast || !metrics.snapshotHasWeather || !metrics.fitnessReportPreserved || !metrics.exportButtons || !metrics.reportPrintIsolated) {
     fail("site weather and general report data flow should remain connected without changing fitness report", JSON.stringify(metrics));
   }
   if (!metrics.todayUsesBeyondWeatherRange || metrics.weatherExpression !== "구름 조금 · 21°/29°" || !metrics.rainAdvice.includes("10~15분") || !metrics.freshWeather || metrics.staleWeather) {
@@ -4226,8 +4232,8 @@ async function checkSiteWeatherAndGeneralDailyReport(browser) {
   if (dateWeatherMetrics.future.todayText !== "오늘" || dateWeatherMetrics.future.todayDisabled || dateWeatherMetrics.future.worklogHistorical || dateWeatherMetrics.future.fitnessHistorical) {
     fail("future date should keep the Today return button and regular coaching", JSON.stringify(dateWeatherMetrics));
   }
-  if (exportMetrics.width !== 1240 || exportMetrics.height < 1754 || exportMetrics.pngSize < 10000 || exportMetrics.pdfSize < 10000 || exportMetrics.pdfType !== "application/pdf") {
-    fail("general worklog report should export valid PNG and PDF artifacts", JSON.stringify(exportMetrics));
+  if (exportMetrics.width !== 1240 || exportMetrics.height < 1754 || exportMetrics.jpegSize < 10000 || exportMetrics.jpegType !== "image/jpeg" || exportMetrics.pdfSize < 10000 || exportMetrics.pdfType !== "application/pdf") {
+    fail("general worklog report should export valid JPEG and PDF artifacts", JSON.stringify(exportMetrics));
   }
   if (errors.length) fail("site weather and general report page errors", errors.join(" | "));
   await page.close();
