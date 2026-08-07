@@ -4150,6 +4150,11 @@ async function checkSiteWeatherAndGeneralDailyReport(browser) {
     const rainAdvice = buildWeatherAdvice({ weatherCode: 61, condition: "비", precipitation: 1 });
     const freshWeather = isWeatherRecordFresh({ fetchedAt: new Date().toISOString() });
     const staleWeather = isWeatherRecordFresh({ fetchedAt: new Date(Date.now() - weatherFreshnessMs - 1000).toISOString() });
+    state.siteWeatherAddresses["기타"] = "개인 임시 주소";
+    state.weatherCache[getWeatherCacheKey("기타", todayKey)] = { siteKey: "기타", dateKey: todayKey, condition: "맑음" };
+    const sharedWeatherMergeCount = mergeSharedSiteWeatherSettings([{ site_key: "기타", address: "대표 공용 주소" }]);
+    const sharedWeatherAddress = getSiteWeatherAddress("기타");
+    const sharedWeatherClearedStaleCache = !getWeatherRecordForSite("기타", todayKey);
     const snapshot = buildRemoteSnapshot();
     const retryKey = getWeatherCacheKey(getSiteWeatherKeyForEmployee(employee), todayKey);
     const savedWeather = state.weatherCache[retryKey];
@@ -4177,6 +4182,9 @@ async function checkSiteWeatherAndGeneralDailyReport(browser) {
       rainAdvice,
       freshWeather,
       staleWeather,
+      sharedWeatherMergeCount,
+      sharedWeatherAddress,
+      sharedWeatherClearedStaleCache,
       weatherRetryState,
       todayWeatherButtonText: document.querySelector("#todayJumpButton")?.textContent?.replace(/\s+/g, "").trim() || "",
       todayWeatherButtonActive: document.querySelector("#todayJumpButton")?.classList.contains("is-weather-today") || false,
@@ -4255,6 +4263,9 @@ async function checkSiteWeatherAndGeneralDailyReport(browser) {
   }
   if (!metrics.todayUsesBeyondWeatherRange || metrics.weatherExpression !== "구름 조금 · 21°/29°" || !metrics.rainAdvice.includes("10~15분") || !metrics.freshWeather || metrics.staleWeather) {
     fail("weather should mirror Beyond Work range, advice, and two-hour refresh logic", JSON.stringify(metrics));
+  }
+  if (metrics.sharedWeatherMergeCount !== 1 || metrics.sharedWeatherAddress !== "대표 공용 주소" || !metrics.sharedWeatherClearedStaleCache) {
+    fail("representative weather address should replace employee-local settings and invalidate stale weather", JSON.stringify(metrics));
   }
   if (metrics.weatherRetryState.status !== "retry" || metrics.weatherRetryState.text !== "↻재시도"
     || !metrics.weatherRetryState.blocked || !metrics.weatherRetryState.helperReady) {

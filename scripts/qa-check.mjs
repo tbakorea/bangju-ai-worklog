@@ -8,6 +8,7 @@ const read = (file) => readFileSync(join(root, file), "utf8");
 const html = read("index.html");
 const js = read("app.js");
 const css = read("styles.css");
+const schema = read("supabase/worklog_schema.sql");
 const backupApi = existsSync(join(root, "api/backup-mail.js")) ? read("api/backup-mail.js") : "";
 const fitnessCoachApi = existsSync(join(root, "api/fitness-coach.js")) ? read("api/fitness-coach.js") : "";
 const loginCardHtml = html.slice(html.indexOf('<section class="login-card"'), html.indexOf('<div class="auth-panel'));
@@ -42,6 +43,18 @@ check(
     && js.includes("getFitnessReportAttendanceWarnings")
     && css.includes(".fitness-paper-dagym")
     && css.includes(".fitness-paper-warning-banner")
+);
+check(
+  "representative weather addresses are shared with every authenticated workplace",
+  js.includes("function mergeSharedSiteWeatherSettings")
+    && js.includes('.from("site_weather_settings")')
+    && js.includes("loadSharedSiteWeatherSettings")
+    && js.includes("publishRepresentativeSiteWeatherSettings")
+    && /saveSharedSiteWeatherAddress\(key, nextAddress\)/.test(js)
+    && /create table if not exists public\.site_weather_settings/.test(schema)
+    && /site_weather_settings_select_authenticated[\s\S]{0,180}to authenticated[\s\S]{0,80}using \(true\)/.test(schema)
+    && /site_weather_settings_update_approver[\s\S]{0,220}public\.is_profile_approver\(\)/.test(schema),
+  "representative addresses must persist in a shared RLS-protected table and load for staff accounts"
 );
 check(
   "worklog editing remains open for 48 hours after the workday",

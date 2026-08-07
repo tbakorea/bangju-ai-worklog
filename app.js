@@ -1402,6 +1402,39 @@ function getSiteWeatherAddress(siteKey = "") {
   return String(state.siteWeatherAddresses?.[siteKey] || "").trim();
 }
 
+function canManageSharedSiteWeatherSettings() {
+  return Boolean(authState.user && (isRepresentativeProfile() || hasApprovalAuthority()));
+}
+
+function clearWeatherCacheForSite(siteKey = "") {
+  const cacheSuffix = `::${siteKey}`;
+  Object.keys(state.weatherCache || {}).forEach((cacheKey) => {
+    if (cacheKey.endsWith(cacheSuffix)) delete state.weatherCache[cacheKey];
+  });
+  delete state.weatherLocationCache?.[siteKey];
+  Array.from(weatherBatchAttempted).forEach((requestKey) => {
+    if (requestKey.endsWith(cacheSuffix)) weatherBatchAttempted.delete(requestKey);
+  });
+  Array.from(weatherRequestFailures.keys()).forEach((requestKey) => {
+    if (requestKey.endsWith(cacheSuffix)) clearWeatherRequestFailure(requestKey);
+  });
+}
+
+function mergeSharedSiteWeatherSettings(rows = []) {
+  const allowedKeys = new Set(siteWeatherAddressTargets.map((target) => target.key));
+  state.siteWeatherAddresses = { ...(state.siteWeatherAddresses || {}) };
+  let merged = 0;
+  (rows || []).forEach((row) => {
+    const siteKey = String(row?.site_key || row?.siteKey || "").trim();
+    const address = String(row?.address || "").trim();
+    if (!allowedKeys.has(siteKey) || state.siteWeatherAddresses[siteKey] === address) return;
+    state.siteWeatherAddresses[siteKey] = address;
+    clearWeatherCacheForSite(siteKey);
+    merged += 1;
+  });
+  return merged;
+}
+
 function mergeSiteWeatherAddressesFromSnapshots(rows = []) {
   state.siteWeatherAddresses = { ...(state.siteWeatherAddresses || {}) };
   const knownKeys = new Set(Object.keys(state.siteWeatherAddresses));
@@ -6893,13 +6926,14 @@ function renderSiteAddressSettings() {
   const list = document.getElementById("siteAddressList");
   if (!list) return;
   const addresses = state.siteWeatherAddresses || {};
+  const canManage = canManageSharedSiteWeatherSettings();
   list.innerHTML = siteWeatherAddressTargets.map((target) => `
     <label class="site-address-row">
       <span>
         <b>${escapeHtml(target.label)}</b>
-        <small>${escapeHtml(target.hint)}</small>
+        <small>${escapeHtml(canManage ? target.hint : "대표가 설정한 공용 사업장 주소")}</small>
       </span>
-      <input data-site-weather-address="${escapeAttr(target.key)}" type="text" value="${escapeAttr(addresses[target.key] || "")}" placeholder="사업장/현장 주소 입력" />
+      <input data-site-weather-address="${escapeAttr(target.key)}" type="text" value="${escapeAttr(addresses[target.key] || "")}" placeholder="사업장/현장 주소 입력" ${canManage ? "" : "disabled"} />
     </label>
   `).join("");
 }
@@ -8799,6 +8833,8 @@ async function loadRemoteWorklogForActiveDate() {
     state.weatherLocationCache = { ...(state.weatherLocationCache || {}), ...(data.state.weatherLocationCache || {}) };
   }
   await loadLatestRemoteSiteWeatherSettings();
+  const sharedWeatherRows = await loadSharedSiteWeatherSettings();
+  if (Array.isArray(sharedWeatherRows)) await publishRepresentativeSiteWeatherSettings(sharedWeatherRows);
   await loadRemoteLaborPayrollDrafts();
   if (canAccessAllWorklogs()) await loadVisibleStaffWorklogsForDate(key);
   else await loadCoworkerWorklogsForDate(key);
@@ -8847,6 +8883,58 @@ async function loadLatestRemoteSiteWeatherSettings() {
     .limit(30);
   if (error || !Array.isArray(data)) return;
   mergeSiteWeatherAddressesFromSnapshots(data);
+}
+
+async function loadSharedSiteWeatherSettings() {
+  if (!supabaseClient || !authState.user) return [];
+  const { data, error } = await supabaseClient
+    .from("site_weather_settings")
+    .select("site_key,address,updated_at")
+    .order("site_key", { ascending: true });
+  if (error) {
+    if (!/site_weather_settings|schema cache|PGRST205|42P01/i.test(String(error.message || ""))) {
+      renderAuthStatus(`공용 사업장 주소 불러오기 대기: ${error.message}`);
+    }
+    return null;
+  }
+  mergeSharedSiteWeatherSettings(data || []);
+  return data || [];
+}
+
+async function saveSharedSiteWeatherAddress(siteKey = "", address = "") {
+  if (!supabaseClient || !authState.user || !canManageSharedSiteWeatherSettings()) return false;
+  const key = String(siteKey || "").trim();
+  if (!siteWeatherAddressTargets.some((target) => target.key === key)) return false;
+  const { error } = await supabaseClient.from("site_weather_settings").upsert({
+    site_key: key,
+    address: String(address || "").trim(),
+    updated_by: authState.user.id,
+    updated_at: new Date().toISOString(),
+  }, { onConflict: "site_key" });
+  if (error) {
+    renderAuthStatus(`공용 사업장 주소 저장 대기: ${error.message}`);
+    return false;
+  }
+  renderAuthStatus();
+  return true;
+}
+
+async function publishRepresentativeSiteWeatherSettings(sharedRows = []) {
+  if (!canManageSharedSiteWeatherSettings()) return;
+  const sharedKeys = new Set((sharedRows || []).map((row) => String(row?.site_key || "").trim()));
+  const legacyRows = siteWeatherAddressTargets
+    .filter((target) => !sharedKeys.has(target.key) && getSiteWeatherAddress(target.key))
+    .map((target) => ({
+      site_key: target.key,
+      address: getSiteWeatherAddress(target.key),
+      updated_by: authState.user.id,
+      updated_at: new Date().toISOString(),
+    }));
+  if (!legacyRows.length) return;
+  const { error } = await supabaseClient
+    .from("site_weather_settings")
+    .upsert(legacyRows, { onConflict: "site_key" });
+  if (error) renderAuthStatus(`기존 사업장 주소 공용 전환 대기: ${error.message}`);
 }
 
 async function loadVisibleStaffWorklogsForDate(dateKey = getActiveDateKey()) {
@@ -19814,22 +19902,12 @@ document.getElementById("siteAddressList")?.addEventListener("input", (event) =>
   const nextAddress = input.value.trim();
   if (state.siteWeatherAddresses[key] === nextAddress) return;
   state.siteWeatherAddresses[key] = nextAddress;
-  const cacheSuffix = `::${key}`;
-  Object.keys(state.weatherCache || {}).forEach((cacheKey) => {
-    if (cacheKey.endsWith(cacheSuffix)) delete state.weatherCache[cacheKey];
-  });
-  delete state.weatherLocationCache?.[key];
-  Array.from(weatherBatchAttempted).forEach((requestKey) => {
-    if (requestKey.endsWith(cacheSuffix)) weatherBatchAttempted.delete(requestKey);
-  });
-  Array.from(weatherRequestFailures.keys()).forEach((requestKey) => {
-    if (requestKey.endsWith(cacheSuffix)) clearWeatherRequestFailure(requestKey);
-  });
+  clearWeatherCacheForSite(key);
   saveState({ fastSave: true });
   window.clearTimeout(siteWeatherAddressTimers.get(key));
   siteWeatherAddressTimers.set(key, window.setTimeout(() => {
     siteWeatherAddressTimers.delete(key);
-    renderWeatherWidgets();
+    saveSharedSiteWeatherAddress(key, nextAddress).finally(() => renderWeatherWidgets());
   }, 700));
 });
 document.getElementById("worklogWeatherRefreshButton")?.addEventListener("click", () => {
