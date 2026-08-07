@@ -10358,6 +10358,18 @@ body.physical-phone-device .representative-analysis-body {
   resize: vertical;
 }
 
+.dagym-import-meta {
+  min-height: 18px;
+  margin: 0;
+  color: rgba(15, 59, 46, 0.64);
+  font-size: 11px;
+  font-weight: 850;
+}
+
+.dagym-import-meta.has-warning {
+  color: #a23b30;
+}
+
 .dagym-actions {
   display: flex;
   gap: 6px;
@@ -10375,9 +10387,14 @@ body.physical-phone-device .representative-analysis-body {
   font-weight: 950;
 }
 
-#dagymImportButton {
+#dagymFileButton {
   background: var(--fitness-green);
   color: var(--nordic-sheet);
+}
+
+#dagymImportButton {
+  border-color: rgba(15, 77, 58, 0.42);
+  color: var(--fitness-green);
 }
 
 #dagymCloseButton {
@@ -11429,6 +11446,11 @@ body[data-layout-mode="phone"] .dagym-actions button {
   min-height: 30px;
   padding-inline: 8px;
   font-size: 11px;
+}
+
+body[data-layout-mode="phone"] .dagym-actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
 body[data-layout-mode="phone"] #fitnessCenterCoachingList article {

@@ -4746,6 +4746,57 @@ async function checkFitnessRosterHoursAndCompactTotals(browser) {
   await page.close();
 }
 
+async function checkDagymDirectReportImport(browser) {
+  const { page, errors } = await openPage(browser, { width: 390, height: 844 });
+  const result = await page.evaluate(() => {
+    window.eval(`
+      authState.user = { id: "fitness-import-qa", email: "pjhong0@naver.com" };
+      state.profile = {
+        ...state.profile,
+        authUserId: "fitness-import-qa",
+        email: "pjhong0@naver.com",
+        name: "박주홍",
+        nickname: "센터장",
+        org: "(주)비욘드컴퍼니",
+        workplace: "비욘드 피트니스",
+        role: "센터장",
+        primaryWork: "피트니스 운영총괄",
+        approvalStatus: "approved"
+      };
+      state.selectedDateKey = "2026-08-08";
+      state.dagymDaily = {};
+      applyDagymImport(
+        "오늘 출석,128\\n신규 등록,4\\n재등록,7\\n만료 예정,11\\nPT 예약,15\\n노쇼/취소,2\\n락커 만료,3\\n결제/매출,1,250,000",
+        { source: "file", fileName: "dagym-daily-2026-08-08.csv" }
+      );
+      switchView("fitness-log");
+      state.fitnessLogPageId = "fitness-center";
+      renderFitnessCenterDaily();
+    `);
+    const record = state.dagymDaily["2026-08-08"];
+    const actions = document.querySelector(".dagym-actions");
+    return {
+      values: [record.visits, record.newMembers, record.renewals, record.expiring, record.ptBookings, record.noShows, record.lockerExpiring, record.sales],
+      source: record.importSource,
+      fileName: record.importFileName,
+      importedAt: record.importedAt,
+      meta: document.getElementById("dagymImportMeta")?.textContent?.trim() || "",
+      actionOverflow: actions ? actions.scrollWidth - actions.clientWidth : 0,
+    };
+  });
+  const expected = ["128", "4", "7", "11", "15", "2", "3", "1250000"];
+  if (JSON.stringify(result.values) !== JSON.stringify(expected)
+    || result.source !== "file"
+    || result.fileName !== "dagym-daily-2026-08-08.csv"
+    || !result.importedAt
+    || !result.meta.includes("dagym-daily-2026-08-08.csv")
+    || result.actionOverflow > 2) {
+    fail("DaGym report import should map daily metrics and fit the phone layout", JSON.stringify(result));
+  }
+  if (errors.length) fail("DaGym direct import page errors", errors.join(" | "));
+  await page.close();
+}
+
 (async () => {
   const browser = await chromium.launch({
     headless: true,
@@ -4772,6 +4823,7 @@ async function checkFitnessRosterHoursAndCompactTotals(browser) {
     await checkApprovalRepairRevealsPendingFitnessSignup(browser);
     await checkApprovalRepairMissingRpcFallsBack(browser);
     await checkDagymPreviousDayGuidanceFlow(browser);
+    await checkDagymDirectReportImport(browser);
     await checkFitnessRosterHoursAndCompactTotals(browser);
     await checkRepresentativeProfileSeparation(browser);
     await checkNonControlRoleTextDoesNotBecomeRepresentative(browser);

@@ -673,6 +673,10 @@ function createDagymDailyRecord(dateKey = todayKey) {
     ...createDagymOps(),
     dateKey,
     status: "draft",
+    importSource: "",
+    importFileName: "",
+    importedAt: "",
+    importWarnings: [],
     updatedAt: "",
     updatedBy: "",
     closedAt: "",
@@ -10053,9 +10057,27 @@ function renderDagymOpsFields() {
     closeButton.textContent = record.status === "closed" ? "마감 해제" : "마감 확정";
   }
   const importButton = document.getElementById("dagymImportButton");
+  const fileButton = document.getElementById("dagymFileButton");
+  const fileInput = document.getElementById("dagymFileInput");
   const clearButton = document.getElementById("dagymClearButton");
   if (importButton) importButton.disabled = !canManageDagymOperations();
+  if (fileButton) fileButton.disabled = !canManageDagymOperations();
+  if (fileInput) fileInput.disabled = !canManageDagymOperations();
   if (clearButton) clearButton.disabled = !canManageDagymOperations();
+  const importMeta = document.getElementById("dagymImportMeta");
+  if (importMeta) {
+    const warnings = Array.isArray(record.importWarnings) ? record.importWarnings.filter(Boolean) : [];
+    if (record.importedAt) {
+      const time = new Date(record.importedAt).toLocaleString("ko-KR", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" });
+      importMeta.textContent = `${record.importFileName || "다짐 자료"} · ${time} 반영${warnings.length ? ` · 확인 ${warnings.length}건` : ""}`;
+      importMeta.classList.toggle("has-warning", Boolean(warnings.length));
+      importMeta.title = warnings.join("\n");
+    } else {
+      importMeta.textContent = "CSV·TSV·TXT·JSON 리포트를 바로 불러올 수 있습니다.";
+      importMeta.classList.remove("has-warning");
+      importMeta.removeAttribute("title");
+    }
+  }
 }
 
 function canManageDagymOperations() {
@@ -10402,28 +10424,177 @@ function closeFitnessCoachingSheet() {
   }, 160);
 }
 
-function importDagymText() {
+const dagymImportRules = [
+  ["visits", /(?:오늘\s*)?(?:출석|입장|방문)(?:\s*(?:회원|인원|수|합계))?\D{0,12}(\d[\d,]*)/i],
+  ["newMembers", /(?:신규|신규\s*등록)(?:\s*(?:회원|인원|수|합계))?\D{0,12}(\d[\d,]*)/i],
+  ["renewals", /(?:재등록|연장|갱신)(?:\s*(?:회원|인원|수|합계))?\D{0,12}(\d[\d,]*)/i],
+  ["expiring", /(?:만료\s*예정|만료예정|만료)(?:\s*(?:회원|인원|수|합계))?\D{0,12}(\d[\d,]*)/i],
+  ["ptBookings", /(?:PT\s*예약|피티\s*예약|수업\s*예약|예약)(?:\s*(?:건수|수|합계))?\D{0,12}(\d[\d,]*)/i],
+  ["noShows", /(?:노쇼|취소|결석)(?:\s*(?:건수|수|합계))?\D{0,12}(\d[\d,]*)/i],
+  ["lockerExpiring", /(?:락커\s*만료|락커)(?:\s*(?:건수|수|합계))?\D{0,12}(\d[\d,]*)/i],
+  ["sales", /(?:매출|결제|판매)(?:\s*(?:금액|액|합계))?\D{0,12}(\d[\d,]*)/i],
+];
+
+const dagymHeaderMatchers = {
+  visits: /출석|입장|방문/,
+  newMembers: /신규(?:등록|회원)?/,
+  renewals: /재등록|갱신|연장/,
+  expiring: /만료예정|만료대상|만료회원/,
+  ptBookings: /(?:PT|피티|수업).*예약|예약.*(?:PT|피티|수업)/i,
+  noShows: /노쇼|결석|예약취소|취소건/,
+  lockerExpiring: /락커.*만료|만료.*락커/,
+  sales: /결제금액|매출액|판매금액|결제합계|매출합계/,
+};
+
+function normalizeDagymImportCell(value = "") {
+  return String(value ?? "").replace(/^\uFEFF/, "").replace(/\s+/g, " ").trim();
+}
+
+function parseDagymDelimitedRows(text = "") {
+  const normalized = String(text || "").replace(/\r\n?/g, "\n").trim();
+  if (!normalized) return [];
+  const firstLine = normalized.split("\n")[0] || "";
+  const delimiter = firstLine.includes("\t") ? "\t" : firstLine.includes(",") ? "," : "";
+  if (!delimiter) return normalized.split("\n").map((line) => [normalizeDagymImportCell(line)]).filter((row) => row[0]);
+  const rows = [];
+  let row = [];
+  let cell = "";
+  let quoted = false;
+  for (let index = 0; index < normalized.length; index += 1) {
+    const character = normalized[index];
+    if (character === '"') {
+      if (quoted && normalized[index + 1] === '"') {
+        cell += '"';
+        index += 1;
+      } else quoted = !quoted;
+    } else if (character === delimiter && !quoted) {
+      row.push(normalizeDagymImportCell(cell));
+      cell = "";
+    } else if (character === "\n" && !quoted) {
+      row.push(normalizeDagymImportCell(cell));
+      if (row.some(Boolean)) rows.push(row);
+      row = [];
+      cell = "";
+    } else cell += character;
+  }
+  row.push(normalizeDagymImportCell(cell));
+  if (row.some(Boolean)) rows.push(row);
+  return rows;
+}
+
+function parseDagymNumber(value = "") {
+  const cleaned = normalizeDagymImportCell(value).replace(/[^\d.-]/g, "");
+  if (!cleaned || !/[\d]/.test(cleaned)) return null;
+  const parsed = Number(cleaned);
+  return Number.isFinite(parsed) ? Math.max(0, parsed) : null;
+}
+
+function parseDagymJson(text = "") {
+  try {
+    const value = JSON.parse(text);
+    const rows = Array.isArray(value) ? value : Array.isArray(value?.data) ? value.data : [value];
+    if (!rows.length || !rows.every((row) => row && typeof row === "object" && !Array.isArray(row))) return [];
+    const headers = [...new Set(rows.flatMap((row) => Object.keys(row)))];
+    return [headers, ...rows.map((row) => headers.map((header) => normalizeDagymImportCell(row[header])))];
+  } catch {
+    return [];
+  }
+}
+
+function findDagymHeaderRow(rows = []) {
+  let best = { index: -1, score: 0 };
+  rows.slice(0, 12).forEach((row, index) => {
+    const joined = row.map((cell) => normalizeDagymImportCell(cell).replace(/\s+/g, "")).join("|");
+    const score = Object.values(dagymHeaderMatchers).filter((pattern) => pattern.test(joined)).length;
+    if (score > best.score) best = { index, score };
+  });
+  return best.score ? best.index : -1;
+}
+
+function mapDagymReportData(text = "", fileName = "") {
+  const normalizedText = String(text || "").replace(/^\uFEFF/, "").trim();
+  const rows = /\.json$/i.test(fileName) ? parseDagymJson(normalizedText) : parseDagymDelimitedRows(normalizedText);
+  const metrics = {};
+  const warnings = [];
+  dagymImportRules.forEach(([key, pattern]) => {
+    const match = normalizedText.match(pattern);
+    if (match) metrics[key] = match[1].replaceAll(",", "");
+  });
+  const headerIndex = findDagymHeaderRow(rows);
+  if (headerIndex >= 0) {
+    const headers = rows[headerIndex].map((cell) => normalizeDagymImportCell(cell).replace(/\s+/g, ""));
+    const dataRows = rows.slice(headerIndex + 1).filter((row) => row.some(Boolean));
+    Object.entries(dagymHeaderMatchers).forEach(([key, pattern]) => {
+      const columnIndex = headers.findIndex((header) => pattern.test(header));
+      if (columnIndex < 0) return;
+      const values = dataRows.map((row) => parseDagymNumber(row[columnIndex])).filter((value) => value !== null);
+      if (!values.length) return;
+      const header = headers[columnIndex] || "";
+      const isAmount = key === "sales" || /금액|매출|판매/.test(header);
+      const hasTotalRow = dataRows.some((row) => /합계|총계/.test(row.join(" ")));
+      const totalRowIndex = dataRows.findIndex((row) => /합계|총계/.test(row.join(" ")));
+      const value = hasTotalRow && totalRowIndex >= 0
+        ? parseDagymNumber(dataRows[totalRowIndex][columnIndex])
+        : isAmount || values.length > 1
+          ? values.reduce((sum, number) => sum + number, 0)
+          : values[0];
+      if (value !== null) metrics[key] = String(value);
+    });
+  }
+  const detected = Object.keys(metrics);
+  if (!detected.length) warnings.push("출석·등록·예약·매출 항목을 찾지 못했습니다. 다짐의 일일 리포트 파일인지 확인하세요.");
+  const essential = ["visits", "ptBookings", "sales"];
+  const missing = essential.filter((key) => metrics[key] === undefined);
+  if (detected.length && missing.length) warnings.push(`주요 항목 일부 미확인: ${missing.map((key) => ({ visits: "출석", ptBookings: "PT 예약", sales: "매출" }[key])).join(", ")}`);
+  return { metrics, warnings, rows };
+}
+
+function applyDagymImport(text = "", { source = "paste", fileName = "다짐 붙여넣기" } = {}) {
   if (!canManageDagymOperations()) return;
-  const text = document.getElementById("dagymImportText")?.value || "";
   const record = getDagymOpsForDate(getActiveDateKey());
   record.importText = text;
-  const rules = [
-    ["visits", /(?:출석|입장|방문)\D{0,12}(\d[\d,]*)/i],
-    ["newMembers", /(?:신규|신규\s*등록)\D{0,12}(\d[\d,]*)/i],
-    ["renewals", /(?:재등록|연장|갱신)\D{0,12}(\d[\d,]*)/i],
-    ["expiring", /(?:만료\s*예정|만료예정|만료)\D{0,12}(\d[\d,]*)/i],
-    ["ptBookings", /(?:PT\s*예약|피티\s*예약|수업\s*예약|예약)\D{0,12}(\d[\d,]*)/i],
-    ["noShows", /(?:노쇼|취소|결석)\D{0,12}(\d[\d,]*)/i],
-    ["lockerExpiring", /(?:락커\s*만료|락커)\D{0,12}(\d[\d,]*)/i],
-    ["sales", /(?:매출|결제|판매)\D{0,12}(\d[\d,]*)/i],
-  ];
-  rules.forEach(([key, pattern]) => {
-    const match = text.match(pattern);
-    if (match) record[key] = match[1].replaceAll(",", "");
-  });
+  const parsed = mapDagymReportData(text, fileName);
+  Object.entries(parsed.metrics).forEach(([key, value]) => { record[key] = value; });
+  record.importSource = source;
+  record.importFileName = fileName;
+  record.importedAt = new Date().toISOString();
+  record.importWarnings = parsed.warnings;
   touchDagymDailyRecord(record);
   saveState({ fastSave: true });
   renderFitnessCenterDaily();
+  const count = Object.keys(parsed.metrics).length;
+  showAppToast(count ? `다짐 자료 ${count}개 항목을 반영했습니다${parsed.warnings.length ? " · 확인 필요" : ""}` : "반영할 다짐 항목을 찾지 못했습니다");
+  return count > 0;
+}
+
+function importDagymText() {
+  const text = document.getElementById("dagymImportText")?.value || "";
+  if (!text.trim()) {
+    showAppToast("다짐 자료를 붙여넣어 주세요");
+    return false;
+  }
+  return applyDagymImport(text, { source: "paste", fileName: "다짐 붙여넣기" });
+}
+
+async function importDagymFile(file) {
+  if (!canManageDagymOperations() || !file) return false;
+  const supported = /\.(csv|tsv|txt|json)$/i.test(file.name || "");
+  if (!supported) {
+    showAppToast("다짐 리포트는 CSV·TSV·TXT·JSON 형식으로 저장해 주세요");
+    return false;
+  }
+  try {
+    const text = await file.text();
+    if (!text.trim()) {
+      showAppToast("선택한 다짐 파일이 비어 있습니다");
+      return false;
+    }
+    return applyDagymImport(text, { source: "file", fileName: file.name || "다짐 리포트" });
+  } catch (error) {
+    console.warn("Failed to import Dagym report", error);
+    showAppToast("다짐 파일을 읽지 못했습니다");
+    return false;
+  }
 }
 
 function clearDagymOps() {
@@ -20200,6 +20371,15 @@ document.getElementById("dagymImportText")?.addEventListener("input", (event) =>
   saveState({ fastSave: true });
 });
 document.getElementById("dagymImportButton")?.addEventListener("click", importDagymText);
+document.getElementById("dagymFileButton")?.addEventListener("click", () => {
+  if (!canManageDagymOperations()) return;
+  document.getElementById("dagymFileInput")?.click();
+});
+document.getElementById("dagymFileInput")?.addEventListener("change", async (event) => {
+  const file = event.target.files?.[0];
+  await importDagymFile(file);
+  event.target.value = "";
+});
 document.getElementById("dagymClearButton")?.addEventListener("click", clearDagymOps);
 document.getElementById("dagymCloseButton")?.addEventListener("click", toggleDagymDailyClose);
 document.getElementById("fitnessGuidanceGenerateButton")?.addEventListener("click", () => generateTodayFitnessGuidance());
