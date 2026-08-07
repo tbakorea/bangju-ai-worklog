@@ -25738,6 +25738,95 @@ body.is-fitness-focus-open.is-fitness-coaching-open .fitness-coaching-sheet {
   }
 }
 
+/* Live schedule clock and stable time column. */
+.schedule-current-clock {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 70px;
+  min-height: 28px;
+  border: 1px solid rgba(197, 52, 46, 0.2);
+  border-radius: 999px;
+  background: rgba(197, 52, 46, 0.08);
+  color: #a72f2b;
+  padding: 4px 8px;
+  font-size: 11px;
+  font-weight: 950;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+  white-space: nowrap;
+  margin: 6px 8px 0 auto;
+}
+
+.schedule-current-clock[hidden] {
+  display: none !important;
+}
+
+#view-today .appointment-time,
+#view-fitness-log .appointment-time,
+#view-fitness-log .fitness-log-schedule-panel .appointment-time,
+#view-fitness-log .fitness-log-schedule-panel .fitness-appointment-row.is-current .appointment-time {
+  display: inline-flex !important;
+  align-items: center;
+  width: 6.1ch !important;
+  min-width: 6.1ch !important;
+  max-width: 6.1ch !important;
+  overflow: visible !important;
+  font-size: clamp(11px, 1.35vw, 14px) !important;
+  font-variant-numeric: tabular-nums !important;
+  letter-spacing: -0.035em !important;
+  line-height: 1 !important;
+  text-align: left !important;
+  white-space: nowrap !important;
+  word-break: normal !important;
+  overflow-wrap: normal !important;
+}
+
+#view-today .appointment-row,
+#view-fitness-log .fitness-log-schedule-panel .fitness-appointment-row {
+  grid-template-columns: minmax(6.1ch, 6.1ch) minmax(0, 1fr) 28px !important;
+}
+
+/* Center operation sheets should be content-height cards, not tall blank paper. */
+.overview-fitness-center-sheet,
+.overview-fitness-ops-compact {
+  grid-template-rows: auto auto auto !important;
+  min-height: 0 !important;
+  height: auto !important;
+  align-content: start;
+}
+
+.overview-fitness-center-sheet .overview-fitness-roster,
+.overview-fitness-center-sheet .overview-fitness-roster > div {
+  min-height: 0 !important;
+  height: auto !important;
+  max-height: 210px !important;
+  align-content: start;
+}
+
+.worklog-overview-grid.is-fitness-scope .overview-site-carousel {
+  align-items: flex-start !important;
+}
+
+.worklog-overview-grid.is-fitness-scope .overview-fitness-center-sheet {
+  align-self: flex-start !important;
+}
+
+#fitnessCenterDailyPanel {
+  min-height: 0 !important;
+  height: auto !important;
+  align-content: start;
+}
+
+@media (max-width: 640px) {
+  .schedule-current-clock {
+    min-width: 58px;
+    min-height: 24px;
+    padding-inline: 6px;
+    font-size: 9px;
+  }
+}
+
 /* Final display guard: responsive canvas rules must never reveal inactive pages. */
 .worklog-shell > .worklog-view:not(.is-active) {
   display: none !important;

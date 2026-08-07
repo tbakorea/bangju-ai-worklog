@@ -787,6 +787,7 @@ var state = loadState();
 let dateSlideTimer = 0;
 let verticalDateSwipeTimer = 0;
 let verticalDateSwipeAnimating = false;
+let liveClockTimer = 0;
 let calendarViewDate = parseDateKey(todayKey);
 let calendarPickerMode = "worklog";
 let calendarPostponeTask = null;
@@ -839,6 +840,36 @@ function restoreTodayAfterAppResume() {
   if (authState.user) loadRemoteWorklogForActiveDate();
 }
 
+function refreshCurrentTimeIndicators() {
+  const now = new Date();
+  const liveTodayKey = formatDateKey(now);
+  if (todayKey !== liveTodayKey) {
+    restoreTodayAfterAppResume();
+    return;
+  }
+  const isToday = getActiveDateKey() === liveTodayKey;
+  const label = `현재 ${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
+  document.querySelectorAll(".schedule-current-clock").forEach((clock) => {
+    clock.hidden = !isToday;
+    clock.textContent = label;
+    clock.dateTime = now.toISOString();
+  });
+  const currentMinutes = now.getHours() * 60 + now.getMinutes();
+  document.querySelectorAll("[data-schedule-time]").forEach((row) => {
+    const scheduleUnit = row.closest("#fitnessAppointmentList")
+      ? (getSelectedLog()?.scheduleUnit === "60" ? 60 : 30)
+      : (getSelectedLog()?.scheduleUnit === "60" ? 60 : 30);
+    const start = timeToMinutes(row.dataset.scheduleTime);
+    row.classList.toggle("is-current", Boolean(isToday && Number.isFinite(start) && currentMinutes >= start && currentMinutes < start + scheduleUnit));
+  });
+}
+
+function startLiveClock() {
+  clearInterval(liveClockTimer);
+  refreshCurrentTimeIndicators();
+  liveClockTimer = window.setInterval(refreshCurrentTimeIndicators, 30 * 1000);
+}
+
 function createState() {
   const profileEmployee = {
     id: "profile-user",
@@ -867,6 +898,7 @@ function createState() {
     fitnessCenterReports: {},
     worklogReportSubmissions: {},
     fitnessLogPage: 1,
+    fitnessLogPageId: "beyond-fitness-manager",
     fitnessCenterMonth: todayKey.slice(0, 7),
     fitnessCenterMonthSourceDateKey: todayKey,
     fitnessWritableEmployeeId: "beyond-fitness-manager",
@@ -975,6 +1007,7 @@ function normalizeState() {
   }
   state.selectedDateKey ||= todayKey;
   state.fitnessLogPage = Number.isFinite(Number(state.fitnessLogPage)) ? Number(state.fitnessLogPage) : 1;
+  state.fitnessLogPageId = String(state.fitnessLogPageId || "");
   state.staffMasterTab = ["staff-list", "approval", "permission", "manual", "growth"].includes(state.staffMasterTab)
     ? state.staffMasterTab
     : "staff-list";
@@ -2307,6 +2340,7 @@ function syncFitnessWritableEmployeeFromProfile() {
   state.fitnessWritableEmployeeId = id;
   state.selectedEmployeeId = id;
   state.fitnessLogPage = 1;
+  state.fitnessLogPageId = id;
 }
 
 function getFitnessPageDisplayLabel(page = getCurrentFitnessLogPage()) {
@@ -2338,13 +2372,29 @@ function getFitnessLogPages() {
   }))];
 }
 
-function clampFitnessLogPage(index = state.fitnessLogPage) {
+function clampFitnessLogPage(index) {
   const pages = getFitnessLogPages();
-  return Math.max(0, Math.min(pages.length - 1, Number(index) || 0));
+  const selectedEmployeePageIndex = index === undefined && state.fitnessLogPageId !== "fitness-center"
+    ? pages.findIndex((page) => page.type === "employee" && page.id === state.selectedEmployeeId)
+    : -1;
+  const pageIdIndex = selectedEmployeePageIndex >= 0
+    ? selectedEmployeePageIndex
+    : index === undefined && state.fitnessLogPageId
+      ? pages.findIndex((page) => page.id === state.fitnessLogPageId)
+      : -1;
+  const requestedIndex = pageIdIndex >= 0 ? pageIdIndex : Number(index ?? state.fitnessLogPage) || 0;
+  return Math.max(0, Math.min(pages.length - 1, requestedIndex));
 }
 
 function getCurrentFitnessLogPage() {
-  return getFitnessLogPages()[clampFitnessLogPage()] || getFitnessLogPages()[1];
+  const pages = getFitnessLogPages();
+  const pageIndex = clampFitnessLogPage();
+  const page = pages[pageIndex] || pages[1];
+  if (page) {
+    state.fitnessLogPage = pageIndex;
+    state.fitnessLogPageId = page.id;
+  }
+  return page;
 }
 
 function getFitnessIdentityEmployee() {
@@ -2587,6 +2637,7 @@ function setFitnessLogPage(index) {
   const pageIndex = clampFitnessLogPage(index);
   const page = getFitnessLogPages()[pageIndex];
   state.fitnessLogPage = pageIndex;
+  state.fitnessLogPageId = page?.id || "fitness-center";
   if (page?.type === "employee") state.selectedEmployeeId = page.id;
   saveState({ fastSave: true });
   renderAll();
@@ -4573,6 +4624,7 @@ function setupWorklogOverviewInteractions(grid, dateKey) {
   grid.querySelectorAll("[data-overview-fitness-center]").forEach((button) => {
     button.addEventListener("click", () => {
       state.fitnessLogPage = 0;
+      state.fitnessLogPageId = "fitness-center";
       saveState({ fastSave: true });
       switchView("fitness-log");
     });
@@ -4599,7 +4651,10 @@ function setupWorklogOverviewInteractions(grid, dateKey) {
       state.selectedEmployeeId = employeeId;
       if (targetView === "fitness-log") {
         const targetPageIndex = getFitnessLogPages().findIndex((page) => page.type === "employee" && page.id === employeeId);
-        if (targetPageIndex >= 0) state.fitnessLogPage = targetPageIndex;
+        if (targetPageIndex >= 0) {
+          state.fitnessLogPage = targetPageIndex;
+          state.fitnessLogPageId = employeeId;
+        }
       }
       saveState({ fastSave: true });
       switchView(targetView);
@@ -9333,6 +9388,7 @@ function renderEntries() {
   renderTodayContext();
   renderRepresentativeEmployeeAnalysis(activeView);
   renderReport();
+  refreshCurrentTimeIndicators();
   applyMobileDayFocusMode();
   applyCurrentWorklogPermissionState();
 }
@@ -11493,6 +11549,7 @@ function renderFitnessAppointmentRow(entry, log) {
   const filledItems = items.filter((item) => String(item.text || "").trim());
   const value = getScheduleEntryText(entry);
   const row = document.createElement("div");
+  row.dataset.scheduleTime = entry.time;
   row.className = `appointment-row multi-appointment-row fitness-appointment-row ${value.trim() ? "is-filled" : ""} ${isCurrentScheduleSlot(entry, log) ? "is-current" : ""}`;
   row.innerHTML = `
     <span class="appointment-time">${escapeHtml(entry.time)}</span>
@@ -11509,6 +11566,7 @@ function renderFitnessAppointmentRow(entry, log) {
 function renderAppointmentRow(entry, log, scope = "worklog") {
   const items = normalizeScheduleEntryItems(entry);
   const row = document.createElement("div");
+  row.dataset.scheduleTime = entry.time;
   const value = getScheduleEntryText(entry);
   row.className = `appointment-row multi-appointment-row plain-appointment-row ${value.trim() ? "is-filled" : ""} ${isCurrentScheduleSlot(entry, log) ? "is-current" : ""}`;
   row.innerHTML = `
@@ -19878,7 +19936,12 @@ document.addEventListener("visibilitychange", () => {
   if (activeView === "worklog-overview" && canAccessAllWorklogs()) refreshVisibleStaffWorklogsForActiveDate();
 });
 window.addEventListener("pageshow", (event) => {
-  if (event.persisted) restoreTodayAfterAppResume();
+  restoreTodayAfterAppResume();
+  refreshCurrentTimeIndicators();
+});
+window.addEventListener("focus", () => {
+  restoreTodayAfterAppResume();
+  refreshCurrentTimeIndicators();
 });
 document.addEventListener("keydown", (event) => {
   if (event.key === "Escape" && fitnessMobileFocusMode !== "split") resetFitnessMobileFocusToSplit({ blur: true });
@@ -19897,5 +19960,6 @@ clearAuthFormCredentials();
 setAuthRegistrationVisible(false, { clear: false });
 renderAuthStatus("로그인 또는 직원등록을 진행해주세요.");
 renderAll();
+startLiveClock();
 switchView("auth");
 initializeAuth();

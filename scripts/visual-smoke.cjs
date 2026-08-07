@@ -208,6 +208,59 @@ async function checkTabletRepresentativeWorklogChrome(browser) {
     || shortLandscapeWorklog.coworkerDisplay === "none" || shortLandscapeWorklog.horizontalOverflow > 2) {
     fail("short landscape employee worklog should show personal and coworker pages continuously", JSON.stringify(shortLandscapeWorklog));
   }
+  const liveFitnessMetrics = await page.evaluate(() => {
+    setSelectedDateKey(todayKey);
+    const pages = getFitnessLogPages();
+    const employeePage = pages.find((page) => page.type === "employee" && page.id === "fitness-info-kimyoungchae")
+      || pages.find((page) => page.type === "employee");
+    state.fitnessLogPage = pages.indexOf(employeePage);
+    state.fitnessLogPageId = employeePage?.id || "";
+    state.selectedEmployeeId = employeePage?.id || state.selectedEmployeeId;
+    switchView("fitness-log");
+    state.fitnessLogPage = 1;
+    renderAll();
+    refreshCurrentTimeIndicators();
+    const currentPage = getCurrentFitnessLogPage();
+    const clock = document.querySelector("#fitnessCurrentTime");
+    const time = document.querySelector("#fitnessAppointmentList .appointment-time");
+    const centerSheet = (() => {
+      state.worklogOverviewScope = "fitness";
+      switchView("worklog-overview");
+      return document.querySelector(".overview-fitness-center-sheet")?.getBoundingClientRect();
+    })();
+    return {
+      selectedPageId: currentPage?.id || "",
+      intendedPageId: employeePage?.id || "",
+      selectedPageType: currentPage?.type || "",
+      clockText: clock?.textContent?.trim() || "",
+      clockHidden: Boolean(clock?.hidden),
+      timeText: time?.textContent?.trim() || "",
+      timeSingleLine: !time || time.scrollHeight <= time.clientHeight + 2,
+      centerSheetHeight: centerSheet?.height || 0,
+      horizontalOverflow: document.documentElement.scrollWidth - window.innerWidth,
+    };
+  });
+  if (!liveFitnessMetrics.intendedPageId || liveFitnessMetrics.selectedPageId !== liveFitnessMetrics.intendedPageId
+    || liveFitnessMetrics.selectedPageType !== "employee") {
+    fail("representative fitness employee page should survive rerenders without returning to center operations", JSON.stringify(liveFitnessMetrics));
+  }
+  if (liveFitnessMetrics.clockHidden || !/^현재 \d{2}:\d{2}$/.test(liveFitnessMetrics.clockText)
+    || !/^\d{2}:\d{2}$/.test(liveFitnessMetrics.timeText) || !liveFitnessMetrics.timeSingleLine) {
+    fail("fitness schedule should show live time and keep schedule times on one line", JSON.stringify(liveFitnessMetrics));
+  }
+  if (liveFitnessMetrics.centerSheetHeight > 560 || liveFitnessMetrics.horizontalOverflow > 2) {
+    fail("fitness center overview should not reserve a tall empty sheet", JSON.stringify(liveFitnessMetrics));
+  }
+  const rolloverDate = await page.evaluate(() => {
+    const liveDateKey = formatDateKey(new Date());
+    todayKey = getPreviousDateKey(liveDateKey);
+    state.selectedDateKey = todayKey;
+    refreshCurrentTimeIndicators();
+    return { liveDateKey, todayKey, selectedDateKey: state.selectedDateKey };
+  });
+  if (rolloverDate.todayKey !== rolloverDate.liveDateKey || rolloverDate.selectedDateKey !== rolloverDate.liveDateKey) {
+    fail("a long-open app should automatically roll from a stale date to the live date", JSON.stringify(rolloverDate));
+  }
   const resumedDate = await page.evaluate(() => {
     authState.user = null;
     state.selectedDateKey = getPreviousDateKey(todayKey);
@@ -3199,6 +3252,7 @@ async function checkFitnessCenterReportConfirmation(browser) {
       state.selectedDateKey = "2026-07-24";
       state.fitnessWritableEmployeeId = "beyond-fitness-manager";
       state.fitnessLogPage = 0;
+      state.fitnessLogPageId = "fitness-center";
       authState.approvalRows = [{
         id: "remote-dabin",
         email: "dabin@example.com",
@@ -4327,6 +4381,7 @@ async function checkDagymPreviousDayGuidanceFlow(browser) {
       };
       state.selectedDateKey = "2026-08-05";
       state.fitnessLogPage = 0;
+      state.fitnessLogPageId = "fitness-center";
       state.fitnessDailyGuidance = {};
       state.dagymDaily = {
         "2026-08-04": {
