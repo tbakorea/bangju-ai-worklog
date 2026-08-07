@@ -2397,6 +2397,20 @@ async function checkPriorityCarryoverAndDateRules(browser) {
       { id: "postpone-task", priority: "C", text: "연기 업무", status: "연기", done: false, postponeDate: "2026-08-10" }
     ];
     const currentLog = createEmployeeLog(employee, state.profile, activeDateKey);
+    const originalTodayKey = todayKey;
+    todayKey = sourceDateKey;
+    const futureBeforeArrival = isWorklogTaskDueForDate(sourceLog.tasks[0], sourceDateKey, activeDateKey);
+    todayKey = activeDateKey;
+    const nextDayArrived = isWorklogTaskDueForDate(sourceLog.tasks[0], sourceDateKey, activeDateKey);
+    todayKey = "2026-08-09";
+    const postponedBeforeDate = isWorklogTaskDueForDate(sourceLog.tasks[6], sourceDateKey, "2026-08-09");
+    todayKey = "2026-08-10";
+    const postponedDateArrived = hasWorklogCarryoverDateArrived("2026-08-10")
+      && getWorklogTaskRolloverDate(sourceLog.tasks[6], sourceDateKey) === "2026-08-10";
+    const postponedFutureDay = isWorklogTaskDueForDate(sourceLog.tasks[6], sourceDateKey, "2026-08-11");
+    todayKey = "2026-08-11";
+    const postponedNextDayArrived = isWorklogTaskDueForDate(sourceLog.tasks[6], sourceDateKey, "2026-08-11");
+    todayKey = originalTodayKey;
     state.selectedDateKey = activeDateKey;
     state.selectedEmployeeId = "bangju-finance-manager";
     state.employeeLogs = {
@@ -2420,6 +2434,28 @@ async function checkPriorityCarryoverAndDateRules(browser) {
     const delegatedDecoration = getComputedStyle(delegatedRow.querySelector(".task-text-input")).textDecorationLine;
     const delegatedSelect = delegatedRow.querySelector(".priority-select");
     const delegatedOptionCounts = ["위임", "연기"].map((value) => delegatedSelect.querySelectorAll('option[value="' + value + '"]').length);
+    const postponedPreviewTask = { ...sourceLog.tasks[6] };
+    const postponedPreviewRow = renderWorklogTaskRow({
+      task: postponedPreviewTask,
+      index: 6,
+      log: sourceLog,
+      sourceDateKey,
+      isCarryover: true,
+      isPostponedFromOtherDate: true
+    }, currentLog);
+    document.body.appendChild(postponedPreviewRow);
+    const postponedPreview = {
+      hasPostponeStrike: postponedPreviewRow.classList.contains("status-postpone"),
+      selectedValue: postponedPreviewRow.querySelector(".priority-select")?.value || ""
+    };
+    const postponedMaterialized = materializeWorklogCarryover({
+      task: postponedPreviewTask,
+      index: 6,
+      log: sourceLog,
+      sourceDateKey,
+      isCarryover: true,
+      isPostponedFromOtherDate: true
+    }, currentLog).task;
     const priorityActionTask = { priority: "A", text: "메뉴 처리 검증", status: "미완료", done: false };
     updateWorklogTaskPriority(priorityActionTask, "위임");
     const delegatedFromMenu = { status: priorityActionTask.status, priority: priorityActionTask.priority };
@@ -2438,6 +2474,7 @@ async function checkPriorityCarryoverAndDateRules(browser) {
       return document.getElementById("taskStatusGuide")?.textContent || "";
     });
     delegatedRow.remove();
+    postponedPreviewRow.remove();
     return JSON.stringify({
       carryoverIds: carryovers.map((ref) => ref.task.id),
       sourceStatus: sourceLog.tasks[0].status,
@@ -2454,6 +2491,15 @@ async function checkPriorityCarryoverAndDateRules(browser) {
       restoredPriority,
       cycleStatuses,
       cycleGuideLabels,
+      futureBeforeArrival,
+      nextDayArrived,
+      postponedBeforeDate,
+      postponedDateArrived,
+      postponedFutureDay,
+      postponedNextDayArrived,
+      postponedPreview,
+      postponedMaterializedStatus: postponedMaterialized.status,
+      postponedMaterializedDate: postponedMaterialized.postponeDate,
       previousBeforeNoon: isWithinWorklogEditWindow("2026-08-02", new Date(2026, 7, 3, 11, 59)),
       previousAtNoon: isWithinWorklogEditWindow("2026-08-02", new Date(2026, 7, 3, 12, 0)),
       olderDate: isWithinWorklogEditWindow("2026-08-01", new Date(2026, 7, 3, 9, 0)),
@@ -2463,6 +2509,14 @@ async function checkPriorityCarryoverAndDateRules(browser) {
   const parsed = JSON.parse(metrics);
   if (parsed.carryoverIds.join(",") !== "open-task,progress-task,spaced-progress-task") {
     fail("only unresolved priority tasks should carry into the next day", metrics);
+  }
+  if (parsed.futureBeforeArrival || !parsed.nextDayArrived || parsed.postponedBeforeDate
+    || !parsed.postponedDateArrived || parsed.postponedFutureDay || !parsed.postponedNextDayArrived) {
+    fail("priority work should roll one reached day at a time and postponed work should start only on its chosen date", metrics);
+  }
+  if (parsed.postponedPreview.hasPostponeStrike || parsed.postponedPreview.selectedValue === "연기"
+    || parsed.postponedMaterializedStatus !== "미완료" || parsed.postponedMaterializedDate) {
+    fail("postponed work should reopen as an unresolved event on its reached date", metrics);
   }
   if (parsed.sourceStatus !== "미완료" || parsed.sourceDeletedFrom !== "2026-08-03"
     || parsed.targetStatus !== "완료" || parsed.targetSourceDate !== "2026-08-02") {

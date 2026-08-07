@@ -1209,6 +1209,26 @@ function isWorklogTaskCarryoverEligible(task = {}) {
   );
 }
 
+function hasWorklogCarryoverDateArrived(activeDateKey = getActiveDateKey()) {
+  return Boolean(activeDateKey && activeDateKey <= todayKey);
+}
+
+function getWorklogTaskRolloverDate(task = {}, sourceDateKey = "") {
+  const status = normalizeWorklogTaskStatus(task.status || "미완료");
+  const postponeDate = String(task.postponeDate || "").trim();
+  if (status === "연기" && postponeDate > sourceDateKey) return postponeDate;
+  return sourceDateKey;
+}
+
+function isWorklogTaskDueForDate(task = {}, sourceDateKey = "", activeDateKey = getActiveDateKey()) {
+  if (!hasWorklogCarryoverDateArrived(activeDateKey)) return false;
+  const rolloverDate = getWorklogTaskRolloverDate(task, sourceDateKey);
+  if (!rolloverDate || rolloverDate >= activeDateKey) return false;
+  const status = normalizeWorklogTaskStatus(task.status || "미완료");
+  if (status === "연기") return Boolean(task.postponeDate && task.postponeDate < activeDateKey);
+  return isWorklogTaskCarryoverEligible(task);
+}
+
 function getSelectedEmployee() {
   return getProfileEmployeeForMappedSlot(state.selectedEmployeeId)
     || findEmployeeRecordById(state.selectedEmployeeId)
@@ -11101,9 +11121,12 @@ function getWorklogTaskRefs(log) {
       (sourceLog?.tasks || []).forEach((task, index) => {
         task.id ||= `task-${dateKey}-${index}`;
         const deletedFrom = String(task.carryoverDeletedFrom || "");
-        const isPostponedHere = task.status === "연기" && task.postponeDate === activeDateKey;
+        const rolloverDate = getWorklogTaskRolloverDate(task, dateKey);
+        const isPostponedHere = task.status === "연기"
+          && task.postponeDate === activeDateKey
+          && hasWorklogCarryoverDateArrived(activeDateKey);
         const isOpenCarryover = Boolean(
-          isWorklogTaskCarryoverEligible(task)
+          isWorklogTaskDueForDate(task, dateKey, activeDateKey)
           && (!deletedFrom || deletedFrom > activeDateKey)
         );
         if (isOpenCarryover || isPostponedHere) {
@@ -11113,7 +11136,7 @@ function getWorklogTaskRefs(log) {
             log: sourceLog,
             sourceDateKey: dateKey,
             isCarryover: isOpenCarryover,
-            isPostponedFromOtherDate: isPostponedHere,
+            isPostponedFromOtherDate: task.status === "연기" && rolloverDate <= activeDateKey,
           });
         }
       });
@@ -11133,7 +11156,7 @@ function getWorklogCarryoverForkKey(ref = {}) {
 }
 
 function materializeWorklogCarryover(ref, currentLog) {
-  if (!ref?.isCarryover) return ref;
+  if (!ref?.isCarryover && !ref?.isPostponedFromOtherDate) return ref;
   const forkKey = getWorklogCarryoverForkKey(ref);
   let targetIndex = (currentLog.tasks || []).findIndex((task) => task.carryoverForkFrom === forkKey);
   if (targetIndex < 0) {
@@ -11145,6 +11168,11 @@ function materializeWorklogCarryover(ref, currentLog) {
       carryoverForkFrom: forkKey,
       carryoverSourceDate: ref.sourceDateKey,
     };
+    if (ref.isPostponedFromOtherDate) {
+      targetTask.status = "미완료";
+      targetTask.done = false;
+      targetTask.postponeDate = "";
+    }
     const blankIndex = (currentLog.tasks || []).findIndex((task) => !isActiveTask(task));
     if (blankIndex >= 0) {
       currentLog.tasks[blankIndex] = targetTask;
@@ -11176,17 +11204,20 @@ function getPrioritySortValue(priority = "?") {
 function renderWorklogTaskRow(ref, currentLog, options = {}) {
   const { task, index, log, isCarryover, isPostponedFromOtherDate, sourceDateKey } = ref;
   const viewName = options.view || activeView;
+  const displayTask = isPostponedFromOtherDate
+    ? { ...task, status: "미완료", done: false, postponeDate: "" }
+    : task;
   const row = document.createElement("div");
-  const marker = getWorklogTaskMarker(task);
-  const statusClass = getWorklogTaskStatusClass(task);
-  row.className = `worklog-task-row task-row priority-${String(task.priority || "?").toLowerCase()} marker-${marker} ${statusClass} ${task.done ? "done" : ""} ${isCarryover ? "is-carryover" : ""} ${isPostponedFromOtherDate ? "is-postponed-in" : ""}`;
+  const marker = getWorklogTaskMarker(displayTask);
+  const statusClass = getWorklogTaskStatusClass(displayTask);
+  row.className = `worklog-task-row task-row priority-${String(displayTask.priority || "?").toLowerCase()} marker-${marker} ${statusClass} ${displayTask.done ? "done" : ""} ${isCarryover ? "is-carryover" : ""} ${isPostponedFromOtherDate ? "is-postponed-in" : ""}`;
   row.innerHTML = `
-    <button class="task-cycle" type="button" aria-label="상태 변경: 완료, 진행중, 해제 순환">${getWorklogTaskMarkerLabel(task)}</button>
-    <div class="task-status-cell">${renderTaskMetaControl(task)}</div>
+    <button class="task-cycle" type="button" aria-label="상태 변경: 완료, 진행중, 해제 순환">${getWorklogTaskMarkerLabel(displayTask)}</button>
+    <div class="task-status-cell">${renderTaskMetaControl(displayTask)}</div>
     <div class="task-text-cell">
-      <input class="task-text-input" type="text" value="${escapeAttr(task.text)}" placeholder="업무 내용" aria-label="주요업무" />
-      ${renderTaskActionControl(task)}
-      ${renderWorklogTaskTags(getWorklogTaskTags(task))}
+      <input class="task-text-input" type="text" value="${escapeAttr(displayTask.text)}" placeholder="업무 내용" aria-label="주요업무" />
+      ${renderTaskActionControl(displayTask)}
+      ${renderWorklogTaskTags(getWorklogTaskTags(displayTask))}
       ${(isCarryover || isPostponedFromOtherDate) ? `<span class="task-origin-tag">${escapeHtml(formatShortDate(sourceDateKey))} 이월</span>` : ""}
     </div>
     <button class="task-delete" type="button" aria-label="업무 삭제">×</button>
@@ -11219,7 +11250,7 @@ function renderWorklogTaskRow(ref, currentLog, options = {}) {
   };
   row.querySelector(".task-delete").onclick = () => {
     if (!guardWorklogEdit(viewName)) return;
-    if (isCarryover) {
+    if (isCarryover || isPostponedFromOtherDate) {
       task.carryoverDeletedFrom = getActiveDateKey();
       saveState();
       renderEntries();

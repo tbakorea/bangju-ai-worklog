@@ -139,11 +139,16 @@ check(
 );
 
 check(
-  "in-progress priority work carries over across status spellings",
+  "priority work carries over only after each date arrives",
   /function normalizeWorklogTaskStatus[\s\S]{0,260}\["진행", "진행중", "처리중"\]/.test(js)
     && /function isWorklogTaskCarryoverEligible[\s\S]{0,420}isInProgress[\s\S]{0,220}!\["완료", "취소", "위임", "연기"\]\.includes\(status\)/.test(js)
-    && /function getWorklogTaskRefs[\s\S]{0,1800}isWorklogTaskCarryoverEligible\(task\)/.test(js),
-  "진행중/진행 중/legacy 진행 tasks should remain visible on following dates"
+    && js.includes("function hasWorklogCarryoverDateArrived")
+    && js.includes("activeDateKey <= todayKey")
+    && js.includes("function getWorklogTaskRolloverDate")
+    && js.includes("postponeDate > sourceDateKey")
+    && js.includes("function isWorklogTaskDueForDate")
+    && js.includes("isWorklogTaskDueForDate(task, dateKey, activeDateKey)"),
+  "unfinished work must wait for the next date, while postponed work starts on its selected date"
 );
 
 check(
