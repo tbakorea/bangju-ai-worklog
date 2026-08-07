@@ -3399,8 +3399,8 @@ async function checkFitnessCenterReportConfirmation(browser) {
       const log = getEmployeeLogForDate("beyond-fitness-manager", "2026-07-24");
       log.clockIn = "06:00";
       log.clockOut = "12:00";
-      log.fitnessOps = { ...createFitnessOps(), ptRegular: "2", consultation: "1" };
-      log.fitnessOpsManual = { ...createFitnessOpsManual(), ptRegular: true, consultation: true };
+      log.fitnessOps = { ...createFitnessOps(), ptRegular: "2", consultation: "1", dayPass: "1", contractOther: "1", outsideSales: "1", customerOther: "1" };
+      log.fitnessOpsManual = { ...createFitnessOpsManual(), ptRegular: true, consultation: true, dayPass: true, contractOther: true, outsideSales: true, customerOther: true };
       const priorManagerLog = getEmployeeLogForDate("beyond-fitness-manager", "2026-07-23");
       priorManagerLog.fitnessOps = { ...createFitnessOps(), ptRegular: "3", ptFree: "1" };
       priorManagerLog.fitnessOpsManual = { ...createFitnessOpsManual(), ptRegular: true, ptFree: true };
@@ -3610,6 +3610,7 @@ async function checkFitnessCenterReportConfirmation(browser) {
     attendanceWarningText: document.querySelector("#fitnessReportPreview .fitness-paper-warning-banner")?.textContent?.replace(/\s+/g, " ").trim() || "",
     warningColor: getComputedStyle(document.querySelector("#fitnessReportPreview .fitness-paper-warning-banner") || document.body).color,
     weatherText: document.querySelector("#fitnessReportPreview .fitness-paper-approval")?.textContent?.replace(/\s+/g, " ").trim() || "",
+    ledgerCount: document.querySelectorAll("#fitnessReportPreview [data-report-ledger]").length,
     reportContentFits: (() => {
       const report = document.querySelector("#fitnessReportPreview .fitness-report-page");
       return !report || report.scrollHeight <= report.clientHeight + 2;
@@ -3636,10 +3637,11 @@ async function checkFitnessCenterReportConfirmation(browser) {
     || !reportState.warningColor.includes("177, 38, 38")
     || !reportState.reportContentFits
     || !reportState.weatherText.includes("맑음")
-    || !reportState.weatherText.includes("24°/31°")) {
+    || !reportState.weatherText.includes("24°/31°")
+    || reportState.ledgerCount !== 2) {
     fail("center report should show current weather, Dagym changes, red warnings, and 48-hour attendance correction guidance", JSON.stringify(reportState));
   }
-  ["명일 예정업무", "전체 직원 운영기록", "유료PT", "무료PT", "기타PT", "신규", "재등록", "상담", "아웃바운드", "인바운드", "특이사항", "오늘의 기록", "담당", "팀장", "센터장"].forEach((label) => {
+  ["명일 예정업무", "출결현황", "PT수업", "유료PT", "무료PT", "계약현황", "신규", "재등록", "일일권", "고객관리", "인바운드", "아웃바운드", "외부영업", "상담", "소계", "비고", "오늘의 기록", "담당", "팀장", "센터장"].forEach((label) => {
     if (!reportState.previewText.includes(label)) {
       fail("fitness center report should preserve handwritten report fields", `${label} missing`);
     }
@@ -3649,7 +3651,7 @@ async function checkFitnessCenterReportConfirmation(browser) {
       fail("fitness center report should include approved staff attendance records", `${label} missing`);
     }
   });
-  ["출결현황 / PT수업", "계약현황 / 고객관리", "시간별 세부업무", "근태"].forEach((label) => {
+  ["시간별 세부업무", "근태"].forEach((label) => {
     if (reportState.previewText.includes(label)) {
       fail("fitness center report should use the compact center operations sheet", `${label} should be removed`);
     }

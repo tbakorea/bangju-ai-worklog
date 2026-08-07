@@ -304,8 +304,21 @@ check(
 check(
   "fitness monthly totals include every quantity field",
   /Object\.keys\(ops\)\.forEach\(\(key\)[\s\S]{0,240}ops\[key\] = String\(numberValue\(ops\[key\]\) \+ numberValue\(dayOps\[key\]\)/.test(js)
-    && /summary\.dayPass \+= numberValue\(row\.ops\.dayPass\)[\s\S]{0,300}summary\.outsideSales \+= numberValue\(row\.ops\.outsideSales\)/.test(js),
-  "PT, contracts, consultation, inbound/outbound, day passes, and outside sales must all roll up"
+    && /summary\.dayPass \+= numberValue\(row\.ops\.dayPass\)[\s\S]{0,420}summary\.customerOther \+= numberValue\(row\.ops\.customerOther\)/.test(js),
+  "PT, contracts, customer management, day passes, and other activity fields must all roll up"
+);
+
+check(
+  "fitness center reports preserve the handwritten ledger structure",
+  html.includes('data-fitness-field="contractOther"')
+    && html.includes('data-fitness-field="customerOther"')
+    && js.includes('data-report-ledger="attendance-pt"')
+    && js.includes('data-report-ledger="contract-customer"')
+    && js.includes("출결현황 · PT수업")
+    && js.includes("계약현황 · 고객관리")
+    && /contractTotal: customerNew \+ customerRenewal \+ dayPass \+ contractOther/.test(js)
+    && /customerTotal: inbound \+ outbound \+ outsideSales \+ consultation \+ customerOther/.test(js),
+  "attendance, PT, contracts, customer management, subtotals, and other fields must remain linked from entry to report"
 );
 
 check(

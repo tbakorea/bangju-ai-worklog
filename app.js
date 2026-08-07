@@ -630,10 +630,12 @@ function createFitnessOps() {
     customerNew: "",
     customerRenewal: "",
     dayPass: "",
+    contractOther: "",
     consultation: "",
     inbound: "",
     outbound: "",
     outsideSales: "",
+    customerOther: "",
     shiftNote: "",
     specialReport: "",
   };
@@ -9659,14 +9661,16 @@ function renderFitnessCenterDaily() {
     summary.new += numberValue(row.ops.customerNew);
     summary.renewal += numberValue(row.ops.customerRenewal);
     summary.dayPass += numberValue(row.ops.dayPass);
+    summary.contractOther += numberValue(row.ops.contractOther);
     summary.consultation += numberValue(row.ops.consultation);
     summary.inbound += numberValue(row.ops.inbound);
     summary.outbound += numberValue(row.ops.outbound);
     summary.outsideSales += numberValue(row.ops.outsideSales);
+    summary.customerOther += numberValue(row.ops.customerOther);
     summary.workMinutes += row.workMinutes;
     summary.recordedDays += row.recordedDays;
     return summary;
-  }, { pt: 0, ptPaid: 0, ptFree: 0, ptOther: 0, new: 0, renewal: 0, dayPass: 0, consultation: 0, inbound: 0, outbound: 0, outsideSales: 0, workMinutes: 0, recordedDays: 0 });
+  }, { pt: 0, ptPaid: 0, ptFree: 0, ptOther: 0, new: 0, renewal: 0, dayPass: 0, contractOther: 0, consultation: 0, inbound: 0, outbound: 0, outsideSales: 0, customerOther: 0, workMinutes: 0, recordedDays: 0 });
 
   const summaryGrid = document.getElementById("fitnessCenterSummaryGrid");
   if (summaryGrid) {
@@ -9680,10 +9684,12 @@ function renderFitnessCenterDaily() {
       ["신규", `${total.new}건`],
       ["재등록", `${total.renewal}건`],
       ["일일권", `${total.dayPass}건`],
+      ["계약 기타", `${total.contractOther}건`],
       ["상담", `${total.consultation}건`],
       ["아웃바운드", `${total.outbound}건`],
       ["인바운드", `${total.inbound}건`],
       ["외부영업", `${total.outsideSales}건`],
+      ["고객관리 기타", `${total.customerOther}건`],
     ].map(([label, value]) => `<article><span>${label}</span><strong>${value}</strong></article>`).join("");
   }
 
@@ -9704,10 +9710,12 @@ function renderFitnessCenterDaily() {
         <td>${escapeHtml(row.ops.customerNew || "")}</td>
         <td>${escapeHtml(row.ops.customerRenewal || "")}</td>
         <td>${escapeHtml(row.ops.dayPass || "")}</td>
+        <td>${escapeHtml(row.ops.contractOther || "")}</td>
         <td>${escapeHtml(row.ops.consultation || "")}</td>
         <td>${escapeHtml(row.ops.inbound || "")}</td>
         <td>${escapeHtml(row.ops.outbound || "")}</td>
         <td>${escapeHtml(row.ops.outsideSales || "")}</td>
+        <td>${escapeHtml(row.ops.customerOther || "")}</td>
         <td>${escapeHtml(row.ops.specialReport || row.ops.shiftNote || "")}</td>
       </tr>
     `).join("");
@@ -9724,10 +9732,12 @@ function renderFitnessCenterDaily() {
         <td>${total.new}</td>
         <td>${total.renewal}</td>
         <td>${total.dayPass}</td>
+        <td>${total.contractOther}</td>
         <td>${total.consultation}</td>
         <td>${total.inbound}</td>
         <td>${total.outbound}</td>
         <td>${total.outsideSales}</td>
+        <td>${total.customerOther}</td>
         <td></td>
       </tr>
     `;
@@ -12124,7 +12134,7 @@ function renderFitnessOpsSummaryButton(log = getSelectedLog()) {
   const ops = { ...createFitnessOps(), ...(log.fitnessOps || {}) };
   const paidPtTotal = numberValue(ops.ptRegular) + numberValue(ops.ptOther);
   const freePtTotal = numberValue(ops.ptFree);
-  const contractTotal = ["customerNew", "customerRenewal", "dayPass"].reduce((sum, key) => sum + numberValue(ops[key]), 0);
+  const contractTotal = ["customerNew", "customerRenewal", "dayPass", "contractOther"].reduce((sum, key) => sum + numberValue(ops[key]), 0);
   const marketingTotal = ["outbound", "outsideSales"].reduce((sum, key) => sum + numberValue(ops[key]), 0);
   const page = getCurrentFitnessLogPage();
   const employee = page?.type === "employee" ? page.employee : findEmployeeRecordById(log.employeeId);
@@ -12133,7 +12143,7 @@ function renderFitnessOpsSummaryButton(log = getSelectedLog()) {
   const monthlyPaidPtTotal = numberValue(aggregate?.paidPtTotal) + numberValue(monthOps.ptOther);
   const monthlyFreePtTotal = numberValue(aggregate?.freePtTotal);
   const monthlyConsultationTotal = numberValue(monthOps.consultation);
-  const monthlyContractTotal = ["customerNew", "customerRenewal", "dayPass"].reduce((sum, key) => sum + numberValue(monthOps[key]), 0);
+  const monthlyContractTotal = ["customerNew", "customerRenewal", "dayPass", "contractOther"].reduce((sum, key) => sum + numberValue(monthOps[key]), 0);
   const memoState = ops.shiftNote || ops.specialReport ? "메모 있음" : "메모 없음";
   button.classList.toggle("has-memo", Boolean(ops.shiftNote || ops.specialReport));
   button.innerHTML = `
@@ -12165,10 +12175,12 @@ function collectFitnessOpsFromSchedule(log = getSelectedLog()) {
     customerNew: 0,
     customerRenewal: 0,
     dayPass: 0,
+    contractOther: 0,
     consultation: 0,
     inbound: 0,
     outbound: 0,
     outsideSales: 0,
+    customerOther: 0,
   };
   (log.schedule || []).forEach((entry) => {
     normalizeScheduleEntryItems(entry).forEach((item) => {
@@ -12218,12 +12230,12 @@ function countFitnessScheduleUnits(text = "") {
 function formatFitnessOpsReport(fitnessOps = createFitnessOps()) {
   const ops = { ...createFitnessOps(), ...(fitnessOps || {}) };
   const ptTotal = ["ptRegular", "ptFree", "ptOther"].reduce((sum, key) => sum + Number(ops[key] || 0), 0);
-  const contractTotal = ["customerNew", "customerRenewal", "dayPass"].reduce((sum, key) => sum + Number(ops[key] || 0), 0);
-  const marketingTotal = ["outbound", "outsideSales"].reduce((sum, key) => sum + Number(ops[key] || 0), 0);
+  const contractTotal = ["customerNew", "customerRenewal", "dayPass", "contractOther"].reduce((sum, key) => sum + Number(ops[key] || 0), 0);
+  const customerTotal = ["inbound", "outbound", "outsideSales", "consultation", "customerOther"].reduce((sum, key) => sum + Number(ops[key] || 0), 0);
   return [
     `수업현황: 정규 ${ops.ptRegular || 0}, 체험/무료 ${ops.ptFree || 0}, 보강/기타 ${ops.ptOther || 0}, 합계 ${ptTotal}`,
-    `상담/계약: 상담 ${ops.consultation || 0}, 신규 ${ops.customerNew || 0}, 재등록 ${ops.customerRenewal || 0}, 일일권 ${ops.dayPass || 0}, 합계 ${contractTotal}`,
-    `고객유입: 인바운드 ${ops.inbound || 0}, 아웃바운드 ${ops.outbound || 0}, 외부영업 ${ops.outsideSales || 0}, 합계 ${marketingTotal + Number(ops.inbound || 0)}`,
+    `계약현황: 신규 ${ops.customerNew || 0}, 재등록 ${ops.customerRenewal || 0}, 일일권 ${ops.dayPass || 0}, 기타 ${ops.contractOther || 0}, 소계 ${contractTotal}`,
+    `고객관리: 인바운드 ${ops.inbound || 0}, 아웃바운드 ${ops.outbound || 0}, 외부영업 ${ops.outsideSales || 0}, 상담 ${ops.consultation || 0}, 기타 ${ops.customerOther || 0}, 소계 ${customerTotal}`,
     `업무 메모: ${ops.shiftNote || "-"}`,
     `특이사항 보고: ${ops.specialReport || "-"}`,
   ];
@@ -16205,9 +16217,12 @@ function getFitnessOpsSummary() {
     summary.customerNew += numberValue(ops.customerNew);
     summary.customerRenewal += numberValue(ops.customerRenewal);
     summary.dayPass += numberValue(ops.dayPass);
+    summary.contractOther += numberValue(ops.contractOther);
     summary.consultation += numberValue(ops.consultation);
+    summary.inbound += numberValue(ops.inbound);
     summary.outbound += numberValue(ops.outbound);
     summary.outsideSales += numberValue(ops.outsideSales);
+    summary.customerOther += numberValue(ops.customerOther);
     if (ops.specialReport) summary.specialReports.push(ops.specialReport);
     if (ops.shiftNote) summary.shiftNotes.push(ops.shiftNote);
     return summary;
@@ -16218,9 +16233,12 @@ function getFitnessOpsSummary() {
     customerNew: 0,
     customerRenewal: 0,
     dayPass: 0,
+    contractOther: 0,
     consultation: 0,
+    inbound: 0,
     outbound: 0,
     outsideSales: 0,
+    customerOther: 0,
     specialReports: [],
     shiftNotes: [],
   });
@@ -16230,7 +16248,7 @@ function renderFitnessDashboard() {
   const summary = getFitnessOpsSummary();
   const goals = { ...createFitnessGoals(), ...(state.fitnessGoals || {}) };
   const ptTotal = summary.ptRegular + summary.ptFree + summary.ptOther;
-  const customerActions = summary.customerNew + summary.customerRenewal + summary.dayPass + summary.consultation + summary.outbound + summary.outsideSales;
+  const customerActions = summary.customerNew + summary.customerRenewal + summary.dayPass + summary.contractOther + summary.consultation + summary.inbound + summary.outbound + summary.outsideSales + summary.customerOther;
   const consultationTarget = Math.max(1, numberValue(goals.consultationTarget));
   const ptTarget = Math.max(1, numberValue(goals.ptTarget));
   const memberTarget = Math.max(1, numberValue(goals.memberTarget));
@@ -16754,6 +16772,7 @@ function getReportArchiveFitnessSummary(logs = []) {
     summary.freePt += numberValue(ops.ptFree);
     summary.consultation += numberValue(ops.consultation);
     summary.contract += numberValue(ops.customerNew) + numberValue(ops.customerRenewal) + numberValue(ops.dayPass);
+    summary.contract += numberValue(ops.contractOther);
     summary.marketing += numberValue(ops.outbound) + numberValue(ops.outsideSales);
     if (String(ops.specialReport || "").trim()) summary.specialReports.push(ops.specialReport.trim());
     return summary;
@@ -17481,6 +17500,8 @@ function summarizeFitnessReportRows(logEntries = []) {
     const inbound = numberValue(ops.inbound);
     const outbound = numberValue(ops.outbound);
     const outsideSales = numberValue(ops.outsideSales);
+    const contractOther = numberValue(ops.contractOther);
+    const customerOther = numberValue(ops.customerOther);
     const breakSummary = (log.attendanceBreaks || [])
       .map((record) => `${record.start || "--:--"}~${record.end || "--:--"}`)
       .join(" / ");
@@ -17502,14 +17523,18 @@ function summarizeFitnessReportRows(logEntries = []) {
       customerNew,
       customerRenewal,
       dayPass,
-      contractOther: 0,
-      contractTotal: customerNew + customerRenewal + dayPass,
+      contractOther,
+      contractTotal: customerNew + customerRenewal + dayPass + contractOther,
       inbound,
       outbound,
       outsideSales,
       consultation,
-      customerOther: 0,
-      customerTotal: inbound + outbound + outsideSales + consultation,
+      customerOther,
+      customerTotal: inbound + outbound + outsideSales + consultation + customerOther,
+      ptNote: ptRegular + ptFree + ptOther ? String(ops.shiftNote || "").trim() : "",
+      customerNote: customerNew + customerRenewal + dayPass + contractOther + inbound + outbound + outsideSales + consultation + customerOther
+        ? String(ops.specialReport || "").trim()
+        : "",
       recordText: [ops.specialReport, ops.shiftNote, log.report, log.memo].filter(Boolean).join(" / "),
     };
   });
@@ -18303,7 +18328,7 @@ function renderFitnessReportTemplate(model = buildFitnessReportModel()) {
   const tomorrowRows = model.tomorrowTasks.map((task, index) => `<p><b>${index + 1}</b><span>${escapeHtml(task || "")}</span></p>`).join("");
   const approvalCells = model.approvalColumns.map((label) => `<th>${escapeHtml(label)}</th>`).join("");
   const approvalBlanks = model.approvalColumns.map((label) => `<td>${label === "센터장" && model.confirmation?.confirmedAt ? "확정" : ""}</td>`).join("");
-  const centerOpsRows = model.staffRows.map((row) => `
+  const centerAttendancePtRows = model.staffRows.map((row) => `
     <tr>
       <td>${escapeHtml(row.no)}</td>
       <td>${escapeHtml(row.role)}</td>
@@ -18311,15 +18336,31 @@ function renderFitnessReportTemplate(model = buildFitnessReportModel()) {
       <td class="${row.attendanceWarning?.missing?.includes("출근") ? "is-report-warning" : ""}">${escapeHtml(row.clockIn)}</td>
       <td class="${row.attendanceWarning?.missing?.includes("퇴근") ? "is-report-warning" : ""}">${escapeHtml(row.clockOut)}</td>
       <td>${escapeHtml(row.workDuration)}</td>
+      <td>${escapeHtml(row.attendanceNote || row.attendanceStatus || "")}</td>
       <td>${escapeHtml(row.ptRegular || "")}</td>
       <td>${escapeHtml(row.ptFree || "")}</td>
       <td>${escapeHtml(row.ptOther || "")}</td>
+      <td>${escapeHtml(row.ptTotal || "")}</td>
+      <td>${escapeHtml(row.ptNote || "")}</td>
+    </tr>
+  `).join("");
+  const centerContractCustomerRows = model.staffRows.map((row) => `
+    <tr>
+      <td>${escapeHtml(row.no)}</td>
+      <td>${escapeHtml(row.role)}</td>
+      <td>${escapeHtml(row.name)}</td>
       <td>${escapeHtml(row.customerNew || "")}</td>
       <td>${escapeHtml(row.customerRenewal || "")}</td>
-      <td>${escapeHtml(row.consultation || "")}</td>
-      <td>${escapeHtml(row.outbound || "")}</td>
+      <td>${escapeHtml(row.dayPass || "")}</td>
+      <td>${escapeHtml(row.contractOther || "")}</td>
+      <td>${escapeHtml(row.contractTotal || "")}</td>
       <td>${escapeHtml(row.inbound || "")}</td>
-      <td>${escapeHtml(row.recordText || row.attendanceNote || row.attendanceStatus || "")}</td>
+      <td>${escapeHtml(row.outbound || "")}</td>
+      <td>${escapeHtml(row.outsideSales || "")}</td>
+      <td>${escapeHtml(row.consultation || "")}</td>
+      <td>${escapeHtml(row.customerOther || "")}</td>
+      <td>${escapeHtml(row.customerTotal || "")}</td>
+      <td>${escapeHtml(row.customerNote || "")}</td>
     </tr>
   `).join("");
   return `
@@ -18366,14 +18407,30 @@ function renderFitnessReportTemplate(model = buildFitnessReportModel()) {
       </section>
 
       ${model.isCenter ? `
-        <section class="fitness-paper-wide-table fitness-paper-center-ops-table">
-          <h3>전체 직원 운영기록</h3>
+        <div class="fitness-paper-center-ledgers" aria-label="센터운영 수기원장 연계표">
+        <section class="fitness-paper-wide-table fitness-paper-center-ops-table fitness-paper-attendance-pt-table" data-report-ledger="attendance-pt">
+          <h3>출결현황 · PT수업</h3>
           <table>
-            <thead><tr><th>No.</th><th>구분</th><th>성명</th><th>출근</th><th>퇴근</th><th>근무시간</th><th>유료PT</th><th>무료PT</th><th>기타PT</th><th>신규</th><th>재등록</th><th>상담</th><th>아웃바운드</th><th>인바운드</th><th>특이사항</th></tr></thead>
-            <tbody>${centerOpsRows}</tbody>
-            <tfoot><tr><td colspan="6">합계</td><td>${numberValue(model.totals.ptRegular) || ""}</td><td>${numberValue(model.totals.ptFree) || ""}</td><td>${numberValue(model.totals.ptOther) || ""}</td><td>${numberValue(model.totals.customerNew) || ""}</td><td>${numberValue(model.totals.customerRenewal) || ""}</td><td>${numberValue(model.totals.consultation) || ""}</td><td>${numberValue(model.totals.outbound) || ""}</td><td>${numberValue(model.totals.inbound) || ""}</td><td></td></tr></tfoot>
+            <thead>
+              <tr class="fitness-paper-group-row"><th colspan="7">출결현황</th><th colspan="5">PT수업</th></tr>
+              <tr><th>No.</th><th>구분</th><th>성명</th><th>출근</th><th>퇴근</th><th>근무시간</th><th>비고</th><th>유료PT</th><th>무료PT</th><th>기타</th><th>소계</th><th>비고</th></tr>
+            </thead>
+            <tbody>${centerAttendancePtRows}</tbody>
+            <tfoot><tr><td colspan="7">합계</td><td>${numberValue(model.totals.ptRegular) || ""}</td><td>${numberValue(model.totals.ptFree) || ""}</td><td>${numberValue(model.totals.ptOther) || ""}</td><td>${numberValue(model.totals.ptTotal) || ""}</td><td></td></tr></tfoot>
           </table>
         </section>
+        <section class="fitness-paper-wide-table fitness-paper-center-ops-table fitness-paper-contract-customer-table" data-report-ledger="contract-customer">
+          <h3>계약현황 · 고객관리</h3>
+          <table>
+            <thead>
+              <tr class="fitness-paper-group-row"><th colspan="3">직원</th><th colspan="5">계약현황</th><th colspan="7">고객관리</th></tr>
+              <tr><th>No.</th><th>구분</th><th>성명</th><th>신규</th><th>재등록</th><th>일일권</th><th>기타</th><th>소계</th><th>인바운드</th><th>아웃바운드</th><th>외부영업</th><th>상담</th><th>기타</th><th>소계</th><th>비고</th></tr>
+            </thead>
+            <tbody>${centerContractCustomerRows}</tbody>
+            <tfoot><tr><td colspan="3">합계</td><td>${numberValue(model.totals.customerNew) || ""}</td><td>${numberValue(model.totals.customerRenewal) || ""}</td><td>${numberValue(model.totals.dayPass) || ""}</td><td>${numberValue(model.totals.contractOther) || ""}</td><td>${numberValue(model.totals.contractTotal) || ""}</td><td>${numberValue(model.totals.inbound) || ""}</td><td>${numberValue(model.totals.outbound) || ""}</td><td>${numberValue(model.totals.outsideSales) || ""}</td><td>${numberValue(model.totals.consultation) || ""}</td><td>${numberValue(model.totals.customerOther) || ""}</td><td>${numberValue(model.totals.customerTotal) || ""}</td><td></td></tr></tfoot>
+          </table>
+        </section>
+        </div>
       ` : ""}
 
       ${!model.isCenter ? `
@@ -18859,6 +18916,12 @@ function getFitnessReportExportCss(reportHeight = 1754) {
     .fitness-paper-contract-table,
     .fitness-paper-schedule,
     .fitness-paper-footer-grid { margin-top: 16px; }
+    .fitness-paper-center-ledgers {
+      display: grid;
+      gap: 8px;
+      margin-top: 8px;
+    }
+    .fitness-paper-center-ledgers .fitness-paper-center-ops-table { margin-top: 0; }
     .fitness-paper-center-ops-table table,
     .fitness-paper-attendance-table table,
     .fitness-paper-contract-table table,
@@ -18896,41 +18959,41 @@ function getFitnessReportExportCss(reportHeight = 1754) {
     }
     .fitness-paper-center-ops-table th,
     .fitness-paper-center-ops-table td {
-      padding: 5px 5px;
-      font-size: 14px;
+      padding: 4px 4px;
+      font-size: 13px;
       line-height: 1.08;
       text-align: center;
       word-break: keep-all;
     }
-    .fitness-paper-center-ops-table th:nth-child(1),
-    .fitness-paper-center-ops-table td:nth-child(1) { width: 44px; }
-    .fitness-paper-center-ops-table th:nth-child(2),
-    .fitness-paper-center-ops-table td:nth-child(2) { width: 76px; }
-    .fitness-paper-center-ops-table th:nth-child(3),
-    .fitness-paper-center-ops-table td:nth-child(3) { width: 92px; }
-    .fitness-paper-center-ops-table th:nth-child(4),
-    .fitness-paper-center-ops-table td:nth-child(4),
-    .fitness-paper-center-ops-table th:nth-child(5),
-    .fitness-paper-center-ops-table td:nth-child(5) { width: 72px; }
-    .fitness-paper-center-ops-table th:nth-child(6),
-    .fitness-paper-center-ops-table td:nth-child(6) { width: 86px; }
-    .fitness-paper-center-ops-table th:nth-child(n + 7):nth-child(-n + 14),
-    .fitness-paper-center-ops-table td:nth-child(n + 7):nth-child(-n + 14) { width: 58px; }
-    .fitness-paper-center-ops-table th:nth-child(15),
-    .fitness-paper-center-ops-table td:nth-child(15) {
+    .fitness-paper-center-ops-table .fitness-paper-group-row th {
+      background: rgba(222, 235, 199, 0.74);
+      color: #123b2d;
+      letter-spacing: 0.03em;
+    }
+    .fitness-paper-center-ops-table tr:not(.fitness-paper-group-row) > :nth-child(1) { width: 44px; }
+    .fitness-paper-center-ops-table tr:not(.fitness-paper-group-row) > :nth-child(2) { width: 76px; }
+    .fitness-paper-center-ops-table tr:not(.fitness-paper-group-row) > :nth-child(3) { width: 92px; }
+    .fitness-paper-attendance-pt-table tr:not(.fitness-paper-group-row) > :nth-child(4),
+    .fitness-paper-attendance-pt-table tr:not(.fitness-paper-group-row) > :nth-child(5) { width: 72px; }
+    .fitness-paper-attendance-pt-table tr:not(.fitness-paper-group-row) > :nth-child(6) { width: 86px; }
+    .fitness-paper-attendance-pt-table tr:not(.fitness-paper-group-row) > :nth-child(7),
+    .fitness-paper-attendance-pt-table tr:not(.fitness-paper-group-row) > :nth-child(12),
+    .fitness-paper-contract-customer-table tr:not(.fitness-paper-group-row) > :nth-child(15) {
       width: auto;
-      min-width: 154px;
+      min-width: 132px;
       text-align: left;
       white-space: normal;
     }
+    .fitness-paper-attendance-pt-table tr:not(.fitness-paper-group-row) > :nth-child(n + 8):nth-child(-n + 11),
+    .fitness-paper-contract-customer-table tr:not(.fitness-paper-group-row) > :nth-child(n + 4):nth-child(-n + 14) { width: 58px; }
     .fitness-report-page.is-center-report .fitness-paper-center-ops-table {
       flex: 0 0 auto;
     }
     .fitness-report-page.is-center-report .fitness-paper-center-ops-table th,
     .fitness-report-page.is-center-report .fitness-paper-center-ops-table td {
-      height: 30px;
-      padding: 6px 5px;
-      font-size: 14px;
+      height: 26px;
+      padding: 4px 4px;
+      font-size: 13px;
     }
     .fitness-paper-schedule th:nth-child(1),
     .fitness-paper-schedule td:nth-child(1) {
