@@ -3587,6 +3587,48 @@ body[data-device-mode="narrow"] .os-mode-switch span[data-device-mode="narrow"] 
   background: rgba(255, 253, 248, 0.94);
 }
 
+.labor-leave-workspace { display: grid; gap: 14px; padding: 18px; border: 1px solid rgba(15, 59, 46, 0.15); border-radius: 24px; background: rgba(255, 254, 248, 0.96); }
+.labor-leave-heading,
+.labor-leave-list article header,
+.labor-leave-list article footer { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.labor-leave-heading span { color: #557367; font-size: 11px; font-weight: 900; letter-spacing: 0.14em; text-transform: uppercase; }
+.labor-leave-heading h3 { margin: 3px 0; font-size: 24px; }
+.labor-leave-heading p,
+.labor-leave-view-note { margin: 0; color: #67736e; font-size: 13px; }
+.labor-leave-heading > strong { flex: 0 0 auto; padding: 8px 12px; border-radius: 999px; background: #e8f2ec; color: #0f4b39; font-size: 12px; }
+.labor-leave-form { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; padding: 14px; border-radius: 18px; background: #f2f6f1; }
+.labor-leave-form label { display: grid; gap: 5px; min-width: 0; color: #4c6259; font-size: 11px; font-weight: 800; }
+.labor-leave-form label.is-wide { grid-column: span 2; }
+.labor-leave-form input,
+.labor-leave-form select { width: 100%; min-width: 0; min-height: 42px; padding: 8px 10px; border: 1px solid rgba(15, 59, 46, 0.16); border-radius: 11px; background: #fffefa; color: #18251f; font: inherit; font-size: 13px; }
+.labor-leave-form button,
+.labor-leave-list article footer button { min-height: 42px; padding: 8px 16px; border: 0; border-radius: 12px; background: #0f4b39; color: #fff; font-weight: 900; }
+.labor-leave-list { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.labor-leave-list article { display: grid; gap: 8px; padding: 14px; border: 1px solid rgba(15, 59, 46, 0.13); border-radius: 16px; background: #fffefa; }
+.labor-leave-list article[data-leave-status="approved"] { border-color: rgba(24, 118, 78, 0.28); background: #f1f8f3; }
+.labor-leave-list article[data-leave-status="rejected"] { background: #fff5f2; }
+.labor-leave-list article header div { display: grid; gap: 2px; }
+.labor-leave-list article header span,
+.labor-leave-list article small { color: #66736d; font-size: 11px; }
+.labor-leave-list article header strong,
+.labor-leave-list article > b { color: #173f32; font-size: 15px; }
+.labor-leave-list article header em { padding: 5px 8px; border-radius: 999px; background: #edf1ed; color: #355b4d; font-size: 11px; font-style: normal; font-weight: 900; }
+.labor-leave-list article p,
+.labor-leave-empty { margin: 0; font-size: 13px; }
+.labor-leave-list article small.is-review { color: #a43a31; }
+.labor-leave-list article footer { justify-content: flex-end; padding-top: 4px; }
+.labor-leave-list article footer button:last-child { background: #fff; color: #a43a31; box-shadow: inset 0 0 0 1px rgba(164, 58, 49, 0.3); }
+
+@media (max-width: 720px) {
+  .labor-leave-workspace { padding: 12px; border-radius: 18px; }
+  .labor-leave-heading { align-items: flex-start; }
+  .labor-leave-heading h3 { font-size: 20px; }
+  .labor-leave-form { grid-template-columns: repeat(2, minmax(0, 1fr)); padding: 10px; }
+  .labor-leave-form label.is-wide { grid-column: 1 / -1; }
+  .labor-leave-form button { grid-column: 1 / -1; }
+  .labor-leave-list { grid-template-columns: 1fr; }
+}
+
 .labor-cost-ledger-card {
   display: grid;
   gap: 10px;
@@ -13755,6 +13797,161 @@ body[data-layout-mode="phone"] .fitness-log-schedule-panel .appointment-merge-bu
 
 .fitness-paper-warning-banner em {
   font-style: normal;
+}
+
+.fitness-paper-command {
+  overflow: hidden;
+  border: 1px solid rgba(18, 59, 45, 0.26);
+  border-radius: 9px;
+  background: rgba(255, 254, 250, 0.94);
+}
+
+.fitness-paper-command > header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  background: linear-gradient(118deg, #0b3b2d, #165c46);
+  color: #fffdf3;
+  padding: 6px 8px 6px 10px;
+}
+
+.fitness-paper-command > header div small,
+.fitness-paper-command > header h3 {
+  display: block;
+  margin: 0;
+  color: #fffdf3;
+  -webkit-text-fill-color: #fffdf3;
+}
+
+.fitness-paper-command > header div small {
+  font-size: 6.8px;
+  font-weight: 900;
+  letter-spacing: 0.14em;
+}
+
+.fitness-paper-command > header h3 {
+  margin-top: 1px;
+  font-size: 12px;
+  font-weight: 950;
+}
+
+.fitness-paper-command > header > strong {
+  display: grid;
+  grid-template-columns: auto auto;
+  align-items: baseline;
+  column-gap: 4px;
+  min-width: 102px;
+  border: 1px solid rgba(255, 255, 255, 0.34);
+  border-radius: 7px;
+  background: rgba(255, 255, 255, 0.1);
+  color: #fffdf3;
+  -webkit-text-fill-color: #fffdf3;
+  padding: 4px 6px;
+  font-size: 18px;
+  line-height: 1;
+  text-align: right;
+}
+
+.fitness-paper-command > header > strong > span {
+  grid-row: 1 / 3;
+  align-self: center;
+  color: rgba(255, 253, 243, 0.78);
+  -webkit-text-fill-color: rgba(255, 253, 243, 0.78);
+  font-size: 7px;
+  font-weight: 850;
+}
+
+.fitness-paper-command > header > strong > small {
+  color: #fffdf3;
+  -webkit-text-fill-color: #fffdf3;
+  font-size: 6.8px;
+  font-weight: 900;
+}
+
+.fitness-paper-command-kpis {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.fitness-paper-command-kpis > div {
+  min-width: 0;
+  border-right: 1px solid rgba(18, 59, 45, 0.12);
+  padding: 5px 7px;
+}
+
+.fitness-paper-command-kpis > div:last-child {
+  border-right: 0;
+}
+
+.fitness-paper-command-kpis span,
+.fitness-paper-command-kpis strong,
+.fitness-paper-command-kpis small {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.fitness-paper-command-kpis span,
+.fitness-paper-command-kpis small {
+  color: rgba(17, 20, 17, 0.62);
+  font-size: 7.4px;
+  font-weight: 850;
+}
+
+.fitness-paper-command-kpis strong {
+  margin: 1px 0;
+  color: #103f31;
+  font-size: 14px;
+  font-weight: 950;
+}
+
+.fitness-paper-command-actions {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  border-top: 1px solid rgba(18, 59, 45, 0.12);
+}
+
+.fitness-paper-command-actions p {
+  display: grid;
+  grid-template-columns: 54px minmax(0, 1fr);
+  min-width: 0;
+  min-height: 28px;
+  margin: 0;
+  border-right: 1px solid rgba(18, 59, 45, 0.12);
+  font-size: 7.8px;
+  line-height: 1.22;
+}
+
+.fitness-paper-command-actions p:last-child {
+  border-right: 0;
+}
+
+.fitness-paper-command-actions b {
+  display: grid;
+  place-items: center;
+  background: rgba(237, 244, 224, 0.75);
+  padding: 4px;
+  font-weight: 950;
+}
+
+.fitness-paper-command-actions span {
+  display: -webkit-box;
+  overflow: hidden;
+  padding: 4px 5px;
+  font-weight: 820;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.fitness-paper-command-actions .is-danger b {
+  background: rgba(255, 232, 228, 0.94);
+  color: #b12626;
+}
+
+.fitness-paper-command-actions .is-good b {
+  color: #1d654b;
 }
 
 .fitness-report-page .is-report-warning {

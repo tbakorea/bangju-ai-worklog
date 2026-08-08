@@ -336,7 +336,8 @@ check(
 
 check(
   "fitness schedules normalize to each roster employee's work hours",
-  js.includes("return employee ? getOverviewScheduledWorkHours(employee, dateKey, {}) : defaultProfile.workHours")
+  js.includes("if (employee) return getOverviewScheduledWorkHours(employee, dateKey, {})")
+    && js.includes("return applyApprovedLeaveToWorkHours(defaultProfile.workHours, employeeId, dateKey)")
     && js.includes("function alignFitnessEmployeeLogToRoster")
     && js.includes("if (employeeId) log.employeeId = employeeId")
     && js.includes('if (!log.scheduleUnitExplicit) log.scheduleUnit = "60"')

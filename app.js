@@ -266,6 +266,17 @@ const fitnessManagerWeeklyWorkHours = Object.freeze({
   fri: "06:00-24:00",
   sat: "06:00-24:00",
 });
+const laborLeaveTypes = Object.freeze([
+  ["annual", "연차", "full"],
+  ["morning-half", "오전 반차", "morning"],
+  ["afternoon-half", "오후 반차", "afternoon"],
+  ["hourly", "시간차", "hourly"],
+  ["substitute", "대체휴무", "full"],
+  ["sick", "병가", "full"],
+  ["family", "경조휴가", "full"],
+  ["official", "공가", "full"],
+  ["other", "기타 휴가", "full"],
+]);
 const siteWeatherAddressTargets = [
   { key: "비욘드 피트니스", label: "비욘드 피트니스", hint: "예: 울산광역시 남구 옥동 ..." },
   { key: "(주)방주 · 재무", label: "(주)방주 · 재무", hint: "본사 또는 재무팀 근무지 주소" },
@@ -933,6 +944,7 @@ function createState() {
     employeeDirectoryOverrides: {},
     companyCommonWeeks: {},
     laborPayroll: {},
+    laborLeaveRequests: [],
     laborWorkspaceTab: "overview",
     laborSiteScope: "all",
     communications: [],
@@ -998,7 +1010,8 @@ function normalizeState() {
   state.employeeDirectoryOverrides = { ...(state.employeeDirectoryOverrides || {}) };
   state.companyCommonWeeks = { ...(state.companyCommonWeeks || {}) };
   state.laborPayroll = { ...(state.laborPayroll || {}) };
-  state.laborWorkspaceTab = ["overview", "register", "sites", "payroll"].includes(state.laborWorkspaceTab)
+  state.laborLeaveRequests = Array.isArray(state.laborLeaveRequests) ? state.laborLeaveRequests.map(normalizeLaborLeaveRequest).filter(Boolean) : [];
+  state.laborWorkspaceTab = ["overview", "register", "leave", "sites", "payroll"].includes(state.laborWorkspaceTab)
     ? state.laborWorkspaceTab
     : "overview";
   state.laborSiteScope ||= "all";
@@ -1376,13 +1389,14 @@ function isEmployeeLinkedToProfile(employeeId) {
 
 function getEmployeeWorkHours(employeeId = state?.selectedEmployeeId, profile = state?.profile, dateKey = getActiveDateKey()) {
   const override = getEmployeeWorkHoursOverride(employeeId, dateKey);
-  if (override) return override;
+  if (override) return applyApprovedLeaveToWorkHours(override, employeeId, dateKey);
   const profileHours = getProfileWorkHoursForDate(profile, dateKey);
   if (employeeId === "profile-user" || isEmployeeLinkedToProfile(employeeId)) {
-    return profileHours || profile?.workHours || state?.profile?.workHours || defaultProfile.workHours;
+    return applyApprovedLeaveToWorkHours(profileHours || profile?.workHours || state?.profile?.workHours || defaultProfile.workHours, employeeId, dateKey);
   }
   const employee = findEmployeeRecordById(employeeId);
-  return employee ? getOverviewScheduledWorkHours(employee, dateKey, {}) : defaultProfile.workHours;
+  if (employee) return getOverviewScheduledWorkHours(employee, dateKey, {});
+  return applyApprovedLeaveToWorkHours(defaultProfile.workHours, employeeId, dateKey);
 }
 
 function getEmployeeWorkHoursOverride(employeeId = state?.selectedEmployeeId, dateKey = getActiveDateKey()) {
@@ -3626,11 +3640,99 @@ function getOverviewRoleRank(employee = {}) {
 
 function getOverviewScheduledWorkHours(employee = {}, dateKey = getActiveDateKey(), dayLog = {}) {
   const override = normalizeWorkHoursText(dayLog?.workHoursOverride || "");
-  if (override) return override;
+  const employeeId = getEmployeeWorklogId(employee) || employee.id || "";
+  if (override) return applyApprovedLeaveToWorkHours(override, employeeId, dateKey);
   const weeklyHours = employee.weeklyWorkHours || employee.weekly_work_hours || {};
   const dayKey = getWorkdayKey(dateKey);
-  if (Object.keys(weeklyHours).length && !Object.prototype.hasOwnProperty.call(weeklyHours, dayKey)) return "휴무";
-  return normalizeWorkHoursText(weeklyHours[dayKey] || employee.workHours || defaultProfile.workHours);
+  const workHours = Object.keys(weeklyHours).length && !Object.prototype.hasOwnProperty.call(weeklyHours, dayKey)
+    ? "휴무"
+    : normalizeWorkHoursText(weeklyHours[dayKey] || employee.workHours || defaultProfile.workHours);
+  return applyApprovedLeaveToWorkHours(workHours, employeeId, dateKey);
+}
+
+function normalizeLaborLeaveRequest(request = {}) {
+  const id = String(request.id || "").trim();
+  const employeeId = String(request.employeeId || request.employee_id || "").trim();
+  const startDate = String(request.startDate || request.start_date || "").slice(0, 10);
+  if (!id || !employeeId || !startDate) return null;
+  return {
+    id,
+    userId: String(request.userId || request.user_id || ""),
+    employeeId,
+    employeeName: String(request.employeeName || request.employee_name || "직원"),
+    leaveType: String(request.leaveType || request.leave_type || "annual"),
+    startDate,
+    endDate: String(request.endDate || request.end_date || startDate).slice(0, 10),
+    startTime: String(request.startTime || request.start_time || "").slice(0, 5),
+    endTime: String(request.endTime || request.end_time || "").slice(0, 5),
+    reason: String(request.reason || ""),
+    handoverTo: String(request.handoverTo || request.handover_to || ""),
+    handoverNote: String(request.handoverNote || request.handover_note || ""),
+    status: ["pending", "approved", "rejected"].includes(request.status) ? request.status : "pending",
+    reviewNote: String(request.reviewNote || request.review_note || ""),
+    requestedAt: String(request.requestedAt || request.requested_at || new Date().toISOString()),
+    reviewedAt: String(request.reviewedAt || request.reviewed_at || ""),
+    reviewedBy: String(request.reviewedBy || request.reviewed_by || ""),
+  };
+}
+
+function getLaborLeaveType(type = "annual") {
+  const row = laborLeaveTypes.find(([key]) => key === type) || laborLeaveTypes[0];
+  return { key: row[0], label: row[1], mode: row[2] };
+}
+
+function getLeaveEmployeeAliases(employeeId = "") {
+  const employee = findEmployeeRecordById(employeeId);
+  return new Set([
+    employeeId,
+    employee?.id,
+    employee?.mappedEmployeeId,
+    employee?.sourceProfileId,
+    isEmployeeLinkedToProfile(employeeId) ? getProfileMappedEmployeeId() : "",
+    isEmployeeLinkedToProfile(employeeId) ? "profile-user" : "",
+  ].filter(Boolean).map(String));
+}
+
+function getApprovedLeaveForDate(employeeId = "", dateKey = getActiveDateKey()) {
+  if (!state?.laborLeaveRequests?.length) return null;
+  const aliases = getLeaveEmployeeAliases(employeeId);
+  return (state?.laborLeaveRequests || []).find((request) => (
+    request.status === "approved"
+    && aliases.has(String(request.employeeId || ""))
+    && request.startDate <= dateKey
+    && request.endDate >= dateKey
+  )) || null;
+}
+
+function getLeaveTimeRange(request = {}, workHours = "") {
+  const match = String(workHours || "").match(/(\d{2}:\d{2})\s*[-~]\s*(\d{2}:\d{2})/);
+  if (!match) return null;
+  const start = timeToMinutes(match[1]);
+  const end = timeToMinutes(match[2]);
+  if (!Number.isFinite(start) || !Number.isFinite(end)) return null;
+  const midpoint = Math.round(((start + end) / 2) / 30) * 30;
+  const type = getLaborLeaveType(request.leaveType);
+  if (type.mode === "morning") return { start, end: timeToMinutes(request.endTime) || midpoint };
+  if (type.mode === "afternoon") return { start: timeToMinutes(request.startTime) || midpoint, end };
+  if (type.mode === "hourly") {
+    const leaveStart = timeToMinutes(request.startTime);
+    const leaveEnd = timeToMinutes(request.endTime);
+    return Number.isFinite(leaveStart) && Number.isFinite(leaveEnd) ? { start: leaveStart, end: leaveEnd } : null;
+  }
+  return { start, end };
+}
+
+function applyApprovedLeaveToWorkHours(workHours = "", employeeId = "", dateKey = getActiveDateKey()) {
+  const request = getApprovedLeaveForDate(employeeId, dateKey);
+  if (!request) return normalizeWorkHoursText(workHours);
+  const type = getLaborLeaveType(request.leaveType);
+  if (type.mode === "full") return "휴무";
+  const match = String(workHours || "").match(/(\d{2}:\d{2})\s*[-~]\s*(\d{2}:\d{2})/);
+  const range = getLeaveTimeRange(request, workHours);
+  if (!match || !range) return normalizeWorkHoursText(workHours);
+  if (type.mode === "morning") return `${minutesToTime(range.end)}-${match[2]}`;
+  if (type.mode === "afternoon") return `${match[1]}-${minutesToTime(range.start)}`;
+  return normalizeWorkHoursText(workHours);
 }
 
 function hasOverviewWorklogRecord(dayLog = {}) {
@@ -3645,6 +3747,8 @@ function hasOverviewWorklogRecord(dayLog = {}) {
 }
 
 function getOverviewWorkStatus(employee = {}, dayLog = {}, dateKey = getActiveDateKey(), now = new Date()) {
+  const approvedLeave = getApprovedLeaveForDate(getEmployeeWorklogId(employee) || employee.id || "", dateKey);
+  const approvedLeaveType = approvedLeave ? getLaborLeaveType(approvedLeave.leaveType) : null;
   const hours = getOverviewScheduledWorkHours(employee, dateKey, dayLog);
   const attendance = String(dayLog.attendanceStatus || "");
   const isScheduledOff = isOffWorkHours(hours) || /비번|휴무/.test(attendance);
@@ -3657,6 +3761,14 @@ function getOverviewWorkStatus(employee = {}, dayLog = {}, dateKey = getActiveDa
     || (dayLog.attendanceBreaks || []).some((record) => record?.start || record?.end)
   );
   const hasWorklogRecord = hasOverviewWorklogRecord(dayLog);
+  if (approvedLeaveType?.mode === "full" && !hasSubstituteAttendance) {
+    return { key: "leave", label: approvedLeaveType.label, detail: "승인 휴가" };
+  }
+  if (approvedLeaveType?.mode === "full" && hasSubstituteAttendance) {
+    return dayLog.clockOut
+      ? { key: "worked", label: "휴가일 근무", detail: `${dayLog.clockIn || "출근 미기록"} ~ ${dayLog.clockOut}` }
+      : { key: "working", label: "휴가일 근무중", detail: `${dayLog.clockIn} 출근 · 퇴근 전` };
+  }
   if (isScheduledOff && !hasSubstituteAttendance) return { key: "off", label: "비번", detail: "휴무" };
   if (isScheduledOff && dayLog.clockOut) return { key: "worked", label: "대체근무", detail: `${dayLog.clockIn || "출근 미기록"} ~ ${dayLog.clockOut}` };
   if (isScheduledOff && dayLog.clockIn) return { key: "working", label: "대체근무중", detail: `${dayLog.clockIn} 출근 · 퇴근 전` };
@@ -8821,6 +8933,57 @@ async function saveRemoteSnapshot(dateKey = getActiveDateKey()) {
   renderAuthStatus();
 }
 
+function mapLaborLeaveRequestToRemote(request = {}) {
+  return {
+    id: request.id,
+    user_id: request.userId || authState.user?.id,
+    employee_id: request.employeeId,
+    employee_name: request.employeeName,
+    leave_type: request.leaveType,
+    start_date: request.startDate,
+    end_date: request.endDate,
+    start_time: request.startTime || null,
+    end_time: request.endTime || null,
+    reason: request.reason || "",
+    handover_to: request.handoverTo || "",
+    handover_note: request.handoverNote || "",
+    status: request.status || "pending",
+    review_note: request.reviewNote || "",
+    reviewed_by: request.reviewedBy || null,
+    reviewed_at: request.reviewedAt || null,
+    requested_at: request.requestedAt || new Date().toISOString(),
+    updated_at: new Date().toISOString(),
+  };
+}
+
+async function loadRemoteLeaveRequests() {
+  if (!supabaseClient || !authState.user) return;
+  const { data, error } = await supabaseClient
+    .from("labor_leave_requests")
+    .select("*")
+    .order("requested_at", { ascending: false })
+    .limit(500);
+  if (error) {
+    if (!/labor_leave_requests|schema cache|PGRST205|42P01/i.test(String(error.message || ""))) {
+      renderAuthStatus(`휴가 신청 불러오기 대기: ${error.message}`);
+    }
+    return;
+  }
+  state.laborLeaveRequests = (data || []).map(normalizeLaborLeaveRequest).filter(Boolean);
+}
+
+async function saveRemoteLeaveRequest(request = {}) {
+  if (!supabaseClient || !authState.user) return false;
+  const { error } = await supabaseClient
+    .from("labor_leave_requests")
+    .upsert(mapLaborLeaveRequestToRemote(request), { onConflict: "id" });
+  if (error) {
+    renderAuthStatus(`휴가 신청 원격 저장 대기: ${error.message}`);
+    return false;
+  }
+  return true;
+}
+
 async function loadRemoteWorklogForActiveDate() {
   if (!supabaseClient || !authState.user) return;
   const key = getActiveDateKey();
@@ -8859,6 +9022,7 @@ async function loadRemoteWorklogForActiveDate() {
   const sharedWeatherRows = await loadSharedSiteWeatherSettings();
   if (Array.isArray(sharedWeatherRows)) await publishRepresentativeSiteWeatherSettings(sharedWeatherRows);
   await loadRemoteLaborPayrollDrafts();
+  await loadRemoteLeaveRequests();
   if (canAccessAllWorklogs()) await loadVisibleStaffWorklogsForDate(key);
   else await loadCoworkerWorklogsForDate(key);
   normalizeState();
@@ -12357,8 +12521,17 @@ function getWorklogScheduleSlots(log, dateKey = getActiveDateKey()) {
   const fallbackTimes = !baseSlots.length && !supplementalTimes.length && !isOffWorkHours(workHours)
     ? getScheduleTimes(defaultProfile.workHours)
     : [];
+  const leaveRequest = getApprovedLeaveForDate(log?.employeeId || "", dateKey);
+  const leaveType = leaveRequest ? getLaborLeaveType(leaveRequest.leaveType) : null;
+  const leaveRange = leaveType?.mode === "hourly" ? getLeaveTimeRange(leaveRequest, workHours) : null;
+  const preservedScheduleTimes = new Set(scheduleTimes);
   return [...new Set([...baseSlots, ...supplementalTimes, ...fallbackTimes])]
     .filter(Boolean)
+    .filter((time) => {
+      if (!leaveRange || preservedScheduleTimes.has(time)) return true;
+      const minutes = timeToMinutes(time);
+      return minutes < leaveRange.start || minutes >= leaveRange.end;
+    })
     .sort((a, b) => timeToMinutes(a) - timeToMinutes(b));
 }
 
@@ -12669,29 +12842,36 @@ function applyAttendanceCycle() {
 }
 
 function getAttendanceStatusForLog(employee, log = getEmployeeLogForDate(employee.id), dateKey = getActiveDateKey(), now = new Date()) {
-  const workHours = getOverviewScheduledWorkHours(employee, dateKey, log);
-  if (isOffWorkHours(workHours)) {
-    if (!log.clockIn && !log.clockOut) return "휴무";
-    return log.clockOut ? "대체근무 완료" : "대체근무";
+  const approvedLeave = getApprovedLeaveForDate(getEmployeeWorklogId(employee) || employee.id || "", dateKey);
+  const leaveType = approvedLeave ? getLaborLeaveType(approvedLeave.leaveType) : null;
+  if (leaveType?.mode === "full") {
+    if (!log.clockIn && !log.clockOut) return leaveType.label;
+    return log.clockOut ? "휴가일 근무 완료" : "휴가일 근무";
   }
-  if (log.attendanceStatus === "조퇴") return "조퇴";
+  const workHours = getOverviewScheduledWorkHours(employee, dateKey, log);
+  const decorate = (status) => leaveType ? `${leaveType.label} · ${status}` : status;
+  if (isOffWorkHours(workHours)) {
+    if (!log.clockIn && !log.clockOut) return decorate("휴무");
+    return decorate(log.clockOut ? "대체근무 완료" : "대체근무");
+  }
+  if (log.attendanceStatus === "조퇴") return decorate("조퇴");
   if (log.clockIn) {
     const [start] = String(workHours).split("-");
     const startMinutes = timeToMinutes(start);
     const inMinutes = timeToMinutes(log.clockIn);
     const isLate = Number.isFinite(startMinutes) && Number.isFinite(inMinutes) && inMinutes > startMinutes + 5;
-    if (isLate && log.attendanceStatus === "외출") return "지각·외출";
-    if (isLate) return "지각";
-    if (log.attendanceStatus === "외출") return "외출";
-    return "정상";
+    if (isLate && log.attendanceStatus === "외출") return decorate("지각·외출");
+    if (isLate) return decorate("지각");
+    if (log.attendanceStatus === "외출") return decorate("외출");
+    return decorate("정상");
   }
   const today = formatDateKey(now);
   const todayMinutes = now.getHours() * 60 + now.getMinutes();
   const [start] = String(workHours).split("-");
   const startMinutes = timeToMinutes(start);
-  if (dateKey > today) return "예정";
-  if (dateKey < today || (dateKey === today && Number.isFinite(startMinutes) && todayMinutes > startMinutes + 30)) return "결석";
-  return "미기록";
+  if (dateKey > today) return decorate("예정");
+  if (dateKey < today || (dateKey === today && Number.isFinite(startMinutes) && todayMinutes > startMinutes + 30)) return decorate("결석");
+  return decorate("미기록");
 }
 
 function syncAttendanceRecordFromLog(employee = getSelectedEmployee(), log = getEmployeeLogForDate(employee.id)) {
@@ -13439,6 +13619,7 @@ function renderLaborWorkspaceNav(labor, employee) {
   const tabs = [
     ["overview", "실시간 현황", "오늘"],
     ["register", "월별 원장", labor.month.replace("-", ".")],
+    ["leave", "휴가", `${getVisibleLaborLeaveRequests().filter((request) => request.status === "pending").length}건`],
     ["sites", "사업장·직원", `${getLaborSiteGroupsForScope().length}곳`],
     ["payroll", "급여·출력", "초안"],
   ];
@@ -13799,6 +13980,7 @@ function renderWorkHistorySummary() {
     <div class="labor-workspace-panel" data-labor-active-panel="${escapeAttr(workspaceTab)}">
       ${workspaceTab === "overview" ? renderLaborOperationsConsole(labor, employee, payroll) : ""}
       ${workspaceTab === "register" ? renderLaborMonthlyRegister(labor, employee) : ""}
+      ${workspaceTab === "leave" ? renderLaborLeaveWorkspace(employee) : ""}
       ${workspaceTab === "payroll" && canAccessLaborPayrollLedgers() ? `
         ${renderPayrollStatement(payroll)}
         <section class="labor-report-launch-card">
@@ -13870,6 +14052,7 @@ function renderWorkHistorySummary() {
       );
     });
   });
+  setupLaborLeaveWorkspaceEvents(employee);
   node.querySelectorAll("[data-labor-payroll-field]").forEach((field) => {
     field.addEventListener("change", () => {
       updateLaborPayrollField(employeeId, labor.month, field.dataset.laborPayrollField, field.value);
@@ -13912,6 +14095,149 @@ function renderLaborMonthlyRegister(labor, employee) {
   `;
 }
 
+function getOwnLeaveEmployeeId() {
+  const profileEmployee = getProfileEmployee();
+  return getEmployeeWorklogId(profileEmployee) || getProfileMappedEmployeeId() || "profile-user";
+}
+
+function canSubmitLeaveRequestForEmployee(employee = {}) {
+  const employeeId = getEmployeeWorklogId(employee) || employee.id || "";
+  return getLeaveEmployeeAliases(employeeId).has(getOwnLeaveEmployeeId());
+}
+
+function getVisibleLaborLeaveRequests() {
+  const requests = state.laborLeaveRequests || [];
+  if (hasApprovalAuthority() && canAccessSiteLabor()) {
+    return requests.filter((request) => canViewLaborEmployee(request.employeeId) || getLeaveEmployeeAliases(request.employeeId).has(getOwnLeaveEmployeeId()));
+  }
+  const ownAliases = getLeaveEmployeeAliases(getOwnLeaveEmployeeId());
+  return requests.filter((request) => ownAliases.has(String(request.employeeId || "")));
+}
+
+function getLaborLeaveStatusLabel(status = "pending") {
+  return { pending: "승인 대기", approved: "승인", rejected: "반려" }[status] || "승인 대기";
+}
+
+function renderLaborLeaveWorkspace(employee = getOwnLaborEmployee()) {
+  const employeeId = getEmployeeWorklogId(employee) || employee.id || "";
+  const canSubmit = canSubmitLeaveRequestForEmployee(employee);
+  const requests = getVisibleLaborLeaveRequests()
+    .filter((request) => request.status === "pending" || getLeaveEmployeeAliases(employeeId).has(String(request.employeeId || "")))
+    .sort((a, b) => String(b.requestedAt).localeCompare(String(a.requestedAt)));
+  const approver = hasApprovalAuthority() && canAccessSiteLabor();
+  return `
+    <section class="labor-leave-workspace" id="laborLeaveWorkspace">
+      <header class="labor-leave-heading">
+        <div><span>Leave & Time Off</span><h3>휴가·연월차</h3><p>승인된 휴가는 업무일지 시간표, 출결 경고, 월별 노무 원장에 자동 반영됩니다.</p></div>
+        <strong>${escapeHtml(`${requests.filter((request) => request.status === "pending").length}건 대기`)}</strong>
+      </header>
+      ${canSubmit ? `
+        <form class="labor-leave-form" id="laborLeaveRequestForm">
+          <label>종류<select name="leaveType">${laborLeaveTypes.map(([key, label]) => `<option value="${escapeAttr(key)}">${escapeHtml(label)}</option>`).join("")}</select></label>
+          <label>시작일<input name="startDate" type="date" value="${escapeAttr(todayKey)}" required /></label>
+          <label>종료일<input name="endDate" type="date" value="${escapeAttr(todayKey)}" required /></label>
+          <label class="labor-leave-time-field">시작시간<input name="startTime" type="time" step="300" /></label>
+          <label class="labor-leave-time-field">종료시간<input name="endTime" type="time" step="300" /></label>
+          <label class="is-wide">사유<input name="reason" type="text" maxlength="160" placeholder="간단한 신청 사유" required /></label>
+          <label>업무 인계자<input name="handoverTo" type="text" maxlength="60" placeholder="이름 또는 담당자" /></label>
+          <label class="is-wide">인계 내용<input name="handoverNote" type="text" maxlength="240" placeholder="처리 중 업무와 확인할 사항" /></label>
+          <button type="submit">휴가 신청</button>
+        </form>
+      ` : `<p class="labor-leave-view-note">현재 선택한 직원의 휴가 신청과 승인 이력을 열람합니다.</p>`}
+      <div class="labor-leave-list">
+        ${requests.length ? requests.map((request) => {
+          const type = getLaborLeaveType(request.leaveType);
+          const dateText = request.startDate === request.endDate ? request.startDate : `${request.startDate} ~ ${request.endDate}`;
+          const timeText = request.startTime || request.endTime ? ` · ${request.startTime || "--:--"}~${request.endTime || "--:--"}` : "";
+          return `
+            <article data-leave-status="${escapeAttr(request.status)}">
+              <header><div><span>${escapeHtml(request.employeeName)}</span><strong>${escapeHtml(type.label)}</strong></div><em>${escapeHtml(getLaborLeaveStatusLabel(request.status))}</em></header>
+              <b>${escapeHtml(dateText + timeText)}</b>
+              <p>${escapeHtml(request.reason || "사유 미입력")}</p>
+              ${(request.handoverTo || request.handoverNote) ? `<small>인계 ${escapeHtml(request.handoverTo || "담당자 미지정")} · ${escapeHtml(request.handoverNote || "내용 미입력")}</small>` : ""}
+              ${request.reviewNote ? `<small class="is-review">검토 의견 · ${escapeHtml(request.reviewNote)}</small>` : ""}
+              ${approver && request.status === "pending" ? `<footer><button type="button" data-leave-decision="approved" data-leave-request-id="${escapeAttr(request.id)}">승인</button><button type="button" data-leave-decision="rejected" data-leave-request-id="${escapeAttr(request.id)}">반려</button></footer>` : ""}
+            </article>
+          `;
+        }).join("") : `<p class="labor-leave-empty">표시할 휴가 신청이 없습니다.</p>`}
+      </div>
+    </section>
+  `;
+}
+
+function setupLaborLeaveWorkspaceEvents(employee = getOwnLaborEmployee()) {
+  const form = document.getElementById("laborLeaveRequestForm");
+  form?.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const data = new FormData(form);
+    const startDate = String(data.get("startDate") || "");
+    const endDate = String(data.get("endDate") || startDate);
+    const leaveType = String(data.get("leaveType") || "annual");
+    const type = getLaborLeaveType(leaveType);
+    const startTime = String(data.get("startTime") || "");
+    const endTime = String(data.get("endTime") || "");
+    if (!startDate || !endDate || endDate < startDate) {
+      showAppToast("휴가 시작일과 종료일을 확인해주세요.");
+      return;
+    }
+    if (type.mode === "hourly" && (!startTime || !endTime || timeToMinutes(endTime) <= timeToMinutes(startTime))) {
+      showAppToast("시간차의 시작·종료 시간을 확인해주세요.");
+      return;
+    }
+    const employeeId = getEmployeeWorklogId(employee) || employee.id || getOwnLeaveEmployeeId();
+    const employeeAliases = getLeaveEmployeeAliases(employeeId);
+    const overlaps = (state.laborLeaveRequests || []).some((request) => (
+      request.status !== "rejected"
+      && employeeAliases.has(String(request.employeeId || ""))
+      && request.startDate <= endDate
+      && request.endDate >= startDate
+    ));
+    if (overlaps) {
+      showAppToast("같은 기간에 승인 대기 또는 승인된 휴가가 있습니다.");
+      return;
+    }
+    const request = normalizeLaborLeaveRequest({
+      id: crypto.randomUUID?.() || `leave-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      userId: authState.user?.id || "local-user",
+      employeeId,
+      employeeName: employee.name || state.profile.name || "직원",
+      leaveType,
+      startDate,
+      endDate,
+      startTime,
+      endTime,
+      reason: data.get("reason"),
+      handoverTo: data.get("handoverTo"),
+      handoverNote: data.get("handoverNote"),
+      status: "pending",
+      requestedAt: new Date().toISOString(),
+    });
+    state.laborLeaveRequests.unshift(request);
+    saveState({ fastSave: true });
+    await saveRemoteLeaveRequest(request);
+    showAppToast("휴가 승인요청을 보냈습니다.");
+    renderAttendance();
+  });
+  document.querySelectorAll("[data-leave-decision]").forEach((button) => {
+    button.addEventListener("click", async () => {
+      if (!hasApprovalAuthority()) return;
+      const request = state.laborLeaveRequests.find((item) => item.id === button.dataset.leaveRequestId);
+      if (!request) return;
+      const decision = button.dataset.leaveDecision === "approved" ? "approved" : "rejected";
+      const reviewNote = decision === "rejected" ? String(window.prompt("반려 사유를 입력해주세요.", "") || "").trim() : "";
+      if (decision === "rejected" && !reviewNote) return;
+      request.status = decision;
+      request.reviewNote = reviewNote;
+      request.reviewedAt = new Date().toISOString();
+      request.reviewedBy = authState.user?.id || "local-approver";
+      saveState({ fastSave: true });
+      await saveRemoteLeaveRequest(request);
+      showAppToast(decision === "approved" ? "휴가를 승인했습니다." : "휴가를 반려했습니다.");
+      renderAttendance();
+    });
+  });
+}
+
 function formatMinutesAsHours(minutes) {
   const hours = Math.floor(minutes / 60);
   const mins = minutes % 60;
@@ -13941,12 +14267,14 @@ function buildMonthlyLaborSummary(employeeId, employee, monthPrefix = getActiveD
     const logsByEmployee = state.employeeLogs?.[dateKey] || {};
     if (!dateKey.startsWith(monthPrefix)) return;
     const dayLog = logsByEmployee?.[employeeId];
+    const approvedLeave = getApprovedLeaveForDate(employeeId, dateKey);
+    const approvedLeaveType = approvedLeave ? getLaborLeaveType(approvedLeave.leaveType) : null;
     const scheduledWorkHours = getOverviewScheduledWorkHours(employee, dateKey, dayLog || {});
     const scheduled = getWorkHoursDurationMinutes(scheduledWorkHours);
     scheduledMinutes += scheduled;
     let worked = 0;
     let ops = createFitnessOps();
-    let status = scheduled ? "미기록" : "휴무";
+    let status = getAttendanceStatusForLog(employee, dayLog || {}, dateKey);
     if (dayLog) {
       syncFitnessOpsFromSchedule(dayLog);
       ops = { ...createFitnessOps(), ...(dayLog.fitnessOps || {}) };
@@ -13967,7 +14295,12 @@ function buildMonthlyLaborSummary(employeeId, employee, monthPrefix = getActiveD
     if (status.includes("지각")) lateCount += 1;
     if (status.includes("조퇴")) earlyCount += 1;
     if (status.includes("결근")) absenceCount += 1;
-    if (/휴가|연차|월차/.test(status)) leaveDays += 1;
+    if (approvedLeaveType?.mode === "full") leaveDays += 1;
+    else if (["morning", "afternoon"].includes(approvedLeaveType?.mode)) leaveDays += 0.5;
+    else if (approvedLeaveType?.mode === "hourly") {
+      const range = getLeaveTimeRange(approvedLeave, employee.workHours || defaultProfile.workHours);
+      leaveDays += range ? Math.min(1, Math.max(0, range.end - range.start) / (8 * 60)) : 0;
+    }
     const breakSummary = (dayLog?.attendanceBreaks || [])
       .filter((item) => item.start || item.end)
       .map((item) => `${item.start || "--:--"}~${item.end || "--:--"}`)
@@ -13985,8 +14318,8 @@ function buildMonthlyLaborSummary(employeeId, employee, monthPrefix = getActiveD
       freePt: numberValue(ops.ptFree),
     };
     dayRows.push(row);
-    if (worked || dayLog?.clockIn || dayLog?.clockOut || dayLog?.attendanceStatus) {
-      logs.push({ dateKey, clockIn: dayLog.clockIn || "", clockOut: dayLog.clockOut || "", status, worked });
+    if (worked || dayLog?.clockIn || dayLog?.clockOut || dayLog?.attendanceStatus || approvedLeave) {
+      logs.push({ dateKey, clockIn: dayLog?.clockIn || "", clockOut: dayLog?.clockOut || "", status, worked });
     }
   });
   const laborProfile = getLaborProfileForEmployee(employee);
@@ -14007,7 +14340,7 @@ function buildMonthlyLaborSummary(employeeId, employee, monthPrefix = getActiveD
     ["지각", `${lateCount}건`],
     ["조퇴", `${earlyCount}건`],
     ["결근", `${absenceCount}건`],
-    ["월차/연차", `${leaveDays}일`],
+    ["승인 휴가", `${Math.round(leaveDays * 100) / 100}일`],
     ["외출", `${breakCount}건`],
   ];
   return { employee, monthLabel, month: monthPrefix, cards, logs, dayRows, scheduledMinutes, actualMinutes, overtimeMinutes, nightMinutes, holidayMinutes, paidPtCount, freePtCount, otherPtCount, settlementPtCount, lateCount, earlyCount, absenceCount, leaveDays, breakCount, recordedDays: logs.length };
@@ -17724,6 +18057,12 @@ function buildFitnessReportLines() {
     `출퇴근: ${model.clock}`,
     `날씨: ${model.weatherText}${model.weatherAddress ? ` (${model.weatherAddress})` : ""}`,
     ...(model.isCenter ? [`확정: ${model.confirmation?.confirmedAt ? getFitnessCenterReportStatusText(model.dateKey) : "미확정"}`] : []),
+    ...(model.isCenter ? [
+      "",
+      `[센터장 데일리 브리핑 · 운영 준비도 ${model.centerCommand.readiness}% ${model.centerCommand.readinessLabel}]`,
+      ...model.centerCommand.kpis.map((item) => `- ${item.label}: ${item.value} (${item.note})`),
+      ...model.centerCommand.actions.map((item) => `- ${item.label}: ${item.text}`),
+    ] : []),
     "",
     "[금일 주요업무]",
     ...model.topTasks.map((task) => `- ${task}`),
@@ -18502,6 +18841,52 @@ function getFitnessReportAttendanceWarnings(logEntries = [], dateKey = getActive
   });
 }
 
+function buildFitnessCenterCommandSummary({ staffRows = [], totals = {}, dagymSummary = null, attendanceWarnings = [], topTasks = [], tomorrowTasks = [], weatherText = "" } = {}) {
+  const fullDayOffPattern = /^(?:휴무|비번|연차|대체휴무|병가|경조휴가|공가|기타 휴가)$/;
+  const activeRows = staffRows.filter((row) => !fullDayOffPattern.test(String(row.attendanceStatus || "").trim()));
+  const attendanceComplete = activeRows.filter((row) => row.clockIn !== "-" && row.clockOut !== "-").length;
+  const attendanceRate = activeRows.length ? Math.round((attendanceComplete / activeRows.length) * 100) : 100;
+  const dagymRows = Object.fromEntries((dagymSummary?.rows || []).map((row) => [row.key, row]));
+  const visits = numberValue(dagymRows.visits?.value);
+  const conversionCount = numberValue(dagymRows.newMembers?.value) + numberValue(dagymRows.renewals?.value);
+  const conversionRate = visits ? Math.round((conversionCount / visits) * 100) : 0;
+  const bookedPt = numberValue(dagymRows.ptBookings?.value);
+  const recordedPt = numberValue(totals.ptTotal);
+  const dangerInsights = (dagymSummary?.insights || []).filter((item) => item.level === "danger" && item.title !== "원인·개선 방향");
+  const cleanTask = (rows = []) => rows.find((row) => String(row || "").trim())?.replace(/^\S+\s+/, "").trim() || "";
+  const urgent = attendanceWarnings[0]?.message
+    || dangerInsights[0]?.text
+    || "즉시 보완할 운영 이상신호가 없습니다.";
+  const todayFocus = cleanTask(topTasks)
+    || (recordedPt || bookedPt ? `PT 실행기록 ${recordedPt}건과 예약 ${bookedPt}건을 마감 대조합니다.` : "금일 핵심 실행업무를 센터장이 확정하세요.");
+  const tomorrowHandoff = cleanTask(tomorrowTasks) || "명일 예정업무와 담당자를 마감 전에 지정하세요.";
+  const weatherReady = weatherText && !/미기록|확인 중|주소 입력 필요/.test(weatherText);
+  const sourceReady = Boolean(dagymSummary?.sourceDateKey);
+  const taskReady = Boolean(cleanTask(topTasks));
+  const readiness = Math.max(0, Math.min(100,
+    Math.round(attendanceRate * 0.55)
+      + (sourceReady ? 20 : 0)
+      + (weatherReady ? 10 : 0)
+      + (taskReady ? 15 : 0)
+      - Math.min(20, dangerInsights.length * 5)));
+  const readinessLabel = readiness >= 85 ? "안정" : readiness >= 65 ? "점검" : "보완";
+  return {
+    readiness,
+    readinessLabel,
+    kpis: [
+      { label: "출결 완결", value: `${attendanceComplete}/${activeRows.length || 0}`, note: `${attendanceRate}% · 휴무 제외` },
+      { label: "PT 실행", value: `${recordedPt}/${bookedPt}`, note: "기록/다짐예약" },
+      { label: "계약 성과", value: `${numberValue(totals.contractTotal)}건`, note: `신규 ${numberValue(totals.customerNew)} · 재등록 ${numberValue(totals.customerRenewal)}` },
+      { label: "회원 전환", value: visits ? `${conversionRate}%` : "-", note: visits ? `${conversionCount}/${visits}명` : "출석자료 대기" },
+    ],
+    actions: [
+      { label: "즉시 확인", text: urgent, tone: attendanceWarnings.length || dangerInsights.length ? "danger" : "good" },
+      { label: "오늘 집중", text: todayFocus, tone: "focus" },
+      { label: "명일 예정업무", text: tomorrowHandoff, tone: "next" },
+    ],
+  };
+}
+
 function buildFitnessReportModel(options = {}) {
   const page = getCurrentFitnessLogPage();
   const dateKey = options.dateKey || getActiveDateKey();
@@ -18543,6 +18928,17 @@ function buildFitnessReportModel(options = {}) {
   const aiContext = buildFitnessReportAiContext({ dateKey, isCenter, employee, sourceLog, logEntries, totals, classStats, manual, dagymSummary, attendanceWarnings });
   const aiKey = `${dateKey}:${isCenter ? "center" : employee.id}:${getFitnessReportAiFingerprint(aiContext)}`;
   const aiCacheEntry = getFitnessAiCoachingCache()[aiKey] || null;
+  const topTasks = getFitnessReportTaskRows(logEntries, { limit: isCenter ? 3 : Infinity, minRows: 3 });
+  const tomorrowTasks = getFitnessReportTaskRows(nextLogEntries, { limit: isCenter ? 3 : Infinity, minRows: 3 });
+  const centerCommand = isCenter ? buildFitnessCenterCommandSummary({
+    staffRows,
+    totals,
+    dagymSummary,
+    attendanceWarnings,
+    topTasks,
+    tomorrowTasks,
+    weatherText,
+  }) : null;
   const model = {
     title,
     dateKey,
@@ -18563,8 +18959,9 @@ function buildFitnessReportModel(options = {}) {
     totals,
     classStats,
     approvalColumns: ["담당", "팀장", "센터장"],
-    topTasks: getFitnessReportTaskRows(logEntries, { limit: isCenter ? 3 : Infinity, minRows: 3 }),
-    tomorrowTasks: getFitnessReportTaskRows(nextLogEntries, { limit: isCenter ? 3 : Infinity, minRows: 3 }),
+    topTasks,
+    tomorrowTasks,
+    centerCommand,
     schedule: entries.map((entry) => ({
       time: entry.time,
       text: getScheduleEntryText(entry),
@@ -18704,16 +19101,31 @@ function renderFitnessReportTemplate(model = buildFitnessReportModel()) {
         ${model.attendanceWarnings.length ? `<aside class="fitness-paper-warning-banner" role="alert"><b>출퇴근 기록 보완</b><span>${escapeHtml(model.attendanceWarnings.map((item) => item.message).join(" · "))}</span><em>업무일지는 근무일 종료 후 48시간까지 본인이 수정할 수 있습니다.</em></aside>` : ""}
       ` : ""}
 
-      <section class="fitness-paper-summary">
-        <div class="fitness-paper-tasks">
-          <h3>금일 주요업무</h3>
-          ${taskRows}
-        </div>
-        <div class="fitness-paper-tasks">
-          <h3>명일 예정업무</h3>
-          ${tomorrowRows}
-        </div>
-      </section>
+      ${model.isCenter ? `
+        <section class="fitness-paper-command" aria-label="센터장 데일리 브리핑">
+          <header>
+            <div><small>CENTER MANAGER BRIEF</small><h3>센터장 데일리 브리핑</h3></div>
+            <strong class="is-${escapeHtml(model.centerCommand.readinessLabel)}"><span>운영 준비도</span>${escapeHtml(model.centerCommand.readiness)}<small>% · ${escapeHtml(model.centerCommand.readinessLabel)}</small></strong>
+          </header>
+          <div class="fitness-paper-command-kpis">
+            ${model.centerCommand.kpis.map((item) => `<div><span>${escapeHtml(item.label)}</span><strong>${escapeHtml(item.value)}</strong><small>${escapeHtml(item.note)}</small></div>`).join("")}
+          </div>
+          <div class="fitness-paper-command-actions">
+            ${model.centerCommand.actions.map((item) => `<p class="is-${escapeHtml(item.tone)}"><b>${escapeHtml(item.label)}</b><span>${escapeHtml(item.text)}</span></p>`).join("")}
+          </div>
+        </section>
+      ` : `
+        <section class="fitness-paper-summary">
+          <div class="fitness-paper-tasks">
+            <h3>금일 주요업무</h3>
+            ${taskRows}
+          </div>
+          <div class="fitness-paper-tasks">
+            <h3>명일 예정업무</h3>
+            ${tomorrowRows}
+          </div>
+        </section>
+      `}
 
       ${model.isCenter ? `
         <div class="fitness-paper-center-ledgers" aria-label="센터운영 수기원장 연계표">
@@ -19080,6 +19492,80 @@ function getFitnessReportExportCss(reportHeight = 1754) {
       font-weight: 900;
     }
     .fitness-paper-warning-banner em { font-style: normal; }
+    .fitness-paper-command {
+      overflow: hidden;
+      border: 2px solid rgba(18, 59, 45, 0.26);
+      border-radius: 14px;
+      background: rgba(255, 254, 250, 0.95);
+    }
+    .fitness-paper-command > header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      background: linear-gradient(118deg, #0b3b2d, #165c46);
+      color: #fffdf3;
+      padding: 10px 14px 10px 18px;
+    }
+    .fitness-paper-command > header div small,
+    .fitness-paper-command > header h3 {
+      display: block;
+      margin: 0;
+      color: #fffdf3;
+      -webkit-text-fill-color: #fffdf3;
+    }
+    .fitness-paper-command > header div small { font-size: 11px; font-weight: 900; letter-spacing: 0.14em; }
+    .fitness-paper-command > header h3 { margin-top: 2px; font-size: 22px; font-weight: 950; }
+    .fitness-paper-command > header > strong {
+      display: grid;
+      grid-template-columns: auto auto;
+      align-items: baseline;
+      column-gap: 7px;
+      min-width: 180px;
+      border: 2px solid rgba(255, 255, 255, 0.34);
+      border-radius: 12px;
+      background: rgba(255, 255, 255, 0.1);
+      color: #fffdf3;
+      -webkit-text-fill-color: #fffdf3;
+      padding: 7px 10px;
+      font-size: 31px;
+      line-height: 1;
+      text-align: right;
+    }
+    .fitness-paper-command > header > strong > span {
+      grid-row: 1 / 3;
+      align-self: center;
+      color: rgba(255, 253, 243, 0.78);
+      -webkit-text-fill-color: rgba(255, 253, 243, 0.78);
+      font-size: 12px;
+      font-weight: 850;
+    }
+    .fitness-paper-command > header > strong > small { color: #fffdf3; -webkit-text-fill-color: #fffdf3; font-size: 12px; font-weight: 900; }
+    .fitness-paper-command-kpis { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); }
+    .fitness-paper-command-kpis > div { min-width: 0; border-right: 2px solid rgba(18, 59, 45, 0.12); padding: 8px 12px; }
+    .fitness-paper-command-kpis > div:last-child { border-right: 0; }
+    .fitness-paper-command-kpis span,
+    .fitness-paper-command-kpis strong,
+    .fitness-paper-command-kpis small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .fitness-paper-command-kpis span,
+    .fitness-paper-command-kpis small { color: rgba(17, 20, 17, 0.62); font-size: 12px; font-weight: 850; }
+    .fitness-paper-command-kpis strong { margin: 2px 0; color: #103f31; font-size: 24px; font-weight: 950; }
+    .fitness-paper-command-actions { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); border-top: 2px solid rgba(18, 59, 45, 0.12); }
+    .fitness-paper-command-actions p {
+      display: grid;
+      grid-template-columns: 94px minmax(0, 1fr);
+      min-width: 0;
+      min-height: 46px;
+      margin: 0;
+      border-right: 2px solid rgba(18, 59, 45, 0.12);
+      font-size: 13px;
+      line-height: 1.22;
+    }
+    .fitness-paper-command-actions p:last-child { border-right: 0; }
+    .fitness-paper-command-actions b { display: grid; place-items: center; background: rgba(237, 244, 224, 0.75); padding: 7px; font-weight: 950; }
+    .fitness-paper-command-actions span { display: -webkit-box; overflow: hidden; padding: 7px 8px; font-weight: 820; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
+    .fitness-paper-command-actions .is-danger b { background: #ffe8e4; color: #b12626; }
+    .fitness-paper-command-actions .is-good b { color: #1d654b; }
     .fitness-report-page .is-report-warning { color: #b12626 !important; -webkit-text-fill-color: #b12626 !important; }
     .fitness-paper-center-ops-table td.is-report-warning { background: #ffe8e4; font-weight: 950; }
     .fitness-paper-dagym {

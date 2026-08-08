@@ -395,6 +395,62 @@ as $$
   );
 $$;
 
+create table if not exists public.labor_leave_requests (
+  id text primary key,
+  user_id uuid not null references auth.users(id) on delete cascade,
+  employee_id text not null,
+  employee_name text not null default '',
+  leave_type text not null default 'annual',
+  start_date date not null,
+  end_date date not null,
+  start_time time,
+  end_time time,
+  reason text not null default '',
+  handover_to text not null default '',
+  handover_note text not null default '',
+  status text not null default 'pending' check (status in ('pending', 'approved', 'rejected')),
+  review_note text not null default '',
+  reviewed_by uuid references auth.users(id) on delete set null,
+  reviewed_at timestamptz,
+  requested_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  check (end_date >= start_date)
+);
+
+alter table public.labor_leave_requests enable row level security;
+
+drop policy if exists "labor_leave_requests_select_visible" on public.labor_leave_requests;
+create policy "labor_leave_requests_select_visible"
+on public.labor_leave_requests for select
+to authenticated
+using (auth.uid() = user_id or public.is_profile_approver());
+
+drop policy if exists "labor_leave_requests_insert_own_or_approver" on public.labor_leave_requests;
+create policy "labor_leave_requests_insert_own_or_approver"
+on public.labor_leave_requests for insert
+to authenticated
+with check (auth.uid() = user_id or public.is_profile_approver());
+
+drop policy if exists "labor_leave_requests_update_pending_own" on public.labor_leave_requests;
+create policy "labor_leave_requests_update_pending_own"
+on public.labor_leave_requests for update
+to authenticated
+using (auth.uid() = user_id and status = 'pending')
+with check (auth.uid() = user_id and status = 'pending');
+
+drop policy if exists "labor_leave_requests_update_approver" on public.labor_leave_requests;
+create policy "labor_leave_requests_update_approver"
+on public.labor_leave_requests for update
+to authenticated
+using (public.is_profile_approver())
+with check (public.is_profile_approver());
+
+drop policy if exists "labor_leave_requests_delete_pending_own_or_approver" on public.labor_leave_requests;
+create policy "labor_leave_requests_delete_pending_own_or_approver"
+on public.labor_leave_requests for delete
+to authenticated
+using ((auth.uid() = user_id and status = 'pending') or public.is_profile_approver());
+
 create table if not exists public.site_weather_settings (
   site_key text primary key,
   address text not null default '',

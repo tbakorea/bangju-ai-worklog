@@ -3611,6 +3611,9 @@ async function checkFitnessCenterReportConfirmation(browser) {
     warningColor: getComputedStyle(document.querySelector("#fitnessReportPreview .fitness-paper-warning-banner") || document.body).color,
     weatherText: document.querySelector("#fitnessReportPreview .fitness-paper-approval")?.textContent?.replace(/\s+/g, " ").trim() || "",
     ledgerCount: document.querySelectorAll("#fitnessReportPreview [data-report-ledger]").length,
+    commandText: document.querySelector("#fitnessReportPreview .fitness-paper-command")?.textContent?.replace(/\s+/g, " ").trim() || "",
+    commandKpiCount: document.querySelectorAll("#fitnessReportPreview .fitness-paper-command-kpis > div").length,
+    commandActionCount: document.querySelectorAll("#fitnessReportPreview .fitness-paper-command-actions > p").length,
     reportContentFits: (() => {
       const report = document.querySelector("#fitnessReportPreview .fitness-report-page");
       return !report || report.scrollHeight <= report.clientHeight + 2;
@@ -3638,6 +3641,15 @@ async function checkFitnessCenterReportConfirmation(browser) {
     || !reportState.reportContentFits
     || !reportState.weatherText.includes("맑음")
     || !reportState.weatherText.includes("24°/31°")
+    || !reportState.commandText.includes("센터장 데일리 브리핑")
+    || !reportState.commandText.includes("운영 준비도")
+    || !reportState.commandText.includes("출결 완결")
+    || !reportState.commandText.includes("PT 실행")
+    || !reportState.commandText.includes("계약 성과")
+    || !reportState.commandText.includes("회원 전환")
+    || !reportState.commandText.includes("즉시 확인")
+    || reportState.commandKpiCount !== 4
+    || reportState.commandActionCount !== 3
     || reportState.ledgerCount !== 2) {
     fail("center report should show current weather, Dagym changes, red warnings, and 48-hour attendance correction guidance", JSON.stringify(reportState));
   }
@@ -3856,8 +3868,8 @@ async function checkRealDeviceRegressionLayouts(browser) {
     if (item.view === "attendance" && (metrics.laborIntegrationCount !== 6 || !metrics.laborReportOption || !metrics.controlHasLaborKpi)) {
       fail("labor operations must stay connected to six app sources, report archive, and control tower", JSON.stringify(metrics));
     }
-    if (item.view === "attendance" && (metrics.laborWorkspaceTabCount !== 4 || !metrics.laborWorkspaceSticky || !metrics.laborEmployeeSelector || !metrics.laborSinglePanel)) {
-      fail("labor workspace must provide a sticky four-tab employee and month navigator with one compact panel", JSON.stringify(metrics));
+    if (item.view === "attendance" && (metrics.laborWorkspaceTabCount !== 5 || !metrics.laborWorkspaceSticky || !metrics.laborEmployeeSelector || !metrics.laborSinglePanel)) {
+      fail("labor workspace must provide a sticky five-tab employee and month navigator with one compact panel", JSON.stringify(metrics));
     }
     if (item.view === "attendance" && (metrics.laborArchiveKind !== "labor" || !metrics.laborSnapshotProtectsPayroll || !metrics.laborPayDayConnected)) {
       fail("labor reports, protected payroll persistence, and employee pay dates must share one data flow", JSON.stringify(metrics));
@@ -4876,6 +4888,65 @@ async function checkDagymDirectReportImport(browser) {
   await page.close();
 }
 
+async function checkLaborLeaveWorkflow(browser) {
+  const { page, errors } = await openPage(browser, { width: 390, height: 844 });
+  const result = await page.evaluate(() => window.eval(`(() => {
+    const employee = employees.find((item) => item.id === "bangju-finance-assistant");
+    authState.user = { id: "owner-leave-qa", email: "j3010@ymail.com" };
+    state.profile = {
+      ...state.profile,
+      authUserId: "owner-leave-qa",
+      email: "j3010@ymail.com",
+      name: "대표",
+      role: "대표",
+      approvalStatus: "approved"
+    };
+    state.laborLeaveRequests = [
+      { id: "leave-full", userId: "employee-a", employeeId: employee.id, employeeName: employee.name, leaveType: "annual", startDate: "2026-08-10", endDate: "2026-08-10", status: "approved", requestedAt: "2026-08-08T01:00:00Z" },
+      { id: "leave-half", userId: "employee-a", employeeId: employee.id, employeeName: employee.name, leaveType: "morning-half", startDate: "2026-08-11", endDate: "2026-08-11", status: "approved", requestedAt: "2026-08-08T02:00:00Z" },
+      { id: "leave-hourly", userId: "employee-a", employeeId: employee.id, employeeName: employee.name, leaveType: "hourly", startDate: "2026-08-12", endDate: "2026-08-12", startTime: "10:00", endTime: "12:00", status: "approved", requestedAt: "2026-08-08T03:00:00Z" },
+      { id: "leave-pending", userId: "employee-a", employeeId: employee.id, employeeName: employee.name, leaveType: "sick", startDate: "2026-08-13", endDate: "2026-08-13", reason: "진료", status: "pending", requestedAt: "2026-08-08T04:00:00Z" }
+    ].map(normalizeLaborLeaveRequest);
+    state.employeeLogs["2026-08-10"] = { [employee.id]: createEmployeeLog(employee, state.profile, "2026-08-10") };
+    state.employeeLogs["2026-08-11"] = { [employee.id]: createEmployeeLog(employee, state.profile, "2026-08-11") };
+    state.employeeLogs["2026-08-12"] = { [employee.id]: createEmployeeLog(employee, state.profile, "2026-08-12") };
+    const fullLog = state.employeeLogs["2026-08-10"][employee.id];
+    const halfLog = state.employeeLogs["2026-08-11"][employee.id];
+    const hourlyLog = state.employeeLogs["2026-08-12"][employee.id];
+    fullLog.scheduleUnit = halfLog.scheduleUnit = hourlyLog.scheduleUnit = "60";
+    normalizeEmployeeLogRows(fullLog, "2026-08-10");
+    normalizeEmployeeLogRows(halfLog, "2026-08-11");
+    normalizeEmployeeLogRows(hourlyLog, "2026-08-12");
+    const labor = buildMonthlyLaborSummary(employee.id, employee, "2026-08");
+    const host = document.getElementById("attendanceList");
+    host.innerHTML = renderLaborLeaveWorkspace(employee);
+    const workspace = document.getElementById("laborLeaveWorkspace");
+    return JSON.stringify({
+      fullHours: getOverviewScheduledWorkHours(employee, "2026-08-10", fullLog),
+      fullStatus: getAttendanceStatusForLog(employee, fullLog, "2026-08-10", new Date("2026-08-11T12:00:00+09:00")),
+      fullOverview: getOverviewWorkStatus(employee, fullLog, "2026-08-10", new Date("2026-08-11T12:00:00+09:00")).label,
+      fullTimes: fullLog.schedule.map((entry) => entry.time),
+      fullWarnings: getFitnessReportAttendanceWarnings([{ employee, log: fullLog }], "2026-08-10", new Date("2026-08-11T12:00:00+09:00")).length,
+      halfHours: getOverviewScheduledWorkHours(employee, "2026-08-11", halfLog),
+      halfTimes: halfLog.schedule.map((entry) => entry.time),
+      hourlyTimes: hourlyLog.schedule.map((entry) => entry.time),
+      leaveDays: labor.leaveDays,
+      absenceCount: labor.absenceCount,
+      pendingButtons: workspace.querySelectorAll('[data-leave-decision]').length,
+      fits: workspace.scrollWidth <= workspace.clientWidth + 2
+    });
+  })()`));
+  const metrics = JSON.parse(result);
+  if (metrics.fullHours !== "휴무" || metrics.fullStatus !== "연차" || metrics.fullOverview !== "연차" || metrics.fullTimes.length || metrics.fullWarnings !== 0
+    || metrics.halfHours !== "13:00-18:00" || metrics.halfTimes[0] !== "13:00" || metrics.halfTimes.at(-1) !== "18:00"
+    || metrics.hourlyTimes.includes("10:00") || metrics.hourlyTimes.includes("11:00")
+    || metrics.leaveDays !== 1.75 || metrics.absenceCount !== 0 || metrics.pendingButtons !== 2 || !metrics.fits) {
+    fail("approved leave should adjust attendance, schedule, labor totals, and mobile approval UI", JSON.stringify(metrics));
+  }
+  if (errors.length) fail("labor leave workflow page errors", errors.join(" | "));
+  await page.close();
+}
+
 (async () => {
   const browser = await chromium.launch({
     headless: true,
@@ -4904,6 +4975,7 @@ async function checkDagymDirectReportImport(browser) {
     await checkDagymPreviousDayGuidanceFlow(browser);
     await checkDagymDirectReportImport(browser);
     await checkFitnessRosterHoursAndCompactTotals(browser);
+    await checkLaborLeaveWorkflow(browser);
     await checkRepresentativeProfileSeparation(browser);
     await checkNonControlRoleTextDoesNotBecomeRepresentative(browser);
     await checkDelegatedPermissionMenus(browser);
