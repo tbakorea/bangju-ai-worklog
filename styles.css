@@ -14059,6 +14059,40 @@ body[data-layout-mode="phone"] .fitness-log-schedule-panel .appointment-merge-bu
   font-weight: 950;
 }
 
+.fitness-paper-center-ops-table h3 {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.fitness-paper-center-ops-table h3 span {
+  color: rgba(18, 59, 45, 0.64);
+  font-size: 7.5px;
+  font-weight: 850;
+}
+
+.fitness-report-day-month {
+  display: inline-flex;
+  align-items: baseline;
+  justify-content: center;
+  max-width: 100%;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.035em;
+}
+
+.fitness-report-day-month b {
+  font-size: inherit;
+  font-weight: 950;
+}
+
+.fitness-report-day-month small {
+  color: rgba(17, 20, 17, 0.58);
+  font-size: 0.86em;
+  font-weight: 850;
+}
+
 .fitness-paper-footer-grid small {
   display: block;
   min-height: 20px;

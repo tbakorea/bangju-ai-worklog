@@ -3614,6 +3614,9 @@ async function checkFitnessCenterReportConfirmation(browser) {
     commandText: document.querySelector("#fitnessReportPreview .fitness-paper-command")?.textContent?.replace(/\s+/g, " ").trim() || "",
     commandKpiCount: document.querySelectorAll("#fitnessReportPreview .fitness-paper-command-kpis > div").length,
     commandActionCount: document.querySelectorAll("#fitnessReportPreview .fitness-paper-command-actions > p").length,
+    monthlyLegendCount: [...document.querySelectorAll("#fitnessReportPreview .fitness-paper-center-ops-table h3")].filter((node) => node.textContent.includes("당일/월누계")).length,
+    managerAttendancePtText: [...document.querySelectorAll("#fitnessReportPreview [data-report-ledger='attendance-pt'] tbody tr")].find((row) => row.textContent.includes("박주홍"))?.textContent?.replace(/\s+/g, " ").trim() || "",
+    managerContractCustomerText: [...document.querySelectorAll("#fitnessReportPreview [data-report-ledger='contract-customer'] tbody tr")].find((row) => row.textContent.includes("박주홍"))?.textContent?.replace(/\s+/g, " ").trim() || "",
     reportContentFits: (() => {
       const report = document.querySelector("#fitnessReportPreview .fitness-report-page");
       return !report || report.scrollHeight <= report.clientHeight + 2;
@@ -3648,8 +3651,15 @@ async function checkFitnessCenterReportConfirmation(browser) {
     || !reportState.commandText.includes("계약 성과")
     || !reportState.commandText.includes("회원 전환")
     || !reportState.commandText.includes("즉시 확인")
+    || !reportState.commandText.includes("2/6")
     || reportState.commandKpiCount !== 4
     || reportState.commandActionCount !== 3
+    || reportState.monthlyLegendCount !== 2
+    || !reportState.managerAttendancePtText.includes("2/5")
+    || !reportState.managerAttendancePtText.includes("0/1")
+    || !reportState.managerAttendancePtText.includes("2/6")
+    || !reportState.managerContractCustomerText.includes("2/2")
+    || !reportState.managerContractCustomerText.includes("1/1")
     || reportState.ledgerCount !== 2) {
     fail("center report should show current weather, Dagym changes, red warnings, and 48-hour attendance correction guidance", JSON.stringify(reportState));
   }

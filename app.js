@@ -18074,6 +18074,9 @@ function buildFitnessReportLines() {
     ...model.kpis.map(([label, value]) => `- ${label}: ${value}`),
     ...(model.isCenter ? [
       "",
+      "[직원별 통계 · 당일/월누계]",
+      ...model.staffRows.map((row) => `- ${row.name}: 유료PT ${numberValue(row.ptRegular)}/${numberValue(row.monthly?.ptRegular)}, 무료PT ${numberValue(row.ptFree)}/${numberValue(row.monthly?.ptFree)}, 계약 ${numberValue(row.contractTotal)}/${numberValue(row.monthly?.contractTotal)}, 상담 ${numberValue(row.consultation)}/${numberValue(row.monthly?.consultation)}, 고객관리 ${numberValue(row.customerTotal)}/${numberValue(row.monthly?.customerTotal)}`),
+      "",
       `[다짐 운영현황 · ${model.dagymSummary?.sourceDateKey || "자료 미연결"}]`,
       ...(model.dagymSummary?.rows || []).map((row) => `- ${row.label}: ${formatFitnessDagymReportValue(row)} (${formatFitnessDagymReportDelta(row)})`),
       ...(model.dagymSummary?.insights || []).map((item) => `- ${item.title}: ${item.text}`),
@@ -18129,7 +18132,34 @@ function getFitnessReportLogEntries(dateKey, isCenter, employee) {
   }];
 }
 
-function summarizeFitnessReportRows(logEntries = []) {
+function getFitnessReportMonthlyStats(employee = {}, monthPrefix = getActiveDateKey().slice(0, 7), dateKey = getActiveDateKey(), dailyStats = {}) {
+  const aggregate = buildFitnessCenterEmployeeMonthRow(employee, monthPrefix);
+  const ops = { ...createFitnessOps(), ...(aggregate.ops || {}) };
+  const resolvedDayOps = { ...createFitnessOps(), ...(getFitnessEmployeeLogForDate(employee, dateKey)?.fitnessOps || {}) };
+  const replaceDayContribution = (key) => Math.max(0,
+    numberValue(ops[key]) - numberValue(resolvedDayOps[key]) + numberValue(dailyStats[key]));
+  const stats = {
+    ptRegular: replaceDayContribution("ptRegular"),
+    ptFree: replaceDayContribution("ptFree"),
+    ptOther: replaceDayContribution("ptOther"),
+    customerNew: replaceDayContribution("customerNew"),
+    customerRenewal: replaceDayContribution("customerRenewal"),
+    dayPass: replaceDayContribution("dayPass"),
+    contractOther: replaceDayContribution("contractOther"),
+    inbound: replaceDayContribution("inbound"),
+    outbound: replaceDayContribution("outbound"),
+    outsideSales: replaceDayContribution("outsideSales"),
+    consultation: replaceDayContribution("consultation"),
+    customerOther: replaceDayContribution("customerOther"),
+  };
+  stats.ptTotal = stats.ptRegular + stats.ptFree + stats.ptOther;
+  stats.contractTotal = stats.customerNew + stats.customerRenewal + stats.dayPass + stats.contractOther;
+  stats.customerTotal = stats.inbound + stats.outbound + stats.outsideSales + stats.consultation + stats.customerOther;
+  return stats;
+}
+
+function summarizeFitnessReportRows(logEntries = [], dateKey = getActiveDateKey(), includeMonthly = false) {
+  const monthPrefix = String(dateKey || getActiveDateKey()).slice(0, 7);
   const rows = logEntries.map(({ employee, log }, index) => {
     const ops = { ...createFitnessOps(), ...(log.fitnessOps || {}) };
     const ptRegular = numberValue(ops.ptRegular);
@@ -18173,6 +18203,20 @@ function summarizeFitnessReportRows(logEntries = []) {
       consultation,
       customerOther,
       customerTotal: inbound + outbound + outsideSales + consultation + customerOther,
+      monthly: includeMonthly ? getFitnessReportMonthlyStats(employee, monthPrefix, dateKey, {
+        ptRegular,
+        ptFree,
+        ptOther,
+        customerNew,
+        customerRenewal,
+        dayPass,
+        contractOther,
+        inbound,
+        outbound,
+        outsideSales,
+        consultation,
+        customerOther,
+      }) : {},
       ptNote: ptRegular + ptFree + ptOther ? String(ops.shiftNote || "").trim() : "",
       customerNote: customerNew + customerRenewal + dayPass + contractOther + inbound + outbound + outsideSales + consultation + customerOther
         ? String(ops.specialReport || "").trim()
@@ -18186,7 +18230,13 @@ function summarizeFitnessReportRows(logEntries = []) {
     });
     return sum;
   }, {});
-  return { rows, totals };
+  const monthlyTotals = includeMonthly ? rows.reduce((sum, row) => {
+    ["ptRegular", "ptFree", "ptOther", "ptTotal", "customerNew", "customerRenewal", "dayPass", "contractOther", "contractTotal", "inbound", "outbound", "outsideSales", "consultation", "customerOther", "customerTotal"].forEach((key) => {
+      sum[key] = (sum[key] || 0) + numberValue(row.monthly?.[key]);
+    });
+    return sum;
+  }, {}) : {};
+  return { rows, totals, monthlyTotals };
 }
 
 function getFitnessReportTaskRows(logEntries = [], { limit = 3, minRows = 3 } = {}) {
@@ -18841,7 +18891,7 @@ function getFitnessReportAttendanceWarnings(logEntries = [], dateKey = getActive
   });
 }
 
-function buildFitnessCenterCommandSummary({ staffRows = [], totals = {}, dagymSummary = null, attendanceWarnings = [], topTasks = [], tomorrowTasks = [], weatherText = "" } = {}) {
+function buildFitnessCenterCommandSummary({ staffRows = [], totals = {}, monthlyTotals = {}, dagymSummary = null, attendanceWarnings = [], topTasks = [], tomorrowTasks = [], weatherText = "" } = {}) {
   const fullDayOffPattern = /^(?:휴무|비번|연차|대체휴무|병가|경조휴가|공가|기타 휴가)$/;
   const activeRows = staffRows.filter((row) => !fullDayOffPattern.test(String(row.attendanceStatus || "").trim()));
   const attendanceComplete = activeRows.filter((row) => row.clockIn !== "-" && row.clockOut !== "-").length;
@@ -18875,8 +18925,8 @@ function buildFitnessCenterCommandSummary({ staffRows = [], totals = {}, dagymSu
     readinessLabel,
     kpis: [
       { label: "출결 완결", value: `${attendanceComplete}/${activeRows.length || 0}`, note: `${attendanceRate}% · 휴무 제외` },
-      { label: "PT 실행", value: `${recordedPt}/${bookedPt}`, note: "기록/다짐예약" },
-      { label: "계약 성과", value: `${numberValue(totals.contractTotal)}건`, note: `신규 ${numberValue(totals.customerNew)} · 재등록 ${numberValue(totals.customerRenewal)}` },
+      { label: "PT 실행", value: `${recordedPt}/${numberValue(monthlyTotals.ptTotal)}`, note: `당일/월누계 · 예약 ${bookedPt}` },
+      { label: "계약 성과", value: `${numberValue(totals.contractTotal)}/${numberValue(monthlyTotals.contractTotal)}`, note: "당일/월누계" },
       { label: "회원 전환", value: visits ? `${conversionRate}%` : "-", note: visits ? `${conversionCount}/${visits}명` : "출석자료 대기" },
     ],
     actions: [
@@ -18900,7 +18950,7 @@ function buildFitnessReportModel(options = {}) {
   const sourceLog = options.log || logEntries[0]?.log || getReportArchiveEmployeeLog(employee, dateKey);
   const nextLogEntries = getFitnessReportLogEntries(getNextDateKey(dateKey), isCenter, employee);
   const entries = logEntries.flatMap(({ log }) => (log.schedule || []).filter((entry) => entry.time && (isCenter ? getScheduleEntryText(entry) : true)));
-  const { rows: staffRows, totals } = summarizeFitnessReportRows(logEntries);
+  const { rows: staffRows, totals, monthlyTotals } = summarizeFitnessReportRows(logEntries, dateKey, isCenter);
   const attendanceWarnings = isCenter ? getFitnessReportAttendanceWarnings(logEntries, dateKey) : [];
   const warningByEmployeeId = new Map(attendanceWarnings.map((item) => [item.employeeId, item]));
   staffRows.forEach((row) => { row.attendanceWarning = warningByEmployeeId.get(row.employeeId) || null; });
@@ -18933,6 +18983,7 @@ function buildFitnessReportModel(options = {}) {
   const centerCommand = isCenter ? buildFitnessCenterCommandSummary({
     staffRows,
     totals,
+    monthlyTotals,
     dagymSummary,
     attendanceWarnings,
     topTasks,
@@ -18957,6 +19008,7 @@ function buildFitnessReportModel(options = {}) {
     attendanceWarnings,
     dagymSummary,
     totals,
+    monthlyTotals,
     classStats,
     approvalColumns: ["담당", "팀장", "센터장"],
     topTasks,
@@ -19008,6 +19060,12 @@ function formatFitnessDagymReportDelta(row = {}) {
   return `${prefix}${Number(row.delta).toLocaleString()}`;
 }
 
+function renderFitnessReportDayMonthValue(daily = 0, monthly = 0) {
+  const dayValue = numberValue(daily);
+  const monthValue = numberValue(monthly);
+  return `<span class="fitness-report-day-month" title="당일 ${dayValue}건 · 월 누계 ${monthValue}건"><b>${dayValue}</b><small>/${monthValue}</small></span>`;
+}
+
 function renderFitnessDagymReportHtml(model = {}) {
   if (!model.isCenter || !model.dagymSummary) return "";
   const summary = model.dagymSummary;
@@ -19043,10 +19101,10 @@ function renderFitnessReportTemplate(model = buildFitnessReportModel()) {
       <td class="${row.attendanceWarning?.missing?.includes("퇴근") ? "is-report-warning" : ""}">${escapeHtml(row.clockOut)}</td>
       <td>${escapeHtml(row.workDuration)}</td>
       <td>${escapeHtml(row.attendanceNote || row.attendanceStatus || "")}</td>
-      <td>${escapeHtml(row.ptRegular || "")}</td>
-      <td>${escapeHtml(row.ptFree || "")}</td>
-      <td>${escapeHtml(row.ptOther || "")}</td>
-      <td>${escapeHtml(row.ptTotal || "")}</td>
+      <td>${renderFitnessReportDayMonthValue(row.ptRegular, row.monthly?.ptRegular)}</td>
+      <td>${renderFitnessReportDayMonthValue(row.ptFree, row.monthly?.ptFree)}</td>
+      <td>${renderFitnessReportDayMonthValue(row.ptOther, row.monthly?.ptOther)}</td>
+      <td>${renderFitnessReportDayMonthValue(row.ptTotal, row.monthly?.ptTotal)}</td>
       <td>${escapeHtml(row.ptNote || "")}</td>
     </tr>
   `).join("");
@@ -19055,17 +19113,17 @@ function renderFitnessReportTemplate(model = buildFitnessReportModel()) {
       <td>${escapeHtml(row.no)}</td>
       <td>${escapeHtml(row.role)}</td>
       <td>${escapeHtml(row.name)}</td>
-      <td>${escapeHtml(row.customerNew || "")}</td>
-      <td>${escapeHtml(row.customerRenewal || "")}</td>
-      <td>${escapeHtml(row.dayPass || "")}</td>
-      <td>${escapeHtml(row.contractOther || "")}</td>
-      <td>${escapeHtml(row.contractTotal || "")}</td>
-      <td>${escapeHtml(row.inbound || "")}</td>
-      <td>${escapeHtml(row.outbound || "")}</td>
-      <td>${escapeHtml(row.outsideSales || "")}</td>
-      <td>${escapeHtml(row.consultation || "")}</td>
-      <td>${escapeHtml(row.customerOther || "")}</td>
-      <td>${escapeHtml(row.customerTotal || "")}</td>
+      <td>${renderFitnessReportDayMonthValue(row.customerNew, row.monthly?.customerNew)}</td>
+      <td>${renderFitnessReportDayMonthValue(row.customerRenewal, row.monthly?.customerRenewal)}</td>
+      <td>${renderFitnessReportDayMonthValue(row.dayPass, row.monthly?.dayPass)}</td>
+      <td>${renderFitnessReportDayMonthValue(row.contractOther, row.monthly?.contractOther)}</td>
+      <td>${renderFitnessReportDayMonthValue(row.contractTotal, row.monthly?.contractTotal)}</td>
+      <td>${renderFitnessReportDayMonthValue(row.inbound, row.monthly?.inbound)}</td>
+      <td>${renderFitnessReportDayMonthValue(row.outbound, row.monthly?.outbound)}</td>
+      <td>${renderFitnessReportDayMonthValue(row.outsideSales, row.monthly?.outsideSales)}</td>
+      <td>${renderFitnessReportDayMonthValue(row.consultation, row.monthly?.consultation)}</td>
+      <td>${renderFitnessReportDayMonthValue(row.customerOther, row.monthly?.customerOther)}</td>
+      <td>${renderFitnessReportDayMonthValue(row.customerTotal, row.monthly?.customerTotal)}</td>
       <td>${escapeHtml(row.customerNote || "")}</td>
     </tr>
   `).join("");
@@ -19130,25 +19188,25 @@ function renderFitnessReportTemplate(model = buildFitnessReportModel()) {
       ${model.isCenter ? `
         <div class="fitness-paper-center-ledgers" aria-label="센터운영 수기원장 연계표">
         <section class="fitness-paper-wide-table fitness-paper-center-ops-table fitness-paper-attendance-pt-table" data-report-ledger="attendance-pt">
-          <h3>출결현황 · PT수업</h3>
+          <h3>출결현황 · PT수업 <span>통계 표기: 당일/월누계</span></h3>
           <table>
             <thead>
               <tr class="fitness-paper-group-row"><th colspan="7">출결현황</th><th colspan="5">PT수업</th></tr>
               <tr><th>No.</th><th>구분</th><th>성명</th><th>출근</th><th>퇴근</th><th>근무시간</th><th>비고</th><th>유료PT</th><th>무료PT</th><th>기타</th><th>소계</th><th>비고</th></tr>
             </thead>
             <tbody>${centerAttendancePtRows}</tbody>
-            <tfoot><tr><td colspan="7">합계</td><td>${numberValue(model.totals.ptRegular) || ""}</td><td>${numberValue(model.totals.ptFree) || ""}</td><td>${numberValue(model.totals.ptOther) || ""}</td><td>${numberValue(model.totals.ptTotal) || ""}</td><td></td></tr></tfoot>
+            <tfoot><tr><td colspan="7">합계 · 당일/월누계</td><td>${renderFitnessReportDayMonthValue(model.totals.ptRegular, model.monthlyTotals.ptRegular)}</td><td>${renderFitnessReportDayMonthValue(model.totals.ptFree, model.monthlyTotals.ptFree)}</td><td>${renderFitnessReportDayMonthValue(model.totals.ptOther, model.monthlyTotals.ptOther)}</td><td>${renderFitnessReportDayMonthValue(model.totals.ptTotal, model.monthlyTotals.ptTotal)}</td><td></td></tr></tfoot>
           </table>
         </section>
         <section class="fitness-paper-wide-table fitness-paper-center-ops-table fitness-paper-contract-customer-table" data-report-ledger="contract-customer">
-          <h3>계약현황 · 고객관리</h3>
+          <h3>계약현황 · 고객관리 <span>통계 표기: 당일/월누계</span></h3>
           <table>
             <thead>
               <tr class="fitness-paper-group-row"><th colspan="3">직원</th><th colspan="5">계약현황</th><th colspan="7">고객관리</th></tr>
               <tr><th>No.</th><th>구분</th><th>성명</th><th>신규</th><th>재등록</th><th>일일권</th><th>기타</th><th>소계</th><th>인바운드</th><th>아웃바운드</th><th>외부영업</th><th>상담</th><th>기타</th><th>소계</th><th>비고</th></tr>
             </thead>
             <tbody>${centerContractCustomerRows}</tbody>
-            <tfoot><tr><td colspan="3">합계</td><td>${numberValue(model.totals.customerNew) || ""}</td><td>${numberValue(model.totals.customerRenewal) || ""}</td><td>${numberValue(model.totals.dayPass) || ""}</td><td>${numberValue(model.totals.contractOther) || ""}</td><td>${numberValue(model.totals.contractTotal) || ""}</td><td>${numberValue(model.totals.inbound) || ""}</td><td>${numberValue(model.totals.outbound) || ""}</td><td>${numberValue(model.totals.outsideSales) || ""}</td><td>${numberValue(model.totals.consultation) || ""}</td><td>${numberValue(model.totals.customerOther) || ""}</td><td>${numberValue(model.totals.customerTotal) || ""}</td><td></td></tr></tfoot>
+            <tfoot><tr><td colspan="3">합계</td><td>${renderFitnessReportDayMonthValue(model.totals.customerNew, model.monthlyTotals.customerNew)}</td><td>${renderFitnessReportDayMonthValue(model.totals.customerRenewal, model.monthlyTotals.customerRenewal)}</td><td>${renderFitnessReportDayMonthValue(model.totals.dayPass, model.monthlyTotals.dayPass)}</td><td>${renderFitnessReportDayMonthValue(model.totals.contractOther, model.monthlyTotals.contractOther)}</td><td>${renderFitnessReportDayMonthValue(model.totals.contractTotal, model.monthlyTotals.contractTotal)}</td><td>${renderFitnessReportDayMonthValue(model.totals.inbound, model.monthlyTotals.inbound)}</td><td>${renderFitnessReportDayMonthValue(model.totals.outbound, model.monthlyTotals.outbound)}</td><td>${renderFitnessReportDayMonthValue(model.totals.outsideSales, model.monthlyTotals.outsideSales)}</td><td>${renderFitnessReportDayMonthValue(model.totals.consultation, model.monthlyTotals.consultation)}</td><td>${renderFitnessReportDayMonthValue(model.totals.customerOther, model.monthlyTotals.customerOther)}</td><td>${renderFitnessReportDayMonthValue(model.totals.customerTotal, model.monthlyTotals.customerTotal)}</td><td></td></tr></tfoot>
           </table>
         </section>
         </div>
@@ -19598,6 +19656,19 @@ function getFitnessReportExportCss(reportHeight = 1754) {
       font-size: 22px;
       font-weight: 950;
     }
+    .fitness-paper-center-ops-table h3 { display: flex; align-items: center; justify-content: space-between; gap: 14px; }
+    .fitness-paper-center-ops-table h3 span { color: rgba(18, 59, 45, 0.64); font-size: 12px; font-weight: 850; }
+    .fitness-report-day-month {
+      display: inline-flex;
+      align-items: baseline;
+      justify-content: center;
+      max-width: 100%;
+      white-space: nowrap;
+      font-variant-numeric: tabular-nums;
+      letter-spacing: -0.035em;
+    }
+    .fitness-report-day-month b { font-size: inherit; font-weight: 950; }
+    .fitness-report-day-month small { color: rgba(17, 20, 17, 0.58); font-size: 0.86em; font-weight: 850; }
     .fitness-paper-footer-grid small {
       display: block;
       min-height: 34px;
