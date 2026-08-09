@@ -12872,8 +12872,21 @@ function renderFitnessOperations(log = getSelectedLog()) {
   log.fitnessOps = { ...createFitnessOps(), ...(log.fitnessOps || {}) };
   document.querySelectorAll("[data-fitness-field]").forEach((field) => {
     field.value = log.fitnessOps[field.dataset.fitnessField] || "";
+    applyFitnessOpsFieldSourceStyle(field, log);
   });
   renderFitnessOpsSummaryButton(log);
+}
+
+function applyFitnessOpsFieldSourceStyle(field, log = getSelectedLog()) {
+  if (!(field instanceof HTMLInputElement) || field.type !== "number") return;
+  const isManual = Boolean(log?.fitnessOpsManual?.[field.dataset.fitnessField]);
+  field.classList.toggle("is-auto-value", !isManual);
+  field.classList.toggle("is-manual-value", isManual);
+  const label = field.closest("label");
+  if (label) label.dataset.valueSource = isManual ? "작성자 확정" : "자동 집계";
+  field.title = isManual
+    ? "작성자가 확인하거나 수정한 값입니다."
+    : "시간별일정에서 자동 집계된 값이며 직접 수정할 수 있습니다.";
 }
 
 function renderFitnessOpsSummaryButton(log = getSelectedLog()) {
@@ -12894,15 +12907,17 @@ function renderFitnessOpsSummaryButton(log = getSelectedLog()) {
   const monthlyConsultationTotal = numberValue(monthOps.consultation);
   const monthlyContractTotal = ["customerNew", "customerRenewal", "dayPass", "contractOther"].reduce((sum, key) => sum + numberValue(monthOps[key]), 0);
   const monthlySnsPromotionTotal = numberValue(monthOps.snsPromotion);
+  const manual = { ...createFitnessOpsManual(), ...(log.fitnessOpsManual || {}) };
+  const sourceClass = (...keys) => keys.some((key) => manual[key]) ? "is-manual-value" : "is-auto-value";
   const memoState = ops.shiftNote || ops.specialReport ? "메모 있음" : "메모 없음";
   button.classList.toggle("has-memo", Boolean(ops.shiftNote || ops.specialReport));
   button.innerHTML = `
     <span class="ops-summary-title">업무요약</span>
-    <span class="ops-summary-metric"><b>유료PT</b><strong>${paidPtTotal}/${monthlyPaidPtTotal}</strong></span>
-    <span class="ops-summary-metric"><b>무료PT</b><strong>${freePtTotal}/${monthlyFreePtTotal}</strong></span>
-    <span class="ops-summary-metric"><b>상담</b><strong>${numberValue(ops.consultation)}/${monthlyConsultationTotal}</strong></span>
-    <span class="ops-summary-metric"><b>계약</b><strong>${contractTotal}/${monthlyContractTotal}</strong></span>
-    <span class="ops-summary-metric"><b>SNS</b><strong>${snsPromotionTotal}/${monthlySnsPromotionTotal}</strong></span>
+    <span class="ops-summary-metric ${sourceClass("ptRegular", "ptOther")}"><b>유료PT</b><strong>${paidPtTotal}/${monthlyPaidPtTotal}</strong></span>
+    <span class="ops-summary-metric ${sourceClass("ptFree")}"><b>무료PT</b><strong>${freePtTotal}/${monthlyFreePtTotal}</strong></span>
+    <span class="ops-summary-metric ${sourceClass("consultation")}"><b>상담</b><strong>${numberValue(ops.consultation)}/${monthlyConsultationTotal}</strong></span>
+    <span class="ops-summary-metric ${sourceClass("customerNew", "customerRenewal", "dayPass", "contractOther")}"><b>계약</b><strong>${contractTotal}/${monthlyContractTotal}</strong></span>
+    <span class="ops-summary-metric ${sourceClass("snsPromotion")}"><b>SNS</b><strong>${snsPromotionTotal}/${monthlySnsPromotionTotal}</strong></span>
   `;
   button.setAttribute("aria-label", `업무요약. 오늘/월 누계 기준. 유료 PT ${paidPtTotal}/${monthlyPaidPtTotal}건, 무료 PT ${freePtTotal}/${monthlyFreePtTotal}건, 상담 ${numberValue(ops.consultation)}/${monthlyConsultationTotal}건, 계약 ${contractTotal}/${monthlyContractTotal}건, SNS 홍보 ${snsPromotionTotal}/${monthlySnsPromotionTotal}건, 홍보 마케팅 오늘 ${marketingTotal}건, ${memoState}`);
 }
@@ -12956,9 +12971,13 @@ function applyFitnessOpsItemCount(totals, type = "업무", text = "") {
     else if (/기타|보강|대체/.test(source)) totals.ptOther += count;
     else totals.ptRegular += count;
   }
-  if (/신규|신입|첫등록|등록상담/.test(source)) totals.customerNew += count;
-  if (/재등록|재가입|연장|갱신/.test(source)) totals.customerRenewal += count;
-  if (/일일권|1일권|데이패스|day\s*pass/i.test(source)) totals.dayPass += count;
+  const isNewContract = /신규|신입|첫등록|등록상담/.test(source);
+  const isRenewalContract = /재등록|재가입|연장|갱신/.test(source);
+  const isDayPass = /일일권|1일권|데이패스|day\s*pass/i.test(source);
+  if (isNewContract) totals.customerNew += count;
+  if (isRenewalContract) totals.customerRenewal += count;
+  if (isDayPass) totals.dayPass += count;
+  if (/계약|등록/.test(source) && !isNewContract && !isRenewalContract && !isDayPass) totals.contractOther += count;
   if (normalizedType === "고객/상담" || /상담|문의|회원관리|고객관리|인바운드/.test(source)) {
     if (/인바운드|문의|방문|walk[-\s]?in/i.test(source)) totals.inbound += count;
     if (/상담|등록상담/.test(source)) totals.consultation += count;
@@ -12971,6 +12990,10 @@ function applyFitnessOpsItemCount(totals, type = "업무", text = "") {
     else totals.outbound += count;
   }
   if (/외부영업|방문영업|외근|현장영업/.test(source) && !isMarketingActivity) totals.outsideSales += count;
+  const isCustomerActivity = normalizedType === "회원관리" || /회원관리|고객관리|고객응대/.test(source);
+  const hasSpecificCustomerCount = isNewContract || isRenewalContract || isDayPass
+    || /상담|문의|인바운드|아웃바운드|외부영업|방문영업|전화|콜|문자|디엠|dm/.test(source);
+  if (isCustomerActivity && !hasSpecificCustomerCount) totals.customerOther += count;
 }
 
 function countFitnessScheduleUnits(text = "") {
@@ -21365,6 +21388,7 @@ document.querySelectorAll("[data-fitness-field]").forEach((field) => {
     log.fitnessOpsManual = { ...createFitnessOpsManual(), ...(log.fitnessOpsManual || {}) };
     log.fitnessOpsManual[event.target.dataset.fitnessField] = true;
     log.fitnessOps[event.target.dataset.fitnessField] = event.target.value;
+    applyFitnessOpsFieldSourceStyle(event.target, log);
     promptAttendanceBeforeWorklogInput(log, event.target.value);
     saveState({ fastSave: true });
     renderFitnessOpsSummaryButton(log);

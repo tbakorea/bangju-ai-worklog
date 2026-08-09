@@ -9406,7 +9406,24 @@ textarea:focus-visible {
 }
 
 .fitness-ops-grid label {
+  position: relative;
   border-right: 1px solid var(--hardline);
+  padding-top: 22px;
+}
+
+.fitness-ops-grid label::after {
+  content: attr(data-value-source);
+  position: absolute;
+  top: 6px;
+  right: 7px;
+  color: #8b918c;
+  font-size: 9px;
+  font-weight: 850;
+  letter-spacing: -0.02em;
+}
+
+.fitness-ops-grid label[data-value-source="작성자 확정"]::after {
+  color: #151815;
 }
 
 .fitness-ops-grid label:nth-child(3n) {
@@ -9424,6 +9441,44 @@ textarea:focus-visible {
   font-size: 20px;
   font-weight: 850;
   outline: 0;
+}
+
+.fitness-ops-grid input.is-auto-value,
+.fitness-ops-summary-button .ops-summary-metric.is-auto-value strong {
+  color: #858b87;
+}
+
+.fitness-ops-grid input.is-manual-value,
+.fitness-ops-summary-button .ops-summary-metric.is-manual-value strong {
+  color: #111411;
+}
+
+.fitness-ops-source-guide {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  padding: 0 1px 5px;
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 850;
+}
+
+.fitness-ops-source-guide span::before {
+  content: "";
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  margin-right: 4px;
+  border-radius: 50%;
+  background: #858b87;
+}
+
+.fitness-ops-source-guide .is-manual {
+  color: #111411;
+}
+
+.fitness-ops-source-guide .is-manual::before {
+  background: #111411;
 }
 
 .fitness-ops-notes {

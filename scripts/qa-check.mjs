@@ -202,6 +202,18 @@ check(
 );
 
 check(
+  "fitness counters distinguish automatic and author-confirmed values",
+  js.includes("function applyFitnessOpsFieldSourceStyle")
+    && js.includes('label.dataset.valueSource = isManual ? "작성자 확정" : "자동 집계"')
+    && js.includes('field.classList.toggle("is-auto-value", !isManual)')
+    && js.includes('field.classList.toggle("is-manual-value", isManual)')
+    && css.includes(".fitness-ops-grid input.is-auto-value")
+    && css.includes(".fitness-ops-grid input.is-manual-value")
+    && html.includes("fitness-ops-source-guide"),
+  "schedule-derived values should be gray while an employee override is black"
+);
+
+check(
   "employee attendance reminders follow configured work hours",
   js.includes("function buildAttendanceRecordReminder")
     && js.includes("scheduledOff && !log.clockIn")

@@ -969,7 +969,14 @@ async function checkOverviewCommandBoard(browser) {
         const totals = { ...createFitnessOps(), snsPromotion: 0, outbound: 0, outsideSales: 0 };
         applyFitnessOpsItemCount(totals, "시설/청결", "블로그 작성 및 업데이트");
         applyFitnessOpsItemCount(totals, "마케팅활동", "여름 이벤트 광고");
-        return { snsPromotion: totals.snsPromotion, outbound: totals.outbound };
+        applyFitnessOpsItemCount(totals, "업무", "기업회원 계약");
+        applyFitnessOpsItemCount(totals, "회원관리", "락커 배정");
+        return {
+          snsPromotion: totals.snsPromotion,
+          outbound: totals.outbound,
+          contractOther: totals.contractOther,
+          customerOther: totals.customerOther
+        };
       })(),
       attendanceReminders: {
         clockIn: buildAttendanceRecordReminder({ dateKey: "2026-08-10", workHours: "08:00-18:00", log: {}, now: new Date("2026-08-10T08:01:00+09:00") })?.action,
@@ -1001,6 +1008,8 @@ async function checkOverviewCommandBoard(browser) {
     || scheduleTypeCatalog.fitnessMarketingInference !== "마케팅활동"
     || scheduleTypeCatalog.fitnessMarketingCount?.snsPromotion !== 1
     || scheduleTypeCatalog.fitnessMarketingCount?.outbound !== 1
+    || Number(scheduleTypeCatalog.fitnessMarketingCount?.contractOther) !== 1
+    || Number(scheduleTypeCatalog.fitnessMarketingCount?.customerOther) !== 1
     || scheduleTypeCatalog.attendanceReminders?.clockIn !== "출근"
     || scheduleTypeCatalog.attendanceReminders?.clockOut !== "퇴근"
     || scheduleTypeCatalog.attendanceReminders?.scheduledOff !== null
@@ -2069,6 +2078,9 @@ async function checkFitnessManagerCanEditOwnWorklog(browser) {
       authState.user = { id: "park-juhong-user", email: "pjhong0@naver.com" };
       normalizeState();
       switchView(getInitialLandingView());
+      const qaFitnessLog = getSelectedLog();
+      qaFitnessLog.fitnessOpsManual = { ...createFitnessOpsManual(), ...(qaFitnessLog.fitnessOpsManual || {}), ptRegular: true };
+      renderFitnessOperations(qaFitnessLog);
     `);
   });
   await page.waitForTimeout(350);
@@ -2093,6 +2105,10 @@ async function checkFitnessManagerCanEditOwnWorklog(browser) {
     personalMonthHidden: document.querySelector("#fitnessPersonalMonthSummary")?.hidden ?? false,
     representativeAnalysisHidden: document.querySelector("#fitnessRepresentativeEmployeeAnalysis")?.hidden ?? false,
     compactTotals: [...document.querySelectorAll("#fitnessOpsSummaryButton .ops-summary-metric strong")].map((node) => node.textContent.trim()),
+    manualCounterClass: document.querySelector('[data-fitness-field="ptRegular"]')?.className || "",
+    autoCounterClass: document.querySelector('[data-fitness-field="snsPromotion"]')?.className || "",
+    manualCounterSource: document.querySelector('[data-fitness-field="ptRegular"]')?.closest("label")?.dataset.valueSource || "",
+    autoCounterSource: document.querySelector('[data-fitness-field="snsPromotion"]')?.closest("label")?.dataset.valueSource || "",
     julyManager: buildFitnessCenterEmployeeMonthRow(getFitnessCenterEmployees().find((employee) => isFitnessManagerRosterIdentity(employee)), "2026-07").ops,
     augustManager: buildFitnessCenterEmployeeMonthRow(getFitnessCenterEmployees().find((employee) => isFitnessManagerRosterIdentity(employee)), "2026-08").ops,
     julyTrainer: buildFitnessCenterEmployeeMonthRow(getFitnessCenterEmployees().find((employee) => /홍현규/.test(employee.name || "")), "2026-07").ops,
@@ -2121,6 +2137,10 @@ async function checkFitnessManagerCanEditOwnWorklog(browser) {
     || Number(parsed.julyManager.ptRegular) !== 5 || Number(parsed.julyManager.consultation) !== 3
     || Number(parsed.augustManager.ptRegular) !== 11 || Number(parsed.julyTrainer.ptRegular) !== 7) {
     fail("fitness personal totals must accumulate within the selected month and reset for the next month", metrics);
+  }
+  if (!parsed.manualCounterClass.includes("is-manual-value") || !parsed.autoCounterClass.includes("is-auto-value")
+    || parsed.manualCounterSource !== "작성자 확정" || parsed.autoCounterSource !== "자동 집계") {
+    fail("fitness counters should visually distinguish automatic values from employee-confirmed values", metrics);
   }
   if (!parsed.representativeAnalysisHidden) {
     fail("employee own worklog must not expose representative attendance and competency analysis", metrics);
