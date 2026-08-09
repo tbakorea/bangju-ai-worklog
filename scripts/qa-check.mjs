@@ -192,6 +192,26 @@ check(
 );
 
 check(
+  "fitness schedule includes social content and marketing categories",
+  /fitness:\s*\[[^\]]*"인스타\/블로그"[^\]]*"마케팅활동"/.test(js)
+    && /인스타그램\|인스타\|instagram\|블로그\|blog/.test(js)
+    && /마케팅\|광고\|캠페인\|리뷰\|이벤트/.test(js),
+  "fitness staff need distinct Instagram/blog and marketing activity choices"
+);
+
+check(
+  "attendance evaluation prioritizes weekly settings and cautiously uses recent patterns",
+  js.includes("const hasWeeklySettings = weeklyHours && typeof weeklyHours")
+    && js.includes("recentPattern?.likelyOff")
+    && js.includes("function getRecentEmployeeWorkPattern")
+    && js.includes("lookbackDays = 56")
+    && js.includes("samples >= 4")
+    && js.includes("strongestOtherWeekday >= 3")
+    && /label: "비번 추정"[\s\S]{0,120}직원설정 확인/.test(js),
+  "configured weekdays must remain authoritative; recent records may only suppress uncertain false warnings"
+);
+
+check(
   "fitness schedule time has final no-wrap guard",
   /#view-fitness-log \.fitness-log-schedule-panel \.appointment-time[\s\S]{0,260}white-space:\s*nowrap !important;[\s\S]{0,100}word-break:\s*keep-all !important;/.test(css),
   "representative split view must keep HH:MM on one line"

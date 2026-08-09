@@ -71,7 +71,7 @@ const priorityOptions = [
 ];
 const taskPriorityOptions = ["?", "A", "B", "C", "위임", "연기", "취소"];
 const scheduleTypeCatalog = {
-  fitness: ["유료PT", "무료PT", "고객/상담", "회원관리", "영업/홍보", "시설/청결", "행정/정산", "오픈/마감", "휴게"],
+  fitness: ["유료PT", "무료PT", "고객/상담", "회원관리", "인스타/블로그", "마케팅활동", "영업/홍보", "시설/청결", "행정/정산", "오픈/마감", "휴게"],
   finance: ["회계/장부", "자금/이체", "세무/신고", "급여/노무", "증빙/정산", "계약/문서", "보고/결재", "은행/기관", "휴게"],
   project: ["고객/상담", "견적/계약", "설계/디자인", "발주/구매", "시공/현장", "품질/하자", "영업/홍보", "행정/정산", "휴게"],
   shared: ["입주/상담", "계약/수납", "공간/시설", "청소/점검", "고객/민원", "홍보/영업", "행정/보고", "오픈/마감", "휴게"],
@@ -3644,10 +3644,51 @@ function getOverviewScheduledWorkHours(employee = {}, dateKey = getActiveDateKey
   if (override) return applyApprovedLeaveToWorkHours(override, employeeId, dateKey);
   const weeklyHours = employee.weeklyWorkHours || employee.weekly_work_hours || {};
   const dayKey = getWorkdayKey(dateKey);
-  const workHours = Object.keys(weeklyHours).length && !Object.prototype.hasOwnProperty.call(weeklyHours, dayKey)
+  const hasWeeklySettings = weeklyHours && typeof weeklyHours === "object" && Object.keys(weeklyHours).length > 0;
+  const recentPattern = hasWeeklySettings ? null : getRecentEmployeeWorkPattern(employee, dateKey);
+  const workHours = hasWeeklySettings && !Object.prototype.hasOwnProperty.call(weeklyHours, dayKey)
     ? "휴무"
-    : normalizeWorkHoursText(weeklyHours[dayKey] || employee.workHours || defaultProfile.workHours);
+    : recentPattern?.likelyOff
+      ? "휴무"
+      : normalizeWorkHoursText(weeklyHours?.[dayKey] || employee.workHours || defaultProfile.workHours);
   return applyApprovedLeaveToWorkHours(workHours, employeeId, dateKey);
+}
+
+function getRecentEmployeeWorkPattern(employee = {}, dateKey = getActiveDateKey(), lookbackDays = 56) {
+  const weeklyHours = employee.weeklyWorkHours || employee.weekly_work_hours || {};
+  if (weeklyHours && typeof weeklyHours === "object" && Object.keys(weeklyHours).length) {
+    return { source: "settings", likelyOff: false, samples: 0, targetWorked: 0 };
+  }
+  const targetDate = parseDateKey(dateKey);
+  const targetWeekday = targetDate.getDay();
+  const workedByWeekday = Array(7).fill(0);
+  let samples = 0;
+  for (let offset = 1; offset <= lookbackDays; offset += 1) {
+    const candidateDate = new Date(targetDate);
+    candidateDate.setDate(targetDate.getDate() - offset);
+    const candidateKey = formatDateKey(candidateDate);
+    const log = getExistingEmployeeLogForAnalysis(employee, candidateKey);
+    if (!log) continue;
+    const attendance = String(log.attendanceStatus || "");
+    const workedAttendance = Boolean(log.clockIn || log.clockOut)
+      || (/출근|퇴근|지각|조퇴|외출|근무/.test(attendance) && !/미기록|비번|휴무|예정/.test(attendance));
+    if (!workedAttendance && !hasOverviewWorklogRecord(log)) continue;
+    workedByWeekday[candidateDate.getDay()] += 1;
+    samples += 1;
+  }
+  const targetWorked = workedByWeekday[targetWeekday];
+  const strongestOtherWeekday = Math.max(0, ...workedByWeekday.filter((_, index) => index !== targetWeekday));
+  const likelyOff = samples >= 4
+    && strongestOtherWeekday >= 3
+    && targetWorked <= 1
+    && targetWorked / strongestOtherWeekday <= 0.34;
+  return {
+    source: likelyOff ? "recent-pattern" : "default",
+    likelyOff,
+    samples,
+    targetWorked,
+    strongestOtherWeekday,
+  };
 }
 
 function normalizeLaborLeaveRequest(request = {}) {
@@ -3750,6 +3791,10 @@ function getOverviewWorkStatus(employee = {}, dayLog = {}, dateKey = getActiveDa
   const approvedLeave = getApprovedLeaveForDate(getEmployeeWorklogId(employee) || employee.id || "", dateKey);
   const approvedLeaveType = approvedLeave ? getLaborLeaveType(approvedLeave.leaveType) : null;
   const hours = getOverviewScheduledWorkHours(employee, dateKey, dayLog);
+  const weeklyHours = employee.weeklyWorkHours || employee.weekly_work_hours || {};
+  const recentPattern = weeklyHours && typeof weeklyHours === "object" && Object.keys(weeklyHours).length
+    ? null
+    : getRecentEmployeeWorkPattern(employee, dateKey);
   const attendance = String(dayLog.attendanceStatus || "");
   const isScheduledOff = isOffWorkHours(hours) || /비번|휴무/.test(attendance);
   const hasSubstituteAttendance = Boolean(dayLog.clockIn || dayLog.clockOut);
@@ -3769,7 +3814,9 @@ function getOverviewWorkStatus(employee = {}, dayLog = {}, dateKey = getActiveDa
       ? { key: "worked", label: "휴가일 근무", detail: `${dayLog.clockIn || "출근 미기록"} ~ ${dayLog.clockOut}` }
       : { key: "working", label: "휴가일 근무중", detail: `${dayLog.clockIn} 출근 · 퇴근 전` };
   }
-  if (isScheduledOff && !hasSubstituteAttendance) return { key: "off", label: "비번", detail: "휴무" };
+  if (isScheduledOff && !hasSubstituteAttendance) return recentPattern?.likelyOff
+    ? { key: "off", label: "비번 추정", detail: "최근 근무형태 기준 · 직원설정 확인" }
+    : { key: "off", label: "비번", detail: "휴무" };
   if (isScheduledOff && dayLog.clockOut) return { key: "worked", label: "대체근무", detail: `${dayLog.clockIn || "출근 미기록"} ~ ${dayLog.clockOut}` };
   if (isScheduledOff && dayLog.clockIn) return { key: "working", label: "대체근무중", detail: `${dayLog.clockIn} 출근 · 퇴근 전` };
   if (/결근|결석/.test(attendance)) return { key: "absent", label: "결근", detail: hours || "근무시간 미정" };
@@ -4118,7 +4165,7 @@ function buildRepresentativeEmployeeAnalysis(employee = {}, endDateKey = getActi
       .reduce((sum, key) => sum + numberValue(ops[key]), 0);
     const rolePattern = {
       finance: /자금|회계|세무|증빙|급여|마감|정산|계약/,
-      fitness: /PT|피티|상담|회원|재등록|청소|시설|센터/,
+      fitness: /PT|피티|상담|회원|재등록|청소|시설|센터|인스타|블로그|마케팅|광고|홍보/,
       project: /현장|공정|품질|원가|도면|시공|공사|안전/,
       shared: /입주|공실|임대|계약|고객|공간|청결|민원/,
       executive: /판단|위임|지시|검토|승인|전략|매출/,
@@ -12039,6 +12086,8 @@ function inferScheduleType(text = "", options = allScheduleTypeOptions) {
   if (/입주|수납|공실|임대/.test(text)) return choose("입주/상담", choose("계약/수납"));
   if (/센터관리|센타관리|기구|시설|냉난방|조명|청소|세탁|쓰레기|샤워실|탈의실|정리|위생/.test(text)) return choose("시설/청결", choose("공간/시설", choose("청소/점검", choose("운영/점검"))));
   if (/상담|회원|고객|문의|재등록|민원/.test(text)) return choose("고객/상담", choose("고객/민원", choose("고객/거래처")));
+  if (/인스타그램|인스타|instagram|블로그|blog|릴스|reels|숏폼|피드|게시물|콘텐츠|포스팅|카드뉴스|영상편집/i.test(text)) return choose("인스타/블로그", choose("마케팅활동", choose("영업/홍보")));
+  if (/마케팅|광고|캠페인|리뷰|이벤트|홍보물|전단|배너|플레이스|검색노출|seo/i.test(text)) return choose("마케팅활동", choose("영업/홍보", choose("홍보/영업")));
   if (/영업|홍보|마케팅|아웃바운드|전화|콜|체험권|매출/.test(text)) return choose("영업/홍보", choose("홍보/영업"));
   if (/보고|결재/.test(text)) return choose("보고/결재", choose("행정/보고", choose("대관/보고", choose("행정/정산"))));
   if (/서류|행정|인수인계/.test(text)) return choose("행정/정산", choose("행정/보고"));
@@ -12060,9 +12109,19 @@ function normalizeScheduleType(type = "업무", text = "") {
     무료PT: "무료PT",
     "무료P/T": "무료PT",
     고객관리: "고객/상담",
+    인스타: "인스타/블로그",
+    인스타그램: "인스타/블로그",
+    블로그: "인스타/블로그",
+    SNS: "인스타/블로그",
+    콘텐츠: "인스타/블로그",
+    포스팅: "인스타/블로그",
+    광고: "마케팅활동",
+    캠페인: "마케팅활동",
+    이벤트: "마케팅활동",
+    마케팅활동: "마케팅활동",
     영업: "영업/홍보",
     홍보: "영업/홍보",
-    마케팅: "영업/홍보",
+    마케팅: "마케팅활동",
     센터관리: "시설/청결",
     청결: "시설/청결",
     시설점검: "시설/청결",
@@ -12806,11 +12865,13 @@ function applyFitnessOpsItemCount(totals, type = "업무", text = "") {
     if (/인바운드|문의|방문|walk[-\s]?in/i.test(source)) totals.inbound += count;
     if (/상담|등록상담/.test(source)) totals.consultation += count;
   }
-  if (normalizedType === "영업/홍보" || /아웃바운드|전화|콜|문자|디엠|dm|영업/i.test(source)) {
+  const isMarketingActivity = ["인스타/블로그", "마케팅활동", "영업/홍보"].includes(normalizedType)
+    || /아웃바운드|전화|콜|문자|디엠|dm|영업/i.test(source);
+  if (isMarketingActivity) {
     if (/외부영업|방문영업|외근|현장영업/.test(source)) totals.outsideSales += count;
     else totals.outbound += count;
   }
-  if (/외부영업|방문영업|외근|현장영업/.test(source) && normalizedType !== "영업/홍보") totals.outsideSales += count;
+  if (/외부영업|방문영업|외근|현장영업/.test(source) && !isMarketingActivity) totals.outsideSales += count;
 }
 
 function countFitnessScheduleUnits(text = "") {

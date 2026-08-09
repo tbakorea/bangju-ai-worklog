@@ -247,6 +247,34 @@ async function checkTabletRepresentativeWorklogChrome(browser) {
       offDutyDateKey
     );
     const saturdayAlerts = buildEmployeeInsightAlerts(saturdayEmployee, saturdayModel.dayLog, saturdayModel);
+    const recentPatternEmployee = {
+      ...saturdayEmployee,
+      id: "fitness-recent-pattern-qa",
+      name: "최근 토요일 근무자",
+      weeklyWorkHours: {}
+    };
+    ["2026-07-11", "2026-07-18", "2026-07-25", "2026-08-01", "2026-08-08"].forEach((dateKey) => {
+      state.employeeLogs[dateKey] ||= {};
+      state.employeeLogs[dateKey][recentPatternEmployee.id] = {
+        ...createEmployeeLog(recentPatternEmployee, state.profile, dateKey),
+        clockIn: "10:00",
+        clockOut: "18:00",
+        attendanceStatus: "퇴근"
+      };
+    });
+    const recentPatternLog = createEmployeeLog(recentPatternEmployee, state.profile, offDutyDateKey);
+    const recentPattern = getRecentEmployeeWorkPattern(recentPatternEmployee, offDutyDateKey);
+    const recentPatternStatus = getOverviewWorkStatus(recentPatternEmployee, recentPatternLog, offDutyDateKey);
+    const configuredMondayEmployee = {
+      ...recentPatternEmployee,
+      id: "fitness-configured-monday-qa",
+      weeklyWorkHours: { mon: "10:00-18:00" }
+    };
+    const configuredMondayStatus = getOverviewWorkStatus(
+      configuredMondayEmployee,
+      createEmployeeLog(configuredMondayEmployee, state.profile, offDutyDateKey),
+      offDutyDateKey
+    );
     return {
       selectedPageId: currentPage?.id || "",
       intendedPageId: employeePage?.id || "",
@@ -263,6 +291,10 @@ async function checkTabletRepresentativeWorklogChrome(browser) {
       saturdayAttendance: saturdayModel.attendance || "",
       saturdaySignalCount: saturdayModel.signalCount,
       saturdayAlertTitles: saturdayAlerts.map((item) => item.title),
+      recentPatternLikelyOff: recentPattern.likelyOff,
+      recentPatternSource: recentPattern.source,
+      recentPatternStatus: recentPatternStatus.key,
+      configuredMondayStatus: configuredMondayStatus.key,
       horizontalOverflow: document.documentElement.scrollWidth - window.innerWidth,
     };
   });
@@ -283,6 +315,12 @@ async function checkTabletRepresentativeWorklogChrome(browser) {
     || liveFitnessMetrics.saturdayAlertTitles.includes("근태 확인")
     || liveFitnessMetrics.saturdayAlertTitles.includes("업무일지 공백")) {
     fail("off-duty employees should not receive attendance or blank-worklog warnings", JSON.stringify(liveFitnessMetrics));
+  }
+  if (!liveFitnessMetrics.recentPatternLikelyOff
+    || liveFitnessMetrics.recentPatternSource !== "recent-pattern"
+    || liveFitnessMetrics.recentPatternStatus !== "off"
+    || liveFitnessMetrics.configuredMondayStatus === "off") {
+    fail("attendance evaluation should prefer configured weekdays and use recent work patterns only as a cautious fallback", JSON.stringify(liveFitnessMetrics));
   }
   if (liveFitnessMetrics.employeeSheetWidth > 360
     || liveFitnessMetrics.employeeHeadHeight > 74
@@ -925,6 +963,14 @@ async function checkOverviewCommandBoard(browser) {
       shared: options(shared),
       fitness: options(fitness),
       construction: scheduleTypeCatalog[getScheduleTypeCatalogKey(construction)],
+      fitnessInstagramInference: inferScheduleType("인스타 릴스 콘텐츠 제작", options(fitness)),
+      fitnessMarketingInference: inferScheduleType("여름 이벤트 광고 캠페인", options(fitness)),
+      fitnessMarketingCount: (() => {
+        const totals = { ...createFitnessOps(), outbound: 0, outsideSales: 0 };
+        applyFitnessOpsItemCount(totals, "인스타/블로그", "인스타 릴스 제작");
+        applyFitnessOpsItemCount(totals, "마케팅활동", "여름 이벤트 광고");
+        return totals.outbound;
+      })(),
       financeInference: inferScheduleType("세금계산서 증빙 정산", options(finance)),
       projectInference: inferScheduleType("욕실 시공 현장 확인", options(project)),
       sharedInference: inferScheduleType("신규 입주 상담", options(shared)),
@@ -939,12 +985,15 @@ async function checkOverviewCommandBoard(browser) {
     || !["회계/장부", "자금/이체", "세무/신고", "급여/노무", "증빙/정산"].every((item) => scheduleTypeCatalog.finance.includes(item))
     || !["견적/계약", "설계/디자인", "시공/현장"].every((item) => scheduleTypeCatalog.project.includes(item))
     || !["입주/상담", "계약/수납", "공간/시설"].every((item) => scheduleTypeCatalog.shared.includes(item))
-    || !["유료PT", "무료PT", "회원관리"].every((item) => scheduleTypeCatalog.fitness.includes(item))
+    || !["유료PT", "무료PT", "회원관리", "인스타/블로그", "마케팅활동"].every((item) => scheduleTypeCatalog.fitness.includes(item))
     || !["공정/시공", "안전/점검", "자재/발주"].every((item) => scheduleTypeCatalog.construction.includes(item))
     || scheduleTypeCatalog.financeInference !== "증빙/정산"
     || scheduleTypeCatalog.projectInference !== "시공/현장"
     || scheduleTypeCatalog.sharedInference !== "입주/상담"
     || scheduleTypeCatalog.constructionInference !== "안전/점검"
+    || scheduleTypeCatalog.fitnessInstagramInference !== "인스타/블로그"
+    || scheduleTypeCatalog.fitnessMarketingInference !== "마케팅활동"
+    || scheduleTypeCatalog.fitnessMarketingCount !== 2
     || !scheduleTypeCatalog.generalEditorConnected) {
     fail("schedule type catalog should follow each employee's business site and role", scheduleTypeCatalogMetrics);
   }
