@@ -286,6 +286,16 @@ const siteWeatherAddressTargets = [
   { key: "(주)비제이종합건설 · 옥동 더헤이븐빌 신축현장", label: "(주)비제이종합건설 · 옥동 더헤이븐빌 신축현장", hint: "옥동 더헤이븐빌 신축현장 주소" },
   { key: "기타", label: "기타 사업장/현장", hint: "기타 사업장 주소" },
 ];
+// Beyond Work와 동일하게 국내 주요 지역은 검증된 기본 좌표를 우선 사용합니다.
+// 한국 도로명 주소 전체를 해외 지명 검색에 전달해 좌표 검색이 실패하는 문제를 피합니다.
+const siteWeatherRegions = Object.freeze([
+  { pattern: /울산|ulsan/i, latitude: 35.5396, longitude: 129.3115, label: "울산" },
+  { pattern: /서울|seoul/i, latitude: 37.5665, longitude: 126.978, label: "서울" },
+  { pattern: /부산|busan/i, latitude: 35.1796, longitude: 129.0756, label: "부산" },
+  { pattern: /대구|daegu/i, latitude: 35.8714, longitude: 128.6014, label: "대구" },
+  { pattern: /광주|gwangju/i, latitude: 35.1595, longitude: 126.8526, label: "광주" },
+  { pattern: /제주|jeju/i, latitude: 33.4996, longitude: 126.5312, label: "제주" },
+]);
 const defaultProfile = {
   org: "(주)방주",
   role: "직원",
@@ -1514,6 +1524,18 @@ function getSiteWeatherAddress(siteKey = "") {
   return String(state.siteWeatherAddresses?.[siteKey] || "").trim();
 }
 
+function getWeatherRegionCoordinates(address = "") {
+  const source = String(address || "").trim();
+  const region = siteWeatherRegions.find((item) => item.pattern.test(source));
+  return region ? {
+    latitude: region.latitude,
+    longitude: region.longitude,
+    name: region.label,
+    admin1: region.label,
+    source: "beyond-work-region",
+  } : null;
+}
+
 function canManageSharedSiteWeatherSettings() {
   return Boolean(authState.user && (isRepresentativeProfile() || hasApprovalAuthority()));
 }
@@ -1956,9 +1978,10 @@ async function requestWeatherForSite(siteKey, address, dateKey = getActiveDateKe
   if (weatherRequestInFlight.has(requestKey)) return state.weatherCache?.[requestKey] || null;
   weatherRequestInFlight.add(requestKey);
   try {
-    let place = state.weatherLocationCache?.[siteKey]?.address === trimmedAddress
+    const regionPlace = getWeatherRegionCoordinates(trimmedAddress);
+    let place = regionPlace || (state.weatherLocationCache?.[siteKey]?.address === trimmedAddress
       ? state.weatherLocationCache[siteKey]
-      : null;
+      : null);
     if (!place) {
       const geoUrl = `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(trimmedAddress)}&count=1&language=ko&format=json`;
       let geo = {};
@@ -1993,14 +2016,12 @@ async function requestWeatherForSite(siteKey, address, dateKey = getActiveDateKe
           };
         }
       }
-      if (place) {
-        state.weatherLocationCache = {
-          ...(state.weatherLocationCache || {}),
-          [siteKey]: { ...place, address: trimmedAddress },
-        };
-      }
     }
     if (!place) throw new Error("주소 좌표를 찾지 못했습니다.");
+    state.weatherLocationCache = {
+      ...(state.weatherLocationCache || {}),
+      [siteKey]: { ...place, address: trimmedAddress },
+    };
     const weatherUrl = buildWeatherRequestUrl(place, dateKey);
     const controller = new AbortController();
     const timeout = window.setTimeout(() => controller.abort(), 5000);

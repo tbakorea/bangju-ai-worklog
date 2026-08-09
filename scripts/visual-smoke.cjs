@@ -4253,6 +4253,9 @@ async function checkSiteWeatherAndGeneralDailyReport(browser) {
     const futureUrl = buildWeatherRequestUrl({ latitude: 35.5, longitude: 129.3 }, "2026-08-31");
     const todayUrl = buildWeatherRequestUrl({ latitude: 35.5, longitude: 129.3 }, todayKey);
     const weatherExpression = formatWeatherSummary({ weatherCode: 2, temperatureMin: 21, temperatureMax: 29 }, { compact: true });
+    const ulsanRegion = getWeatherRegionCoordinates("울산광역시 남구 옥동 123");
+    const seoulRegion = getWeatherRegionCoordinates("서울특별시 중구 세종대로 110");
+    const unknownRegion = getWeatherRegionCoordinates("해외 사업장 주소");
     const rainAdvice = buildWeatherAdvice({ weatherCode: 61, condition: "비", precipitation: 1 });
     const freshWeather = isWeatherRecordFresh({ fetchedAt: new Date().toISOString() });
     const staleWeather = isWeatherRecordFresh({ fetchedAt: new Date(Date.now() - weatherFreshnessMs - 1000).toISOString() });
@@ -4285,6 +4288,12 @@ async function checkSiteWeatherAndGeneralDailyReport(browser) {
       futureUsesForecast: pastUrl !== futureUrl && futureUrl.includes("api.open-meteo.com/v1/forecast") && futureUrl.includes("start_date=2026-08-31"),
       todayUsesBeyondWeatherRange: todayUrl.includes("daily=temperature_2m_max,temperature_2m_min") && todayUrl.includes("forecast_days=1"),
       weatherExpression,
+      beyondWorkRegionCoordinates: {
+        ulsan: ulsanRegion,
+        seoul: seoulRegion,
+        unknown: unknownRegion,
+        ulsanRequest: buildWeatherRequestUrl(ulsanRegion, todayKey)
+      },
       rainAdvice,
       freshWeather,
       staleWeather,
@@ -4369,6 +4378,13 @@ async function checkSiteWeatherAndGeneralDailyReport(browser) {
   }
   if (!metrics.todayUsesBeyondWeatherRange || metrics.weatherExpression !== "구름 조금 · 21°/29°" || !metrics.rainAdvice.includes("10~15분") || !metrics.freshWeather || metrics.staleWeather) {
     fail("weather should mirror Beyond Work range, advice, and two-hour refresh logic", JSON.stringify(metrics));
+  }
+  if (metrics.beyondWorkRegionCoordinates?.ulsan?.latitude !== 35.5396
+    || metrics.beyondWorkRegionCoordinates?.seoul?.longitude !== 126.978
+    || metrics.beyondWorkRegionCoordinates?.unknown !== null
+    || !metrics.beyondWorkRegionCoordinates?.ulsanRequest?.includes("latitude=35.5396")
+    || !metrics.beyondWorkRegionCoordinates?.ulsanRequest?.includes("longitude=129.3115")) {
+    fail("known Korean site addresses should use Beyond Work regional coordinates before geocoding", JSON.stringify(metrics.beyondWorkRegionCoordinates));
   }
   if (metrics.sharedWeatherMergeCount !== 1 || metrics.sharedWeatherAddress !== "대표 공용 주소" || !metrics.sharedWeatherClearedStaleCache) {
     fail("representative weather address should replace employee-local settings and invalidate stale weather", JSON.stringify(metrics));

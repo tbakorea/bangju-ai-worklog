@@ -56,6 +56,16 @@ check(
     && /site_weather_settings_update_approver[\s\S]{0,220}public\.is_profile_approver\(\)/.test(schema),
   "representative addresses must persist in a shared RLS-protected table and load for staff accounts"
 );
+
+check(
+  "weather uses Beyond Work regional coordinates before street-address geocoding",
+  js.includes("const siteWeatherRegions = Object.freeze")
+    && js.includes("function getWeatherRegionCoordinates")
+    && js.includes('source: "beyond-work-region"')
+    && js.includes("const regionPlace = getWeatherRegionCoordinates(trimmedAddress)")
+    && js.includes("let place = regionPlace ||"),
+  "known Korean regions should call weather directly with stable coordinates"
+);
 check(
   "worklog editing remains open for 48 hours after the workday",
   /function isWithinWorklogEditWindow[\s\S]{0,420}workday\.getDate\(\) \+ 3[\s\S]{0,120}now < editDeadline/.test(js)
