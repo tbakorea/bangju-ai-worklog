@@ -14517,7 +14517,7 @@ body[data-layout-mode="phone"] .fitness-log-schedule-panel .appointment-merge-bu
 
   #view-fitness-log .fitness-ops-summary-button {
     display: grid;
-    grid-template-columns: auto repeat(4, minmax(40px, 1fr)) auto;
+    grid-template-columns: auto repeat(5, minmax(36px, 1fr)) auto;
     align-items: center;
     gap: 5px;
     border: 0;
@@ -14568,7 +14568,7 @@ body[data-layout-mode="phone"] .fitness-log-schedule-panel .appointment-merge-bu
 
   @media (max-width: 390px) {
     #view-fitness-log .fitness-ops-summary-button {
-      grid-template-columns: auto repeat(4, minmax(38px, 1fr));
+      grid-template-columns: auto repeat(5, minmax(34px, 1fr));
     }
 
     #view-fitness-log .ops-summary-note {
@@ -15039,7 +15039,7 @@ body[data-layout-mode="phone"] #view-fitness-log .fitness-ops-section h3 {
 }
 
 body[data-layout-mode="phone"] #view-fitness-log .fitness-ops-summary-button {
-  grid-template-columns: auto repeat(4, minmax(44px, 1fr));
+  grid-template-columns: auto repeat(5, minmax(0, 1fr));
   gap: 6px;
   min-height: 58px;
   border-radius: 18px;
@@ -15256,7 +15256,7 @@ body[data-layout-mode="phone"] #view-fitness-log .fitness-ops-section h3 {
 }
 
 body[data-layout-mode="phone"] #view-fitness-log .fitness-ops-summary-button {
-  grid-template-columns: 52px repeat(4, minmax(0, 1fr));
+  grid-template-columns: 48px repeat(5, minmax(0, 1fr));
   min-height: 68px;
   padding: 8px;
   border: 1px solid rgba(15, 59, 46, 0.08);
@@ -15329,7 +15329,7 @@ body[data-layout-mode="phone"] #view-fitness-log .ai-section-button {
   }
 
   body[data-layout-mode="phone"] #view-fitness-log .fitness-ops-summary-button {
-    grid-template-columns: 46px repeat(4, minmax(0, 1fr));
+    grid-template-columns: 44px repeat(5, minmax(0, 1fr));
   }
 }
 
@@ -17041,7 +17041,7 @@ body[data-layout-mode="phone"] #view-fitness-log #fitnessLogNextPageButton::afte
 
 body[data-layout-mode="phone"] #view-fitness-log .fitness-ops-summary-button {
   display: grid;
-  grid-template-columns: 62px repeat(4, minmax(0, 1fr)) 64px;
+  grid-template-columns: 54px repeat(5, minmax(0, 1fr)) 58px;
   align-items: stretch;
   gap: 5px;
   min-height: 58px;
@@ -23751,7 +23751,7 @@ body.physical-phone-device #view-fitness-log .fitness-ops-section h3 {
 
 body[data-layout-mode="phone"] #view-fitness-log .fitness-ops-summary-button,
 body.physical-phone-device #view-fitness-log .fitness-ops-summary-button {
-  grid-template-columns: 48px repeat(4, minmax(0, 1fr)) !important;
+  grid-template-columns: 44px repeat(5, minmax(0, 1fr)) !important;
   gap: 5px !important;
   min-height: 54px !important;
   padding: 6px !important;

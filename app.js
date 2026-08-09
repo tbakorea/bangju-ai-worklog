@@ -71,7 +71,7 @@ const priorityOptions = [
 ];
 const taskPriorityOptions = ["?", "A", "B", "C", "위임", "연기", "취소"];
 const scheduleTypeCatalog = {
-  fitness: ["유료PT", "무료PT", "고객/상담", "회원관리", "인스타/블로그", "마케팅활동", "영업/홍보", "시설/청결", "행정/정산", "오픈/마감", "휴게"],
+  fitness: ["유료PT", "무료PT", "고객/상담", "회원관리", "SNS 홍보", "마케팅활동", "영업/홍보", "시설/청결", "행정/정산", "오픈/마감", "휴게"],
   finance: ["회계/장부", "자금/이체", "세무/신고", "급여/노무", "증빙/정산", "계약/문서", "보고/결재", "은행/기관", "휴게"],
   project: ["고객/상담", "견적/계약", "설계/디자인", "발주/구매", "시공/현장", "품질/하자", "영업/홍보", "행정/정산", "휴게"],
   shared: ["입주/상담", "계약/수납", "공간/시설", "청소/점검", "고객/민원", "홍보/영업", "행정/보고", "오픈/마감", "휴게"],
@@ -653,6 +653,7 @@ function createFitnessOps() {
     dayPass: "",
     contractOther: "",
     consultation: "",
+    snsPromotion: "",
     inbound: "",
     outbound: "",
     outsideSales: "",
@@ -824,6 +825,7 @@ let dateSlideTimer = 0;
 let verticalDateSwipeTimer = 0;
 let verticalDateSwipeAnimating = false;
 let liveClockTimer = 0;
+const attendanceReminderShown = new Set();
 let calendarViewDate = parseDateKey(todayKey);
 let calendarPickerMode = "worklog";
 let calendarPostponeTask = null;
@@ -898,6 +900,86 @@ function refreshCurrentTimeIndicators() {
     const start = timeToMinutes(row.dataset.scheduleTime);
     row.classList.toggle("is-current", Boolean(isToday && Number.isFinite(start) && currentMinutes >= start && currentMinutes < start + scheduleUnit));
   });
+  checkAttendanceRecordReminder(now);
+}
+
+function getOwnAttendanceReminderContext(now = new Date()) {
+  if (!isKnownLoggedInProfile() || isRepresentativeProfile()) return null;
+  const dateKey = formatDateKey(now);
+  const ownId = getProfileMappedEmployeeId() || "profile-user";
+  const employee = getProfileEmployeeForMappedSlot(ownId)
+    || findEmployeeRecordById(ownId)
+    || { ...getProfileEmployee(), id: ownId };
+  const log = getExistingEmployeeLogForAnalysis(employee, dateKey) || {};
+  const workHours = getOverviewScheduledWorkHours(employee, dateKey, log);
+  return buildAttendanceRecordReminder({ dateKey, workHours, log, now });
+}
+
+function buildAttendanceRecordReminder({ dateKey = formatDateKey(new Date()), workHours = "", log = {}, now = new Date() } = {}) {
+  const scheduledOff = isOffWorkHours(workHours) || /비번|휴무/.test(String(log.attendanceStatus || ""));
+  if (scheduledOff && !log.clockIn) return null;
+  const match = String(workHours || "").match(/(\d{2}):(\d{2})\s*[-~]\s*(\d{2}):(\d{2})/);
+  const currentMinutes = now.getHours() * 60 + now.getMinutes();
+  if (!match && scheduledOff && log.clockIn && !log.clockOut) {
+    const substituteStart = timeToMinutes(log.clockIn);
+    if (Number.isFinite(substituteStart) && currentMinutes >= substituteStart + 8 * 60) {
+      return { dateKey, action: "퇴근", stage: "substitute", message: "대체근무 퇴근시간을 기록해주세요." };
+    }
+    return null;
+  }
+  if (!match) return null;
+  const startMinutes = Number(match[1]) * 60 + Number(match[2]);
+  let endMinutes = Number(match[3]) * 60 + Number(match[4]);
+  if (endMinutes < startMinutes) endMinutes += 24 * 60;
+  if (!log.clockIn && currentMinutes >= startMinutes) {
+    const overdue = currentMinutes >= startMinutes + 30;
+    return {
+      dateKey,
+      action: "출근",
+      stage: overdue ? "overdue" : "start",
+      message: overdue ? "출근시간 기록이 아직 없습니다. 지금 출근을 기록해주세요." : "근무 시작시간입니다. 출근을 기록해주세요.",
+    };
+  }
+  if (log.clockIn && !log.clockOut && currentMinutes >= endMinutes - 10) {
+    const overdue = currentMinutes >= endMinutes;
+    return {
+      dateKey,
+      action: "퇴근",
+      stage: overdue ? "overdue" : "soon",
+      message: overdue ? "근무 종료시간이 지났습니다. 퇴근을 기록해주세요." : "퇴근 10분 전입니다. 업무 마감 후 퇴근을 기록해주세요.",
+    };
+  }
+  return null;
+}
+
+function sendAttendanceRecordNotification(reminder = {}) {
+  if (typeof Notification === "undefined" || Notification.permission !== "granted") return;
+  try {
+    const notice = new Notification(`Beyond OS · ${reminder.action} 기록`, {
+      body: reminder.message,
+      tag: `attendance-${reminder.dateKey}-${reminder.action}-${reminder.stage}`,
+      renotify: false,
+    });
+    notice.onclick = () => window.focus();
+  } catch {}
+}
+
+function requestAttendanceNotificationPermissionFromGesture() {
+  if (typeof Notification === "undefined" || Notification.permission !== "default") return;
+  try {
+    const request = Notification.requestPermission();
+    if (request && typeof request.catch === "function") request.catch(() => {});
+  } catch {}
+}
+
+function checkAttendanceRecordReminder(now = new Date()) {
+  const reminder = getOwnAttendanceReminderContext(now);
+  if (!reminder) return;
+  const key = `${reminder.dateKey}:${reminder.action}:${reminder.stage}`;
+  if (attendanceReminderShown.has(key)) return;
+  attendanceReminderShown.add(key);
+  if (document.visibilityState !== "hidden") showAppToast(`⏰ ${reminder.message}`, 5200);
+  sendAttendanceRecordNotification(reminder);
 }
 
 function startLiveClock() {
@@ -2768,7 +2850,7 @@ function showFitnessPageToast(page = getCurrentFitnessLogPage()) {
   window.setTimeout(() => toast.classList.remove("is-visible"), 1200);
 }
 
-function showAppToast(message = "") {
+function showAppToast(message = "", duration = 1400) {
   const shell = document.querySelector(".worklog-shell");
   if (!shell || !message) return;
   let toast = document.getElementById("appToast");
@@ -2782,7 +2864,7 @@ function showAppToast(message = "") {
   toast.classList.remove("is-visible");
   void toast.offsetWidth;
   toast.classList.add("is-visible");
-  window.setTimeout(() => toast.classList.remove("is-visible"), 1400);
+  window.setTimeout(() => toast.classList.remove("is-visible"), duration);
 }
 
 let undoToastTimer = null;
@@ -3961,8 +4043,9 @@ function getOverviewFitnessOps(log) {
   const paidPt = numberValue(ops.ptRegular) + numberValue(ops.ptOther);
   const freePt = numberValue(ops.ptFree);
   const contract = numberValue(ops.customerNew) + numberValue(ops.customerRenewal) + numberValue(ops.dayPass);
-  const marketing = numberValue(ops.outbound) + numberValue(ops.outsideSales);
-  return { ops, paidPt, freePt, contract, marketing };
+  const snsPromotion = numberValue(ops.snsPromotion);
+  const marketing = snsPromotion + numberValue(ops.outbound) + numberValue(ops.outsideSales);
+  return { ops, paidPt, freePt, contract, snsPromotion, marketing };
 }
 
 function buildOverviewDirectiveSuggestion(employee, log, context = {}) {
@@ -4161,7 +4244,7 @@ function buildRepresentativeEmployeeAnalysis(employee = {}, endDateKey = getActi
     const worklogRecorded = hasOverviewWorklogRecord(log);
     const combined = `${tasks.map((task) => task.text).join(" ")} ${schedule.map(getScheduleEntryText).join(" ")} ${reportText}`;
     const ops = { ...createFitnessOps(), ...(log.fitnessOps || {}) };
-    const fitnessActions = ["ptRegular", "ptFree", "ptOther", "consultation", "customerNew", "customerRenewal", "outbound", "outsideSales"]
+    const fitnessActions = ["ptRegular", "ptFree", "ptOther", "consultation", "customerNew", "customerRenewal", "snsPromotion", "outbound", "outsideSales"]
       .reduce((sum, key) => sum + numberValue(ops[key]), 0);
     const rolePattern = {
       finance: /자금|회계|세무|증빙|급여|마감|정산|계약/,
@@ -4503,7 +4586,7 @@ function renderOverviewFitnessOpenButton(employeeId, view, label = "열기") {
 }
 
 function renderOverviewFitnessSummary(log) {
-  const { ops, paidPt, freePt, contract, marketing } = getOverviewFitnessOps(log);
+  const { ops, paidPt, freePt, contract, snsPromotion } = getOverviewFitnessOps(log);
   const memoState = ops.shiftNote || ops.specialReport ? "메모 있음" : "메모 없음";
   return `
     <section class="overview-fitness-summary" aria-label="업무요약">
@@ -4516,7 +4599,7 @@ function renderOverviewFitnessSummary(log) {
         <span><b>무료PT</b><strong>${freePt}</strong></span>
         <span><b>상담</b><strong>${numberValue(ops.consultation)}</strong></span>
         <span><b>계약</b><strong>${contract}</strong></span>
-        <span><b>홍보</b><strong>${marketing}</strong></span>
+        <span><b>SNS</b><strong>${snsPromotion}</strong></span>
       </div>
     </section>
   `;
@@ -4526,7 +4609,7 @@ function renderOverviewFitnessCenterSheet({ group, dateKey, dateLabel }) {
   const entries = getOverviewGroupEmployeeEntries(group);
   const rows = entries.map(({ employeeId, employee }, index) => {
     const log = getEmployeeLogForDate(employeeId, dateKey);
-    const { ops, paidPt, freePt, contract, marketing } = getOverviewFitnessOps(log);
+    const { ops, paidPt, freePt, contract, snsPromotion, marketing } = getOverviewFitnessOps(log);
     return {
       index,
       employee,
@@ -4536,6 +4619,7 @@ function renderOverviewFitnessCenterSheet({ group, dateKey, dateLabel }) {
       freePt,
       consultation: numberValue(ops.consultation),
       contract,
+      snsPromotion,
       marketing,
       note: ops.specialReport || ops.shiftNote || getOverviewReportText(log) || "기록 대기",
     };
@@ -4548,8 +4632,9 @@ function renderOverviewFitnessCenterSheet({ group, dateKey, dateLabel }) {
     freePt: sum.freePt + row.freePt,
     consultation: sum.consultation + row.consultation,
     contract: sum.contract + row.contract,
+    snsPromotion: sum.snsPromotion + row.snsPromotion,
     marketing: sum.marketing + row.marketing,
-  }), { paidPt: 0, freePt: 0, consultation: 0, contract: 0, marketing: 0 });
+  }), { paidPt: 0, freePt: 0, consultation: 0, contract: 0, snsPromotion: 0, marketing: 0 });
   return `
     <article class="worklog-overview-employee-sheet overview-fitness-center-sheet overview-fitness-ops-compact is-fitness-sheet" data-overview-site="${escapeAttr(group.id)}">
       <header class="overview-sheet-head overview-fitness-ops-head">
@@ -5005,7 +5090,7 @@ function renderControlTower() {
   const laborControl = getLaborControlSummary();
   const operatingScore = calculateOperatingScore();
   const completionRate = taskTotal ? Math.round((completedTotal / taskTotal) * 100) : 0;
-  const salesActions = fitnessOps.consultation + fitnessOps.outbound + fitnessOps.outsideSales;
+  const salesActions = fitnessOps.consultation + fitnessOps.snsPromotion + fitnessOps.outbound + fitnessOps.outsideSales;
   const topSignals = getControlBriefingItems({ staffRows, siteRows, fitnessOps, issueCount, taskTotal, completedTotal }).slice(0, 3);
   const focusStaff = staffRows
     .filter((row) => row.aiSignal !== "정상" || row.taskCount === 0 || row.completedCount < row.taskCount)
@@ -5088,7 +5173,7 @@ function renderExecutiveManagement() {
   const completedTotal = staffRows.reduce((sum, row) => sum + row.completedCount, 0);
   const issueRows = staffRows.filter((row) => row.aiSignal !== "정상");
   const absentRows = staffRows.filter((row) => row.aiSignal === "결석확인");
-  const salesActions = fitnessOps.consultation + fitnessOps.outbound + fitnessOps.outsideSales;
+  const salesActions = fitnessOps.consultation + fitnessOps.snsPromotion + fitnessOps.outbound + fitnessOps.outsideSales;
   const operatingScore = calculateOperatingScore();
   const missionQueue = getMissionProposalQueue(4);
   const pendingDecisionCount = [
@@ -5514,7 +5599,7 @@ function renderBenchmarkOperatingLayerCards(layers = [], { compact = false } = {
 
 function getControlBriefingItems({ staffRows, siteRows, fitnessOps, issueCount, taskTotal, completedTotal }) {
   const incomplete = Math.max(0, taskTotal - completedTotal);
-  const salesActions = fitnessOps.consultation + fitnessOps.outbound + fitnessOps.outsideSales;
+  const salesActions = fitnessOps.consultation + fitnessOps.snsPromotion + fitnessOps.outbound + fitnessOps.outsideSales;
   const idleSites = siteRows.filter((site) => site.status === "보류" || site.status === "준비").length;
   return [
     ["오늘 TOP 신호", issueCount ? `직원/업무 확인 신호 ${issueCount}건입니다. 결석, 연기, 미완료 업무를 먼저 확인하세요.` : "직원/업무 위험 신호는 안정적입니다.", issueCount ? "warn" : "ok"],
@@ -5581,7 +5666,7 @@ function buildPersonalGrowthModel(employee = getSelectedEmployee(), log = getSel
   const attendanceRecorded = Boolean(log.clockIn || log.clockOut || (log.attendanceBreaks || []).length);
   const reportText = String(log.report || log.memo || "").trim();
   const ops = { ...createFitnessOps(), ...(log.fitnessOps || {}) };
-  const salesSignals = numberValue(ops.consultation) + numberValue(ops.customerNew) + numberValue(ops.customerRenewal) + numberValue(ops.outbound) + numberValue(ops.outsideSales);
+  const salesSignals = numberValue(ops.consultation) + numberValue(ops.customerNew) + numberValue(ops.customerRenewal) + numberValue(ops.snsPromotion) + numberValue(ops.outbound) + numberValue(ops.outsideSales);
   const track = getGrowthRoleTrack(employee);
   const trackProfile = getGrowthTrackProfile(track);
   const completionRate = tasks.length ? completedTasks.length / tasks.length : 0;
@@ -5728,7 +5813,7 @@ function getMissionProposalsForEmployee(employee = getSelectedEmployee(), log = 
 
   if (track === "fitness") {
     const ops = { ...createFitnessOps(), ...(log.fitnessOps || {}) };
-    const salesCount = numberValue(ops.consultation) + numberValue(ops.customerNew) + numberValue(ops.customerRenewal) + numberValue(ops.outbound) + numberValue(ops.outsideSales);
+    const salesCount = numberValue(ops.consultation) + numberValue(ops.customerNew) + numberValue(ops.customerRenewal) + numberValue(ops.snsPromotion) + numberValue(ops.outbound) + numberValue(ops.outsideSales);
     if (!salesCount) {
       add({
         type: "매출행동",
@@ -6013,7 +6098,7 @@ function renderAiCoach() {
     laborSignals: coachingStaffRows.filter((row) => row.attendanceStatus === "미기록" || row.attendanceStatus.includes("결석")).length,
     taskTotal: coachingStaffRows.reduce((sum, row) => sum + row.taskCount, 0),
     completedTotal: coachingStaffRows.reduce((sum, row) => sum + row.completedCount, 0),
-    salesActions: Number(coachingFitnessOps.consultation || 0) + Number(coachingFitnessOps.outbound || 0) + Number(coachingFitnessOps.outsideSales || 0) + Number(coachingFitnessOps.customerNew || 0) + Number(coachingFitnessOps.customerRenewal || 0),
+    salesActions: Number(coachingFitnessOps.consultation || 0) + Number(coachingFitnessOps.snsPromotion || 0) + Number(coachingFitnessOps.outbound || 0) + Number(coachingFitnessOps.outsideSales || 0) + Number(coachingFitnessOps.customerNew || 0) + Number(coachingFitnessOps.customerRenewal || 0),
     missionQueue: queue,
     fitnessOps: coachingFitnessOps,
   }) : [];
@@ -6135,7 +6220,7 @@ function buildPremiumOperatingModel() {
   const completedTotal = staffRows.reduce((sum, row) => sum + row.completedCount, 0);
   const issueRows = staffRows.filter((row) => row.aiSignal !== "정상");
   const missingLogs = staffRows.filter((row) => row.taskCount === 0);
-  const salesActions = fitnessOps.consultation + fitnessOps.outbound + fitnessOps.outsideSales + fitnessOps.customerNew + fitnessOps.customerRenewal;
+  const salesActions = fitnessOps.consultation + fitnessOps.snsPromotion + fitnessOps.outbound + fitnessOps.outsideSales + fitnessOps.customerNew + fitnessOps.customerRenewal;
   const laborSignals = staffRows.filter((row) => row.attendanceStatus === "미기록" || row.attendanceStatus.includes("결석")).length;
   const dataCaptureScore = taskTotal ? clampScore((completedTotal / Math.max(1, taskTotal)) * 70 + Math.min(30, taskTotal * 3)) : 18;
   const peopleScore = clampScore(100 - issueRows.length * 10 - missingLogs.length * 4);
@@ -10114,6 +10199,7 @@ function renderFitnessCenterDaily() {
     summary.dayPass += numberValue(row.ops.dayPass);
     summary.contractOther += numberValue(row.ops.contractOther);
     summary.consultation += numberValue(row.ops.consultation);
+    summary.snsPromotion += numberValue(row.ops.snsPromotion);
     summary.inbound += numberValue(row.ops.inbound);
     summary.outbound += numberValue(row.ops.outbound);
     summary.outsideSales += numberValue(row.ops.outsideSales);
@@ -10121,7 +10207,7 @@ function renderFitnessCenterDaily() {
     summary.workMinutes += row.workMinutes;
     summary.recordedDays += row.recordedDays;
     return summary;
-  }, { pt: 0, ptPaid: 0, ptFree: 0, ptOther: 0, new: 0, renewal: 0, dayPass: 0, contractOther: 0, consultation: 0, inbound: 0, outbound: 0, outsideSales: 0, customerOther: 0, workMinutes: 0, recordedDays: 0 });
+  }, { pt: 0, ptPaid: 0, ptFree: 0, ptOther: 0, new: 0, renewal: 0, dayPass: 0, contractOther: 0, consultation: 0, snsPromotion: 0, inbound: 0, outbound: 0, outsideSales: 0, customerOther: 0, workMinutes: 0, recordedDays: 0 });
 
   const summaryGrid = document.getElementById("fitnessCenterSummaryGrid");
   if (summaryGrid) {
@@ -10137,6 +10223,7 @@ function renderFitnessCenterDaily() {
       ["일일권", `${total.dayPass}건`],
       ["계약 기타", `${total.contractOther}건`],
       ["상담", `${total.consultation}건`],
+      ["SNS 홍보", `${total.snsPromotion}건`],
       ["아웃바운드", `${total.outbound}건`],
       ["인바운드", `${total.inbound}건`],
       ["외부영업", `${total.outsideSales}건`],
@@ -10163,6 +10250,7 @@ function renderFitnessCenterDaily() {
         <td>${escapeHtml(row.ops.dayPass || "")}</td>
         <td>${escapeHtml(row.ops.contractOther || "")}</td>
         <td>${escapeHtml(row.ops.consultation || "")}</td>
+        <td>${escapeHtml(row.ops.snsPromotion || "")}</td>
         <td>${escapeHtml(row.ops.inbound || "")}</td>
         <td>${escapeHtml(row.ops.outbound || "")}</td>
         <td>${escapeHtml(row.ops.outsideSales || "")}</td>
@@ -10185,6 +10273,7 @@ function renderFitnessCenterDaily() {
         <td>${total.dayPass}</td>
         <td>${total.contractOther}</td>
         <td>${total.consultation}</td>
+        <td>${total.snsPromotion}</td>
         <td>${total.inbound}</td>
         <td>${total.outbound}</td>
         <td>${total.outsideSales}</td>
@@ -10465,9 +10554,10 @@ function getFitnessDayOpsTotal(dateKey) {
     total.pt += numberValue(ops.ptRegular) + numberValue(ops.ptFree) + numberValue(ops.ptOther);
     total.consultation += numberValue(ops.consultation);
     total.renewal += numberValue(ops.customerRenewal);
+    total.snsPromotion += numberValue(ops.snsPromotion);
     total.outbound += numberValue(ops.outbound) + numberValue(ops.outsideSales);
     return total;
-  }, { pt: 0, consultation: 0, renewal: 0, outbound: 0 });
+  }, { pt: 0, consultation: 0, renewal: 0, snsPromotion: 0, outbound: 0 });
 }
 
 function getFitnessGuidanceRoster(dateKey = getActiveDateKey()) {
@@ -12086,7 +12176,7 @@ function inferScheduleType(text = "", options = allScheduleTypeOptions) {
   if (/입주|수납|공실|임대/.test(text)) return choose("입주/상담", choose("계약/수납"));
   if (/센터관리|센타관리|기구|시설|냉난방|조명|청소|세탁|쓰레기|샤워실|탈의실|정리|위생/.test(text)) return choose("시설/청결", choose("공간/시설", choose("청소/점검", choose("운영/점검"))));
   if (/상담|회원|고객|문의|재등록|민원/.test(text)) return choose("고객/상담", choose("고객/민원", choose("고객/거래처")));
-  if (/인스타그램|인스타|instagram|블로그|blog|릴스|reels|숏폼|피드|게시물|콘텐츠|포스팅|카드뉴스|영상편집/i.test(text)) return choose("인스타/블로그", choose("마케팅활동", choose("영업/홍보")));
+  if (/인스타그램|인스타|instagram|블로그|blog|릴스|reels|숏폼|피드|게시물|콘텐츠|포스팅|카드뉴스|영상편집|sns/i.test(text)) return choose("SNS 홍보", choose("마케팅활동", choose("영업/홍보")));
   if (/마케팅|광고|캠페인|리뷰|이벤트|홍보물|전단|배너|플레이스|검색노출|seo/i.test(text)) return choose("마케팅활동", choose("영업/홍보", choose("홍보/영업")));
   if (/영업|홍보|마케팅|아웃바운드|전화|콜|체험권|매출/.test(text)) return choose("영업/홍보", choose("홍보/영업"));
   if (/보고|결재/.test(text)) return choose("보고/결재", choose("행정/보고", choose("대관/보고", choose("행정/정산"))));
@@ -12109,12 +12199,13 @@ function normalizeScheduleType(type = "업무", text = "") {
     무료PT: "무료PT",
     "무료P/T": "무료PT",
     고객관리: "고객/상담",
-    인스타: "인스타/블로그",
-    인스타그램: "인스타/블로그",
-    블로그: "인스타/블로그",
-    SNS: "인스타/블로그",
-    콘텐츠: "인스타/블로그",
-    포스팅: "인스타/블로그",
+    "인스타/블로그": "SNS 홍보",
+    인스타: "SNS 홍보",
+    인스타그램: "SNS 홍보",
+    블로그: "SNS 홍보",
+    SNS: "SNS 홍보",
+    콘텐츠: "SNS 홍보",
+    포스팅: "SNS 홍보",
     광고: "마케팅활동",
     캠페인: "마케팅활동",
     이벤트: "마케팅활동",
@@ -12792,7 +12883,8 @@ function renderFitnessOpsSummaryButton(log = getSelectedLog()) {
   const paidPtTotal = numberValue(ops.ptRegular) + numberValue(ops.ptOther);
   const freePtTotal = numberValue(ops.ptFree);
   const contractTotal = ["customerNew", "customerRenewal", "dayPass", "contractOther"].reduce((sum, key) => sum + numberValue(ops[key]), 0);
-  const marketingTotal = ["outbound", "outsideSales"].reduce((sum, key) => sum + numberValue(ops[key]), 0);
+  const snsPromotionTotal = numberValue(ops.snsPromotion);
+  const marketingTotal = snsPromotionTotal + ["outbound", "outsideSales"].reduce((sum, key) => sum + numberValue(ops[key]), 0);
   const page = getCurrentFitnessLogPage();
   const employee = page?.type === "employee" ? page.employee : findEmployeeRecordById(log.employeeId);
   const aggregate = employee ? buildFitnessCenterEmployeeMonthRow(employee, getActiveDateKey().slice(0, 7)) : null;
@@ -12801,6 +12893,7 @@ function renderFitnessOpsSummaryButton(log = getSelectedLog()) {
   const monthlyFreePtTotal = numberValue(aggregate?.freePtTotal);
   const monthlyConsultationTotal = numberValue(monthOps.consultation);
   const monthlyContractTotal = ["customerNew", "customerRenewal", "dayPass", "contractOther"].reduce((sum, key) => sum + numberValue(monthOps[key]), 0);
+  const monthlySnsPromotionTotal = numberValue(monthOps.snsPromotion);
   const memoState = ops.shiftNote || ops.specialReport ? "메모 있음" : "메모 없음";
   button.classList.toggle("has-memo", Boolean(ops.shiftNote || ops.specialReport));
   button.innerHTML = `
@@ -12809,8 +12902,9 @@ function renderFitnessOpsSummaryButton(log = getSelectedLog()) {
     <span class="ops-summary-metric"><b>무료PT</b><strong>${freePtTotal}/${monthlyFreePtTotal}</strong></span>
     <span class="ops-summary-metric"><b>상담</b><strong>${numberValue(ops.consultation)}/${monthlyConsultationTotal}</strong></span>
     <span class="ops-summary-metric"><b>계약</b><strong>${contractTotal}/${monthlyContractTotal}</strong></span>
+    <span class="ops-summary-metric"><b>SNS</b><strong>${snsPromotionTotal}/${monthlySnsPromotionTotal}</strong></span>
   `;
-  button.setAttribute("aria-label", `업무요약. 오늘/월 누계 기준. 유료 PT ${paidPtTotal}/${monthlyPaidPtTotal}건, 무료 PT ${freePtTotal}/${monthlyFreePtTotal}건, 상담 ${numberValue(ops.consultation)}/${monthlyConsultationTotal}건, 계약 ${contractTotal}/${monthlyContractTotal}건, 홍보 마케팅 오늘 ${marketingTotal}건, ${memoState}`);
+  button.setAttribute("aria-label", `업무요약. 오늘/월 누계 기준. 유료 PT ${paidPtTotal}/${monthlyPaidPtTotal}건, 무료 PT ${freePtTotal}/${monthlyFreePtTotal}건, 상담 ${numberValue(ops.consultation)}/${monthlyConsultationTotal}건, 계약 ${contractTotal}/${monthlyContractTotal}건, SNS 홍보 ${snsPromotionTotal}/${monthlySnsPromotionTotal}건, 홍보 마케팅 오늘 ${marketingTotal}건, ${memoState}`);
 }
 
 function syncFitnessOpsFromSchedule(log = getSelectedLog()) {
@@ -12834,6 +12928,7 @@ function collectFitnessOpsFromSchedule(log = getSelectedLog()) {
     dayPass: 0,
     contractOther: 0,
     consultation: 0,
+    snsPromotion: 0,
     inbound: 0,
     outbound: 0,
     outsideSales: 0,
@@ -12850,9 +12945,12 @@ function collectFitnessOpsFromSchedule(log = getSelectedLog()) {
 }
 
 function applyFitnessOpsItemCount(totals, type = "업무", text = "") {
-  const normalizedType = normalizeScheduleType(type, text);
+  const isSnsPromotionText = /인스타그램|인스타|instagram|블로그|blog|릴스|reels|숏폼|피드|게시물|콘텐츠|포스팅|카드뉴스|영상편집|sns/i.test(text);
+  const normalizedType = isSnsPromotionText ? "SNS 홍보" : normalizeScheduleType(type, text);
   const source = `${normalizedType} ${text}`;
-  const count = countFitnessScheduleUnits(text);
+  // SNS 홍보는 한 개의 등록 일정(게시물·릴스·블로그 작업)을 한 건으로 셉니다.
+  // "블로그 작성 및 업데이트"처럼 한 산출물을 설명하는 문구가 두 건으로 부풀지 않게 합니다.
+  const count = normalizedType === "SNS 홍보" ? 1 : countFitnessScheduleUnits(text);
   if (normalizedType === "무료PT" || normalizedType === "유료PT" || /pt|p\/t|피티|수업|운동지도/i.test(source)) {
     if (normalizedType === "무료PT" || /무료|체험|서비스|무상/.test(source)) totals.ptFree += count;
     else if (/기타|보강|대체/.test(source)) totals.ptOther += count;
@@ -12865,7 +12963,8 @@ function applyFitnessOpsItemCount(totals, type = "업무", text = "") {
     if (/인바운드|문의|방문|walk[-\s]?in/i.test(source)) totals.inbound += count;
     if (/상담|등록상담/.test(source)) totals.consultation += count;
   }
-  const isMarketingActivity = ["인스타/블로그", "마케팅활동", "영업/홍보"].includes(normalizedType)
+  if (normalizedType === "SNS 홍보") totals.snsPromotion += count;
+  const isMarketingActivity = ["마케팅활동", "영업/홍보"].includes(normalizedType)
     || /아웃바운드|전화|콜|문자|디엠|dm|영업/i.test(source);
   if (isMarketingActivity) {
     if (/외부영업|방문영업|외근|현장영업/.test(source)) totals.outsideSales += count;
@@ -12894,6 +12993,7 @@ function formatFitnessOpsReport(fitnessOps = createFitnessOps()) {
   return [
     `수업현황: 정규 ${ops.ptRegular || 0}, 체험/무료 ${ops.ptFree || 0}, 보강/기타 ${ops.ptOther || 0}, 합계 ${ptTotal}`,
     `계약현황: 신규 ${ops.customerNew || 0}, 재등록 ${ops.customerRenewal || 0}, 일일권 ${ops.dayPass || 0}, 기타 ${ops.contractOther || 0}, 소계 ${contractTotal}`,
+    `SNS 홍보: ${ops.snsPromotion || 0}건`,
     `고객관리: 인바운드 ${ops.inbound || 0}, 아웃바운드 ${ops.outbound || 0}, 외부영업 ${ops.outsideSales || 0}, 상담 ${ops.consultation || 0}, 기타 ${ops.customerOther || 0}, 소계 ${customerTotal}`,
     `업무 메모: ${ops.shiftNote || "-"}`,
     `특이사항 보고: ${ops.specialReport || "-"}`,
@@ -17053,6 +17153,7 @@ function getFitnessOpsSummary() {
     summary.dayPass += numberValue(ops.dayPass);
     summary.contractOther += numberValue(ops.contractOther);
     summary.consultation += numberValue(ops.consultation);
+    summary.snsPromotion += numberValue(ops.snsPromotion);
     summary.inbound += numberValue(ops.inbound);
     summary.outbound += numberValue(ops.outbound);
     summary.outsideSales += numberValue(ops.outsideSales);
@@ -17069,6 +17170,7 @@ function getFitnessOpsSummary() {
     dayPass: 0,
     contractOther: 0,
     consultation: 0,
+    snsPromotion: 0,
     inbound: 0,
     outbound: 0,
     outsideSales: 0,
@@ -17643,10 +17745,11 @@ function getReportArchiveFitnessSummary(logs = []) {
     summary.consultation += numberValue(ops.consultation);
     summary.contract += numberValue(ops.customerNew) + numberValue(ops.customerRenewal) + numberValue(ops.dayPass);
     summary.contract += numberValue(ops.contractOther);
-    summary.marketing += numberValue(ops.outbound) + numberValue(ops.outsideSales);
+    summary.snsPromotion += numberValue(ops.snsPromotion);
+    summary.marketing += numberValue(ops.snsPromotion) + numberValue(ops.outbound) + numberValue(ops.outsideSales);
     if (String(ops.specialReport || "").trim()) summary.specialReports.push(ops.specialReport.trim());
     return summary;
-  }, { paidPt: 0, freePt: 0, consultation: 0, contract: 0, marketing: 0, specialReports: [] });
+  }, { paidPt: 0, freePt: 0, consultation: 0, contract: 0, snsPromotion: 0, marketing: 0, specialReports: [] });
 }
 
 function getWorklogReportSubmissionKey(employeeId = "", dateKey = getActiveDateKey()) {
@@ -18309,7 +18412,7 @@ function buildFitnessReportLines() {
     ...(model.isCenter ? [
       "",
       "[직원별 통계 · 당일/월누계]",
-      ...model.staffRows.map((row) => `- ${row.name}: 유료PT ${numberValue(row.ptRegular)}/${numberValue(row.monthly?.ptRegular)}, 무료PT ${numberValue(row.ptFree)}/${numberValue(row.monthly?.ptFree)}, 계약 ${numberValue(row.contractTotal)}/${numberValue(row.monthly?.contractTotal)}, 상담 ${numberValue(row.consultation)}/${numberValue(row.monthly?.consultation)}, 고객관리 ${numberValue(row.customerTotal)}/${numberValue(row.monthly?.customerTotal)}`),
+      ...model.staffRows.map((row) => `- ${row.name}: 유료PT ${numberValue(row.ptRegular)}/${numberValue(row.monthly?.ptRegular)}, 무료PT ${numberValue(row.ptFree)}/${numberValue(row.monthly?.ptFree)}, SNS홍보 ${numberValue(row.snsPromotion)}/${numberValue(row.monthly?.snsPromotion)}, 계약 ${numberValue(row.contractTotal)}/${numberValue(row.monthly?.contractTotal)}, 상담 ${numberValue(row.consultation)}/${numberValue(row.monthly?.consultation)}, 고객관리 ${numberValue(row.customerTotal)}/${numberValue(row.monthly?.customerTotal)}`),
       "",
       `[다짐 운영현황 · ${model.dagymSummary?.sourceDateKey || "자료 미연결"}]`,
       ...(model.dagymSummary?.rows || []).map((row) => `- ${row.label}: ${formatFitnessDagymReportValue(row)} (${formatFitnessDagymReportDelta(row)})`),
@@ -18384,6 +18487,7 @@ function getFitnessReportMonthlyStats(employee = {}, monthPrefix = getActiveDate
     outbound: replaceDayContribution("outbound"),
     outsideSales: replaceDayContribution("outsideSales"),
     consultation: replaceDayContribution("consultation"),
+    snsPromotion: replaceDayContribution("snsPromotion"),
     customerOther: replaceDayContribution("customerOther"),
   };
   stats.ptTotal = stats.ptRegular + stats.ptFree + stats.ptOther;
@@ -18403,6 +18507,7 @@ function summarizeFitnessReportRows(logEntries = [], dateKey = getActiveDateKey(
     const customerRenewal = numberValue(ops.customerRenewal);
     const dayPass = numberValue(ops.dayPass);
     const consultation = numberValue(ops.consultation);
+    const snsPromotion = numberValue(ops.snsPromotion);
     const inbound = numberValue(ops.inbound);
     const outbound = numberValue(ops.outbound);
     const outsideSales = numberValue(ops.outsideSales);
@@ -18435,6 +18540,7 @@ function summarizeFitnessReportRows(logEntries = [], dateKey = getActiveDateKey(
       outbound,
       outsideSales,
       consultation,
+      snsPromotion,
       customerOther,
       customerTotal: inbound + outbound + outsideSales + consultation + customerOther,
       monthly: includeMonthly ? getFitnessReportMonthlyStats(employee, monthPrefix, dateKey, {
@@ -18449,6 +18555,7 @@ function summarizeFitnessReportRows(logEntries = [], dateKey = getActiveDateKey(
         outbound,
         outsideSales,
         consultation,
+        snsPromotion,
         customerOther,
       }) : {},
       ptNote: ptRegular + ptFree + ptOther ? String(ops.shiftNote || "").trim() : "",
@@ -18459,13 +18566,13 @@ function summarizeFitnessReportRows(logEntries = [], dateKey = getActiveDateKey(
     };
   });
   const totals = rows.reduce((sum, row) => {
-    ["ptRegular", "ptFree", "ptOther", "ptTotal", "customerNew", "customerRenewal", "dayPass", "contractOther", "contractTotal", "inbound", "outbound", "outsideSales", "consultation", "customerOther", "customerTotal"].forEach((key) => {
+    ["ptRegular", "ptFree", "ptOther", "ptTotal", "customerNew", "customerRenewal", "dayPass", "contractOther", "contractTotal", "snsPromotion", "inbound", "outbound", "outsideSales", "consultation", "customerOther", "customerTotal"].forEach((key) => {
       sum[key] = (sum[key] || 0) + numberValue(row[key]);
     });
     return sum;
   }, {});
   const monthlyTotals = includeMonthly ? rows.reduce((sum, row) => {
-    ["ptRegular", "ptFree", "ptOther", "ptTotal", "customerNew", "customerRenewal", "dayPass", "contractOther", "contractTotal", "inbound", "outbound", "outsideSales", "consultation", "customerOther", "customerTotal"].forEach((key) => {
+    ["ptRegular", "ptFree", "ptOther", "ptTotal", "customerNew", "customerRenewal", "dayPass", "contractOther", "contractTotal", "snsPromotion", "inbound", "outbound", "outsideSales", "consultation", "customerOther", "customerTotal"].forEach((key) => {
       sum[key] = (sum[key] || 0) + numberValue(row.monthly?.[key]);
     });
     return sum;
@@ -18519,12 +18626,13 @@ function getFitnessCenterGeneratedRecordRows(logEntries = [], context = {}) {
   const renewal = numberValue(totals.customerRenewal);
   const newMembers = numberValue(totals.customerNew);
   const outbound = numberValue(totals.outbound);
+  const snsPromotion = numberValue(totals.snsPromotion);
   const inbound = numberValue(totals.inbound);
   const attendanceReady = logEntries.filter(({ log }) => log?.clockIn || log?.clockOut).length;
   const missingAttendance = logEntries.filter(({ log }) => !log?.clockIn && !log?.clockOut).length;
 
-  if (paidPt || freePt || consult || renewal || newMembers || outbound || inbound) {
-    add(`운영 집계: 유료PT ${paidPt}건, 무료PT ${freePt}건, 상담 ${consult}건, 신규 ${newMembers}건, 재등록 ${renewal}건, 아웃바운드 ${outbound}건, 인바운드 ${inbound}건.`);
+  if (paidPt || freePt || consult || renewal || newMembers || snsPromotion || outbound || inbound) {
+    add(`운영 집계: 유료PT ${paidPt}건, 무료PT ${freePt}건, SNS홍보 ${snsPromotion}건, 상담 ${consult}건, 신규 ${newMembers}건, 재등록 ${renewal}건, 아웃바운드 ${outbound}건, 인바운드 ${inbound}건.`);
   }
   if (attendanceReady || missingAttendance) {
     add(`출결 확인: ${attendanceReady}명 기록, ${missingAttendance}명 미기록입니다. 마감 전 출퇴근 기록을 확인하세요.`);
@@ -18969,6 +19077,7 @@ function buildFitnessReportAiContext({ dateKey, isCenter, employee, sourceLog, l
       freePtMonth: classStats.free.month,
       consultation: numberValue(totals.consultation),
       contract: numberValue(totals.contractTotal),
+      snsPromotion: numberValue(totals.snsPromotion),
       promotion: numberValue(totals.outbound),
       marketing: numberValue(totals.outsideSales),
     },
@@ -19257,6 +19366,7 @@ function buildFitnessReportModel(options = {}) {
       ["무료PT", `${classStats.free.today}/${classStats.free.month}`],
       ["상담", `${numberValue(totals.consultation)}건`],
       ["계약", `${numberValue(totals.contractTotal)}건`],
+      ["SNS 홍보", `${numberValue(totals.snsPromotion)}/${numberValue(monthlyTotals.snsPromotion)}`],
       ["홍보", `${numberValue(totals.outbound)}건`],
       ["마케팅", `${numberValue(totals.outsideSales)}건`],
     ],
@@ -19352,6 +19462,7 @@ function renderFitnessReportTemplate(model = buildFitnessReportModel()) {
       <td>${renderFitnessReportDayMonthValue(row.dayPass, row.monthly?.dayPass)}</td>
       <td>${renderFitnessReportDayMonthValue(row.contractOther, row.monthly?.contractOther)}</td>
       <td>${renderFitnessReportDayMonthValue(row.contractTotal, row.monthly?.contractTotal)}</td>
+      <td>${renderFitnessReportDayMonthValue(row.snsPromotion, row.monthly?.snsPromotion)}</td>
       <td>${renderFitnessReportDayMonthValue(row.inbound, row.monthly?.inbound)}</td>
       <td>${renderFitnessReportDayMonthValue(row.outbound, row.monthly?.outbound)}</td>
       <td>${renderFitnessReportDayMonthValue(row.outsideSales, row.monthly?.outsideSales)}</td>
@@ -19436,11 +19547,11 @@ function renderFitnessReportTemplate(model = buildFitnessReportModel()) {
           <h3>계약현황 · 고객관리 <span>통계 표기: 당일/월누계</span></h3>
           <table>
             <thead>
-              <tr class="fitness-paper-group-row"><th colspan="3">직원</th><th colspan="5">계약현황</th><th colspan="7">고객관리</th></tr>
-              <tr><th>No.</th><th>구분</th><th>성명</th><th>신규</th><th>재등록</th><th>일일권</th><th>기타</th><th>소계</th><th>인바운드</th><th>아웃바운드</th><th>외부영업</th><th>상담</th><th>기타</th><th>소계</th><th>비고</th></tr>
+              <tr class="fitness-paper-group-row"><th colspan="3">직원</th><th colspan="5">계약현황</th><th colspan="1">SNS</th><th colspan="7">고객관리</th></tr>
+              <tr><th>No.</th><th>구분</th><th>성명</th><th>신규</th><th>재등록</th><th>일일권</th><th>기타</th><th>소계</th><th>SNS홍보</th><th>인바운드</th><th>아웃바운드</th><th>외부영업</th><th>상담</th><th>기타</th><th>소계</th><th>비고</th></tr>
             </thead>
             <tbody>${centerContractCustomerRows}</tbody>
-            <tfoot><tr><td colspan="3">합계</td><td>${renderFitnessReportDayMonthValue(model.totals.customerNew, model.monthlyTotals.customerNew)}</td><td>${renderFitnessReportDayMonthValue(model.totals.customerRenewal, model.monthlyTotals.customerRenewal)}</td><td>${renderFitnessReportDayMonthValue(model.totals.dayPass, model.monthlyTotals.dayPass)}</td><td>${renderFitnessReportDayMonthValue(model.totals.contractOther, model.monthlyTotals.contractOther)}</td><td>${renderFitnessReportDayMonthValue(model.totals.contractTotal, model.monthlyTotals.contractTotal)}</td><td>${renderFitnessReportDayMonthValue(model.totals.inbound, model.monthlyTotals.inbound)}</td><td>${renderFitnessReportDayMonthValue(model.totals.outbound, model.monthlyTotals.outbound)}</td><td>${renderFitnessReportDayMonthValue(model.totals.outsideSales, model.monthlyTotals.outsideSales)}</td><td>${renderFitnessReportDayMonthValue(model.totals.consultation, model.monthlyTotals.consultation)}</td><td>${renderFitnessReportDayMonthValue(model.totals.customerOther, model.monthlyTotals.customerOther)}</td><td>${renderFitnessReportDayMonthValue(model.totals.customerTotal, model.monthlyTotals.customerTotal)}</td><td></td></tr></tfoot>
+            <tfoot><tr><td colspan="3">합계</td><td>${renderFitnessReportDayMonthValue(model.totals.customerNew, model.monthlyTotals.customerNew)}</td><td>${renderFitnessReportDayMonthValue(model.totals.customerRenewal, model.monthlyTotals.customerRenewal)}</td><td>${renderFitnessReportDayMonthValue(model.totals.dayPass, model.monthlyTotals.dayPass)}</td><td>${renderFitnessReportDayMonthValue(model.totals.contractOther, model.monthlyTotals.contractOther)}</td><td>${renderFitnessReportDayMonthValue(model.totals.contractTotal, model.monthlyTotals.contractTotal)}</td><td>${renderFitnessReportDayMonthValue(model.totals.snsPromotion, model.monthlyTotals.snsPromotion)}</td><td>${renderFitnessReportDayMonthValue(model.totals.inbound, model.monthlyTotals.inbound)}</td><td>${renderFitnessReportDayMonthValue(model.totals.outbound, model.monthlyTotals.outbound)}</td><td>${renderFitnessReportDayMonthValue(model.totals.outsideSales, model.monthlyTotals.outsideSales)}</td><td>${renderFitnessReportDayMonthValue(model.totals.consultation, model.monthlyTotals.consultation)}</td><td>${renderFitnessReportDayMonthValue(model.totals.customerOther, model.monthlyTotals.customerOther)}</td><td>${renderFitnessReportDayMonthValue(model.totals.customerTotal, model.monthlyTotals.customerTotal)}</td><td></td></tr></tfoot>
           </table>
         </section>
         </div>
@@ -20521,6 +20632,7 @@ document.getElementById("globalAttendanceButton")?.addEventListener("click", (ev
     closeAttendancePopover();
     return;
   }
+  requestAttendanceNotificationPermissionFromGesture();
   const popover = document.getElementById("attendancePopover");
   if (popover && !popover.hidden) closeAttendancePopover();
   else openAttendancePopover();
@@ -21196,7 +21308,10 @@ document.querySelectorAll("[data-os-action]").forEach((button) => {
 });
 setupMobileDayFocus();
 document.getElementById("addAttendanceButton")?.addEventListener("click", addAttendance);
-document.getElementById("attendanceCycleButton")?.addEventListener("click", applyAttendanceCycle);
+document.getElementById("attendanceCycleButton")?.addEventListener("click", () => {
+  requestAttendanceNotificationPermissionFromGesture();
+  applyAttendanceCycle();
+});
 document.getElementById("clockInTime")?.addEventListener("input", (event) => {
   if (!guardWorklogEdit()) return;
   const log = getSelectedLog();

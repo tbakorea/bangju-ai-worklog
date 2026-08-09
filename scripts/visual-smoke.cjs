@@ -966,11 +966,17 @@ async function checkOverviewCommandBoard(browser) {
       fitnessInstagramInference: inferScheduleType("인스타 릴스 콘텐츠 제작", options(fitness)),
       fitnessMarketingInference: inferScheduleType("여름 이벤트 광고 캠페인", options(fitness)),
       fitnessMarketingCount: (() => {
-        const totals = { ...createFitnessOps(), outbound: 0, outsideSales: 0 };
-        applyFitnessOpsItemCount(totals, "인스타/블로그", "인스타 릴스 제작");
+        const totals = { ...createFitnessOps(), snsPromotion: 0, outbound: 0, outsideSales: 0 };
+        applyFitnessOpsItemCount(totals, "시설/청결", "블로그 작성 및 업데이트");
         applyFitnessOpsItemCount(totals, "마케팅활동", "여름 이벤트 광고");
-        return totals.outbound;
+        return { snsPromotion: totals.snsPromotion, outbound: totals.outbound };
       })(),
+      attendanceReminders: {
+        clockIn: buildAttendanceRecordReminder({ dateKey: "2026-08-10", workHours: "08:00-18:00", log: {}, now: new Date("2026-08-10T08:01:00+09:00") })?.action,
+        clockOut: buildAttendanceRecordReminder({ dateKey: "2026-08-10", workHours: "08:00-18:00", log: { clockIn: "08:00" }, now: new Date("2026-08-10T17:51:00+09:00") })?.action,
+        scheduledOff: buildAttendanceRecordReminder({ dateKey: "2026-08-10", workHours: "휴무", log: {}, now: new Date("2026-08-10T12:00:00+09:00") }),
+        substitute: buildAttendanceRecordReminder({ dateKey: "2026-08-10", workHours: "휴무", log: { clockIn: "08:00" }, now: new Date("2026-08-10T16:01:00+09:00") })?.stage
+      },
       financeInference: inferScheduleType("세금계산서 증빙 정산", options(finance)),
       projectInference: inferScheduleType("욕실 시공 현장 확인", options(project)),
       sharedInference: inferScheduleType("신규 입주 상담", options(shared)),
@@ -985,15 +991,20 @@ async function checkOverviewCommandBoard(browser) {
     || !["회계/장부", "자금/이체", "세무/신고", "급여/노무", "증빙/정산"].every((item) => scheduleTypeCatalog.finance.includes(item))
     || !["견적/계약", "설계/디자인", "시공/현장"].every((item) => scheduleTypeCatalog.project.includes(item))
     || !["입주/상담", "계약/수납", "공간/시설"].every((item) => scheduleTypeCatalog.shared.includes(item))
-    || !["유료PT", "무료PT", "회원관리", "인스타/블로그", "마케팅활동"].every((item) => scheduleTypeCatalog.fitness.includes(item))
+    || !["유료PT", "무료PT", "회원관리", "SNS 홍보", "마케팅활동"].every((item) => scheduleTypeCatalog.fitness.includes(item))
     || !["공정/시공", "안전/점검", "자재/발주"].every((item) => scheduleTypeCatalog.construction.includes(item))
     || scheduleTypeCatalog.financeInference !== "증빙/정산"
     || scheduleTypeCatalog.projectInference !== "시공/현장"
     || scheduleTypeCatalog.sharedInference !== "입주/상담"
     || scheduleTypeCatalog.constructionInference !== "안전/점검"
-    || scheduleTypeCatalog.fitnessInstagramInference !== "인스타/블로그"
+    || scheduleTypeCatalog.fitnessInstagramInference !== "SNS 홍보"
     || scheduleTypeCatalog.fitnessMarketingInference !== "마케팅활동"
-    || scheduleTypeCatalog.fitnessMarketingCount !== 2
+    || scheduleTypeCatalog.fitnessMarketingCount?.snsPromotion !== 1
+    || scheduleTypeCatalog.fitnessMarketingCount?.outbound !== 1
+    || scheduleTypeCatalog.attendanceReminders?.clockIn !== "출근"
+    || scheduleTypeCatalog.attendanceReminders?.clockOut !== "퇴근"
+    || scheduleTypeCatalog.attendanceReminders?.scheduledOff !== null
+    || scheduleTypeCatalog.attendanceReminders?.substitute !== "substitute"
     || !scheduleTypeCatalog.generalEditorConnected) {
     fail("schedule type catalog should follow each employee's business site and role", scheduleTypeCatalogMetrics);
   }
@@ -2106,7 +2117,7 @@ async function checkFitnessManagerCanEditOwnWorklog(browser) {
   if (!parsed.ownPageClass || !parsed.ownPanelBackground.includes("gradient")) {
     fail("Park own worklog should use the distinct own-page background", metrics);
   }
-  if (!parsed.personalMonthHidden || parsed.compactTotals.join(",") !== "0/11,0/0,0/4,0/0"
+  if (!parsed.personalMonthHidden || parsed.compactTotals.join(",") !== "0/11,0/0,0/4,0/0,0/0"
     || Number(parsed.julyManager.ptRegular) !== 5 || Number(parsed.julyManager.consultation) !== 3
     || Number(parsed.augustManager.ptRegular) !== 11 || Number(parsed.julyTrainer.ptRegular) !== 7) {
     fail("fitness personal totals must accumulate within the selected month and reset for the next month", metrics);
@@ -4893,7 +4904,7 @@ async function checkFitnessRosterHoursAndCompactTotals(browser) {
     || saturdayOnly?.substituteDone?.worked !== 225 || saturdayOnly?.substituteDone?.laborStatus !== "대체근무 완료") {
     fail("off-day attendance should become substitute work and open only the actual attendance time range", JSON.stringify(saturdayOnly));
   }
-  if (metrics.summaryValues[0] !== "3/13" || !metrics.monthlyPanelHidden || !metrics.summaryFits) {
+  if (metrics.summaryValues[0] !== "3/13" || metrics.summaryValues.length !== 5 || !metrics.monthlyPanelHidden || !metrics.summaryFits) {
     fail("fitness totals should use compact today/month notation without another panel", JSON.stringify(metrics));
   }
   if (errors.length) fail("fitness roster hours page errors", errors.join(" | "));

@@ -192,11 +192,24 @@ check(
 );
 
 check(
-  "fitness schedule includes social content and marketing categories",
-  /fitness:\s*\[[^\]]*"인스타\/블로그"[^\]]*"마케팅활동"/.test(js)
-    && /인스타그램\|인스타\|instagram\|블로그\|blog/.test(js)
-    && /마케팅\|광고\|캠페인\|리뷰\|이벤트/.test(js),
-  "fitness staff need distinct Instagram/blog and marketing activity choices"
+  "fitness schedule tracks SNS promotion as an independent activity",
+  /fitness:\s*\[[^\]]*"SNS 홍보"[^\]]*"마케팅활동"/.test(js)
+    && js.includes('snsPromotion: ""')
+    && js.includes('normalizedType === "SNS 홍보" ? 1')
+    && html.includes('data-fitness-field="snsPromotion"')
+    && /인스타그램\|인스타\|instagram\|블로그\|blog/.test(js),
+  "SNS promotion must be classified and counted separately from general marketing"
+);
+
+check(
+  "employee attendance reminders follow configured work hours",
+  js.includes("function buildAttendanceRecordReminder")
+    && js.includes("scheduledOff && !log.clockIn")
+    && js.includes('action: "출근"')
+    && js.includes('action: "퇴근"')
+    && js.includes("checkAttendanceRecordReminder(now)")
+    && js.includes("requestAttendanceNotificationPermissionFromGesture"),
+  "employees need schedule-aware clock-in and clock-out reminders without off-day false alarms"
 );
 
 check(
