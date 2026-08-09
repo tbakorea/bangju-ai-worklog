@@ -1346,7 +1346,7 @@ async function checkControlTower(browser) {
 
   if (metrics.activeView !== "control") fail("control tower active view mismatch", metrics.activeView);
   if (metrics.denied || metrics.bodyHidden) fail("representative control tower should be visible");
-  if (metrics.titleText !== "방주그룹 통합관제") fail("control tower title mismatch", metrics.titleText);
+  if (metrics.titleText !== "전 사업장 운영") fail("control tower title mismatch", metrics.titleText);
   if (metrics.heroHeight > 180) fail("control tower hero is too tall", `${metrics.heroHeight}px`);
   if (metrics.kpiCount !== 6) fail("control tower should focus on six compact KPIs", String(metrics.kpiCount));
   if (metrics.briefingCount !== 3) fail("control tower briefing should show three signals", String(metrics.briefingCount));
@@ -1583,16 +1583,20 @@ async function checkDelegatedPermissionMenus(browser) {
     return JSON.stringify({ worklogAll, staffOnly, laborApproval, pinnedAccount, guardedView: document.body.dataset.activeView });
   })()`));
   const parsed = JSON.parse(matrix);
-  if (!parsed.worklogAll.includes("전직원 업무일지") || parsed.worklogAll.some((label) => /직원$|노무|승인요청|통합관제/.test(label))) {
+  if (!parsed.worklogAll.some((label) => label.startsWith("업무") && label.includes("전 직원 업무일지"))
+    || parsed.worklogAll.some((label) => label.startsWith("사람") || label.startsWith("노무") || label.startsWith("승인함") || label.startsWith("운영"))) {
     fail("worklogAll delegation should build only the proportional all-worklog menu", matrix);
   }
-  if (!parsed.staffOnly.includes("직원") || parsed.staffOnly.some((label) => /전직원 업무일지|노무|승인요청/.test(label))) {
+  if (!parsed.staffOnly.some((label) => label.startsWith("사람"))
+    || parsed.staffOnly.some((label) => label.includes("전 직원 업무일지") || label.startsWith("노무") || label.startsWith("승인함"))) {
     fail("staffManage delegation should expose staff without unrelated labor or approval menus", matrix);
   }
-  if (!parsed.laborApproval.includes("소속 노무") || !parsed.laborApproval.some((label) => label.startsWith("승인요청")) || parsed.laborApproval.includes("직원")) {
+  if (!parsed.laborApproval.some((label) => label.startsWith("노무") && label.includes("소속 근태·휴가"))
+    || !parsed.laborApproval.some((label) => label.startsWith("승인함"))
+    || parsed.laborApproval.some((label) => label.startsWith("사람"))) {
     fail("laborSite and staffApproval should expose labor and approval independently", matrix);
   }
-  if (!parsed.pinnedAccount.includes("전직원 업무일지")) {
+  if (!parsed.pinnedAccount.some((label) => label.startsWith("업무") && label.includes("전 직원 업무일지"))) {
     fail("fixed fitness account placement must preserve remotely delegated menu permissions", matrix);
   }
   if (parsed.guardedView === "staff") fail("hidden staff route should remain guarded", matrix);
@@ -2938,7 +2942,7 @@ async function checkExecutiveManagementPage(browser) {
   if (metrics.activeView !== "executive") fail("executive active view mismatch", metrics.activeView);
   if (metrics.headerHeight > 1) fail("executive duplicate top header should be visually removed", `${metrics.headerHeight}px`);
   if (metrics.heroSticky !== "sticky") fail("executive hero should be sticky", metrics.heroSticky);
-  if (metrics.titleText !== "대표 경영페이지") fail("executive title mismatch", metrics.titleText);
+  if (metrics.titleText !== "대표의 오늘") fail("executive title mismatch", metrics.titleText);
   if (metrics.titleColor !== "rgb(255, 247, 207)") fail("executive title color should stand out", metrics.titleColor);
   if (!/^\d{4}\.\d{2}\.\d{2}\([日月火水木金土]\)$/.test(metrics.todayText)) fail("executive date button should show compact date", metrics.todayText);
   if (!metrics.todayFits) fail("executive date button is clipped", metrics.todayText);
@@ -3077,7 +3081,7 @@ async function checkPremiumOperatingSystem(browser) {
       };
     });
     if (metrics.activeView !== "premium") fail("premium OS did not open", `${viewport.label}: ${metrics.activeView}`);
-    if (metrics.title !== "AI 운영총괄") fail("premium OS title missing", `${viewport.label}: ${metrics.title}`);
+    if (metrics.title !== "AI 운영진단") fail("premium OS title missing", `${viewport.label}: ${metrics.title}`);
     if (metrics.score <= 0 || metrics.score > 100) fail("premium readiness score invalid", `${viewport.label}: ${metrics.score}`);
     if (metrics.proofCount !== 6) fail("premium proof grid should have six cards", `${viewport.label}: ${metrics.proofCount}`);
     if (metrics.agentCount !== 4) fail("premium agent grid should have four lanes", `${viewport.label}: ${metrics.agentCount}`);
@@ -4957,6 +4961,48 @@ async function checkLaborLeaveWorkflow(browser) {
   await page.close();
 }
 
+async function checkUnifiedCommandPalette(browser) {
+  const page = await browser.newPage({ viewport: { width: 390, height: 844 } });
+  const errors = [];
+  page.on("pageerror", (error) => errors.push(error.message));
+  await page.goto(target, { waitUntil: "domcontentloaded" });
+  await page.evaluate(() => window.eval(`
+    authState.user = { id: "qa-command-owner", email: "j3010@ymail.com" };
+    state.profile = { ...state.profile, email: "j3010@ymail.com", role: "대표", name: "정찬훈", approvalStatus: "approved", permissions: {} };
+    normalizeState();
+    switchView("worklog-overview");
+    openGlobalCommandPalette();
+  `));
+  await page.waitForTimeout(120);
+  await page.fill("#globalCommandInput", "김영채");
+  await page.waitForTimeout(100);
+  const metrics = await page.evaluate(() => {
+    const palette = document.getElementById("globalCommandPalette");
+    const rect = palette?.getBoundingClientRect();
+    return {
+      hidden: palette?.hidden ?? true,
+      resultCount: document.querySelectorAll("#globalCommandList [data-global-command-index]").length,
+      text: document.getElementById("globalCommandList")?.textContent?.replace(/\s+/g, " ").trim() || "",
+      inViewport: Boolean(rect && rect.left >= 0 && rect.right <= window.innerWidth && rect.top >= 0 && rect.bottom <= window.innerHeight),
+    };
+  });
+  if (metrics.hidden || metrics.resultCount < 1 || !metrics.text.includes("김영채") || !metrics.inViewport) {
+    fail("unified command palette should find an employee without clipping", JSON.stringify(metrics));
+  }
+  await page.click("#globalCommandList [data-global-command-index]");
+  await page.waitForTimeout(180);
+  const destination = await page.evaluate(() => ({
+    view: document.body.dataset.activeView,
+    employeeId: state.selectedEmployeeId,
+    paletteHidden: document.getElementById("globalCommandPalette")?.hidden,
+  }));
+  if (destination.view !== "fitness-log" || destination.employeeId !== "fitness-info-kimyoungchae" || !destination.paletteHidden) {
+    fail("employee command should open the correct worklog", JSON.stringify(destination));
+  }
+  if (errors.length) fail("unified command palette page errors", errors.join(" | "));
+  await page.close();
+}
+
 (async () => {
   const browser = await chromium.launch({
     headless: true,
@@ -4986,6 +5032,7 @@ async function checkLaborLeaveWorkflow(browser) {
     await checkDagymDirectReportImport(browser);
     await checkFitnessRosterHoursAndCompactTotals(browser);
     await checkLaborLeaveWorkflow(browser);
+    await checkUnifiedCommandPalette(browser);
     await checkRepresentativeProfileSeparation(browser);
     await checkNonControlRoleTextDoesNotBecomeRepresentative(browser);
     await checkDelegatedPermissionMenus(browser);

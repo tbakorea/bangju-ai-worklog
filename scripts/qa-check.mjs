@@ -386,7 +386,7 @@ check(
   "premium AI operating OS exists",
   html.includes('id="view-premium"')
     && html.includes('data-menu-view="premium"')
-    && html.includes('data-view="premium"')
+    && html.includes('<strong>AI 진단</strong>')
     && /function buildPremiumOperatingModel\(\)/.test(js)
     && /function renderPremiumOperatingSystem\(\)/.test(js)
     && /renderPremiumOperatingSystem\(\)/.test(js)
@@ -397,9 +397,8 @@ check(
 
 check(
   "premium OS is kept inside existing report and coaching flow",
-  html.includes('data-section-shortcut="premium-growth"')
-    && html.includes('data-section-shortcut="premium-roadmap"')
-    && /action\?\.startsWith\("premium-"\)/.test(js)
+  /function getPrimaryNavigationView[\s\S]{0,500}\["control", "fitness", "premium"\]/.test(js)
+    && /label: "AI 운영진단"[\s\S]{0,160}view: "premium"/.test(js)
     && css.includes(".worklog-shell > .premium-operating-view.is-active"),
   "premium features need a single hub and final display guard"
 );
@@ -454,9 +453,10 @@ check(
 
 check(
   "menu sections use consolidated labels",
-  html.includes('data-menu-view="ai">성장지원</button>')
-    && html.includes('data-menu-view="report">보고·커뮤니티</button>')
-    && html.includes('data-settings-tab="manual">매뉴얼 편집</button>'),
+  html.includes('data-menu-view="ai"><strong>성장·코칭</strong>')
+    && html.includes('data-menu-view="report"><strong>알림</strong>')
+    && html.includes('data-menu-view="attendance"><strong>노무</strong>')
+    && html.includes('id="globalCommandPalette"'),
   "growth support and report/community should be named as consolidated destinations"
 );
 
@@ -464,8 +464,9 @@ check(
   "section command strips provide in-section navigation",
   html.includes('class="section-command-strip"')
     && html.includes('data-section-shortcut="manual"')
-    && html.includes('data-section-shortcut="approval"')
     && html.includes('data-section-shortcut="backup"')
+    && js.includes('class="section-command-strip staff-section-tabbar"')
+    && js.includes('data-staff-open-labor-workspace')
     && /querySelectorAll\("\[data-section-shortcut\]"\)[\s\S]{0,900}switchSettingsTab\("manual"\)/.test(js),
   "major sections need visible local hubs so content is not scattered"
 );

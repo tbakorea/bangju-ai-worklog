@@ -26003,6 +26003,412 @@ body.is-fitness-focus-open.is-fitness-coaching-open .fitness-coaching-sheet {
   display: grid !important;
 }
 
+/* 2026-08-09 unified navigation: five stable destinations with contextual tools. */
+.global-command-button,
+.section-menu-dock .global-command-button,
+.overview-date-nav .global-command-button,
+.executive-hero-actions .global-command-button,
+.control-tower-hero-actions .global-command-button {
+  min-width: 48px;
+  min-height: 48px;
+  border: 1px solid rgba(13, 58, 45, 0.18);
+  border-radius: 16px;
+  background: rgba(255, 254, 250, 0.96);
+  color: #103d30;
+  padding: 0 11px;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 950;
+  white-space: nowrap;
+  box-shadow: 0 8px 22px rgba(11, 49, 38, 0.08);
+}
+
+.main-menu-popover .main-menu-section-label {
+  display: block;
+  grid-column: 1 / -1;
+  padding: 4px 4px 1px;
+  color: #678078;
+  font-size: 9px;
+  font-weight: 950;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.main-menu-popover .main-menu-tool-label {
+  margin-top: 3px;
+  padding-top: 9px;
+  border-top: 1px solid rgba(16, 61, 48, 0.1);
+}
+
+.main-menu-popover button.main-menu-primary,
+.main-menu-popover button.main-menu-tool {
+  flex-direction: column !important;
+  align-items: flex-start !important;
+  gap: 3px !important;
+}
+
+.main-menu-popover button.main-menu-primary {
+  min-height: 55px !important;
+  background: rgba(236, 244, 237, 0.98) !important;
+}
+
+.main-menu-popover button.main-menu-primary[data-menu-view="report"] {
+  grid-column: 1 / -1;
+}
+
+.main-menu-popover button strong {
+  color: #102f26;
+  font-size: 13px;
+  line-height: 1.05;
+}
+
+.main-menu-popover button small {
+  overflow: hidden;
+  max-width: 100%;
+  color: #72827c;
+  font-size: 9px;
+  font-weight: 780;
+  line-height: 1.15;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.main-menu-popover {
+  max-height: min(540px, calc(100dvh - 110px)) !important;
+}
+
+.global-command-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 900;
+  background: rgba(7, 27, 21, 0.46);
+  -webkit-backdrop-filter: blur(7px);
+  backdrop-filter: blur(7px);
+}
+
+.global-command-backdrop[hidden],
+.global-command-palette[hidden] {
+  display: none !important;
+}
+
+.global-command-palette {
+  position: fixed;
+  top: max(8vh, calc(env(safe-area-inset-top) + 28px));
+  left: 50%;
+  z-index: 920;
+  display: grid;
+  width: min(680px, calc(100vw - 32px));
+  max-height: min(720px, calc(100dvh - 64px));
+  overflow: hidden;
+  border: 1px solid rgba(16, 61, 48, 0.17);
+  border-radius: 24px;
+  background: #fffefa;
+  box-shadow: 0 34px 90px rgba(5, 24, 18, 0.28);
+  transform: translateX(-50%);
+}
+
+.global-command-palette > header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 18px 20px 12px;
+}
+
+.global-command-palette > header span {
+  color: #739087;
+  font-size: 9px;
+  font-weight: 950;
+  letter-spacing: 0.15em;
+}
+
+.global-command-palette h2 {
+  margin: 3px 0 0;
+  color: #0c392c;
+  font-size: 24px;
+}
+
+.global-command-palette > header button {
+  width: 42px;
+  height: 42px;
+  border: 1px solid rgba(16, 61, 48, 0.14);
+  border-radius: 14px;
+  background: #f7f7f1;
+  font-size: 25px;
+}
+
+.global-command-search {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  margin: 0 18px 12px;
+  padding: 4px 6px 4px 13px;
+  border: 2px solid #185744;
+  border-radius: 15px;
+  background: #fff;
+}
+
+.global-command-search > span {
+  color: #185744;
+  font-size: 11px;
+  font-weight: 950;
+}
+
+.global-command-search input {
+  min-width: 0;
+  min-height: 44px;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  font: inherit;
+  font-size: 15px;
+  font-weight: 800;
+}
+
+.global-command-search kbd {
+  padding: 6px 8px;
+  border-radius: 8px;
+  background: #edf2ec;
+  color: #496159;
+  font-size: 10px;
+}
+
+.global-command-list {
+  display: grid;
+  gap: 5px;
+  overflow-y: auto;
+  padding: 0 14px 14px;
+  overscroll-behavior: contain;
+}
+
+.global-command-list button {
+  display: grid;
+  grid-template-columns: 86px minmax(120px, 0.75fr) minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  min-height: 52px;
+  border: 1px solid transparent;
+  border-radius: 13px;
+  background: transparent;
+  color: #15362c;
+  padding: 8px 11px;
+  text-align: left;
+}
+
+.global-command-list button:hover,
+.global-command-list button.is-active {
+  border-color: rgba(23, 86, 66, 0.16);
+  background: #edf4ed;
+}
+
+.global-command-list button > span {
+  color: #71837d;
+  font-size: 9px;
+  font-weight: 900;
+  letter-spacing: 0.05em;
+}
+
+.global-command-list button > strong {
+  overflow: hidden;
+  font-size: 13px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.global-command-list button > small {
+  overflow: hidden;
+  color: #61756e;
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.global-command-list button > em {
+  color: #175642;
+  font-size: 9px;
+  font-style: normal;
+  font-weight: 900;
+}
+
+.global-command-empty {
+  margin: 20px;
+  color: #71837d;
+  text-align: center;
+}
+
+.global-command-palette > footer {
+  display: flex;
+  gap: 16px;
+  padding: 10px 18px 14px;
+  border-top: 1px solid rgba(16, 61, 48, 0.09);
+  color: #77877f;
+  font-size: 9px;
+  font-weight: 850;
+}
+
+body.is-command-open {
+  overflow: hidden;
+}
+
+.activity-smart-inbox {
+  display: grid;
+  gap: 10px;
+  padding: 14px;
+  border: 1px solid rgba(15, 67, 51, 0.14);
+  border-radius: 20px;
+  background: linear-gradient(140deg, rgba(239, 246, 238, 0.96), rgba(255, 253, 247, 0.96));
+}
+
+.activity-smart-inbox > header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.activity-smart-inbox > header span {
+  color: #6e887f;
+  font-size: 9px;
+  font-weight: 950;
+  letter-spacing: 0.13em;
+}
+
+.activity-smart-inbox > header h3 {
+  margin: 2px 0 0;
+  color: #103c2f;
+  font-size: 18px;
+}
+
+.activity-smart-inbox > header > strong {
+  padding: 7px 10px;
+  border-radius: 999px;
+  background: #e7efe8;
+  color: #185541;
+  font-size: 10px;
+}
+
+.activity-smart-inbox > header > strong.has-attention {
+  background: #fff0e4;
+  color: #9a4528;
+}
+
+.activity-smart-summary {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 7px;
+}
+
+.activity-smart-summary article {
+  display: grid;
+  gap: 1px;
+  min-width: 0;
+  padding: 9px 10px;
+  border: 1px solid rgba(15, 67, 51, 0.09);
+  border-radius: 13px;
+  background: rgba(255, 255, 252, 0.8);
+}
+
+.activity-smart-summary span,
+.activity-smart-summary small {
+  overflow: hidden;
+  color: #708078;
+  font-size: 9px;
+  font-weight: 800;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.activity-smart-summary strong {
+  color: #103c2f;
+  font-size: 20px;
+}
+
+.activity-smart-actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.activity-smart-actions button {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+  border: 1px solid rgba(15, 67, 51, 0.1);
+  border-radius: 12px;
+  background: rgba(255, 255, 252, 0.88);
+  color: #173a30;
+  padding: 8px 10px;
+  text-align: left;
+}
+
+.activity-smart-actions button.is-attention {
+  border-color: rgba(164, 80, 42, 0.17);
+  background: #fff7ed;
+}
+
+.activity-smart-actions strong,
+.activity-smart-actions span,
+.activity-smart-actions em {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.activity-smart-actions strong { font-size: 11px; }
+.activity-smart-actions span { color: #6d7d76; font-size: 9px; }
+.activity-smart-actions em { color: #195641; font-size: 9px; font-style: normal; font-weight: 900; }
+
+@media (max-width: 640px) {
+  .global-command-button,
+  .section-menu-dock .global-command-button,
+  .overview-date-nav .global-command-button,
+  .executive-hero-actions .global-command-button,
+  .control-tower-hero-actions .global-command-button {
+    min-width: 42px;
+    min-height: 42px;
+    border-radius: 15px;
+    padding-inline: 8px;
+    font-size: 11px;
+  }
+
+  .global-command-palette {
+    top: auto;
+    bottom: 0;
+    width: 100%;
+    max-height: min(82dvh, 720px);
+    border-radius: 24px 24px 0 0;
+    transform: translateX(-50%);
+  }
+
+  .global-command-palette > header { padding: 14px 14px 9px; }
+  .global-command-palette h2 { font-size: 20px; }
+  .global-command-search { margin: 0 12px 9px; }
+  .global-command-search kbd { display: none; }
+  .global-command-list { padding-inline: 9px; }
+  .global-command-list button {
+    grid-template-columns: 62px minmax(90px, 0.75fr) minmax(0, 1fr);
+    min-height: 48px;
+    padding: 7px 9px;
+  }
+  .global-command-list button > em { display: none; }
+  .global-command-list button > small { font-size: 9px; }
+
+  .activity-smart-inbox { padding: 11px; border-radius: 17px; }
+  .activity-smart-summary { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 4px; }
+  .activity-smart-summary article { padding: 7px 6px; border-radius: 10px; }
+  .activity-smart-summary strong { font-size: 16px; }
+  .activity-smart-actions { grid-template-columns: 1fr; }
+  .activity-smart-actions button { min-height: 40px; }
+
+  body[data-layout-mode="phone"] .executive-hero-actions,
+  body[data-layout-mode="phone"] .control-tower-hero-actions,
+  body.physical-phone-device .executive-hero-actions,
+  body.physical-phone-device .control-tower-hero-actions {
+    grid-template-columns: 38px minmax(0, 1fr) 38px auto 42px 42px !important;
+  }
+}
+
 /* Automatic orientation canvas.
    Portrait keeps the focused single-page rail. A landscape window uses the
    available width as a continuous work surface, even when CEO mode was the
@@ -26361,6 +26767,63 @@ body.is-fitness-focus-open.is-fitness-coaching-open .fitness-coaching-sheet {
 }
 
 /* Final display guard: responsive canvas rules must never reveal inactive pages. */
+.worklog-shell > .worklog-view:not(.is-active) {
+  display: none !important;
+}
+
+.worklog-shell > .worklog-view.is-active {
+  display: block !important;
+}
+
+.worklog-shell > .report-backup-view.is-active {
+  display: grid !important;
+}
+
+.worklog-shell > .premium-operating-view.is-active,
+.worklog-shell > .fitness-log-view.is-active,
+.worklog-shell > #view-today.is-active,
+.worklog-shell > #view-attendance.is-active {
+  display: grid !important;
+}
+
+/* Keep Find and Menu on the overview date row after every legacy override. */
+@media (min-width: 600px) {
+  body[data-active-view="worklog-overview"] .overview-date-nav {
+    grid-template-columns: 38px minmax(0, 1fr) 38px 46px 44px 44px !important;
+  }
+  body[data-active-view="worklog-overview"] .overview-date-nav:has(#worklogOverviewTodayButton.is-current-date) {
+    grid-template-columns: 38px minmax(0, 1fr) 38px 44px 44px !important;
+  }
+  body[data-active-view="worklog-overview"] .overview-date-nav .global-command-button,
+  body[data-active-view="worklog-overview"] .overview-date-nav #settingsGearButton {
+    width: 44px !important;
+    min-width: 44px !important;
+    min-height: 44px !important;
+    padding-inline: 0 !important;
+    border-radius: 14px !important;
+  }
+  body[data-responsive-flow="landscape"][data-viewport-density="high"] .worklog-overview-hero,
+  body[data-responsive-flow="landscape"][data-viewport-density="high"][data-view-mode="ceo"]:not(.physical-phone-device) .worklog-overview-hero {
+    box-sizing: border-box !important;
+    min-height: 0 !important;
+    height: 88px !important;
+    padding-block: 6px !important;
+  }
+}
+
+@media (max-width: 599px) {
+  body[data-active-view="worklog-overview"] .overview-date-nav {
+    grid-template-columns: 34px minmax(0, 1fr) 34px 42px 40px !important;
+  }
+  body[data-active-view="worklog-overview"] .overview-date-nav:has(#worklogOverviewTodayButton.is-current-date) {
+    grid-template-columns: 34px minmax(0, 1fr) 34px 40px 40px !important;
+  }
+  body[data-active-view="worklog-overview"] .overview-date-nav:not(:has(#worklogOverviewTodayButton.is-current-date)) .global-command-button {
+    display: none !important;
+  }
+}
+
+/* Final display guard: inactive pages must stay hidden after all responsive rules. */
 .worklog-shell > .worklog-view:not(.is-active) {
   display: none !important;
 }

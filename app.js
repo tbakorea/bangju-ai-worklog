@@ -6755,20 +6755,29 @@ function ensureSelectedEmployeeForWorklogView(view) {
 function getGlobalHeaderTitle(view = activeView, personLabel = "") {
   if (view === "worklog" || view === "worklog-overview") return "업무일지";
   if (view === "fitness-log") return `beyond fitness · ${personLabel}`;
-  if (view === "executive") return "대표 경영페이지";
-  if (view === "control") return "Beyond Control Tower";
+  if (view === "executive") return "오늘";
+  if (view === "control") return "운영";
   if (view === "beyond-log") return `비욘드 업무일지 · ${personLabel}`;
   if (view === "bangju-log" || view === "today") return `${getGeneralWorklogTitle(view)} · ${personLabel}`;
   if (view === "fitness") return "비욘드 피트니스 OS";
   if (view === "attendance") return "노무";
-  if (view === "staff") return "직원";
+  if (view === "staff") return "사람";
   if (view === "organization") return "조직";
-  if (view === "premium") return "AI 운영총괄";
-  if (view === "ai") return canAccessManualCoachingAdmin() ? "매뉴얼·코칭" : "나의 성장";
-  if (view === "report") return "보고서";
+  if (view === "premium") return "AI 운영진단";
+  if (view === "ai") return canAccessManualCoachingAdmin() ? "성장·코칭" : "나의 성장";
+  if (view === "report") return "알림·보고";
   if (view === "projects") return "프로젝트";
   if (view === "settings") return "설정";
   return "Beyond OS";
+}
+
+function getPrimaryNavigationView(view = activeView) {
+  if (["fitness-log", "bangju-log", "beyond-log", "worklog-overview", "today", "worklog"].includes(view)) return "worklog";
+  if (["control", "fitness", "premium"].includes(view)) return "control";
+  if (["staff", "attendance", "ai", "organization"].includes(view)) return "staff";
+  if (view === "report") return "report";
+  if (view === "executive") return "executive";
+  return "";
 }
 
 function getAttendanceEmployeeForView(view = activeView) {
@@ -8492,12 +8501,21 @@ function isExplicitlySignedOut() {
   return localStorage.getItem(localAuthSignedOutKey) === "1" && !authState.user;
 }
 
+function setMainMenuButtonCopy(button, title, subtitle = "") {
+  if (!button) return;
+  const strong = button.querySelector("strong");
+  const small = button.querySelector("small");
+  if (strong) strong.textContent = title;
+  else button.textContent = title;
+  if (small && subtitle) small.textContent = subtitle;
+}
+
 function renderMainMenuAuthButton() {
   const button = document.querySelector('[data-menu-view="auth"]');
   const email = authState.user?.email || state.profile?.email || "";
   const isLoggedIn = isKnownLoggedInProfile();
   if (button) {
-    button.textContent = isLoggedIn ? "로그아웃" : "로그인/직원등록";
+    setMainMenuButtonCopy(button, isLoggedIn ? "로그아웃" : "로그인/직원등록", isLoggedIn ? email || "현재 계정" : "계정 연결");
     button.dataset.menuAction = isLoggedIn ? "logout" : "login";
     button.setAttribute("aria-label", isLoggedIn ? `${email || "현재 계정"} 로그아웃` : "로그인과 직원등록 페이지 열기");
   }
@@ -8508,14 +8526,12 @@ function renderMainMenuVisibility() {
   const worklogButton = document.querySelector('#mainMenuPopover [data-menu-view="worklog"]');
   const laborButton = document.querySelector('#mainMenuPopover [data-menu-view="attendance"]');
   if (worklogButton) {
-    worklogButton.textContent = canAccessAllWorklogs()
-      ? "전직원 업무일지"
-      : canAccessWorklogOverview() ? "소속 업무일지" : "업무일지";
+    const scope = canAccessAllWorklogs() ? "전 직원 업무일지" : canAccessWorklogOverview() ? "소속 업무일지" : "나의 업무일지";
+    setMainMenuButtonCopy(worklogButton, "업무", scope);
   }
   if (laborButton) {
-    laborButton.textContent = canAccessAllLabor()
-      ? "전직원 노무"
-      : hasProfilePermission("laborSite") ? "소속 노무" : "노무";
+    const scope = canAccessAllLabor() ? "전 직원 근태·휴가" : hasProfilePermission("laborSite") ? "소속 근태·휴가" : "나의 근태·휴가";
+    setMainMenuButtonCopy(laborButton, "노무", scope);
   }
   const viewAccess = {
     executive: () => isRepresentativeProfile() || hasProfilePermission("executiveRoom"),
@@ -8545,13 +8561,126 @@ function renderMainMenuVisibility() {
     const allowed = viewAccess[item.value]?.() ?? false;
     item.hidden = !allowed;
     item.disabled = !allowed;
-    if (item.value === "worklog") item.textContent = worklogButton?.textContent || "업무일지";
-    if (item.value === "attendance") item.textContent = laborButton?.textContent || "노무";
+    if (item.value === "worklog") item.textContent = "업무";
   });
   document.querySelectorAll("#mainMenuPopover [data-menu-action]").forEach((item) => {
     if (isExplicitlySignedOut() && !item.dataset.menuView) item.hidden = true;
   });
   renderApprovalNotification();
+}
+
+let globalCommandVisibleItems = [];
+let globalCommandActiveIndex = 0;
+
+function getGlobalCommandItems() {
+  const items = [
+    { id: "today", group: "핵심", label: "오늘", meta: "브리핑·판단·지시", view: "executive", visible: isRepresentativeProfile() || hasProfilePermission("executiveRoom") },
+    { id: "worklog", group: "핵심", label: "업무", meta: canAccessWorklogOverview() ? "직원 업무일지와 공통일정" : "나의 업무일지와 공통일정", view: "worklog", visible: isKnownLoggedInProfile() },
+    { id: "operations", group: "핵심", label: "운영", meta: "사업장 현황과 이상 신호", view: "control", visible: canAccessControlTower() },
+    { id: "people", group: "핵심", label: "사람", meta: "직원·권한·성장", view: "staff", visible: canAccessStaffSection() },
+    { id: "activity", group: "핵심", label: "알림·보고", meta: "승인·공지·보고서", view: "report", visible: isKnownLoggedInProfile() },
+    { id: "labor", group: "전문 도구", label: "노무·휴가", meta: "근태·휴가·월마감", view: "attendance", visible: canOpenLaborSection() },
+    { id: "growth", group: "전문 도구", label: "성장·코칭", meta: "역할 매뉴얼과 AI 미션", view: "ai", visible: isKnownLoggedInProfile() },
+    { id: "diagnosis", group: "전문 도구", label: "AI 운영진단", meta: "운영 품질과 수익 신호", view: "premium", visible: canAccessPremiumOperations() },
+    { id: "settings", group: "도구", label: "설정", meta: "내 정보와 앱 환경", view: "settings", visible: isKnownLoggedInProfile() },
+    { id: "approval", group: "처리함", label: "승인함", meta: `${authState.pendingApprovalCount || 0}건 처리 대기`, action: "approval", visible: canShowApprovalMenu() },
+  ].filter((item) => item.visible);
+
+  if (canAccessWorklogOverview()) {
+    getEmployeeOptions()
+      .filter(isAssignedWorklogEmployee)
+      .filter((employee) => !isRepresentativeWorklogEmployee(employee))
+      .forEach((employee) => items.push({
+        id: `employee:${getEmployeeWorklogId(employee) || employee.id}`,
+        group: "직원 업무일지",
+        label: getEmployeeAdminLabel(employee),
+        meta: `${employee.org || employee.workplace || "소속 미지정"} · ${employee.role || "직원"}`,
+        employeeId: getEmployeeWorklogId(employee) || employee.id,
+        keywords: `${employee.name || ""} ${employee.nickname || ""} ${employee.email || ""} ${employee.org || ""} ${employee.workplace || ""}`,
+        visible: true,
+      }));
+  }
+  return items;
+}
+
+function renderGlobalCommandPalette(query = "") {
+  const list = document.getElementById("globalCommandList");
+  if (!list) return;
+  const normalized = String(query || "").trim().toLocaleLowerCase("ko");
+  globalCommandVisibleItems = getGlobalCommandItems().filter((item) => {
+    const haystack = `${item.label} ${item.meta} ${item.group} ${item.keywords || ""}`.toLocaleLowerCase("ko");
+    return !normalized || haystack.includes(normalized);
+  });
+  globalCommandActiveIndex = Math.min(globalCommandActiveIndex, Math.max(0, globalCommandVisibleItems.length - 1));
+  list.innerHTML = globalCommandVisibleItems.length ? globalCommandVisibleItems.map((item, index) => `
+    <button type="button" class="${index === globalCommandActiveIndex ? "is-active" : ""}" data-global-command-index="${index}">
+      <span>${escapeHtml(item.group)}</span>
+      <strong>${escapeHtml(item.label)}</strong>
+      <small>${escapeHtml(item.meta)}</small>
+      <em>열기</em>
+    </button>
+  `).join("") : `<p class="global-command-empty">검색 결과가 없습니다.</p>`;
+  list.querySelector(".is-active")?.scrollIntoView({ block: "nearest" });
+}
+
+function openGlobalCommandPalette() {
+  const palette = document.getElementById("globalCommandPalette");
+  const backdrop = document.getElementById("globalCommandBackdrop");
+  const input = document.getElementById("globalCommandInput");
+  if (!palette || !backdrop || !input) return;
+  closeMainMenuPopover();
+  closeAttendancePopover();
+  globalCommandActiveIndex = 0;
+  input.value = "";
+  renderGlobalCommandPalette();
+  palette.hidden = false;
+  backdrop.hidden = false;
+  document.body.classList.add("is-command-open");
+  document.getElementById("globalCommandButton")?.setAttribute("aria-expanded", "true");
+  window.setTimeout(() => input.focus(), 0);
+}
+
+function closeGlobalCommandPalette() {
+  const palette = document.getElementById("globalCommandPalette");
+  const backdrop = document.getElementById("globalCommandBackdrop");
+  if (palette) palette.hidden = true;
+  if (backdrop) backdrop.hidden = true;
+  document.body.classList.remove("is-command-open");
+  document.getElementById("globalCommandButton")?.setAttribute("aria-expanded", "false");
+}
+
+function openEmployeeFromGlobalCommand(employeeId = "") {
+  const employee = findEmployeeRecordById(employeeId) || getEmployeeOptions().find((item) => getEmployeeWorklogId(item) === employeeId);
+  if (!employee) return;
+  const resolvedId = getEmployeeWorklogId(employee) || employeeId;
+  const group = getStaffSiteGroupForEmployee(employee) || getWorklogSiteGroups()[0];
+  state.selectedEmployeeId = resolvedId;
+  state.selectedDateKey = getActiveDateKey();
+  if (group.view === "fitness-log") {
+    const pageIndex = getFitnessLogPages().findIndex((page) => page.type === "employee" && page.id === resolvedId);
+    if (pageIndex >= 0) {
+      state.fitnessLogPage = pageIndex;
+      state.fitnessLogPageId = resolvedId;
+    }
+  }
+  saveState({ fastSave: true });
+  switchView(group.view);
+  window.scrollTo({ top: 0, left: 0, behavior: "auto" });
+}
+
+function executeGlobalCommandItem(item) {
+  if (!item) return;
+  closeGlobalCommandPalette();
+  if (item.employeeId) {
+    openEmployeeFromGlobalCommand(item.employeeId);
+    return;
+  }
+  if (item.action === "approval") {
+    openApprovalManagement();
+    return;
+  }
+  if (item.view === "settings") renderProfileForm();
+  switchView(item.view || "worklog");
 }
 
 function clearAuthRuntimeState() {
@@ -16195,15 +16324,23 @@ function renderStaffSiteFilters(rows = []) {
 }
 
 function renderStaffSectionTabbar() {
+  const visibleTabs = getVisibleStaffMasterTabs();
   return `
     <nav class="section-command-strip staff-section-tabbar" aria-label="직원 섹션 보기">
-      ${getVisibleStaffMasterTabs().map(([key, label, caption], index) => `
+      ${visibleTabs.map(([key, label, caption], index) => `
         <button type="button" class="${key === state.staffMasterTab ? "is-active" : ""}" data-staff-tab="${escapeAttr(key)}">
           <span>${String(index + 1).padStart(2, "0")}</span>
           <strong>${escapeHtml(label)}</strong>
           <small>${escapeHtml(caption)}</small>
         </button>
       `).join("")}
+      ${canOpenLaborSection() ? `
+        <button type="button" data-staff-open-labor-workspace>
+          <span>${String(visibleTabs.length + 1).padStart(2, "0")}</span>
+          <strong>노무·휴가</strong>
+          <small>근태·휴가·월마감</small>
+        </button>
+      ` : ""}
     </nav>
   `;
 }
@@ -17161,6 +17298,41 @@ function deleteCommunication(id = "") {
   renderCommunicationHub();
 }
 
+function renderActivitySmartInbox() {
+  const container = document.getElementById("activitySmartInbox");
+  if (!container) return;
+  const communications = (state.communications || []).filter(isCommunicationVisible);
+  const openCommunications = communications.filter((item) => !isCommunicationDone(item));
+  const urgentCommunications = openCommunications.filter((item) => item.priority === "긴급" || getCommunicationStatus(item) === "지연");
+  const pendingApprovals = canShowApprovalMenu() ? Number(authState.pendingApprovalCount || 0) : 0;
+  const reportDatePrefix = `${getActiveDateKey()}:`;
+  const submittedReports = Object.entries(state.worklogReportSubmissions || {})
+    .filter(([key, value]) => key.startsWith(reportDatePrefix) && value?.status === "submitted")
+    .length;
+  const attentionTotal = pendingApprovals + urgentCommunications.length;
+  const actions = [
+    pendingApprovals ? { tone: "attention", label: "승인 요청", detail: `${pendingApprovals}건을 확인해주세요`, action: "approval" } : null,
+    urgentCommunications.length ? { tone: "attention", label: "긴급·지연 전달", detail: `${urgentCommunications.length}건의 후속 조치가 필요합니다`, action: "communication" } : null,
+    openCommunications.length ? { tone: "normal", label: "확인 대기", detail: `${openCommunications.length}건의 공지·업무전달이 진행 중입니다`, action: "communication" } : null,
+    { tone: "normal", label: "오늘 보고", detail: `${submittedReports}건 제출됨 · 날짜별 보관함에서 확인`, action: "daily-report" },
+  ].filter(Boolean).slice(0, 4);
+  container.innerHTML = `
+    <header>
+      <div><span>SMART INBOX</span><h3>지금 확인할 일</h3></div>
+      <strong class="${attentionTotal ? "has-attention" : ""}">${attentionTotal ? `${attentionTotal}건 우선` : "정상"}</strong>
+    </header>
+    <div class="activity-smart-summary">
+      <article><span>승인</span><strong>${pendingApprovals}</strong><small>처리 대기</small></article>
+      <article><span>전달</span><strong>${openCommunications.length}</strong><small>확인 대기</small></article>
+      <article><span>긴급·지연</span><strong>${urgentCommunications.length}</strong><small>우선 조치</small></article>
+      <article><span>오늘 보고</span><strong>${submittedReports}</strong><small>제출 완료</small></article>
+    </div>
+    <div class="activity-smart-actions">
+      ${actions.map((item) => `<button type="button" class="is-${item.tone}" data-activity-action="${escapeAttr(item.action)}"><strong>${escapeHtml(item.label)}</strong><span>${escapeHtml(item.detail)}</span><em>열기</em></button>`).join("")}
+    </div>
+  `;
+}
+
 function renderReport() {
   const employee = getSelectedEmployee();
   const log = getSelectedLog();
@@ -17197,6 +17369,7 @@ function renderReport() {
     "7. 메모",
     log.memo || "-",
   ].join("\n");
+  renderActivitySmartInbox();
   renderCommunicationHub();
   renderReportArchive();
   renderBackupCenter();
@@ -20104,17 +20277,18 @@ function switchView(view) {
   document.body.dataset.activeView = view;
   renderResponsiveMode();
   closeMainMenuPopover();
+  closeGlobalCommandPalette();
+  const primaryView = getPrimaryNavigationView(view);
   document.querySelectorAll(".worklog-tabs button").forEach((button) => {
-    const isWorklogActive = button.dataset.view === "worklog" && ["fitness-log", "bangju-log", "beyond-log", "worklog-overview"].includes(view);
-    button.classList.toggle("is-active", button.dataset.view === view || isWorklogActive);
+    button.classList.toggle("is-active", button.dataset.view === primaryView);
   });
   const panelView = worklogViewAliases[view] || view;
   document.querySelectorAll(".worklog-view").forEach((panel) => panel.classList.toggle("is-active", panel.id === `view-${panelView}`));
   dockGlobalHeaderActions(panelView);
   const menuSelect = document.getElementById("mainMenuWheelSelect");
   if (menuSelect) {
-    const menuValue = ["fitness-log", "bangju-log", "beyond-log", "worklog-overview"].includes(view) || requestedView === "worklog" ? "worklog" : view;
-    if (menuSelect.value !== menuValue) menuSelect.value = menuValue;
+    const menuValue = getPrimaryNavigationView(requestedView === "worklog" ? "worklog" : view);
+    if (menuValue && menuSelect.value !== menuValue) menuSelect.value = menuValue;
   }
   renderEmployeeTitle();
   renderDateNav();
@@ -20149,6 +20323,7 @@ function getActiveViewPanel(panelView = worklogViewAliases[activeView] || active
 function dockGlobalHeaderActions(panelView = worklogViewAliases[activeView] || activeView) {
   const panel = getActiveViewPanel(panelView);
   const menuButton = document.getElementById("settingsGearButton");
+  const commandButton = document.getElementById("globalCommandButton");
   const menuPopover = document.getElementById("mainMenuPopover");
   if (!panel || !menuButton || !menuPopover) return;
 
@@ -20156,6 +20331,7 @@ function dockGlobalHeaderActions(panelView = worklogViewAliases[activeView] || a
     const actions = panelView === "executive"
       ? document.querySelector(".executive-hero-actions")
       : document.querySelector(".control-tower-hero-actions");
+    if (actions && commandButton) actions.appendChild(commandButton);
     if (actions && menuPopover.parentElement !== actions) actions.appendChild(menuPopover);
     return;
   }
@@ -20163,6 +20339,7 @@ function dockGlobalHeaderActions(panelView = worklogViewAliases[activeView] || a
   if (panelView === "worklog-overview") {
     const overviewDateNav = document.getElementById("overviewDateSwipeArea");
     if (overviewDateNav) {
+      if (commandButton) overviewDateNav.appendChild(commandButton);
       overviewDateNav.appendChild(menuButton);
       overviewDateNav.appendChild(menuPopover);
     }
@@ -20188,6 +20365,7 @@ function dockGlobalHeaderActions(panelView = worklogViewAliases[activeView] || a
   if (approvalButton && !approvalButton.hidden) dock.appendChild(approvalButton);
   if (modeButton && !modeButton.hidden) dock.appendChild(modeButton);
   if (attendanceButton && !attendanceButton.hidden) dock.appendChild(attendanceButton);
+  if (commandButton) dock.appendChild(commandButton);
   dock.appendChild(menuButton);
   dock.appendChild(menuPopover);
   if (attendancePopover) dock.appendChild(attendancePopover);
@@ -20366,6 +20544,48 @@ document.getElementById("settingsGearButton").onclick = (event) => {
   event.stopPropagation();
   toggleMainMenuPopover(event.currentTarget);
 };
+document.getElementById("globalCommandButton")?.addEventListener("click", (event) => {
+  event.stopPropagation();
+  const palette = document.getElementById("globalCommandPalette");
+  if (palette?.hidden) openGlobalCommandPalette();
+  else closeGlobalCommandPalette();
+});
+document.getElementById("globalCommandCloseButton")?.addEventListener("click", closeGlobalCommandPalette);
+document.getElementById("globalCommandBackdrop")?.addEventListener("click", closeGlobalCommandPalette);
+document.getElementById("globalCommandInput")?.addEventListener("input", (event) => {
+  globalCommandActiveIndex = 0;
+  renderGlobalCommandPalette(event.target.value);
+});
+document.getElementById("globalCommandList")?.addEventListener("click", (event) => {
+  const button = event.target.closest("[data-global-command-index]");
+  if (!button) return;
+  executeGlobalCommandItem(globalCommandVisibleItems[Number(button.dataset.globalCommandIndex)]);
+});
+document.addEventListener("keydown", (event) => {
+  if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
+    event.preventDefault();
+    openGlobalCommandPalette();
+    return;
+  }
+  const palette = document.getElementById("globalCommandPalette");
+  if (!palette || palette.hidden) return;
+  if (event.key === "Escape") {
+    event.preventDefault();
+    closeGlobalCommandPalette();
+    return;
+  }
+  if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+    event.preventDefault();
+    const direction = event.key === "ArrowDown" ? 1 : -1;
+    globalCommandActiveIndex = Math.max(0, Math.min(globalCommandVisibleItems.length - 1, globalCommandActiveIndex + direction));
+    renderGlobalCommandPalette(document.getElementById("globalCommandInput")?.value || "");
+    return;
+  }
+  if (event.key === "Enter" && document.activeElement === document.getElementById("globalCommandInput")) {
+    event.preventDefault();
+    executeGlobalCommandItem(globalCommandVisibleItems[globalCommandActiveIndex]);
+  }
+});
 document.getElementById("approvalAlertButton")?.addEventListener("click", openApprovalManagement);
 document.querySelectorAll("[data-menu-view]").forEach((button) => {
   button.onclick = async () => {
@@ -20383,6 +20603,20 @@ document.querySelectorAll("[data-menu-view]").forEach((button) => {
 document.querySelector("[data-menu-action='approval']")?.addEventListener("click", () => {
   closeMainMenuPopover();
   openApprovalManagement();
+});
+document.addEventListener("click", (event) => {
+  if (event.target.closest("[data-staff-open-labor-workspace]")) {
+    switchView("attendance");
+    return;
+  }
+  const activityButton = event.target.closest("[data-activity-action]");
+  if (!activityButton) return;
+  const action = activityButton.dataset.activityAction;
+  if (action === "approval") {
+    openApprovalManagement();
+    return;
+  }
+  if (action === "communication" || action === "daily-report") openReportDetail(action);
 });
 document.addEventListener("click", (event) => {
   const button = event.target.closest("[data-ai-mission-apply]");
