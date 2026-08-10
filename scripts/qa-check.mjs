@@ -12,6 +12,8 @@ const schema = read("supabase/worklog_schema.sql");
 const backupApi = existsSync(join(root, "api/backup-mail.js")) ? read("api/backup-mail.js") : "";
 const fitnessCoachApi = existsSync(join(root, "api/fitness-coach.js")) ? read("api/fitness-coach.js") : "";
 const dagymSyncApi = existsSync(join(root, "api/dagym-sync.js")) ? read("api/dagym-sync.js") : "";
+const dagymNightlyApi = existsSync(join(root, "api/dagym-nightly-analysis.js")) ? read("api/dagym-nightly-analysis.js") : "";
+const vercelConfig = existsSync(join(root, "vercel.json")) ? read("vercel.json") : "";
 const loginCardHtml = html.slice(html.indexOf('<section class="login-card"'), html.indexOf('<div class="auth-panel'));
 const failures = [];
 
@@ -35,6 +37,8 @@ const fitnessCoachApiSyntax = fitnessCoachApi ? spawnSync(process.execPath, ["--
 check("fitness coach api exists and parses", Boolean(fitnessCoachApi) && fitnessCoachApiSyntax.status === 0, fitnessCoachApiSyntax?.stderr?.trim() || "api/fitness-coach.js is missing");
 const dagymSyncApiSyntax = dagymSyncApi ? spawnSync(process.execPath, ["--check", join(root, "api/dagym-sync.js")], { encoding: "utf8" }) : null;
 check("DaGym sync api exists and parses", Boolean(dagymSyncApi) && dagymSyncApiSyntax.status === 0, dagymSyncApiSyntax?.stderr?.trim() || "api/dagym-sync.js is missing");
+const dagymNightlyApiSyntax = dagymNightlyApi ? spawnSync(process.execPath, ["--check", join(root, "api/dagym-nightly-analysis.js")], { encoding: "utf8" }) : null;
+check("DaGym nightly analysis api exists and parses", Boolean(dagymNightlyApi) && dagymNightlyApiSyntax.status === 0, dagymNightlyApiSyntax?.stderr?.trim() || "api/dagym-nightly-analysis.js is missing");
 check(
   "DaGym direct sync stays server-side and authenticated",
   dagymSyncApi.includes("process.env.DAGYM_SYNC_TOKEN")
@@ -45,6 +49,20 @@ check(
     && html.includes('id="dagymSyncButton"')
     && js.includes('fetch("/api/dagym-sync"'),
   "provider credentials must remain in the server environment and the UI must keep a direct-sync control"
+);
+check(
+  "DaGym previous-day analysis runs at 01:00 KST and feeds coaching",
+  dagymNightlyApi.includes("process.env.CRON_SECRET")
+    && dagymNightlyApi.includes("process.env.SUPABASE_SERVICE_ROLE_KEY")
+    && dagymNightlyApi.includes('timeZone: "Asia/Seoul"')
+    && dagymNightlyApi.includes('rest/v1/dagym_daily_analyses')
+    && /"schedule":\s*"0 16 \* \* \*"/.test(vercelConfig)
+    && schema.includes("create table if not exists public.dagym_daily_analyses")
+    && js.includes("function ensureTodayDagymDailyAnalysis")
+    && js.includes("function buildDagymDailyAnalysis")
+    && js.includes("previousDayAnalysis")
+    && fitnessCoachApi.includes("previousDayAnalysis"),
+  "nightly aggregate analysis must remain authenticated, persisted, and available to today's AI coaching"
 );
 check("fitness coach keeps OpenAI key server-side", fitnessCoachApi.includes("process.env.OPENAI_API_KEY") && !js.includes("OPENAI_API_KEY"));
 check("fitness coach verifies signed-in user", fitnessCoachApi.includes("/auth/v1/user") && fitnessCoachApi.includes("Authorization"));

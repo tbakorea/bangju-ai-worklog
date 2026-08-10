@@ -531,7 +531,7 @@
             <div>
               <span>PREVIOUS DAY → TODAY</span>
               <strong id="fitnessDailyGuidanceTitle">오늘 실행지침</strong>
-              <p id="fitnessDailyGuidanceSubtitle">직전 영업일 마감자료 대기</p>
+              <p id="fitnessDailyGuidanceSubtitle">전날자료 · 01:00 자동분석 대기</p>
             </div>
             <button type="button" id="fitnessGuidanceGenerateButton">오늘 지침 생성</button>
           </header>
@@ -569,12 +569,12 @@
               <span>다짐 자료 가져오기</span>
               <textarea id="dagymImportText" rows="3" placeholder="다짐매니저에서 복사한 출석, 예약, 결제, 만료 예정 내용을 붙여넣습니다."></textarea>
             </label>
-            <p class="dagym-import-meta" id="dagymImportMeta">CSV·TSV·TXT·JSON 리포트를 바로 불러올 수 있습니다.</p>
+            <p class="dagym-import-meta" id="dagymImportMeta">다짐 공식 엑셀·CSV·TSV·TXT·JSON 리포트를 바로 불러올 수 있습니다.</p>
             <div class="dagym-actions">
               <button type="button" id="dagymCloseButton">마감 확정</button>
               <button type="button" id="dagymSyncButton">다짐 직접 동기화</button>
               <button type="button" id="dagymFileButton">다짐 파일 불러오기</button>
-              <input id="dagymFileInput" type="file" accept=".csv,.tsv,.txt,.json,text/csv,text/tab-separated-values,text/plain,application/json" hidden />
+              <input id="dagymFileInput" type="file" accept=".xlsx,.csv,.tsv,.txt,.json,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,text/csv,text/tab-separated-values,text/plain,application/json" hidden />
               <button type="button" id="dagymImportButton">붙여넣기 반영</button>
               <button type="button" id="dagymClearButton">초기화</button>
             </div>

@@ -1,0 +1,8 @@
+{
+  "crons": [
+    {
+      "path": "/api/dagym-nightly-analysis",
+      "schedule": "0 16 * * *"
+    }
+  ]
+}

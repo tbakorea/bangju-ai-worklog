@@ -718,6 +718,33 @@ function createDagymDailyRecord(dateKey = todayKey) {
   };
 }
 
+function createDagymDailyAnalysis(dateKey = todayKey) {
+  const sourceDate = parseDateKey(dateKey);
+  sourceDate.setDate(sourceDate.getDate() - 1);
+  return {
+    dateKey,
+    sourceDateKey: formatDateKey(sourceDate),
+    source: "client-fallback",
+    quality: "missing",
+    generatedAt: "",
+    sourceUpdatedAt: "",
+    metrics: {},
+    ratios: {},
+    signals: [],
+    coaching: {
+      headline: "전날 다짐 운영자료를 기다리고 있습니다.",
+      todayAction: "센터 마감자료를 확인한 뒤 오늘의 실행 우선순위를 확정하세요.",
+      managementDirection: "데이터 입력률을 먼저 안정화합니다.",
+    },
+  };
+}
+
+function getPreviousCalendarDateKey(dateKey = todayKey) {
+  const date = parseDateKey(dateKey);
+  date.setDate(date.getDate() - 1);
+  return formatDateKey(date);
+}
+
 function hasDagymDailyActivity(record = {}) {
   return Object.keys(createDagymOps()).some((key) => key !== "importText" && numberValue(record?.[key]) > 0)
     || Boolean(String(record?.importText || "").trim());
@@ -917,6 +944,7 @@ function refreshCurrentTimeIndicators() {
     row.classList.toggle("is-current", Boolean(isToday && Number.isFinite(start) && currentMinutes >= start && currentMinutes < start + scheduleUnit));
   });
   checkAttendanceRecordReminder(now);
+  if (now.getHours() >= 1) ensureTodayDagymDailyAnalysis({ now, silent: true });
 }
 
 function getOwnAttendanceReminderContext(now = new Date()) {
@@ -1028,6 +1056,7 @@ function createState() {
     fitnessGoals: createFitnessGoals(),
     dagymOps: createDagymOps(),
     dagymDaily: {},
+    dagymDailyAnalyses: {},
     fitnessDailyGuidance: {},
     fitnessCenterReports: {},
     worklogReportSubmissions: {},
@@ -1176,6 +1205,18 @@ function normalizeState() {
     };
   });
   state.dagymOps = getDagymOpsForDate(getActiveDateKey());
+  state.dagymDailyAnalyses = { ...(state.dagymDailyAnalyses || {}) };
+  Object.entries(state.dagymDailyAnalyses).forEach(([dateKey, analysis]) => {
+    state.dagymDailyAnalyses[dateKey] = {
+      ...createDagymDailyAnalysis(dateKey),
+      ...(analysis || {}),
+      dateKey,
+      metrics: { ...(analysis?.metrics || {}) },
+      ratios: { ...(analysis?.ratios || {}) },
+      signals: Array.isArray(analysis?.signals) ? analysis.signals.slice(0, 12) : [],
+      coaching: { ...createDagymDailyAnalysis(dateKey).coaching, ...(analysis?.coaching || {}) },
+    };
+  });
   state.fitnessDailyGuidance = { ...(state.fitnessDailyGuidance || {}) };
   Object.entries(state.fitnessDailyGuidance).forEach(([dateKey, items]) => {
     state.fitnessDailyGuidance[dateKey] = Array.isArray(items) ? items.slice(-40) : [];
@@ -9243,6 +9284,7 @@ function buildRemoteSnapshot(dateKey = getActiveDateKey()) {
     attendance: { [key]: state.attendance?.[key] || [] },
     companyCommonWeeks: state.companyCommonWeeks || {},
     dagymDaily: state.dagymDaily || {},
+    dagymDailyAnalyses: state.dagymDailyAnalyses || {},
     fitnessDailyGuidance: state.fitnessDailyGuidance || {},
     fitnessCenterReports: state.fitnessCenterReports || {},
     worklogReportSubmissions: state.worklogReportSubmissions || {},
@@ -9358,6 +9400,7 @@ async function loadRemoteWorklogForActiveDate() {
   await loadLatestRemoteSiteWeatherSettings();
   const sharedWeatherRows = await loadSharedSiteWeatherSettings();
   if (Array.isArray(sharedWeatherRows)) await publishRepresentativeSiteWeatherSettings(sharedWeatherRows);
+  await loadRemoteDagymDailyAnalysis(key);
   await loadRemoteLaborPayrollDrafts();
   await loadRemoteLeaveRequests();
   if (canAccessAllWorklogs()) await loadVisibleStaffWorklogsForDate(key);
@@ -9365,8 +9408,44 @@ async function loadRemoteWorklogForActiveDate() {
   normalizeState();
   localStorage.setItem(storageKey, JSON.stringify(state));
   authState.applyingRemote = false;
+  ensureTodayDagymDailyAnalysis({ silent: true });
   renderAll();
   renderAuthStatus();
+}
+
+async function loadRemoteDagymDailyAnalysis(dateKey = getActiveDateKey()) {
+  if (!supabaseClient || !authState.user) return null;
+  const { data, error } = await supabaseClient
+    .from("dagym_daily_analyses")
+    .select("analysis_date,source_date,source,quality,metrics,ratios,signals,coaching,generated_at,source_updated_at")
+    .eq("analysis_date", dateKey)
+    .maybeSingle();
+  if (error) {
+    if (!/dagym_daily_analyses|schema cache|PGRST205|42P01/i.test(String(error.message || ""))) {
+      renderAuthStatus(`다짐 일일분석 불러오기 대기: ${error.message}`);
+    }
+    return null;
+  }
+  if (!data) return null;
+  state.dagymDailyAnalyses ||= {};
+  const remoteAnalysis = {
+    ...createDagymDailyAnalysis(data.analysis_date),
+    dateKey: data.analysis_date,
+    sourceDateKey: data.source_date,
+    source: data.source || "nightly-cron",
+    quality: data.quality || "partial",
+    metrics: { ...(data.metrics || {}) },
+    ratios: { ...(data.ratios || {}) },
+    signals: Array.isArray(data.signals) ? data.signals : [],
+    coaching: { ...createDagymDailyAnalysis(data.analysis_date).coaching, ...(data.coaching || {}) },
+    generatedAt: data.generated_at || "",
+    sourceUpdatedAt: data.source_updated_at || "",
+  };
+  const localAnalysis = state.dagymDailyAnalyses[dateKey];
+  if (!localAnalysis || String(remoteAnalysis.generatedAt || "") >= String(localAnalysis.generatedAt || "")) {
+    state.dagymDailyAnalyses[dateKey] = remoteAnalysis;
+  }
+  return remoteAnalysis;
 }
 
 function mergeOwnRemoteEmployeeLogs(remoteEmployeeLogs = {}) {
@@ -9615,6 +9694,17 @@ function mergeSharedFitnessOperations(remoteState = {}) {
       state.dagymDaily[dateKey] = {
         ...createDagymDailyRecord(dateKey),
         ...(remoteRecord || {}),
+        dateKey,
+      };
+    }
+  });
+  state.dagymDailyAnalyses ||= {};
+  Object.entries(remoteState.dagymDailyAnalyses || {}).forEach(([dateKey, remoteAnalysis]) => {
+    const localAnalysis = state.dagymDailyAnalyses[dateKey];
+    if (!localAnalysis || String(remoteAnalysis?.generatedAt || "") >= String(localAnalysis?.generatedAt || "")) {
+      state.dagymDailyAnalyses[dateKey] = {
+        ...createDagymDailyAnalysis(dateKey),
+        ...(remoteAnalysis || {}),
         dateKey,
       };
     }
@@ -10600,7 +10690,7 @@ function renderDagymOpsFields() {
       importMeta.classList.toggle("has-warning", Boolean(warnings.length));
       importMeta.title = warnings.join("\n");
     } else {
-      importMeta.textContent = "CSV·TSV·TXT·JSON 리포트를 바로 불러올 수 있습니다.";
+      importMeta.textContent = "다짐 공식 엑셀·CSV·TSV·TXT·JSON 리포트를 바로 불러올 수 있습니다.";
       importMeta.classList.remove("has-warning");
       importMeta.removeAttribute("title");
     }
@@ -10622,6 +10712,92 @@ function getPreviousDagymOperatingDate(dateKey = getActiveDateKey()) {
     .filter((key) => key < dateKey && state.dagymDaily[key]?.status === "closed" && hasDagymDailyActivity(state.dagymDaily[key]))
     .sort()
     .pop() || "";
+}
+
+function buildDagymDailyAnalysis(dateKey = getActiveDateKey(), sourceRecord = null) {
+  const sourceDateKey = getPreviousCalendarDateKey(dateKey);
+  const dagym = sourceRecord || getDagymOpsForDate(sourceDateKey, { create: false });
+  const base = createDagymDailyAnalysis(dateKey);
+  const metricKeys = Object.keys(createDagymOps()).filter((key) => key !== "importText");
+  const metrics = Object.fromEntries(metricKeys.map((key) => [key, numberValue(dagym?.[key]) || 0]));
+  const populated = metricKeys.filter((key) => String(dagym?.[key] ?? "").trim() !== "").length;
+  const hasActivity = hasDagymDailyActivity(dagym);
+  if (!hasActivity) {
+    return {
+      ...base,
+      quality: "missing",
+      generatedAt: new Date().toISOString(),
+      sourceUpdatedAt: String(dagym?.updatedAt || ""),
+      signals: [{
+        type: "data-gap",
+        severity: "warning",
+        title: "전날 다짐자료 미확인",
+        detail: `${formatShortDate(sourceDateKey)} 출석·예약·매출자료가 없어 경영 판단의 근거가 부족합니다.`,
+        action: "센터 마감자료를 확인하고 다짐 자료를 동기화하세요.",
+        targetRole: "센터장",
+        dueTime: "09:30",
+      }],
+    };
+  }
+  const staff = getFitnessDayOpsTotal(sourceDateKey);
+  const renewalGap = Math.max(0, metrics.expiring - metrics.renewals);
+  const ptGap = Math.max(0, metrics.ptBookings - staff.pt);
+  const expectedSalesActions = metrics.visits ? Math.max(2, Math.round(metrics.visits * 0.03)) : 0;
+  const recordedSalesActions = staff.consultation + staff.renewal + staff.outbound;
+  const salesActionGap = Math.max(0, expectedSalesActions - recordedSalesActions);
+  const noShowRate = metrics.ptBookings ? Math.round((metrics.noShows / metrics.ptBookings) * 1000) / 10 : 0;
+  const renewalCoverage = metrics.expiring ? Math.round((metrics.renewals / metrics.expiring) * 1000) / 10 : 0;
+  const salesPerVisit = metrics.visits ? Math.round(metrics.sales / metrics.visits) : 0;
+  const signals = [];
+  const add = (signal) => signals.push(signal);
+  if (renewalGap) add({ type: "renewal-gap", severity: renewalCoverage < 50 ? "critical" : "warning", title: `만료대응 ${renewalGap}건 부족`, detail: `만료예정 ${metrics.expiring}건 중 재등록 ${metrics.renewals}건으로 대응률은 ${renewalCoverage}%입니다.`, action: "미처리 회원을 재등록·보류·연락불가로 분류하고 담당자를 배정하세요.", targetRole: "인포", dueTime: "11:00", value: renewalGap });
+  if (metrics.noShows) add({ type: "no-show", severity: noShowRate >= 10 ? "critical" : "warning", title: `노쇼·취소 ${metrics.noShows}건`, detail: `PT 예약 ${metrics.ptBookings}건 대비 노쇼·취소율은 ${noShowRate}%입니다.`, action: "당일 재예약 안내와 사유 기록을 완료하세요.", targetRole: "인포", dueTime: "10:30", value: metrics.noShows });
+  if (ptGap) add({ type: "pt-gap", severity: "warning", title: `PT 기록 차이 ${ptGap}건`, detail: `다짐 예약 ${metrics.ptBookings}건과 직원 수업기록 ${staff.pt}건이 일치하지 않습니다.`, action: "완료·노쇼·일정변경 중 하나로 수업결과를 확정하세요.", targetRole: "트레이너", dueTime: "12:00", value: ptGap });
+  if (salesActionGap) add({ type: "sales-action", severity: "warning", title: `상담행동 ${salesActionGap}건 보강`, detail: `출석 ${metrics.visits}명 대비 상담·재등록·아웃바운드 기록은 ${recordedSalesActions}건입니다.`, action: "재등록 후보와 체험회원 후속조치를 오늘 일정에 배정하세요.", targetRole: "센터장", dueTime: "14:00", value: salesActionGap });
+  if (metrics.lockerExpiring) add({ type: "locker", severity: "observe", title: `락커 만료 ${metrics.lockerExpiring}건`, detail: "락커 만료 전 안내와 연장·정리 여부를 확인해야 합니다.", action: "만료 대상자 안내 결과를 기록하세요.", targetRole: "인포", dueTime: "15:00", value: metrics.lockerExpiring });
+  if (metrics.sales && !staff.renewal && !metrics.newMembers) add({ type: "sales-review", severity: "observe", title: "매출 발생원인 확인", detail: `${metrics.sales.toLocaleString()}원의 매출과 연결된 신규·재등록 행동기록이 부족합니다.`, action: "결제 원인을 PT·회원권·재등록·기타로 확인해 센터보고에 남기세요.", targetRole: "센터장", dueTime: "17:00", value: metrics.sales });
+  if (!signals.length) add({ type: "stable", severity: "normal", title: "전날 운영흐름 안정", detail: "입력된 다짐 지표와 직원 실행기록에서 즉시 보완할 큰 차이가 확인되지 않았습니다.", action: "오늘도 상담결과와 수업완료 기록을 같은 기준으로 유지하세요.", targetRole: "센터장", dueTime: "오늘", value: 0 });
+  const topSignal = signals.find((signal) => signal.severity === "critical") || signals.find((signal) => signal.severity === "warning") || signals[0];
+  return {
+    ...base,
+    source: dagym?.syncMode === "direct" ? "dagym-direct" : "worklog-snapshot",
+    quality: populated >= 6 ? "complete" : "partial",
+    generatedAt: new Date().toISOString(),
+    sourceUpdatedAt: String(dagym?.updatedAt || dagym?.importedAt || ""),
+    metrics,
+    ratios: { noShowRate, renewalCoverage, salesPerVisit, recordedPt: staff.pt, recordedSalesActions },
+    signals: signals.slice(0, 8),
+    coaching: {
+      headline: topSignal.title,
+      todayAction: topSignal.action,
+      managementDirection: renewalGap
+        ? "재등록 대응률을 우선 개선하고 만료회원 후속결과를 누락 없이 축적합니다."
+        : salesActionGap
+          ? "출석을 상담과 재등록 행동으로 전환하는 운영 루프를 강화합니다."
+          : "수업·상담·매출의 연결 기록을 유지해 반복 가능한 성과 패턴을 축적합니다.",
+    },
+  };
+}
+
+function getDagymDailyAnalysis(dateKey = getActiveDateKey()) {
+  return state.dagymDailyAnalyses?.[dateKey] || null;
+}
+
+function ensureTodayDagymDailyAnalysis({ now = new Date(), silent = true } = {}) {
+  const dateKey = formatDateKey(now);
+  if (now.getHours() < 1) return false;
+  const sourceDateKey = getPreviousCalendarDateKey(dateKey);
+  const sourceRecord = getDagymOpsForDate(sourceDateKey, { create: false });
+  const existing = getDagymDailyAnalysis(dateKey);
+  const sourceUpdatedAt = String(sourceRecord?.updatedAt || sourceRecord?.importedAt || "");
+  if (existing?.sourceDateKey === sourceDateKey && String(existing.sourceUpdatedAt || "") >= sourceUpdatedAt) return false;
+  state.dagymDailyAnalyses ||= {};
+  state.dagymDailyAnalyses[dateKey] = buildDagymDailyAnalysis(dateKey, sourceRecord);
+  if (dateKey === getActiveDateKey() && canManageDagymOperations()) generateTodayFitnessGuidance({ silent: true });
+  writeStateToLocalStorage();
+  scheduleRemoteSave(500, dateKey);
+  if (!silent) showAppToast("전날 다짐자료를 분석해 오늘 AI 코칭에 반영했습니다");
+  return true;
 }
 
 function getFitnessDayOpsTotal(dateKey) {
@@ -10659,7 +10835,7 @@ function createFitnessGuidanceRule({ dateKey, sourceDateKey, type, target, title
     id,
     dateKey,
     sourceDateKey,
-    source: "dagym-previous-operating-day",
+    source: "dagym-nightly-analysis",
     type,
     title,
     detail,
@@ -10676,8 +10852,9 @@ function createFitnessGuidanceRule({ dateKey, sourceDateKey, type, target, title
 }
 
 function buildTodayFitnessGuidance(dateKey = getActiveDateKey()) {
-  const sourceDateKey = getPreviousDagymOperatingDate(dateKey);
-  if (!sourceDateKey) return { sourceDateKey: "", items: [] };
+  const sourceDateKey = getPreviousCalendarDateKey(dateKey);
+  const sourceRecord = getDagymOpsForDate(sourceDateKey, { create: false });
+  if (!hasDagymDailyActivity(sourceRecord)) return { sourceDateKey: "", items: [] };
   const dagym = getDagymOpsForDate(sourceDateKey, { create: false });
   const staff = getFitnessDayOpsTotal(sourceDateKey);
   const roster = getFitnessGuidanceRoster(dateKey);
@@ -10737,11 +10914,11 @@ function renderFitnessDailyGuidance(page = getCurrentFitnessLogPage(), isCenter 
   const items = isCenter ? allItems : allItems.filter((item) => item.targetEmployeeId === pageEmployeeId);
   panel.hidden = !isCenter && !items.length;
   panel.classList.toggle("is-center-guidance", Boolean(isCenter));
-  const source = items[0]?.sourceDateKey || getPreviousDagymOperatingDate(dateKey);
+  const source = items[0]?.sourceDateKey || getPreviousCalendarDateKey(dateKey);
   const title = document.getElementById("fitnessDailyGuidanceTitle");
   const subtitle = document.getElementById("fitnessDailyGuidanceSubtitle");
   if (title) title.textContent = isCenter ? "오늘 실행지침" : "나에게 배정된 오늘 지침";
-  if (subtitle) subtitle.textContent = source ? `${formatShortDate(source)} 다짐 마감자료 기준` : "직전 영업일 마감자료 대기";
+  if (subtitle) subtitle.textContent = items.length ? `${formatShortDate(source)} 전날자료 · 01:00 자동분석` : `${formatShortDate(source)} 전날자료 대기`;
   const generateButton = document.getElementById("fitnessGuidanceGenerateButton");
   if (generateButton) {
     generateButton.hidden = !isCenter;
@@ -10762,7 +10939,7 @@ function renderFitnessDailyGuidance(page = getCurrentFitnessLogPage(), isCenter 
         ${canAccept ? `<button type="button" data-accept-fitness-guidance="${escapeAttr(item.id)}">우선업무로 수락</button>` : ""}
       </article>
     `;
-  }).join("") : `<p class="fitness-guidance-empty">${source ? "전일 자료에서 추가 조치가 필요한 신호가 없습니다." : "전일 다짐 마감자료를 입력하면 오늘 지침을 만들 수 있습니다."}</p>`;
+  }).join("") : `<p class="fitness-guidance-empty">전날 다짐자료를 입력하면 새벽 1시 분석과 오늘 AI 코칭에 자동 반영됩니다.</p>`;
 }
 
 function acceptFitnessDailyGuidance(guidanceId) {
@@ -10841,6 +11018,12 @@ function renderFitnessCenterCoaching(total, rows) {
   const staffSalesActions = total.new + total.renewal + total.consultation + total.outbound;
   const notes = rows.flatMap((row) => [row.ops.shiftNote, row.ops.specialReport].filter(Boolean));
   const messages = [];
+  const nightlyAnalysis = getDagymDailyAnalysis(getActiveDateKey());
+
+  if (nightlyAnalysis?.coaching?.headline) {
+    messages.push(["전일 경영신호", nightlyAnalysis.coaching.headline]);
+    messages.push(["오늘 운영방향", nightlyAnalysis.coaching.todayAction]);
+  }
 
   if (visits && staffSalesActions < Math.max(2, Math.round(visits * 0.03))) {
     messages.push(["영업", `오늘 출석 ${visits}명 대비 상담/영업 기록 ${staffSalesActions}건입니다. 프론트와 트레이너가 재등록 후보, 체험권, 만료 예정자를 우선 확인해야 합니다.`]);
@@ -10886,8 +11069,13 @@ function getFitnessCoachingMessages(context = {}) {
   const salesAction = ["customerNew", "customerRenewal", "consultation", "outbound", "outsideSales"].reduce((sum, key) => sum + numberValue(ops[key]), 0);
   const visits = numberValue(dagym.visits);
   const expiring = numberValue(dagym.expiring);
+  const nightlyAnalysis = getDagymDailyAnalysis(dateKey);
   const messages = [
     ["오늘 환영", getPersonalizedWelcomeMessage(employee, log)],
+    ...(nightlyAnalysis?.coaching?.headline ? [
+      ["전일 경영신호", nightlyAnalysis.coaching.headline],
+      ["오늘 실행방향", nightlyAnalysis.coaching.todayAction],
+    ] : []),
     ["우선업무", pending.length ? `${getEmployeeOwnLabel(employee)}님은 미완료 ${pending.length}건을 먼저 정리하고, 가장 매출과 회원경험에 가까운 업무 1건을 상단에 두세요.` : "우선업무 흐름이 안정적입니다. 다음 일정 전까지 완료 기록을 남기면 코칭 정확도가 올라갑니다."],
     ["시간관리", nextEntry ? `다음 일정은 ${nextEntry.time} ${getScheduleEntryText(nextEntry)}입니다. 시작 전 준비물과 고객 응대 포인트를 5분 전에 확인하세요.` : "다음 일정이 비어 있습니다. 센터관리, 상담 후보 확인, 시설 점검 중 하나를 시간표에 배치하세요."],
     ["센터운영", visits ? `오늘 출석 ${visits}명 기준으로 상담/재등록 행동 ${salesAction}건입니다. 출석 대비 3% 이상을 상담 기록으로 남기는 것을 권장합니다.` : "다짐 출석/매출 자료를 입력하면 운영 코칭이 더 구체화됩니다."],
@@ -11017,6 +11205,116 @@ function parseDagymNumber(value = "") {
   return Number.isFinite(parsed) ? Math.max(0, parsed) : null;
 }
 
+function parseDagymSignedNumber(value = "") {
+  const cleaned = normalizeDagymImportCell(value).replace(/[^\d.-]/g, "");
+  if (!cleaned || !/[\d]/.test(cleaned)) return null;
+  const parsed = Number(cleaned);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function getXlsxColumnIndex(reference = "") {
+  const letters = String(reference).match(/^[A-Z]+/i)?.[0]?.toUpperCase() || "";
+  if (!letters) return -1;
+  return [...letters].reduce((index, letter) => (index * 26) + letter.charCodeAt(0) - 64, 0) - 1;
+}
+
+function parseXlsxSharedStrings(xmlText = "") {
+  if (!xmlText) return [];
+  const documentNode = new DOMParser().parseFromString(xmlText, "application/xml");
+  if (documentNode.querySelector("parsererror")) throw new Error("엑셀 문자열 정보를 읽지 못했습니다");
+  return [...documentNode.getElementsByTagNameNS("*", "si")].map((node) => (
+    [...node.getElementsByTagNameNS("*", "t")].map((textNode) => textNode.textContent || "").join("")
+  ));
+}
+
+function parseXlsxWorksheetRows(xmlText = "", sharedStrings = []) {
+  const documentNode = new DOMParser().parseFromString(xmlText, "application/xml");
+  if (documentNode.querySelector("parsererror")) throw new Error("엑셀 작업표를 읽지 못했습니다");
+  return [...documentNode.getElementsByTagNameNS("*", "row")].map((rowNode) => {
+    const row = [];
+    [...rowNode.getElementsByTagNameNS("*", "c")].forEach((cellNode) => {
+      const columnIndex = getXlsxColumnIndex(cellNode.getAttribute("r") || "");
+      if (columnIndex < 0) return;
+      const type = cellNode.getAttribute("t") || "";
+      const rawValue = cellNode.getElementsByTagNameNS("*", "v")[0]?.textContent || "";
+      const inlineValue = [...cellNode.getElementsByTagNameNS("*", "t")].map((node) => node.textContent || "").join("");
+      const value = type === "s"
+        ? sharedStrings[Number(rawValue)] || ""
+        : type === "inlineStr"
+          ? inlineValue
+          : rawValue;
+      row[columnIndex] = normalizeDagymImportCell(value);
+    });
+    return row;
+  }).filter((row) => row.some(Boolean));
+}
+
+function readZipDirectory(arrayBuffer) {
+  const bytes = new Uint8Array(arrayBuffer);
+  const view = new DataView(arrayBuffer);
+  const minimumOffset = Math.max(0, bytes.length - 65557);
+  let endOffset = -1;
+  for (let offset = bytes.length - 22; offset >= minimumOffset; offset -= 1) {
+    if (view.getUint32(offset, true) === 0x06054b50) {
+      endOffset = offset;
+      break;
+    }
+  }
+  if (endOffset < 0) throw new Error("엑셀 파일의 ZIP 디렉터리를 찾지 못했습니다");
+  const entryCount = view.getUint16(endOffset + 10, true);
+  let offset = view.getUint32(endOffset + 16, true);
+  const decoder = new TextDecoder("utf-8");
+  const entries = new Map();
+  for (let index = 0; index < entryCount; index += 1) {
+    if (view.getUint32(offset, true) !== 0x02014b50) throw new Error("엑셀 ZIP 목록이 손상됐습니다");
+    const compression = view.getUint16(offset + 10, true);
+    const compressedSize = view.getUint32(offset + 20, true);
+    const fileNameLength = view.getUint16(offset + 28, true);
+    const extraLength = view.getUint16(offset + 30, true);
+    const commentLength = view.getUint16(offset + 32, true);
+    const localOffset = view.getUint32(offset + 42, true);
+    const fileName = decoder.decode(bytes.slice(offset + 46, offset + 46 + fileNameLength));
+    entries.set(fileName, { compression, compressedSize, localOffset });
+    offset += 46 + fileNameLength + extraLength + commentLength;
+  }
+  return { bytes, view, entries };
+}
+
+async function readZipEntryText(zip, fileName) {
+  const entry = zip.entries.get(fileName);
+  if (!entry) return "";
+  const { bytes, view } = zip;
+  if (view.getUint32(entry.localOffset, true) !== 0x04034b50) throw new Error("엑셀 ZIP 항목이 손상됐습니다");
+  const fileNameLength = view.getUint16(entry.localOffset + 26, true);
+  const extraLength = view.getUint16(entry.localOffset + 28, true);
+  const dataOffset = entry.localOffset + 30 + fileNameLength + extraLength;
+  const compressed = bytes.slice(dataOffset, dataOffset + entry.compressedSize);
+  let data;
+  if (entry.compression === 0) data = compressed;
+  else if (entry.compression === 8) {
+    if (typeof DecompressionStream !== "function") throw new Error("이 브라우저는 엑셀 압축 해제를 지원하지 않습니다");
+    const stream = new Blob([compressed]).stream().pipeThrough(new DecompressionStream("deflate-raw"));
+    data = new Uint8Array(await new Response(stream).arrayBuffer());
+  } else throw new Error("지원하지 않는 엑셀 압축 형식입니다");
+  return new TextDecoder("utf-8").decode(data);
+}
+
+async function readDagymXlsxRows(file) {
+  const arrayBuffer = await file.arrayBuffer();
+  if (arrayBuffer.byteLength > 12 * 1024 * 1024) throw new Error("다짐 엑셀 파일이 12MB를 초과합니다");
+  const zip = readZipDirectory(arrayBuffer);
+  const sharedStrings = parseXlsxSharedStrings(await readZipEntryText(zip, "xl/sharedStrings.xml"));
+  const sheetNames = [...zip.entries.keys()]
+    .filter((name) => /^xl\/worksheets\/sheet\d+\.xml$/i.test(name))
+    .sort((left, right) => left.localeCompare(right, undefined, { numeric: true }));
+  if (!sheetNames.length) throw new Error("엑셀 파일에서 작업표를 찾지 못했습니다");
+  const rows = [];
+  for (const sheetName of sheetNames) {
+    rows.push(...parseXlsxWorksheetRows(await readZipEntryText(zip, sheetName), sharedStrings));
+  }
+  return rows;
+}
+
 function parseDagymJson(text = "") {
   try {
     const value = JSON.parse(text);
@@ -11037,6 +11335,66 @@ function findDagymHeaderRow(rows = []) {
     if (score > best.score) best = { index, score };
   });
   return best.score ? best.index : -1;
+}
+
+function normalizeDagymExcelDateKey(value = "") {
+  const normalized = normalizeDagymImportCell(value);
+  const excelSerial = Number(normalized);
+  if (/^\d+(?:\.\d+)?$/.test(normalized) && excelSerial >= 20000 && excelSerial <= 80000) {
+    return new Date(Date.UTC(1899, 11, 30) + Math.floor(excelSerial) * 86400000).toISOString().slice(0, 10);
+  }
+  const matched = normalized.match(/(20\d{2})\D+(\d{1,2})\D+(\d{1,2})/);
+  if (!matched) return "";
+  return `${matched[1]}-${matched[2].padStart(2, "0")}-${matched[3].padStart(2, "0")}`;
+}
+
+function mapDagymOfficialSalesRows(rows = [], targetDateKey = "") {
+  const headerIndex = rows.slice(0, 20).findIndex((row) => {
+    const headers = row.map((cell) => normalizeDagymImportCell(cell).replace(/\s+/g, ""));
+    return headers.some((header) => /판매번호/.test(header))
+      && headers.some((header) => /결제금액|환불금액|판매금액/.test(header));
+  });
+  if (headerIndex < 0) return null;
+  const headers = rows[headerIndex].map((cell) => normalizeDagymImportCell(cell).replace(/\s+/g, ""));
+  const findColumn = (pattern) => headers.findIndex((header) => pattern.test(header));
+  const saleIdIndex = findColumn(/판매번호|거래번호/);
+  const typeIndex = findColumn(/매출유형|거래유형/);
+  const amountIndex = findColumn(/결제금액.*환불금액|환불금액.*결제금액|결제금액|판매금액/);
+  const renewalIndex = findColumn(/재등록여부|재등록/);
+  const dateIndex = findColumn(/결제일.*환불일|환불일.*결제일|결제일|환불일/);
+  const normalizedTargetDate = normalizeDagymExcelDateKey(targetDateKey);
+  const candidateRows = rows.slice(headerIndex + 1).filter((row) => row.some(Boolean) && !/합계|총계/.test(row.join(" ")));
+  const dataRows = normalizedTargetDate && dateIndex >= 0
+    ? candidateRows.filter((row) => normalizeDagymExcelDateKey(row[dateIndex]) === normalizedTargetDate)
+    : candidateRows;
+  let netSales = 0;
+  let hasSales = false;
+  const renewalIds = new Set();
+  dataRows.forEach((row, rowIndex) => {
+    const amount = amountIndex >= 0 ? parseDagymSignedNumber(row[amountIndex]) : null;
+    if (amount !== null) {
+      const type = normalizeDagymImportCell(row[typeIndex]);
+      netSales += /환불|취소/.test(type) ? -Math.abs(amount) : amount;
+      hasSales = true;
+    }
+    const renewal = normalizeDagymImportCell(row[renewalIndex]);
+    const isRenewal = (/재등록/.test(renewal) && !/미해당|아님|아니오/.test(renewal))
+      || /^(?:y|yes|예|o|1|true)$/i.test(renewal);
+    if (isRenewal) renewalIds.add(normalizeDagymImportCell(row[saleIdIndex]) || `row-${rowIndex}`);
+  });
+  const metrics = {};
+  if (hasSales) metrics.sales = String(Math.max(0, Math.round(netSales)));
+  if (renewalIndex >= 0) metrics.renewals = String(renewalIds.size);
+  return {
+    metrics,
+    warnings: [
+      normalizedTargetDate && dateIndex >= 0
+        ? `${normalizedTargetDate} 결제·환불 행만 집계했습니다.`
+        : "결제·환불 날짜 열을 확인하지 못해 파일 전체를 집계했습니다.",
+      "다짐 공식 매출 엑셀에서 순결제액과 재등록 건수만 집계했습니다. 출석·PT 예약·만료 예정은 해당 다짐 리포트를 추가로 불러와야 합니다.",
+    ],
+    rows: [],
+  };
 }
 
 function mapDagymReportData(text = "", fileName = "") {
@@ -11077,23 +11435,23 @@ function mapDagymReportData(text = "", fileName = "") {
   return { metrics, warnings, rows };
 }
 
-function applyDagymImport(text = "", { source = "paste", fileName = "다짐 붙여넣기" } = {}) {
+function applyDagymImport(text = "", { source = "paste", fileName = "다짐 붙여넣기", parsed = null } = {}) {
   if (!canManageDagymOperations()) return;
   const record = getDagymOpsForDate(getActiveDateKey());
   record.importText = text;
-  const parsed = mapDagymReportData(text, fileName);
-  Object.entries(parsed.metrics).forEach(([key, value]) => { record[key] = value; });
+  const importResult = parsed || mapDagymReportData(text, fileName);
+  Object.entries(importResult.metrics).forEach(([key, value]) => { record[key] = value; });
   record.importSource = source;
   record.importFileName = fileName;
   record.importedAt = new Date().toISOString();
   record.syncMode = "manual";
   record.providerUpdatedAt = "";
-  record.importWarnings = parsed.warnings;
+  record.importWarnings = importResult.warnings;
   touchDagymDailyRecord(record);
   saveState({ fastSave: true });
   renderFitnessCenterDaily();
-  const count = Object.keys(parsed.metrics).length;
-  showAppToast(count ? `다짐 자료 ${count}개 항목을 반영했습니다${parsed.warnings.length ? " · 확인 필요" : ""}` : "반영할 다짐 항목을 찾지 못했습니다");
+  const count = Object.keys(importResult.metrics).length;
+  showAppToast(count ? `다짐 자료 ${count}개 항목을 반영했습니다${importResult.warnings.length ? " · 확인 필요" : ""}` : "반영할 다짐 항목을 찾지 못했습니다");
   return count > 0;
 }
 
@@ -11166,12 +11524,22 @@ function importDagymText() {
 
 async function importDagymFile(file) {
   if (!canManageDagymOperations() || !file) return false;
-  const supported = /\.(csv|tsv|txt|json)$/i.test(file.name || "");
+  const supported = /\.(xlsx|csv|tsv|txt|json)$/i.test(file.name || "");
   if (!supported) {
-    showAppToast("다짐 리포트는 CSV·TSV·TXT·JSON 형식으로 저장해 주세요");
+    showAppToast("다짐 리포트는 XLSX·CSV·TSV·TXT·JSON 형식으로 저장해 주세요");
     return false;
   }
   try {
+    if (/\.xlsx$/i.test(file.name || "")) {
+      const rows = await readDagymXlsxRows(file);
+      const parsed = mapDagymOfficialSalesRows(rows, getActiveDateKey());
+      if (!parsed) throw new Error("다짐 공식 매출 엑셀 형식을 확인할 수 없습니다");
+      return applyDagymImport("다짐 공식 엑셀에서 개인정보를 제외하고 운영지표만 집계함", {
+        source: "file",
+        fileName: file.name || "다짐 공식 엑셀",
+        parsed,
+      });
+    }
     const text = await file.text();
     if (!text.trim()) {
       showAppToast("선택한 다짐 파일이 비어 있습니다");
@@ -11180,7 +11548,7 @@ async function importDagymFile(file) {
     return applyDagymImport(text, { source: "file", fileName: file.name || "다짐 리포트" });
   } catch (error) {
     console.warn("Failed to import Dagym report", error);
-    showAppToast("다짐 파일을 읽지 못했습니다");
+    showAppToast(error.message || "다짐 파일을 읽지 못했습니다");
     return false;
   }
 }
@@ -19507,6 +19875,7 @@ function buildFitnessReportAiContext({ dateKey, isCenter, employee, sourceLog, l
     scheduleTypes[type] = (scheduleTypes[type] || 0) + 1;
   }));
   const assignedMission = getAssignedMissionForEmployee(employee);
+  const nightlyAnalysis = getDagymDailyAnalysis(dateKey);
   return {
     dateKey,
     reportType: isCenter ? "센터 운영 취합" : "개인 업무보고",
@@ -19540,6 +19909,20 @@ function buildFitnessReportAiContext({ dateKey, isCenter, employee, sourceLog, l
       comparisonDateKey: dagymSummary.comparisonDateKey,
       metrics: dagymSummary.rows.map((row) => ({ label: row.label, value: row.value, delta: row.delta })),
       analysis: dagymSummary.insights.map((item) => `${item.title}: ${item.text}`),
+    } : null,
+    previousDayAnalysis: nightlyAnalysis ? {
+      sourceDateKey: nightlyAnalysis.sourceDateKey,
+      quality: nightlyAnalysis.quality,
+      metrics: nightlyAnalysis.metrics,
+      ratios: nightlyAnalysis.ratios,
+      signals: (nightlyAnalysis.signals || []).map((signal) => ({
+        severity: signal.severity,
+        title: signal.title,
+        detail: signal.detail,
+        action: signal.action,
+      })).slice(0, 6),
+      todayAction: nightlyAnalysis.coaching?.todayAction || "",
+      managementDirection: nightlyAnalysis.coaching?.managementDirection || "",
     } : null,
     attendanceWarnings: attendanceWarnings.map((item) => item.message),
     reportNotes: getFitnessReportRecordRows(logEntries, { isCenter, totals })

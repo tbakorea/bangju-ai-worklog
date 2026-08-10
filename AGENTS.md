@@ -32,6 +32,19 @@ Build Bangju AI Worklog as an operating agent for Bangju Group: worklogs, labor 
 - Use stable dimensions for date controls, page navigation, buttons, and task/schedule rows.
 - Before finishing UI work, inspect phone, iPad, and desktop behavior.
 
+## AI Work Operating Principles
+
+- Before acting, identify the objective, authorized scope, expected deliverable, and verification criteria from the user's request and the current project context.
+- Match effort to the task: answer simple questions directly; use deeper investigation, planning, and validation for architecture, data, permissions, reports, migrations, and release work.
+- For complex work, follow `plan → inspect evidence → implement scoped changes → test → self-review → correct defects` rather than stopping at advice or a first draft.
+- Produce the usable outcome the user requested whenever authority and available tools allow it. Do not return only instructions when the task asks for implementation.
+- Use checkpoints on long tasks to keep the user informed and catch a wrong direction early. Ask only when missing information would materially change the result or expand authority.
+- Separate facts from inference. Verify time-sensitive claims against current primary sources and cite them when they affect a decision.
+- Before finishing, check calculations, dates, conditions, data mappings, permissions, responsive layout, and the requested output format.
+- Require explicit user approval at the point of action for destructive or externally consequential operations outside the already authorized workflow, including deletion, payment, sending messages, uploading sensitive data, or changing access.
+- Treat project instructions and supplied source files as the working context for repeated tasks; keep added rules concise and avoid duplicating existing guidance.
+- In the final handoff, lead with the outcome and report changed files, verification performed, and any genuine blocker or remaining external dependency.
+
 ## QA Routine
 
 Run the light checks after most edits:
