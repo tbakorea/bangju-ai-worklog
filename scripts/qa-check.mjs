@@ -630,13 +630,23 @@ check(
 check(
   "schedule types are scoped by business site and role",
   js.includes("const scheduleTypeCatalog =")
-    && js.includes('finance: ["회계/장부", "자금/이체", "세무/신고", "급여/노무", "증빙/정산"')
+    && js.includes('finance: ["입금/수납", "지급/출납", "자금계획", "은행/대출", "매입/매출", "채권/채무", "회계/전표", "결산/마감", "예산/손익", "세무/신고", "급여/4대보험", "증빙/법인카드"')
     && js.includes('project: ["고객/상담", "견적/계약", "설계/디자인", "발주/구매", "시공/현장"')
     && js.includes('shared: ["입주/상담", "계약/수납", "공간/시설"')
     && js.includes('construction: ["공정/시공", "안전/점검", "품질/하자"')
     && /function getScheduleTypeCatalogKey[\s\S]{0,800}return "finance"/.test(js)
     && /appointment-merge-button[\s\S]{0,1800}openWorklogScheduleEditor\(entry, log\)/.test(js),
   "finance worklogs must not use fitness labels, and every site needs its own detailed schedule categories"
+);
+
+check(
+  "daily reports distinguish every priority status and measure long pages",
+  js.includes('const taskPriorityOptions = ["?", "A", "B", "C", "진행중", "위임", "연기", "취소"]')
+    && js.includes("function getWorklogReportTaskStatusMeta")
+    && ["complete", "progress", "delegate", "postpone", "cancel", "planned"].every((status) => js.includes(`is-${status}`))
+    && js.includes("async function measureWorklogReportExportHeight")
+    && js.includes("await measureWorklogReportExportHeight(model)"),
+  "completed, in-progress, delegated, postponed, canceled, and planned work must stay visible in long exports"
 );
 
 check(

@@ -9292,7 +9292,8 @@ textarea:focus-visible {
     inset: auto 10px max(10px, env(safe-area-inset-bottom));
     left: 10px;
     width: auto;
-    max-height: min(91dvh, 820px);
+    height: min(94dvh, 1000px);
+    max-height: min(94dvh, 1000px);
     transform: translateY(12px);
   }
 
@@ -12301,7 +12302,8 @@ body.physical-phone-device #view-fitness-log .fitness-log-schedule-panel .fitnes
   grid-template-rows: auto minmax(0, 1fr) auto;
   gap: 10px;
   width: min(820px, calc(100vw - 24px));
-  max-height: min(90dvh, 900px);
+  height: min(94dvh, 1100px);
+  max-height: min(94dvh, 1100px);
   overflow: hidden;
   border: 1px solid var(--hardline);
   background: rgba(252, 252, 247, 0.99);
@@ -12378,6 +12380,9 @@ body.physical-phone-device #view-fitness-log .fitness-log-schedule-panel .fitnes
 .worklog-report-preview {
   min-height: 0;
   overflow: auto;
+  overscroll-behavior: contain;
+  touch-action: pan-y;
+  -webkit-overflow-scrolling: touch;
   background: rgba(17, 20, 17, 0.04);
   padding: 10px;
 }
@@ -12583,6 +12588,67 @@ body.physical-phone-device #view-fitness-log .fitness-log-schedule-panel .fitnes
   text-align: center;
 }
 
+.worklog-report-status {
+  display: inline-grid;
+  min-width: 58px;
+  gap: 1px;
+  border: 1px solid rgba(55, 76, 67, 0.22);
+  border-radius: 999px;
+  padding: 3px 7px;
+  line-height: 1.05;
+}
+
+.worklog-report-status b {
+  font-size: 10px;
+  font-weight: 950;
+}
+
+.worklog-report-status small {
+  font-size: 7.5px;
+  font-weight: 800;
+  opacity: 0.72;
+}
+
+.worklog-report-status.is-complete {
+  border-color: rgba(20, 105, 68, 0.35);
+  background: #e4f4e8;
+  color: #0f6540;
+}
+
+.worklog-report-status.is-progress {
+  border-color: rgba(31, 94, 157, 0.35);
+  background: #e8f1fb;
+  color: #205f9a;
+}
+
+.worklog-report-status.is-postpone {
+  border-color: rgba(173, 111, 20, 0.38);
+  background: #fff2d8;
+  color: #8c590d;
+}
+
+.worklog-report-status.is-delegate {
+  border-color: rgba(100, 67, 145, 0.35);
+  background: #f0eafb;
+  color: #67438f;
+}
+
+.worklog-report-status.is-cancel {
+  border-color: rgba(157, 58, 58, 0.3);
+  background: #f8e8e8;
+  color: #9a3939;
+}
+
+.worklog-report-status.is-planned {
+  background: #f1f2ed;
+  color: #59645e;
+}
+
+.worklog-report-task-cancel td:nth-child(2) {
+  color: #8a6666;
+  text-decoration: line-through;
+}
+
 .worklog-report-bottom-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -12666,7 +12732,8 @@ body.physical-phone-device #view-fitness-log .fitness-log-schedule-panel .fitnes
     inset: auto 10px max(10px, env(safe-area-inset-bottom));
     left: 10px;
     width: auto;
-    max-height: min(91dvh, 820px);
+    height: min(94dvh, 1000px);
+    max-height: min(94dvh, 1000px);
     transform: translateY(12px);
   }
 

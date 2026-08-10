@@ -69,10 +69,10 @@ const priorityOptions = [
   ["C", "C"],
   ["?", "?"],
 ];
-const taskPriorityOptions = ["?", "A", "B", "C", "위임", "연기", "취소"];
+const taskPriorityOptions = ["?", "A", "B", "C", "진행중", "위임", "연기", "취소"];
 const scheduleTypeCatalog = {
   fitness: ["유료PT", "무료PT", "고객/상담", "회원관리", "SNS 홍보", "마케팅활동", "영업/홍보", "시설/청결", "행정/정산", "오픈/마감", "휴게"],
-  finance: ["회계/장부", "자금/이체", "세무/신고", "급여/노무", "증빙/정산", "계약/문서", "보고/결재", "은행/기관", "휴게"],
+  finance: ["입금/수납", "지급/출납", "자금계획", "은행/대출", "매입/매출", "채권/채무", "회계/전표", "결산/마감", "예산/손익", "세무/신고", "급여/4대보험", "증빙/법인카드", "계약/문서", "보고/결재", "휴게"],
   project: ["고객/상담", "견적/계약", "설계/디자인", "발주/구매", "시공/현장", "품질/하자", "영업/홍보", "행정/정산", "휴게"],
   shared: ["입주/상담", "계약/수납", "공간/시설", "청소/점검", "고객/민원", "홍보/영업", "행정/보고", "오픈/마감", "휴게"],
   construction: ["공정/시공", "안전/점검", "품질/하자", "자재/발주", "인력/장비", "도면/설계", "기성/정산", "대관/보고", "휴게"],
@@ -86,6 +86,7 @@ const taskStatusGuideLabels = {
   "진행중": "진행중",
   "위임": "위임",
   "연기": "연기",
+  "취소": "취소",
   "미완료": "해제",
 };
 const permissionKeys = [
@@ -12080,7 +12081,7 @@ function getWorklogTaskStatusClass(task) {
 
 function renderTaskMetaControl(task) {
   const selectedValue = getPriorityValue(task);
-  const actionClass = ["위임", "연기", "취소"].includes(selectedValue) ? " is-action" : "";
+  const actionClass = ["진행중", "위임", "연기", "취소"].includes(selectedValue) ? " is-action" : "";
   return `
     <select class="priority-select${actionClass}" aria-label="중요도 및 처리">
       ${taskPriorityOptions.map((value) => `<option value="${escapeAttr(value)}" ${selectedValue === value ? "selected" : ""}>${value}</option>`).join("")}
@@ -12136,12 +12137,12 @@ function bindTaskMetaControl(row, ref, currentLog, viewName = activeView) {
 }
 
 function getPriorityValue(task) {
-  if (["취소", "위임", "연기"].includes(task.status)) return task.status;
+  if (["진행중", "취소", "위임", "연기"].includes(task.status)) return task.status;
   return task.priority || "?";
 }
 
 function updateWorklogTaskPriority(task, value) {
-  if (["취소", "위임", "연기"].includes(value)) {
+  if (["진행중", "취소", "위임", "연기"].includes(value)) {
     task.status = value;
     task.done = false;
     if (!["?", "A", "B", "C"].includes(task.priority)) task.priority = "?";
@@ -12150,7 +12151,7 @@ function updateWorklogTaskPriority(task, value) {
     return;
   }
   task.priority = value;
-  if (["취소", "위임", "연기"].includes(task.status)) task.status = "미완료";
+  if (["진행중", "취소", "위임", "연기"].includes(task.status)) task.status = "미완료";
   task.delegate = "";
   task.postponeDate = "";
 }
@@ -12240,12 +12241,20 @@ function getScheduleTypeOptionsForLog(log = {}) {
 
 function inferScheduleType(text = "", options = allScheduleTypeOptions) {
   const choose = (type, fallback = "업무") => options.includes(type) ? type : fallback;
-  if (/식사|휴식|대기/.test(text)) return choose("휴게");
-  if (/분개|전표|원장|장부|회계/.test(text)) return choose("회계/장부", choose("행정/정산"));
-  if (/이체|자금|예금|대출|현금|은행/.test(text)) return choose("자금/이체", choose("은행/기관", choose("행정/정산")));
-  if (/증빙|영수증|세금계산서|정산/.test(text)) return choose("증빙/정산", choose("기성/정산", choose("행정/정산")));
+  if (/중식|점심|석식|저녁식사|조식|아침식사|식사|휴게시간|휴식|브레이크|대기/.test(text)) return choose("휴게");
+  if (/급여|상여|퇴직금|4대보험|국민연금|건강보험|고용보험|산재보험|노무|근로계약/.test(text)) return choose("급여/4대보험", choose("급여/노무", choose("행정/정산")));
   if (/세금|세무|부가세|원천세|법인세|신고/.test(text)) return choose("세무/신고", choose("행정/정산"));
-  if (/급여|4대보험|노무|근로계약/.test(text)) return choose("급여/노무", choose("행정/정산"));
+  if (/결산|월마감|연마감|마감결산|시산표|재무제표/.test(text)) return choose("결산/마감", choose("회계/장부", choose("행정/정산")));
+  if (/예산|실적|손익|원가|수익성/.test(text)) return choose("예산/손익", choose("회계/장부", choose("행정/정산")));
+  if (/미수|미지급|채권|채무|외상|연체|회수/.test(text)) return choose("채권/채무", choose("자금/이체", choose("행정/정산")));
+  if (/매입|매출|매출전표|매입전표/.test(text)) return choose("매입/매출", choose("회계/장부", choose("행정/정산")));
+  if (/법인카드|카드내역|카드사용|영수증|증빙|지출결의|세금계산서/.test(text)) return choose("증빙/법인카드", choose("증빙/정산", choose("행정/정산")));
+  if (/자금계획|자금일보|자금수지|현금흐름|자금현황|자금예측/.test(text)) return choose("자금계획", choose("자금/이체", choose("행정/정산")));
+  if (/입금|수납|매출대금|예수금|입출내역/.test(text)) return choose("입금/수납", choose("자금/이체", choose("행정/정산")));
+  if (/지급|출금|이체|송금|출납|대금지급/.test(text)) return choose("지급/출납", choose("자금/이체", choose("행정/정산")));
+  if (/대출|이자|예금|은행|금융기관/.test(text)) return choose("은행/대출", choose("은행/기관", choose("자금/이체", choose("행정/정산"))));
+  if (/분개|전표|계정과목|원장|장부|회계/.test(text)) return choose("회계/전표", choose("회계/장부", choose("행정/정산")));
+  if (/정산/.test(text)) return choose("증빙/법인카드", choose("증빙/정산", choose("기성/정산", choose("행정/정산"))));
   if (/무료|체험|서비스|무상/.test(text) && /pt|p\/t|피티|수업|운동지도/i.test(text)) return choose("무료PT");
   if (/유료|정규|pt|p\/t|피티|수업|운동지도/i.test(text)) return choose("유료PT");
   if (/견적|계약/.test(text)) return choose("견적/계약", choose("계약/수납", choose("계약/문서")));
@@ -12301,17 +12310,38 @@ function normalizeScheduleType(type = "업무", text = "") {
     정산: "행정/정산",
     인수인계: "행정/정산",
     오픈마감: "오픈/마감",
-    회계: "회계/장부",
-    자금: "자금/이체",
+    회계: "회계/전표",
+    자금: "자금계획",
     세무: "세무/신고",
-    급여: "급여/노무",
-    증빙: "증빙/정산",
+    급여: "급여/4대보험",
+    증빙: "증빙/법인카드",
     견적: "견적/계약",
     시공: "시공/현장",
     공정: "공정/시공",
     안전: "안전/점검",
+    "회계/장부": "회계/전표",
+    "자금/이체": "지급/출납",
+    "급여/노무": "급여/4대보험",
+    "증빙/정산": "증빙/법인카드",
+    "은행/기관": "은행/대출",
   };
   return aliases[type] || inferScheduleType(text);
+}
+
+function getScheduleEntryReportType(entry = {}, employee = getSelectedEmployee()) {
+  const options = scheduleTypeCatalog[getScheduleTypeCatalogKey(employee)] || scheduleTypeCatalog.corporate;
+  const universalReportTypes = new Set([
+    "휴게", "입금/수납", "지급/출납", "자금계획", "은행/대출", "매입/매출", "채권/채무",
+    "회계/전표", "결산/마감", "예산/손익", "세무/신고", "급여/4대보험", "증빙/법인카드",
+  ]);
+  const types = normalizeScheduleEntryItems(entry)
+    .map((item) => String(item.text || "").trim())
+    .filter(Boolean)
+    .map((text) => {
+      const universalType = inferScheduleType(text, allScheduleTypeOptions);
+      return universalReportTypes.has(universalType) ? universalType : inferScheduleType(text, options);
+    });
+  return [...new Set(types)].join(" · ") || "업무";
 }
 
 function normalizeScheduleEntryItems(entry) {
@@ -18693,7 +18723,11 @@ function summarizeFitnessReportRows(logEntries = [], dateKey = getActiveDateKey(
 function getFitnessReportTaskRows(logEntries = [], { limit = 3, minRows = 3 } = {}) {
   const tasks = logEntries.flatMap(({ log }) => getWorklogTaskRefs(log).map((ref) => ref.task).filter(isActiveTask));
   const selected = Number.isFinite(limit) ? tasks.slice(0, limit) : tasks;
-  const rows = selected.map((task) => `${task.priority || "?"} ${task.text || ""}${task.done || task.status === "완료" ? " (완료)" : ""}`.trim());
+  const rows = selected.map((task) => {
+    const status = getWorklogReportTaskStatusMeta(task);
+    const priority = task.priority === "?" ? "일반" : task.priority || "일반";
+    return `${priority} ${task.text || ""} [${status.label}${status.detail ? ` · ${status.detail}` : ""}]`.trim();
+  });
   while (rows.length < minRows) rows.push("");
   return rows;
 }
@@ -18770,8 +18804,17 @@ function getFitnessReportRecordRows(logEntries = [], context = {}) {
 }
 
 function getWorklogReportTaskStatus(task = {}) {
-  if (task.done || task.status === "완료") return "완료";
-  return task.status || "예정";
+  return getWorklogReportTaskStatusMeta(task).label;
+}
+
+function getWorklogReportTaskStatusMeta(task = {}) {
+  const status = task.done ? "완료" : normalizeWorklogTaskStatus(task.status || "예정");
+  if (status === "완료") return { key: "complete", label: "완료", detail: "처리 완료" };
+  if (status === "진행중") return { key: "progress", label: "진행중", detail: "실행 중" };
+  if (status === "위임") return { key: "delegate", label: "위임", detail: task.delegate ? `담당 ${task.delegate}` : "담당자 확인" };
+  if (status === "연기") return { key: "postpone", label: "연기", detail: task.postponeDate ? formatShortDate(task.postponeDate) : "재일정 필요" };
+  if (status === "취소") return { key: "cancel", label: "취소", detail: "처리 종료" };
+  return { key: "planned", label: "예정", detail: "미완료" };
 }
 
 function getWorklogReportBusinessArea(employee = {}) {
@@ -18905,8 +18948,20 @@ function buildWorklogDailyReportModel(options = {}) {
     weather,
     weatherText: formatWeatherSummary(weather, { compact: true }),
     clock: `${log.clockIn || "미기록"} ~ ${log.clockOut || "미기록"}`,
-    tasks: tasks.map((task) => ({ priority: task.priority || "?", text: task.text, status: getWorklogReportTaskStatus(task) })),
-    schedule: schedule.map((entry) => ({ time: entry.time || "--:--", text: getScheduleEntryText(entry), type: inferScheduleType(getScheduleEntryText(entry)) })),
+    tasks: tasks.map((task) => {
+      const statusMeta = getWorklogReportTaskStatusMeta(task);
+      return {
+        priority: task.priority === "?" ? "일반" : task.priority || "일반",
+        text: task.text,
+        status: statusMeta.label,
+        ...statusMeta,
+      };
+    }),
+    schedule: schedule.map((entry) => ({
+      time: entry.time || "--:--",
+      text: getScheduleEntryText(entry),
+      type: getScheduleEntryReportType(entry, employee),
+    })),
     reportText,
     memoText,
     issueRows: [
@@ -18959,7 +19014,7 @@ function renderWorklogDailyReportTemplate(model = buildWorklogDailyReportModel()
       </section>
       <section class="worklog-report-table-section">
         <h3>1. 업무 진행 현황</h3>
-        <table><thead><tr><th>우선</th><th>업무내용</th><th>상태</th></tr></thead><tbody>${taskRows.map((task) => `<tr><td>${escapeHtml(task.priority)}</td><td>${escapeHtml(task.text)}</td><td>${escapeHtml(task.status)}</td></tr>`).join("")}</tbody></table>
+        <table><thead><tr><th>우선</th><th>업무내용</th><th>상태</th></tr></thead><tbody>${taskRows.map((task) => `<tr class="worklog-report-task-${escapeAttr(task.key || "planned")}"><td>${escapeHtml(task.priority)}</td><td>${escapeHtml(task.text)}</td><td><span class="worklog-report-status is-${escapeAttr(task.key || "planned")}"><b>${escapeHtml(task.label || task.status || "예정")}</b><small>${escapeHtml(task.detail || "")}</small></span></td></tr>`).join("")}</tbody></table>
       </section>
       <section class="worklog-report-table-section">
         <h3>2. 시간대별 실행 내역</h3>
@@ -18984,10 +19039,14 @@ function renderWorklogDailyReportTemplate(model = buildWorklogDailyReportModel()
 function renderOpenWorklogReport() {
   const preview = document.getElementById("worklogReportPreview");
   if (!preview) return;
+  const previousScrollTop = preview.scrollTop;
   const model = buildWorklogDailyReportModel();
   preview.innerHTML = renderWorklogDailyReportTemplate(model);
   setWorklogReportAiStatus(model.aiCoaching ? "cached" : "ready");
   fitWorklogReportPreview();
+  requestAnimationFrame(() => {
+    preview.scrollTop = Math.min(previousScrollTop, Math.max(0, preview.scrollHeight - preview.clientHeight));
+  });
 }
 
 function setWorklogReportAiStatus(stateName = "ready") {
@@ -19074,11 +19133,20 @@ function fitWorklogReportPreview() {
   if (!preview || !page) return;
   preview.style.removeProperty("--worklog-report-scale");
   preview.style.removeProperty("height");
+  page.style.removeProperty("zoom");
+  page.style.removeProperty("transform");
   if (!window.matchMedia("(max-width: 760px)").matches) return;
   const pageWidth = 760;
-  const scale = Math.min(1, Math.max(0.4, (preview.clientWidth - 2) / pageWidth));
+  const previewStyle = getComputedStyle(preview);
+  const horizontalPadding = Number.parseFloat(previewStyle.paddingLeft || "0") + Number.parseFloat(previewStyle.paddingRight || "0");
+  const scale = Math.min(1, Math.max(0.3, (preview.clientWidth - horizontalPadding) / pageWidth));
   preview.style.setProperty("--worklog-report-scale", String(scale));
-  preview.style.height = `${Math.ceil(page.offsetHeight * scale) + 4}px`;
+  if (window.CSS?.supports?.("zoom", String(scale))) {
+    page.style.zoom = String(scale);
+    page.style.transform = "none";
+  } else {
+    preview.style.height = `${Math.ceil(page.offsetHeight * scale) + 4}px`;
+  }
 }
 
 function closeWorklogReportSheet() {
@@ -19115,16 +19183,36 @@ function getWorklogReportFileBase(model = buildWorklogDailyReportModel()) {
 }
 
 function getWorklogReportExportHeight(model = buildWorklogDailyReportModel()) {
-  const taskOverflow = Math.max(0, model.tasks.length - 8) * 34;
-  const scheduleOverflow = Math.max(0, model.schedule.length - 12) * 30;
-  return Math.max(1754, 1754 + taskOverflow + scheduleOverflow);
+  const estimateLines = (value, lineLength) => String(value || "").split("\n")
+    .reduce((sum, line) => sum + Math.max(1, Math.ceil(line.length / lineLength)), 0);
+  const taskOverflow = model.tasks.reduce((sum, task) => sum + Math.max(0, estimateLines(task.text, 72) - 1) * 26, 0)
+    + Math.max(0, model.tasks.length - 8) * 34;
+  const scheduleOverflow = model.schedule.reduce((sum, entry) => sum + Math.max(0, estimateLines(entry.text, 68) - 1) * 28, 0)
+    + Math.max(0, model.schedule.length - 12) * 30;
+  const narrativeOverflow = [model.reportText, model.memoText, ...(model.issueRows || []), ...(model.tomorrowRows || [])]
+    .reduce((sum, text) => sum + Math.max(0, estimateLines(text, 78) - 1) * 22, 0);
+  return Math.max(1754, 1754 + taskOverflow + scheduleOverflow + narrativeOverflow);
+}
+
+async function measureWorklogReportExportHeight(model = buildWorklogDailyReportModel()) {
+  const estimatedHeight = getWorklogReportExportHeight(model);
+  const host = document.createElement("div");
+  host.style.cssText = "position:fixed;left:-100000px;top:0;width:1240px;visibility:hidden;pointer-events:none;";
+  const shadow = host.attachShadow({ mode: "open" });
+  shadow.innerHTML = `<style>${getWorklogReportExportCss(estimatedHeight)}</style>${renderWorklogDailyReportTemplate(model)}`;
+  document.body.appendChild(host);
+  if (document.fonts?.ready) await document.fonts.ready;
+  const page = shadow.querySelector(".worklog-daily-report-page");
+  const measuredHeight = Math.ceil(Math.max(page?.scrollHeight || 0, page?.getBoundingClientRect().height || 0)) + 4;
+  host.remove();
+  return Math.max(estimatedHeight, measuredHeight);
 }
 
 function getWorklogReportExportCss(height = 1754) {
   return `
     * { box-sizing: border-box; }
     body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", "Noto Sans KR", sans-serif; color: #17211d; }
-    .worklog-daily-report-page { width: 1240px; min-height: ${height}px; padding: 54px; background: #fffefa; border: 2px solid #1d513f; }
+    .worklog-daily-report-page { width: 1240px; height: auto; min-height: ${height}px; overflow: visible; padding: 54px; background: #fffefa; border: 2px solid #1d513f; }
     .worklog-report-paper-header { display: grid; grid-template-columns: 1fr 330px; gap: 30px; align-items: end; padding-bottom: 26px; border-bottom: 5px solid #174c3a; }
     .worklog-report-paper-header small { color: #527064; font-size: 17px; font-weight: 800; letter-spacing: .08em; }
     .worklog-report-paper-header h2 { margin: 8px 0; color: #123d2f; font-size: 38px; line-height: 1.15; }
@@ -19150,6 +19238,16 @@ function getWorklogReportExportCss(height = 1754) {
     section h3 { margin: 20px 0 8px; color: #173f32; font-size: 20px; }
     .worklog-report-table-section table th:first-child, .worklog-report-table-section table td:first-child { width: 110px; text-align: center; }
     .worklog-report-table-section table th:last-child, .worklog-report-table-section table td:last-child { width: 150px; text-align: center; }
+    .worklog-report-status { display: inline-grid; min-width: 112px; gap: 2px; border: 2px solid #aebbb2; border-radius: 999px; padding: 6px 12px; line-height: 1.05; }
+    .worklog-report-status b { font-size: 16px; font-weight: 950; }
+    .worklog-report-status small { font-size: 11px; font-weight: 800; opacity: .72; }
+    .worklog-report-status.is-complete { border-color: #69a483; background: #e4f4e8; color: #0f6540; }
+    .worklog-report-status.is-progress { border-color: #76a4d0; background: #e8f1fb; color: #205f9a; }
+    .worklog-report-status.is-postpone { border-color: #d5a24c; background: #fff2d8; color: #8c590d; }
+    .worklog-report-status.is-delegate { border-color: #a188c3; background: #f0eafb; color: #67438f; }
+    .worklog-report-status.is-cancel { border-color: #cb9292; background: #f8e8e8; color: #9a3939; }
+    .worklog-report-status.is-planned { background: #f1f2ed; color: #59645e; }
+    .worklog-report-task-cancel td:nth-child(2) { color: #8a6666; text-decoration: line-through; }
     .worklog-report-bottom-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 12px; }
     .worklog-report-bottom-grid > div { min-height: 150px; padding: 14px 18px; border: 1px solid #afc0b4; background: #fafbf6; }
     .worklog-report-bottom-grid h3 { margin-top: 0; }
@@ -19168,7 +19266,7 @@ function getWorklogReportExportCss(height = 1754) {
 async function renderWorklogReportCanvas() {
   const width = 1240;
   const model = buildWorklogDailyReportModel();
-  const height = getWorklogReportExportHeight(model);
+  const height = await measureWorklogReportExportHeight(model);
   const html = `<div xmlns="http://www.w3.org/1999/xhtml"><style>${getWorklogReportExportCss(height)}</style>${renderWorklogDailyReportTemplate(model)}</div>`;
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}"><foreignObject width="${width}" height="${height}">${html}</foreignObject></svg>`;
   if (document.fonts?.ready) await document.fonts.ready;

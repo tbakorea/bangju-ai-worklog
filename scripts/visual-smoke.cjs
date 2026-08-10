@@ -1029,6 +1029,11 @@ async function checkOverviewCommandBoard(browser) {
       shared: options(shared),
       fitness: options(fitness),
       construction: scheduleTypeCatalog[getScheduleTypeCatalogKey(construction)],
+      mealInference: inferScheduleType("중식", options(finance)),
+      payrollInference: inferScheduleType("급여 지급과 4대보험 신고", options(finance)),
+      cashPlanInference: inferScheduleType("자금계획 정리", options(finance)),
+      receivableInference: inferScheduleType("미수금 회수와 채권 확인", options(finance)),
+      cardEvidenceInference: inferScheduleType("법인카드 영수증 증빙", options(finance)),
       fitnessInstagramInference: inferScheduleType("인스타 릴스 콘텐츠 제작", options(fitness)),
       fitnessMarketingInference: inferScheduleType("여름 이벤트 광고 캠페인", options(fitness)),
       fitnessMarketingCount: (() => {
@@ -1050,7 +1055,7 @@ async function checkOverviewCommandBoard(browser) {
         scheduledOff: buildAttendanceRecordReminder({ dateKey: "2026-08-10", workHours: "휴무", log: {}, now: new Date("2026-08-10T12:00:00+09:00") }),
         substitute: buildAttendanceRecordReminder({ dateKey: "2026-08-10", workHours: "휴무", log: { clockIn: "08:00" }, now: new Date("2026-08-10T16:01:00+09:00") })?.stage
       },
-      financeInference: inferScheduleType("세금계산서 증빙 정산", options(finance)),
+      financeInference: inferScheduleType("세금계산서 신고", options(finance)),
       projectInference: inferScheduleType("욕실 시공 현장 확인", options(project)),
       sharedInference: inferScheduleType("신규 입주 상담", options(shared)),
       constructionInference: inferScheduleType("현장 안전 점검", scheduleTypeCatalog.construction),
@@ -1061,12 +1066,17 @@ async function checkOverviewCommandBoard(browser) {
   if (scheduleTypeCatalog.financeKey !== "finance"
     || scheduleTypeCatalog.finance.includes("유료PT")
     || scheduleTypeCatalog.finance.includes("무료PT")
-    || !["회계/장부", "자금/이체", "세무/신고", "급여/노무", "증빙/정산"].every((item) => scheduleTypeCatalog.finance.includes(item))
+    || !["입금/수납", "지급/출납", "자금계획", "은행/대출", "매입/매출", "채권/채무", "회계/전표", "결산/마감", "예산/손익", "세무/신고", "급여/4대보험", "증빙/법인카드"].every((item) => scheduleTypeCatalog.finance.includes(item))
     || !["견적/계약", "설계/디자인", "시공/현장"].every((item) => scheduleTypeCatalog.project.includes(item))
     || !["입주/상담", "계약/수납", "공간/시설"].every((item) => scheduleTypeCatalog.shared.includes(item))
     || !["유료PT", "무료PT", "회원관리", "SNS 홍보", "마케팅활동"].every((item) => scheduleTypeCatalog.fitness.includes(item))
     || !["공정/시공", "안전/점검", "자재/발주"].every((item) => scheduleTypeCatalog.construction.includes(item))
-    || scheduleTypeCatalog.financeInference !== "증빙/정산"
+    || scheduleTypeCatalog.financeInference !== "세무/신고"
+    || scheduleTypeCatalog.mealInference !== "휴게"
+    || scheduleTypeCatalog.payrollInference !== "급여/4대보험"
+    || scheduleTypeCatalog.cashPlanInference !== "자금계획"
+    || scheduleTypeCatalog.receivableInference !== "채권/채무"
+    || scheduleTypeCatalog.cardEvidenceInference !== "증빙/법인카드"
     || scheduleTypeCatalog.projectInference !== "시공/현장"
     || scheduleTypeCatalog.sharedInference !== "입주/상담"
     || scheduleTypeCatalog.constructionInference !== "안전/점검"
@@ -2658,7 +2668,7 @@ async function checkPriorityCarryoverAndDateRules(browser) {
     document.body.appendChild(delegatedRow);
     const delegatedDecoration = getComputedStyle(delegatedRow.querySelector(".task-text-input")).textDecorationLine;
     const delegatedSelect = delegatedRow.querySelector(".priority-select");
-    const delegatedOptionCounts = ["위임", "연기"].map((value) => delegatedSelect.querySelectorAll('option[value="' + value + '"]').length);
+    const statusOptionCounts = ["진행중", "위임", "연기", "취소"].map((value) => delegatedSelect.querySelectorAll('option[value="' + value + '"]').length);
     const postponedPreviewTask = { ...sourceLog.tasks[6] };
     const postponedPreviewRow = renderWorklogTaskRow({
       task: postponedPreviewTask,
@@ -2686,6 +2696,10 @@ async function checkPriorityCarryoverAndDateRules(browser) {
     const delegatedFromMenu = { status: priorityActionTask.status, priority: priorityActionTask.priority };
     updateWorklogTaskPriority(priorityActionTask, "연기");
     const postponedFromMenu = { status: priorityActionTask.status, priority: priorityActionTask.priority };
+    updateWorklogTaskPriority(priorityActionTask, "진행중");
+    const progressingFromMenu = { status: priorityActionTask.status, priority: priorityActionTask.priority };
+    updateWorklogTaskPriority(priorityActionTask, "취소");
+    const canceledFromMenu = { status: priorityActionTask.status, priority: priorityActionTask.priority };
     updateWorklogTaskPriority(priorityActionTask, "B");
     const restoredPriority = { status: priorityActionTask.status, priority: priorityActionTask.priority };
     const cycleOnlyTask = { priority: "A", text: "체크 순환 검증", status: "미완료", done: false };
@@ -2710,9 +2724,11 @@ async function checkPriorityCarryoverAndDateRules(browser) {
       delegatedDecoration,
       delegatedSelectValue: delegatedSelect.value,
       delegatedHasInput: Boolean(delegatedRow.querySelector(".delegate-input")),
-      delegatedOptionCounts,
+      statusOptionCounts,
       delegatedFromMenu,
       postponedFromMenu,
+      progressingFromMenu,
+      canceledFromMenu,
       restoredPriority,
       cycleStatuses,
       cycleGuideLabels,
@@ -2752,17 +2768,21 @@ async function checkPriorityCarryoverAndDateRules(browser) {
   }
   if (parsed.delegatedSelectValue !== "위임"
     || !parsed.delegatedHasInput
-    || parsed.delegatedOptionCounts.join(",") !== "1,1"
+    || parsed.statusOptionCounts.join(",") !== "1,1,1,1"
     || parsed.delegatedFromMenu.status !== "위임"
     || parsed.delegatedFromMenu.priority !== "A"
     || parsed.postponedFromMenu.status !== "연기"
     || parsed.postponedFromMenu.priority !== "A"
+    || parsed.progressingFromMenu.status !== "진행중"
+    || parsed.progressingFromMenu.priority !== "A"
+    || parsed.canceledFromMenu.status !== "취소"
+    || parsed.canceledFromMenu.priority !== "A"
     || parsed.restoredPriority.status !== "미완료"
     || parsed.restoredPriority.priority !== "B"
     || parsed.cycleStatuses.some((status) => ["위임", "연기"].includes(status))
     || parsed.cycleStatuses.slice(0, 3).join(",") !== "완료,진행중,미완료"
     || parsed.cycleGuideLabels.join(",") !== "완료,진행중,해제") {
-    fail("delegation and postponement should exist once in the priority menu and never in checkbox cycling", metrics);
+    fail("all action statuses should exist once in the priority menu while checkbox cycling stays complete-progress-clear", metrics);
   }
   if (!parsed.within48Hours || parsed.at48HourDeadline || parsed.olderDate || !parsed.futureDate) {
     fail("worklog edit window should allow future dates and 48 hours after a past workday ends", metrics);
@@ -4329,8 +4349,14 @@ async function checkSiteWeatherAndGeneralDailyReport(browser) {
     log.clockOut = "18:00";
     log.tasks[0] = { priority: "A", text: "월 마감 자료 검토", status: "완료", done: true };
     log.tasks[1] = { priority: "B", text: "거래처 증빙 대조", status: "진행", done: false };
+    log.tasks[2] = { priority: "A", text: "세무 자료 위임", status: "위임", delegate: "재무 대리", done: false };
+    log.tasks[3] = { priority: "B", text: "은행 방문 연기", status: "연기", postponeDate: "2026-08-11", done: false };
+    log.tasks[4] = { priority: "C", text: "중복 결재 취소", status: "취소", done: false };
+    log.tasks[5] = { priority: "?", text: "명일 자금계획", status: "미완료", done: false };
     log.schedule[0] = { time: "08:00", text: "재무 자료 취합", status: "완료" };
     log.schedule[1] = { time: "09:00", text: "세금계산서 원장 대조", status: "진행" };
+    log.schedule[2] = { time: "12:00", text: "중식", status: "완료" };
+    log.schedule[3] = { time: "13:00", text: "급여 지급과 4대보험 신고", status: "완료" };
     log.report = "월 마감 자료 검토와 증빙 취합을 완료했습니다.";
     log.record = "회계 원장 실행기록을 저장했습니다.";
     log.memo = "명일 거래처 확인이 필요합니다.";
@@ -4438,13 +4464,41 @@ async function checkSiteWeatherAndGeneralDailyReport(browser) {
       reportAiRows: [...preview.querySelectorAll(".worklog-report-ai-coaching p")].map((row) => row.textContent?.replace(/\s+/g, " ").trim() || ""),
       reportAiStatus: document.getElementById("worklogReportAiStatus")?.textContent?.trim() || "",
       reportAiContext: buildWorklogDailyReportModel().aiContext,
+      reportTaskStatuses: [...preview.querySelectorAll(".worklog-report-status")].map((badge) => ({
+        label: badge.querySelector("b")?.textContent?.trim() || "",
+        text: badge.textContent?.replace(/\s+/g, " ").trim() || "",
+        classes: [...badge.classList],
+      })),
+      reportScheduleTypes: [...(preview.querySelectorAll(".worklog-report-table-section")[1]?.querySelectorAll("tbody tr") || [])].map((row) => row.lastElementChild?.textContent?.trim() || ""),
+      directReportTypes: {
+        meal: getScheduleEntryReportType({ time: "12:00", text: "중식" }, employee),
+        payroll: getScheduleEntryReportType({ time: "13:00", text: "급여 지급과 4대보험 신고" }, employee),
+      },
     };
   });
   const exportMetrics = await page.evaluate(async () => {
+    const model = buildWorklogDailyReportModel();
+    const longModel = {
+      ...model,
+      tasks: Array.from({ length: 18 }, (_, index) => ({
+        priority: index % 3 === 0 ? "A" : "B",
+        text: `TBA 장문 우선업무 ${index + 1} · 설계 검토와 현장 협의 및 발주 일정 확인`,
+        key: index % 2 === 0 ? "complete" : "planned",
+        label: index % 2 === 0 ? "완료" : "예정",
+        detail: index % 2 === 0 ? "처리 완료" : "미완료",
+      })),
+      schedule: Array.from({ length: 28 }, (_, index) => ({
+        time: `${String(8 + Math.floor(index / 2)).padStart(2, "0")}:${index % 2 ? "30" : "00"}`,
+        text: `TBA 스튜디오 장문 실행 내역 ${index + 1} · 자재 리스트와 도면 및 고객 협의사항 확인`,
+        type: index % 3 === 0 ? "설계/디자인" : "발주/구매",
+      })),
+      reportText: `${model.reportText} 장문 보고 내용 `.repeat(30),
+    };
+    const measuredLongHeight = await measureWorklogReportExportHeight(longModel);
     const canvas = await renderWorklogReportCanvas();
     const jpeg = await canvasToBlob(canvas, "image/jpeg", 0.94);
     const pdf = createPdfBlobFromCanvas(canvas);
-    return { width: canvas.width, height: canvas.height, jpegSize: jpeg.size, jpegType: jpeg.type, pdfSize: pdf.size, pdfType: pdf.type };
+    return { width: canvas.width, height: canvas.height, measuredLongHeight, jpegSize: jpeg.size, jpegType: jpeg.type, pdfSize: pdf.size, pdfType: pdf.type };
   });
   const dateWeatherMetrics = await page.evaluate(() => {
     const employee = getSelectedEmployee();
@@ -4493,6 +4547,13 @@ async function checkSiteWeatherAndGeneralDailyReport(browser) {
     || !metrics.reportAiStatus.includes("기본 코칭")) {
     fail("general worklog reports should include automatic business-specific AI coaching", JSON.stringify(metrics));
   }
+  const statusMap = Object.fromEntries(metrics.reportTaskStatuses.map((status) => [status.label, status.classes]));
+  if (!["완료", "진행중", "위임", "연기", "취소", "예정"].every((label) => statusMap[label]?.some((name) => name.startsWith("is-")))) {
+    fail("general reports should give every priority result a distinct status badge", JSON.stringify(metrics.reportTaskStatuses));
+  }
+  if (metrics.directReportTypes.meal !== "휴게" || metrics.directReportTypes.payroll !== "급여/4대보험") {
+    fail("report schedule classification should recognize meals and detailed finance work from raw text", JSON.stringify(metrics.directReportTypes));
+  }
   if (!metrics.todayUsesBeyondWeatherRange || metrics.weatherExpression !== "구름 조금 · 21°/29°" || !metrics.rainAdvice.includes("10~15분") || !metrics.freshWeather || metrics.staleWeather) {
     fail("weather should mirror Beyond Work range, advice, and two-hour refresh logic", JSON.stringify(metrics));
   }
@@ -4527,7 +4588,7 @@ async function checkSiteWeatherAndGeneralDailyReport(browser) {
   if (dateWeatherMetrics.future.todayText !== "오늘" || dateWeatherMetrics.future.todayDisabled || dateWeatherMetrics.future.worklogHistorical || dateWeatherMetrics.future.fitnessHistorical) {
     fail("future date should keep the Today return button and regular coaching", JSON.stringify(dateWeatherMetrics));
   }
-  if (exportMetrics.width !== 1240 || exportMetrics.height < 1754 || exportMetrics.jpegSize < 10000 || exportMetrics.jpegType !== "image/jpeg" || exportMetrics.pdfSize < 10000 || exportMetrics.pdfType !== "application/pdf") {
+  if (exportMetrics.width !== 1240 || exportMetrics.height < 1754 || exportMetrics.measuredLongHeight < 2600 || exportMetrics.jpegSize < 10000 || exportMetrics.jpegType !== "image/jpeg" || exportMetrics.pdfSize < 10000 || exportMetrics.pdfType !== "application/pdf") {
     fail("general worklog report should export valid JPEG and PDF artifacts", JSON.stringify(exportMetrics));
   }
   if (errors.length) fail("site weather and general report page errors", errors.join(" | "));
