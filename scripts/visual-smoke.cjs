@@ -4328,6 +4328,10 @@ async function checkSiteWeatherAndGeneralDailyReport(browser) {
         && !String(printWorklogDailyReport).includes("window.print")
         && !String(printFitnessReport).includes("window.print"),
       reportOwnerText: preview.querySelector(".worklog-report-owner")?.textContent?.replace(/\s+/g, " ").trim() || "",
+      reportAiTitle: preview.querySelector(".worklog-report-ai-coaching h3")?.textContent?.replace(/\s+/g, " ").trim() || "",
+      reportAiRows: [...preview.querySelectorAll(".worklog-report-ai-coaching p")].map((row) => row.textContent?.replace(/\s+/g, " ").trim() || ""),
+      reportAiStatus: document.getElementById("worklogReportAiStatus")?.textContent?.trim() || "",
+      reportAiContext: buildWorklogDailyReportModel().aiContext,
     };
   });
   const exportMetrics = await page.evaluate(async () => {
@@ -4369,12 +4373,19 @@ async function checkSiteWeatherAndGeneralDailyReport(browser) {
     };
     return { past, future };
   });
-  ["업무 진행 현황", "시간대별 실행 내역", "이슈·리스크·지원 요청", "명일 계획·인수인계", "Bangju Action Brief", "맑음", "월 마감 자료 검토", "거래처 증빙 대조", "재무 자료 취합", "세금계산서 원장 대조", "회계 원장 실행기록을 저장했습니다.", "명일 거래처 확인이 필요합니다."].forEach((label) => {
-    if (!metrics.previewText.includes(label)) fail("general daily report should include corporate and Bangju report sections", `${label} missing`);
+  ["업무 진행 현황", "시간대별 실행 내역", "이슈·리스크·지원 요청", "명일 계획·인수인계", "재무·자금관리 AI 코칭", "성과 하이라이트", "핵심 피드백", "다음 실행", "직무 기준", "Bangju Action Brief", "맑음", "월 마감 자료 검토", "거래처 증빙 대조", "재무 자료 취합", "세금계산서 원장 대조", "회계 원장 실행기록을 저장했습니다.", "명일 거래처 확인이 필요합니다."].forEach((label) => {
+    if (!metrics.previewText.includes(label)) fail("general daily report should include corporate and Bangju report sections", `${label} missing · AI=${metrics.reportAiTitle || "none"}`);
   });
   if (!metrics.sheetOpen || metrics.previewOverflow < 0) fail("general daily report sheet should open and remain scrollable", JSON.stringify(metrics));
   if (!metrics.archiveHasDesignedReport || !metrics.pastUsesArchive || !metrics.futureUsesForecast || !metrics.snapshotHasWeather || !metrics.fitnessReportPreserved || !metrics.exportButtons || !metrics.reportPrintIsolated || !metrics.reportOwnerText.includes("담당자")) {
     fail("site weather and general report data flow should remain connected without changing fitness report", JSON.stringify(metrics));
+  }
+  if (!metrics.reportAiTitle.includes("재무·자금관리")
+    || metrics.reportAiRows.length !== 4
+    || metrics.reportAiContext?.businessArea?.key !== "finance"
+    || !metrics.reportAiContext?.manual?.title?.includes("재무")
+    || !metrics.reportAiStatus.includes("기본 코칭")) {
+    fail("general worklog reports should include automatic business-specific AI coaching", JSON.stringify(metrics));
   }
   if (!metrics.todayUsesBeyondWeatherRange || metrics.weatherExpression !== "구름 조금 · 21°/29°" || !metrics.rainAdvice.includes("10~15분") || !metrics.freshWeather || metrics.staleWeather) {
     fail("weather should mirror Beyond Work range, advice, and two-hour refresh logic", JSON.stringify(metrics));

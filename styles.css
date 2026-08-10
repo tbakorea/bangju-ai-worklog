@@ -12340,6 +12340,14 @@ body.physical-phone-device #view-fitness-log .fitness-log-schedule-panel .fitnes
   font-weight: 850;
 }
 
+.worklog-report-sheet > header .worklog-report-ai-status {
+  display: block;
+  margin-top: 2px;
+  color: #4f7063;
+  font-size: 10px;
+  font-weight: 850;
+}
+
 .worklog-report-sheet > header button,
 .worklog-report-sheet > footer button {
   min-height: 38px;
@@ -12592,6 +12600,40 @@ body.physical-phone-device #view-fitness-log .fitness-log-schedule-panel .fitnes
   border-bottom: 1px solid var(--hairline);
   padding: 7px 9px;
   font-size: 10.5px;
+  line-height: 1.35;
+  font-weight: 780;
+}
+
+.worklog-report-bottom-grid > .worklog-report-ai-coaching {
+  grid-column: 1 / -1;
+  min-height: 0;
+  background: rgba(237, 244, 224, 0.45);
+}
+
+.worklog-report-ai-coaching > div {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.worklog-report-ai-coaching p {
+  display: grid;
+  grid-template-columns: 92px minmax(0, 1fr);
+  gap: 7px;
+  align-items: start;
+}
+
+.worklog-report-ai-coaching p:nth-child(odd) {
+  border-right: 1px solid var(--hairline);
+}
+
+.worklog-report-ai-coaching p b {
+  color: var(--fitness-green);
+  font-size: 9.5px;
+  font-weight: 950;
+}
+
+.worklog-report-ai-coaching p span {
+  font-size: 10px;
   line-height: 1.35;
   font-weight: 780;
 }

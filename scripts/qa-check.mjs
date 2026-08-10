@@ -45,6 +45,12 @@ check(
     && css.includes(".fitness-paper-warning-banner")
 );
 check(
+  "fitness report uses a polished achievement coaching label",
+  js.includes('["성과 하이라이트", model.aiCoaching.praise]')
+    && js.includes('["성과 하이라이트", praise]')
+    && !js.includes('["칭찬", model.aiCoaching.praise]')
+);
+check(
   "representative weather addresses are shared with every authenticated workplace",
   js.includes("function mergeSharedSiteWeatherSettings")
     && js.includes('.from("site_weather_settings")')
@@ -164,6 +170,21 @@ check(
     && /async function shareWorklogDailyReport\(\)/.test(js)
     && /function printWorklogDailyReport\(\)/.test(js),
   "non-fitness daily reports need PNG, PDF, share, and print actions"
+);
+
+check(
+  "general worklog reports receive automatic business-specific AI coaching",
+  html.includes('id="worklogReportAiStatus"')
+    && js.includes("function getWorklogReportBusinessArea")
+    && js.includes("function buildWorklogReportAiContext")
+    && js.includes("function getWorklogReportCoachingRows")
+    && js.includes("function requestWorklogReportAiCoaching")
+    && js.includes('requestWorklogReportAiCoaching(model, { silent: true })')
+    && js.includes('class="worklog-report-ai-coaching"')
+    && ["finance", "shared", "tba", "project", "operations"].every((area) => js.includes(`key: "${area}"`))
+    && fitnessCoachApi.includes("방주그룹 각 사업장의 실무를 이해하는 한국어 업무 코치")
+    && fitnessCoachApi.includes('name: "bangju_worklog_coaching"'),
+  "every non-fitness report should analyze its workplace, role, manual, and daily records when opened"
 );
 
 check(

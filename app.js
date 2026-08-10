@@ -847,6 +847,9 @@ let fitnessScheduleEditorState = null;
 let activeFitnessReportAiKey = "";
 let fitnessReportAiRequestId = 0;
 const fitnessReportAiAttempted = new Set();
+let activeWorklogReportAiKey = "";
+let worklogReportAiRequestId = 0;
+const worklogReportAiAttempted = new Set();
 const dailyEditingState = {
   focused: false,
   composing: false,
@@ -18708,6 +18711,102 @@ function getWorklogReportTaskStatus(task = {}) {
   return task.status || "예정";
 }
 
+function getWorklogReportBusinessArea(employee = {}) {
+  const source = `${employee.org || ""} ${employee.workplace || ""} ${employee.role || ""} ${employee.primaryWork || ""}`;
+  if (/방주|재무|자금|회계|세무|정산/.test(source)) return { key: "finance", label: "재무·자금관리", focus: "금액·증빙·마감·지급위험" };
+  if (/공유|워크베이스|워크박스|창고|오피스|workbase|workbox/i.test(source)) return { key: "shared", label: "공유사업 운영", focus: "공실·계약·미수·시설·고객응대" };
+  if (/TBA|티비에이|인월|욕실|바스|bath|쇼룸/i.test(source)) return { key: "tba", label: "TBA·제품사업", focus: "제품·현장·견적·납기·하자위험" };
+  if (/인테리어|시공|공사|현장|건설/.test(source)) return { key: "project", label: "현장·프로젝트", focus: "공정·품질·안전·변경·정산" };
+  return { key: "operations", label: "사업장 운영", focus: "완료근거·일정·이슈·후속조치" };
+}
+
+function buildWorklogReportAiContext(model = {}) {
+  const employee = model.employee || {};
+  const businessArea = getWorklogReportBusinessArea(employee);
+  const manual = getManualTemplateForEmployee(employee);
+  const assignedMission = getAssignedMissionForEmployee(employee);
+  const clean = (value, max = 240) => sanitizeFitnessCoachText(value).slice(0, max);
+  const scheduleTypes = model.schedule.reduce((summary, entry) => {
+    const type = clean(entry.type || "업무", 40);
+    summary[type] = (summary[type] || 0) + 1;
+    return summary;
+  }, {});
+  return {
+    dateKey: model.dateKey,
+    reportType: "사업장 개인 일일 업무보고",
+    businessArea,
+    employee: {
+      name: clean(model.writer, 60),
+      organization: clean(employee.org, 100),
+      workplace: clean(model.workplace, 100),
+      role: clean(model.role, 80),
+      primaryWork: clean(employee.primaryWork, 180),
+    },
+    attendance: clean(model.clock, 80),
+    weather: clean(model.weatherText, 120),
+    taskSummary: {
+      total: model.taskCount,
+      completed: model.completedCount,
+      completionRate: model.completionRate,
+      items: model.tasks.map((task) => ({
+        text: clean(task.text),
+        priority: clean(task.priority, 20),
+        status: clean(task.status, 30),
+      })).filter((task) => task.text).slice(0, 18),
+    },
+    scheduleSummary: {
+      total: model.schedule.length,
+      types: scheduleTypes,
+      items: model.schedule.map((entry) => ({
+        time: clean(entry.time, 20),
+        type: clean(entry.type, 40),
+        text: clean(entry.text),
+      })).filter((entry) => entry.text).slice(0, 18),
+    },
+    reportNotes: [model.reportText, model.memoText].map((item) => clean(item, 700)).filter(Boolean),
+    issues: model.issueRows.map((item) => clean(item)).filter(Boolean).slice(0, 5),
+    nextActions: model.tomorrowRows.map((item) => clean(item)).filter(Boolean).slice(0, 5),
+    assignedMission: assignedMission?.visible ? clean(assignedMission.text, 300) : "",
+    manual: {
+      title: manual.title,
+      guidelines: String(manual.text || "").split("\n").map((item) => clean(item, 260)).filter(Boolean).slice(0, 8),
+    },
+  };
+}
+
+function getWorklogReportCoachingRows(model = {}) {
+  if (model.aiCoaching) {
+    return [
+      ["성과 하이라이트", model.aiCoaching.praise],
+      ["핵심 피드백", model.aiCoaching.feedback],
+      ["다음 실행", model.aiCoaching.nextAction],
+      ["직무 기준", model.aiCoaching.manualReminder],
+    ];
+  }
+  const area = model.businessArea || getWorklogReportBusinessArea(model.employee);
+  const completedText = model.completedCount
+    ? `우선업무 ${model.completedCount}건을 완료하고 실행 근거 ${model.evidenceCount}건을 남겼습니다.`
+    : model.evidenceCount
+      ? `시간별 기록과 업무보고 등 실행 근거 ${model.evidenceCount}건을 남겼습니다.`
+      : "업무보고서를 열어 오늘의 업무 흐름을 점검했습니다.";
+  const feedbackByArea = {
+    finance: "금액, 증빙, 처리기한과 대표 확인이 필요한 지급위험을 한 문장으로 연결해 기록하세요.",
+    shared: "공실·계약·미수·시설·고객응대 중 오늘 변동이 있었던 항목의 결과를 수치로 남기세요.",
+    tba: "제품·현장·견적 업무는 변경사항, 납기 영향, 사진 또는 확인 근거를 함께 남기세요.",
+    project: "공정·품질·안전 이슈는 담당자, 완료기한, 비용·일정 영향을 빠짐없이 연결하세요.",
+    operations: "완료한 업무의 결과와 미완료 업무의 후속 담당자·기한을 한 줄씩 보완하세요.",
+  };
+  const nextAction = model.tomorrowRows?.find((row) => row && row !== "명일 계획을 입력해주세요.")
+    || `다음 근무 시작 전에 ${area.focus.split("·")[0]} 관련 최우선 업무 1건을 확정하세요.`;
+  const manualLine = model.aiContext?.manual?.guidelines?.[0] || "직무 매뉴얼의 핵심 기준을 다음 근무 전에 확인하세요.";
+  return [
+    ["성과 하이라이트", completedText],
+    ["핵심 피드백", feedbackByArea[area.key] || feedbackByArea.operations],
+    ["다음 실행", nextAction],
+    ["직무 기준", manualLine],
+  ];
+}
+
 function buildWorklogDailyReportModel(options = {}) {
   const employee = options.employee || getSelectedEmployee();
   const dateKey = options.dateKey || getActiveDateKey();
@@ -18730,7 +18829,7 @@ function buildWorklogDailyReportModel(options = {}) {
     ...tomorrowTasks.map((task) => task.text),
     ...tomorrowSchedule.map((entry) => `${entry.time || ""} ${getScheduleEntryText(entry)}`.trim()),
   ].filter(Boolean).slice(0, 5);
-  return {
+  const model = {
     title: `< ${employee.org || "Bangju Group"} 일일 업무보고서 >`,
     dateKey,
     dateLabel: formatKoreanDate(dateKey),
@@ -18758,6 +18857,14 @@ function buildWorklogDailyReportModel(options = {}) {
     completionRate,
     evidenceCount: schedule.length + (reportText ? 1 : 0),
   };
+  model.businessArea = getWorklogReportBusinessArea(employee);
+  model.aiContext = buildWorklogReportAiContext(model);
+  model.aiKey = `worklog:${employee.id || getEmployeeWorklogId(employee)}:${dateKey}:${getFitnessReportAiFingerprint(model.aiContext)}`;
+  const aiCacheEntry = getFitnessAiCoachingCache()[model.aiKey];
+  model.aiCoaching = aiCacheEntry?.coaching || null;
+  model.aiCoachModel = aiCacheEntry?.model || "";
+  model.aiCoachGeneratedAt = aiCacheEntry?.generatedAt || "";
+  return model;
 }
 
 function renderWorklogDailyReportTemplate(model = buildWorklogDailyReportModel()) {
@@ -18798,6 +18905,10 @@ function renderWorklogDailyReportTemplate(model = buildWorklogDailyReportModel()
       <section class="worklog-report-bottom-grid">
         <div><h3>3. 이슈·리스크·지원 요청</h3>${model.issueRows.map((row) => `<p>• ${escapeHtml(row)}</p>`).join("")}</div>
         <div><h3>4. 명일 계획·인수인계</h3>${model.tomorrowRows.map((row) => `<p>• ${escapeHtml(row)}</p>`).join("")}</div>
+        <div class="worklog-report-ai-coaching">
+          <h3>5. ${escapeHtml(model.businessArea.label)} AI 코칭 · ${model.aiCoaching ? "ChatGPT" : "직무 맞춤 기본 코칭"}</h3>
+          <div>${getWorklogReportCoachingRows(model).map(([title, text]) => `<p><b>${escapeHtml(title)}</b><span>${escapeHtml(text)}</span></p>`).join("")}</div>
+        </div>
       </section>
       <footer class="worklog-report-action-brief">
         <b>Bangju Action Brief</b>
@@ -18810,8 +18921,69 @@ function renderWorklogDailyReportTemplate(model = buildWorklogDailyReportModel()
 function renderOpenWorklogReport() {
   const preview = document.getElementById("worklogReportPreview");
   if (!preview) return;
-  preview.innerHTML = renderWorklogDailyReportTemplate(buildWorklogDailyReportModel());
+  const model = buildWorklogDailyReportModel();
+  preview.innerHTML = renderWorklogDailyReportTemplate(model);
+  setWorklogReportAiStatus(model.aiCoaching ? "cached" : "ready");
   fitWorklogReportPreview();
+}
+
+function setWorklogReportAiStatus(stateName = "ready") {
+  const status = document.getElementById("worklogReportAiStatus");
+  if (!status) return;
+  const labels = {
+    ready: "직무 맞춤 AI 코칭 자동 반영",
+    cached: "직무 맞춤 AI 코칭 반영 완료",
+    loading: "사업장·직무·업무기록 분석 중…",
+    unavailable: "직무 맞춤 기본 코칭 반영",
+  };
+  status.textContent = labels[stateName] || labels.ready;
+  status.dataset.aiState = stateName;
+}
+
+async function requestWorklogReportAiCoaching(model = buildWorklogDailyReportModel(), { force = false, silent = false } = {}) {
+  if (!model?.aiKey || !model?.aiContext) return null;
+  activeWorklogReportAiKey = model.aiKey;
+  if (model.aiCoaching && !force) {
+    setWorklogReportAiStatus("cached");
+    return model.aiCoaching;
+  }
+  if (!force && worklogReportAiAttempted.has(model.aiKey)) return null;
+  const accessToken = authState.session?.access_token;
+  if (!accessToken) {
+    setWorklogReportAiStatus("unavailable");
+    if (!silent) showAppToast("로그인 후 실제 AI 코칭을 사용할 수 있습니다");
+    return null;
+  }
+
+  worklogReportAiAttempted.add(model.aiKey);
+  const requestId = ++worklogReportAiRequestId;
+  setWorklogReportAiStatus("loading");
+  try {
+    const coachResponse = await fetch("/api/fitness-coach", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ context: model.aiContext }),
+    });
+    const result = await coachResponse.json().catch(() => ({}));
+    if (!coachResponse.ok || !result.coaching) throw new Error(result.error || "AI 코칭을 생성하지 못했습니다.");
+    setFitnessAiCoachingCache(model.aiKey, {
+      coaching: result.coaching,
+      model: result.model || "OpenAI",
+      generatedAt: result.generatedAt || new Date().toISOString(),
+    });
+    if (requestId === worklogReportAiRequestId && activeWorklogReportAiKey === model.aiKey) {
+      renderOpenWorklogReport();
+      setWorklogReportAiStatus("cached");
+    }
+    return result.coaching;
+  } catch (error) {
+    if (requestId === worklogReportAiRequestId) setWorklogReportAiStatus("unavailable");
+    if (!silent) showAppToast(error.message || "직무 맞춤 기본 코칭으로 보고서를 유지합니다");
+    return null;
+  }
 }
 
 function openWorklogReportSheet() {
@@ -18819,13 +18991,17 @@ function openWorklogReportSheet() {
   const sheet = document.getElementById("worklogReportSheet");
   const subtitle = document.getElementById("worklogReportSubtitle");
   if (!backdrop || !sheet) return;
+  const model = buildWorklogDailyReportModel();
+  activeWorklogReportAiKey = model.aiKey;
   if (subtitle) subtitle.textContent = `${formatKoreanDate(getActiveDateKey())} · ${getEmployeeAdminLabel(getSelectedEmployee())}`;
-  renderOpenWorklogReport();
+  document.getElementById("worklogReportPreview").innerHTML = renderWorklogDailyReportTemplate(model);
+  setWorklogReportAiStatus(model.aiCoaching ? "cached" : "ready");
   backdrop.hidden = false;
   sheet.hidden = false;
   requestAnimationFrame(() => {
     sheet.classList.add("is-open");
     fitWorklogReportPreview();
+    requestWorklogReportAiCoaching(model, { silent: true });
   });
 }
 
@@ -18846,6 +19022,7 @@ function closeWorklogReportSheet() {
   const backdrop = document.getElementById("worklogReportBackdrop");
   const sheet = document.getElementById("worklogReportSheet");
   sheet?.classList.remove("is-open");
+  activeWorklogReportAiKey = "";
   window.setTimeout(() => {
     if (backdrop) backdrop.hidden = true;
     if (sheet) sheet.hidden = true;
@@ -18865,6 +19042,7 @@ function buildWorklogDailyReportLines(model = buildWorklogDailyReportModel()) {
     "", "[시간대별 실행 내역]", ...model.schedule.map((entry) => `- ${entry.time} ${entry.text} (${entry.type})`),
     "", "[이슈·리스크·지원 요청]", ...model.issueRows.map((row) => `- ${row}`),
     "", "[명일 계획·인수인계]", ...model.tomorrowRows.map((row) => `- ${row}`),
+    "", `[${model.businessArea.label} AI 코칭]`, ...getWorklogReportCoachingRows(model).map(([title, text]) => `- ${title}: ${text}`),
   ];
 }
 
@@ -18913,6 +19091,12 @@ function getWorklogReportExportCss(height = 1754) {
     .worklog-report-bottom-grid > div { min-height: 150px; padding: 14px 18px; border: 1px solid #afc0b4; background: #fafbf6; }
     .worklog-report-bottom-grid h3 { margin-top: 0; }
     .worklog-report-bottom-grid p { margin: 7px 0; font-size: 15px; line-height: 1.45; }
+    .worklog-report-bottom-grid > .worklog-report-ai-coaching { grid-column: 1 / -1; min-height: 0; padding: 0; background: #f2f6ed; }
+    .worklog-report-ai-coaching h3 { margin: 0; padding: 10px 14px; background: #174c3a; color: white; }
+    .worklog-report-ai-coaching > div { display: grid; grid-template-columns: 1fr 1fr; }
+    .worklog-report-ai-coaching p { display: grid; grid-template-columns: 150px 1fr; gap: 10px; margin: 0; padding: 10px 14px; border-bottom: 1px solid #c2cec5; }
+    .worklog-report-ai-coaching p:nth-child(odd) { border-right: 1px solid #c2cec5; }
+    .worklog-report-ai-coaching p b { color: #174c3a; font-weight: 900; }
     .worklog-report-action-brief { display: flex; gap: 18px; margin-top: 20px; padding: 15px 18px; background: #174c3a; color: white; font-size: 14px; line-height: 1.45; }
     .worklog-report-action-brief b { flex: 0 0 auto; color: #dcebdc; }
   `;
@@ -19159,7 +19343,7 @@ function getFitnessReportManualTemplate(employee = {}) {
 function getFitnessReportCoachingRows(model = {}) {
   if (model.aiCoaching) {
     return [
-      ["칭찬", model.aiCoaching.praise],
+      ["성과 하이라이트", model.aiCoaching.praise],
       ["피드백", model.aiCoaching.feedback],
       ["다음 행동", model.aiCoaching.nextAction],
       ["매뉴얼", model.aiCoaching.manualReminder],
@@ -19175,7 +19359,7 @@ function getFitnessReportCoachingRows(model = {}) {
   const fallback = model.coaching || [];
   const manualLine = model.aiContext?.manual?.guidelines?.[0] || "직급별 매뉴얼의 핵심 기준을 다음 근무 전에 확인해주세요.";
   return [
-    ["칭찬", praise],
+    ["성과 하이라이트", praise],
     ["피드백", fallback.find(([title]) => title === "우선업무")?.[1] || "업무 결과와 후속 조치를 한 줄 더 남겨주세요."],
     ["다음 행동", fallback.find(([title]) => title === "시간관리")?.[1] || "다음 근무의 첫 실행업무를 미리 정해주세요."],
     ["매뉴얼", manualLine],
