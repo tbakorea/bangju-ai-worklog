@@ -709,6 +709,8 @@ function createDagymDailyRecord(dateKey = todayKey) {
     importSource: "",
     importFileName: "",
     importedAt: "",
+    syncMode: "",
+    providerUpdatedAt: "",
     importWarnings: [],
     updatedAt: "",
     updatedBy: "",
@@ -10579,10 +10581,12 @@ function renderDagymOpsFields() {
     closeButton.textContent = record.status === "closed" ? "마감 해제" : "마감 확정";
   }
   const importButton = document.getElementById("dagymImportButton");
+  const syncButton = document.getElementById("dagymSyncButton");
   const fileButton = document.getElementById("dagymFileButton");
   const fileInput = document.getElementById("dagymFileInput");
   const clearButton = document.getElementById("dagymClearButton");
   if (importButton) importButton.disabled = !canManageDagymOperations();
+  if (syncButton && !syncButton.classList.contains("is-loading")) syncButton.disabled = !canManageDagymOperations();
   if (fileButton) fileButton.disabled = !canManageDagymOperations();
   if (fileInput) fileInput.disabled = !canManageDagymOperations();
   if (clearButton) clearButton.disabled = !canManageDagymOperations();
@@ -10591,7 +10595,8 @@ function renderDagymOpsFields() {
     const warnings = Array.isArray(record.importWarnings) ? record.importWarnings.filter(Boolean) : [];
     if (record.importedAt) {
       const time = new Date(record.importedAt).toLocaleString("ko-KR", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" });
-      importMeta.textContent = `${record.importFileName || "다짐 자료"} · ${time} 반영${warnings.length ? ` · 확인 ${warnings.length}건` : ""}`;
+      const sourceLabel = record.syncMode === "direct" ? "다짐 직접 동기화" : record.importFileName || "다짐 자료";
+      importMeta.textContent = `${sourceLabel} · ${time} 반영${warnings.length ? ` · 확인 ${warnings.length}건` : ""}`;
       importMeta.classList.toggle("has-warning", Boolean(warnings.length));
       importMeta.title = warnings.join("\n");
     } else {
@@ -11081,6 +11086,8 @@ function applyDagymImport(text = "", { source = "paste", fileName = "다짐 붙�
   record.importSource = source;
   record.importFileName = fileName;
   record.importedAt = new Date().toISOString();
+  record.syncMode = "manual";
+  record.providerUpdatedAt = "";
   record.importWarnings = parsed.warnings;
   touchDagymDailyRecord(record);
   saveState({ fastSave: true });
@@ -11088,6 +11095,64 @@ function applyDagymImport(text = "", { source = "paste", fileName = "다짐 붙�
   const count = Object.keys(parsed.metrics).length;
   showAppToast(count ? `다짐 자료 ${count}개 항목을 반영했습니다${parsed.warnings.length ? " · 확인 필요" : ""}` : "반영할 다짐 항목을 찾지 못했습니다");
   return count > 0;
+}
+
+async function syncDagymDirect() {
+  if (!canManageDagymOperations()) return false;
+  const accessToken = authState.session?.access_token;
+  if (!accessToken) {
+    showAppToast("로그인 후 다짐 직접 동기화를 사용할 수 있습니다");
+    return false;
+  }
+  const button = document.getElementById("dagymSyncButton");
+  if (button?.classList.contains("is-loading")) return false;
+  if (button) {
+    button.classList.add("is-loading");
+    button.disabled = true;
+    button.textContent = "동기화 중…";
+  }
+  try {
+    const dateKey = getActiveDateKey();
+    const syncResponse = await fetch("/api/dagym-sync", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ dateKey }),
+    });
+    const result = await syncResponse.json().catch(() => ({}));
+    if (!syncResponse.ok || !result.ok) throw new Error(result.next || result.error || "다짐 자료를 동기화하지 못했습니다.");
+    const metrics = result.metrics && typeof result.metrics === "object" ? result.metrics : {};
+    const record = getDagymOpsForDate(dateKey);
+    const allowedKeys = Object.keys(createDagymOps()).filter((key) => key !== "importText");
+    Object.entries(metrics).forEach(([key, value]) => {
+      if (allowedKeys.includes(key) && Number.isFinite(Number(value))) record[key] = String(Math.max(0, Number(value)));
+    });
+    const count = Object.keys(metrics).filter((key) => allowedKeys.includes(key)).length;
+    if (!count) throw new Error("다짐 응답에서 반영할 운영 지표를 찾지 못했습니다.");
+    record.importSource = "direct";
+    record.importFileName = "다짐 직접 동기화";
+    record.importedAt = result.syncedAt || new Date().toISOString();
+    record.syncMode = "direct";
+    record.providerUpdatedAt = result.syncedAt || "";
+    record.importWarnings = [];
+    touchDagymDailyRecord(record);
+    saveState({ fastSave: true });
+    renderFitnessCenterDaily();
+    showAppToast(`다짐 실적 ${count}개 항목을 직접 동기화했습니다`);
+    return true;
+  } catch (error) {
+    console.warn("Failed to sync Dagym report", error);
+    showAppToast(error.message || "다짐 직접 동기화에 실패했습니다", 4200);
+    return false;
+  } finally {
+    if (button) {
+      button.classList.remove("is-loading");
+      button.disabled = !canManageDagymOperations();
+      button.textContent = "다짐 직접 동기화";
+    }
+  }
 }
 
 function importDagymText() {
@@ -21819,6 +21884,7 @@ document.getElementById("dagymImportText")?.addEventListener("input", (event) =>
   saveState({ input: true });
 });
 document.getElementById("dagymImportButton")?.addEventListener("click", importDagymText);
+document.getElementById("dagymSyncButton")?.addEventListener("click", syncDagymDirect);
 document.getElementById("dagymFileButton")?.addEventListener("click", () => {
   if (!canManageDagymOperations()) return;
   document.getElementById("dagymFileInput")?.click();

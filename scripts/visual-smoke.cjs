@@ -5127,6 +5127,21 @@ async function checkFitnessRosterHoursAndCompactTotals(browser) {
 
 async function checkDagymDirectReportImport(browser) {
   const { page, errors } = await openPage(browser, { width: 390, height: 844 });
+  let directSyncRequest = null;
+  await page.route("**/api/dagym-sync", async (route) => {
+    directSyncRequest = route.request().postDataJSON();
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        ok: true,
+        provider: "dagym-manager",
+        dateKey: "2026-08-08",
+        syncedAt: "2026-08-08T12:30:00.000Z",
+        metrics: { visits: 132, newMembers: 5, renewals: 8, expiring: 10, ptBookings: 16, noShows: 1, lockerExpiring: 4, sales: 1380000 },
+      }),
+    });
+  });
   const result = await page.evaluate(() => {
     window.eval(`
       authState.user = { id: "fitness-import-qa", email: "pjhong0@naver.com" };
@@ -5171,6 +5186,31 @@ async function checkDagymDirectReportImport(browser) {
     || !result.meta.includes("dagym-daily-2026-08-08.csv")
     || result.actionOverflow > 2) {
     fail("DaGym report import should map daily metrics and fit the phone layout", JSON.stringify(result));
+  }
+  const directResult = await page.evaluate(async () => {
+    return window.eval(`(async () => {
+      authState.session = { access_token: "dagym-direct-sync-qa-token" };
+      const ok = await syncDagymDirect();
+      const record = state.dagymDaily["2026-08-08"];
+      return {
+        ok,
+        values: [record.visits, record.newMembers, record.renewals, record.expiring, record.ptBookings, record.noShows, record.lockerExpiring, record.sales],
+        source: record.importSource,
+        syncMode: record.syncMode,
+        providerUpdatedAt: record.providerUpdatedAt,
+        meta: document.getElementById("dagymImportMeta")?.textContent?.trim() || "",
+      };
+    })()`);
+  });
+  const expectedDirect = ["132", "5", "8", "10", "16", "1", "4", "1380000"];
+  if (!directResult.ok
+    || JSON.stringify(directResult.values) !== JSON.stringify(expectedDirect)
+    || directResult.source !== "direct"
+    || directResult.syncMode !== "direct"
+    || !directResult.providerUpdatedAt
+    || !directResult.meta.includes("다짐 직접 동기화")
+    || directSyncRequest?.dateKey !== "2026-08-08") {
+    fail("DaGym server sync should replace aggregate metrics without exposing member data", JSON.stringify({ directResult, directSyncRequest }));
   }
   if (errors.length) fail("DaGym direct import page errors", errors.join(" | "));
   await page.close();

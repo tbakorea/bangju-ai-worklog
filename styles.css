@@ -10485,9 +10485,15 @@ body.physical-phone-device .representative-analysis-body {
   font-weight: 950;
 }
 
+#dagymSyncButton,
 #dagymFileButton {
   background: var(--fitness-green);
   color: var(--nordic-sheet);
+}
+
+#dagymSyncButton.is-loading {
+  cursor: wait;
+  opacity: 0.72;
 }
 
 #dagymImportButton {

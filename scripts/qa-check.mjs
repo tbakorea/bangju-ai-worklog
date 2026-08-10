@@ -11,6 +11,7 @@ const css = read("styles.css");
 const schema = read("supabase/worklog_schema.sql");
 const backupApi = existsSync(join(root, "api/backup-mail.js")) ? read("api/backup-mail.js") : "";
 const fitnessCoachApi = existsSync(join(root, "api/fitness-coach.js")) ? read("api/fitness-coach.js") : "";
+const dagymSyncApi = existsSync(join(root, "api/dagym-sync.js")) ? read("api/dagym-sync.js") : "";
 const loginCardHtml = html.slice(html.indexOf('<section class="login-card"'), html.indexOf('<div class="auth-panel'));
 const failures = [];
 
@@ -32,6 +33,19 @@ const backupApiSyntax = backupApi ? spawnSync(process.execPath, ["--check", join
 check("backup mail api exists and parses", Boolean(backupApi) && backupApiSyntax.status === 0, backupApiSyntax?.stderr?.trim() || "api/backup-mail.js is missing");
 const fitnessCoachApiSyntax = fitnessCoachApi ? spawnSync(process.execPath, ["--check", join(root, "api/fitness-coach.js")], { encoding: "utf8" }) : null;
 check("fitness coach api exists and parses", Boolean(fitnessCoachApi) && fitnessCoachApiSyntax.status === 0, fitnessCoachApiSyntax?.stderr?.trim() || "api/fitness-coach.js is missing");
+const dagymSyncApiSyntax = dagymSyncApi ? spawnSync(process.execPath, ["--check", join(root, "api/dagym-sync.js")], { encoding: "utf8" }) : null;
+check("DaGym sync api exists and parses", Boolean(dagymSyncApi) && dagymSyncApiSyntax.status === 0, dagymSyncApiSyntax?.stderr?.trim() || "api/dagym-sync.js is missing");
+check(
+  "DaGym direct sync stays server-side and authenticated",
+  dagymSyncApi.includes("process.env.DAGYM_SYNC_TOKEN")
+    && dagymSyncApi.includes("process.env.DAGYM_SYNC_URL")
+    && dagymSyncApi.includes("/auth/v1/user")
+    && dagymSyncApi.includes('provider: "dagym-manager"')
+    && !js.includes("DAGYM_SYNC_TOKEN")
+    && html.includes('id="dagymSyncButton"')
+    && js.includes('fetch("/api/dagym-sync"'),
+  "provider credentials must remain in the server environment and the UI must keep a direct-sync control"
+);
 check("fitness coach keeps OpenAI key server-side", fitnessCoachApi.includes("process.env.OPENAI_API_KEY") && !js.includes("OPENAI_API_KEY"));
 check("fitness coach verifies signed-in user", fitnessCoachApi.includes("/auth/v1/user") && fitnessCoachApi.includes("Authorization"));
 check("fitness coach uses structured Responses output", fitnessCoachApi.includes("/v1/responses") && fitnessCoachApi.includes('type: "json_schema"'));
