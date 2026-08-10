@@ -13,7 +13,9 @@ const backupApi = existsSync(join(root, "api/backup-mail.js")) ? read("api/backu
 const fitnessCoachApi = existsSync(join(root, "api/fitness-coach.js")) ? read("api/fitness-coach.js") : "";
 const dagymSyncApi = existsSync(join(root, "api/dagym-sync.js")) ? read("api/dagym-sync.js") : "";
 const dagymNightlyApi = existsSync(join(root, "api/dagym-nightly-analysis.js")) ? read("api/dagym-nightly-analysis.js") : "";
-const vercelConfig = existsSync(join(root, "vercel.json")) ? read("vercel.json") : "";
+const dagymDatabaseCron = existsSync(join(root, "supabase/migrations/20260811170000_dagym_database_cron.sql"))
+  ? read("supabase/migrations/20260811170000_dagym_database_cron.sql")
+  : "";
 const loginCardHtml = html.slice(html.indexOf('<section class="login-card"'), html.indexOf('<div class="auth-panel'));
 const failures = [];
 
@@ -52,17 +54,16 @@ check(
 );
 check(
   "DaGym previous-day analysis runs at 01:00 KST and feeds coaching",
-  dagymNightlyApi.includes("process.env.CRON_SECRET")
-    && dagymNightlyApi.includes("process.env.SUPABASE_SERVICE_ROLE_KEY")
-    && dagymNightlyApi.includes('timeZone: "Asia/Seoul"')
-    && dagymNightlyApi.includes('rest/v1/dagym_daily_analyses')
-    && /"schedule":\s*"0 16 \* \* \*"/.test(vercelConfig)
+  dagymDatabaseCron.includes("create extension if not exists pg_cron")
+    && dagymDatabaseCron.includes("run_dagym_nightly_analysis")
+    && dagymDatabaseCron.includes("'0 16 * * *'")
+    && dagymDatabaseCron.includes("dagym-nightly-analysis")
     && schema.includes("create table if not exists public.dagym_daily_analyses")
     && js.includes("function ensureTodayDagymDailyAnalysis")
     && js.includes("function buildDagymDailyAnalysis")
     && js.includes("previousDayAnalysis")
     && fitnessCoachApi.includes("previousDayAnalysis"),
-  "nightly aggregate analysis must remain authenticated, persisted, and available to today's AI coaching"
+  "database cron must persist the previous-day analysis at 01:00 KST and feed today's AI coaching"
 );
 check("fitness coach keeps OpenAI key server-side", fitnessCoachApi.includes("process.env.OPENAI_API_KEY") && !js.includes("OPENAI_API_KEY"));
 check("fitness coach verifies signed-in user", fitnessCoachApi.includes("/auth/v1/user") && fitnessCoachApi.includes("Authorization"));

@@ -69,7 +69,7 @@ DAGYM_CENTER_ID=센터_식별자
 
 ## 매일 새벽 1시 전날 분석
 
-Vercel Cron이 매일 `16:00 UTC`(한국시간 다음 날 `01:00`)에 `/api/dagym-nightly-analysis`를 실행합니다.
+운영 데이터베이스의 `pg_cron`이 매일 `16:00 UTC`(한국시간 다음 날 `01:00`)에 `run_dagym_nightly_analysis()`를 실행합니다. 앱, 브라우저, 다짐 화면을 열어 둘 필요가 없으며 Vercel 로그인이나 배포 환경변수 상태에도 영향을 받지 않습니다.
 
 분석 순서는 다음과 같습니다.
 
@@ -79,13 +79,13 @@ Vercel Cron이 매일 `16:00 UTC`(한국시간 다음 날 `01:00`)에 `/api/dagy
 4. `dagym_daily_analyses`에 날짜별 결과를 한 건만 저장합니다.
 5. 오늘 AI 코칭, 센터 실행지침, 센터 운영보고서의 실제 ChatGPT 코칭 자료에 자동 반영합니다.
 
-Vercel Production 환경에 아래 값을 추가해야 합니다.
+데이터베이스에는 다음 마이그레이션을 순서대로 적용합니다.
 
 ```text
-CRON_SECRET=충분히_긴_임의의_비밀문자열
-SUPABASE_SERVICE_ROLE_KEY=Supabase_Project_Settings_API의_service_role_key
+supabase/migrations/20260811160000_dagym_nightly_analysis.sql
+supabase/migrations/20260811170000_dagym_database_cron.sql
 ```
 
-`SUPABASE_SERVICE_ROLE_KEY`는 서버 예약 함수에서만 사용하며 브라우저로 전달하지 않습니다. `supabase/migrations/20260811160000_dagym_nightly_analysis.sql`을 운영 DB에 적용한 뒤 배포합니다.
+예약 시각은 `0 16 * * *`이며 한국시간 기준 매일 새벽 1시입니다. 같은 날짜에 다시 실행해도 날짜별 한 건만 갱신하므로 결과가 중복되지 않습니다. `/api/dagym-nightly-analysis`는 운영자가 수동 재실행하거나 외부 예약 서비스를 붙일 때 사용할 수 있는 보조 경로로 유지합니다.
 
 새벽 배치가 일시 실패해도 앱은 오전 1시 이후 첫 로그인 때 동일한 전날 기준으로 로컬 보완 분석을 실행합니다. 전날 자료가 없으면 임의의 실적을 추정하지 않고 `전날 다짐자료 미확인`을 오늘 경영신호로 표시합니다.
