@@ -1292,11 +1292,56 @@ function normalizeEmployeeLogRows(log, dateKey = getActiveDateKey()) {
   });
 }
 
-function saveState(options = {}) {
+let deferredStateSaveTimer = null;
+let deferredInputRenderTimer = null;
+const deferredInputRenderJobs = new Map();
+
+function writeStateToLocalStorage() {
   recordActiveCorrectionAudits();
   normalizeProfilePlacementForAuth();
   markOwnedWorklogUpdated();
   localStorage.setItem(storageKey, JSON.stringify(state));
+}
+
+function flushDeferredStateSave({ write = true } = {}) {
+  if (!deferredStateSaveTimer) return false;
+  window.clearTimeout(deferredStateSaveTimer);
+  deferredStateSaveTimer = null;
+  if (write) writeStateToLocalStorage();
+  return true;
+}
+
+function scheduleDeferredStateSave(delay = 180) {
+  window.clearTimeout(deferredStateSaveTimer);
+  deferredStateSaveTimer = window.setTimeout(() => {
+    deferredStateSaveTimer = null;
+    writeStateToLocalStorage();
+  }, delay);
+}
+
+function flushDeferredInputRenders() {
+  window.clearTimeout(deferredInputRenderTimer);
+  deferredInputRenderTimer = null;
+  const jobs = [...deferredInputRenderJobs.values()];
+  deferredInputRenderJobs.clear();
+  jobs.forEach((job) => job());
+}
+
+function scheduleInputRender(key, callback, delay = 140) {
+  deferredInputRenderJobs.set(key, callback);
+  window.clearTimeout(deferredInputRenderTimer);
+  deferredInputRenderTimer = window.setTimeout(flushDeferredInputRenders, delay);
+}
+
+function saveState(options = {}) {
+  if (options.input) {
+    markOwnedWorklogUpdated();
+    scheduleDeferredStateSave(options.localDelay || 180);
+    scheduleRemoteSave(options.remoteDelay || 1100);
+    return;
+  }
+  flushDeferredStateSave({ write: false });
+  writeStateToLocalStorage();
   scheduleRemoteSave(options.fastSave ? 500 : 700);
 }
 
@@ -8840,6 +8885,10 @@ function executeGlobalCommandItem(item) {
 }
 
 function clearAuthRuntimeState() {
+  flushDeferredStateSave();
+  window.clearTimeout(deferredInputRenderTimer);
+  deferredInputRenderTimer = null;
+  deferredInputRenderJobs.clear();
   authState.session = null;
   authState.user = null;
   clearTimeout(authState.saveTimer);
@@ -11362,7 +11411,7 @@ function renderSharedWorklogPanels(log = getSelectedLog()) {
       const item = findCommonScheduleItem(week, field.dataset.commonId);
       if (!item) return;
       item[field.dataset.commonField] = field.value;
-      saveState({ fastSave: true });
+      saveState({ input: true });
     };
     field.addEventListener("input", update);
     field.addEventListener("change", update);
@@ -11979,15 +12028,23 @@ function renderWorklogTaskRow(ref, currentLog, options = {}) {
     editableRef.task.text = event.target.value;
     promptAttendanceBeforeWorklogInput(editableRef.log, editableRef.task.text);
     syncWorklogTaskTimeHintToSchedule(editableRef.task, editableRef.log);
-    saveState({ fastSave: true });
+    saveState({ input: true });
     updateTaskRowTags(row, editableRef.task);
-    renderWorklogSummary(currentLog);
-    renderWorklogAppointments(currentLog);
-    renderFitnessAppointments(currentLog);
-    if (row.closest("#fitnessTaskBoard")) ensureFitnessTaskRowsVisible(currentLog);
-    renderTodayContext();
-    renderReport();
+    scheduleInputRender("worklog-task-derived", () => {
+      if (getSelectedLog() !== currentLog) return;
+      renderWorklogSummary(currentLog);
+      renderWorklogAppointments(currentLog);
+      renderFitnessAppointments(currentLog);
+      renderTodayContext();
+    });
+    scheduleInputRender("worklog-report", renderReport);
   };
+  row.querySelector(".task-text-input").addEventListener("blur", () => {
+    flushDeferredStateSave();
+    if (row.closest("#fitnessTaskBoard")) {
+      scheduleInputRender("fitness-task-rows", () => ensureFitnessTaskRowsVisible(currentLog), 80);
+    }
+  });
   row.querySelector(".task-delete").onclick = () => {
     if (!guardWorklogEdit(viewName)) return;
     if (isCarryover || isPostponedFromOtherDate) {
@@ -12050,7 +12107,7 @@ function bindTaskMetaControl(row, ref, currentLog, viewName = activeView) {
       if (!guardWorklogEdit(viewName)) return;
       const editableRef = materializeWorklogCarryover(ref, currentLog);
       editableRef.task.delegate = delegateInput.value;
-      saveState({ fastSave: true });
+      saveState({ input: true });
     };
   }
   const postponeButton = row.querySelector(".postpone-date-button");
@@ -12414,12 +12471,18 @@ function renderAppointmentRow(entry, log, scope = "worklog") {
       promptAttendanceBeforeWorklogInput(log, item.text);
       if (item.type === "업무") item.type = inferScheduleType(text.value, getScheduleTypeOptionsForLog(log));
       syncScheduleEntryText(entry);
-      saveState({ fastSave: true });
-      renderWorklogSummary(log);
-      renderReport();
-      if (scope === "worklog") renderFitnessAppointments(log);
-      else renderWorklogAppointments(log);
+      saveState({ input: true });
+      scheduleInputRender("worklog-schedule-derived", () => {
+        if (getSelectedLog() !== log) return;
+        renderWorklogSummary(log);
+        if (scope === "worklog") renderFitnessAppointments(log);
+        else renderWorklogAppointments(log);
+      });
+      scheduleInputRender("worklog-report", renderReport);
     };
+    text.addEventListener("blur", () => {
+      flushDeferredStateSave();
+    });
     remove.onclick = () => {
       if (!guardWorklogEdit()) return;
       const beforeLog = cloneWorklogLogForAudit(log);
@@ -20858,6 +20921,39 @@ document.addEventListener("input", (event) => {
   if (field.value === nextValue) return;
   field.value = nextValue;
 });
+document.addEventListener("focusout", (event) => {
+  const field = event.target;
+  if (!(field instanceof HTMLElement) || !field.matches([
+    ".task-text-input",
+    ".delegate-input",
+    ".schedule-text-input",
+    "[data-common-field]",
+    "[data-fitness-field]",
+    "[data-dagym-field]",
+    "[data-fitness-goal]",
+    "#employeeReport",
+    "#employeeMemo",
+    "#dagymImportText",
+    "#manualEditor",
+    "#manualMissionEditor",
+    "#backupRecipientEmail",
+    "[data-site-weather-address]",
+  ].join(","))) return;
+  flushDeferredStateSave();
+  if (field.matches("[data-dagym-field], #dagymImportText")) {
+    scheduleInputRender("dagym-center", renderFitnessCenterDaily, 80);
+  }
+  if (field.matches("#backupRecipientEmail")) scheduleInputRender("backup-center", renderBackupCenter, 80);
+});
+window.addEventListener("pagehide", () => {
+  flushDeferredStateSave();
+  flushPendingRemoteSaves();
+});
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState !== "hidden") return;
+  flushDeferredStateSave();
+  flushPendingRemoteSaves();
+});
 document.getElementById("globalAttendanceButton")?.addEventListener("click", (event) => {
   event.stopPropagation();
   if (!canEditCurrentWorklog()) {
@@ -21282,11 +21378,11 @@ document.getElementById("manualEmployeeSelect")?.addEventListener("change", () =
 });
 document.getElementById("manualEditor")?.addEventListener("input", () => {
   saveManualSettingsFromForm();
-  saveState({ fastSave: true });
+  saveState({ input: true });
 });
 document.getElementById("manualMissionEditor")?.addEventListener("input", () => {
   saveManualSettingsFromForm();
-  saveState({ fastSave: true });
+  saveState({ input: true });
 });
 document.getElementById("loadDefaultManualButton")?.addEventListener("click", loadDefaultManualForSelectedRole);
 document.getElementById("loginButton").onclick = signInWithSupabase;
@@ -21320,7 +21416,7 @@ document.getElementById("siteAddressList")?.addEventListener("input", (event) =>
   if (state.siteWeatherAddresses[key] === nextAddress) return;
   state.siteWeatherAddresses[key] = nextAddress;
   clearWeatherCacheForSite(key);
-  saveState({ fastSave: true });
+  saveState({ input: true });
   window.clearTimeout(siteWeatherAddressTimers.get(key));
   siteWeatherAddressTimers.set(key, window.setTimeout(() => {
     siteWeatherAddressTimers.delete(key);
@@ -21575,16 +21671,16 @@ document.getElementById("employeeReport").oninput = (event) => {
   const log = getSelectedLog();
   log.report = event.target.value;
   promptAttendanceBeforeWorklogInput(log, event.target.value);
-  saveState();
-  renderReport();
+  saveState({ input: true });
+  scheduleInputRender("worklog-report", renderReport);
 };
 document.getElementById("employeeMemo").oninput = (event) => {
   if (!guardWorklogEdit()) return;
   const log = getSelectedLog();
   log.memo = event.target.value;
   promptAttendanceBeforeWorklogInput(log, event.target.value);
-  saveState();
-  renderReport();
+  saveState({ input: true });
+  scheduleInputRender("worklog-report", renderReport);
 };
 document.querySelectorAll("[data-fitness-field]").forEach((field) => {
   field.oninput = (event) => {
@@ -21599,10 +21695,13 @@ document.querySelectorAll("[data-fitness-field]").forEach((field) => {
     log.fitnessOps[event.target.dataset.fitnessField] = event.target.value;
     applyFitnessOpsFieldSourceStyle(event.target, log);
     promptAttendanceBeforeWorklogInput(log, event.target.value);
-    saveState({ fastSave: true });
-    renderFitnessOpsSummaryButton(log);
-    renderReport();
-    renderFitnessDashboard();
+    saveState({ input: true });
+    scheduleInputRender("fitness-ops-derived", () => {
+      if (getSelectedLog() !== log) return;
+      renderFitnessOpsSummaryButton(log);
+      renderFitnessDashboard();
+    });
+    scheduleInputRender("worklog-report", renderReport);
   };
 });
 document.querySelectorAll("[data-dagym-field]").forEach((field) => {
@@ -21611,8 +21710,7 @@ document.querySelectorAll("[data-dagym-field]").forEach((field) => {
     const record = getDagymOpsForDate(getActiveDateKey());
     record[event.target.dataset.dagymField] = event.target.value;
     touchDagymDailyRecord(record);
-    saveState({ fastSave: true });
-    renderFitnessCenterDaily();
+    saveState({ input: true });
   };
 });
 document.getElementById("dagymImportText")?.addEventListener("input", (event) => {
@@ -21620,7 +21718,7 @@ document.getElementById("dagymImportText")?.addEventListener("input", (event) =>
   const record = getDagymOpsForDate(getActiveDateKey());
   record.importText = event.target.value;
   touchDagymDailyRecord(record);
-  saveState({ fastSave: true });
+  saveState({ input: true });
 });
 document.getElementById("dagymImportButton")?.addEventListener("click", importDagymText);
 document.getElementById("dagymFileButton")?.addEventListener("click", () => {
@@ -21643,8 +21741,8 @@ document.querySelectorAll("[data-fitness-goal]").forEach((field) => {
   field.oninput = (event) => {
     state.fitnessGoals = { ...createFitnessGoals(), ...(state.fitnessGoals || {}) };
     state.fitnessGoals[event.target.dataset.fitnessGoal] = event.target.value;
-    saveState({ fastSave: true });
-    renderFitnessDashboard();
+    saveState({ input: true });
+    scheduleInputRender("fitness-goals", renderFitnessDashboard);
   };
 });
 document.getElementById("fitnessCoachButton")?.addEventListener("click", () => {
@@ -21778,8 +21876,7 @@ document.getElementById("reportTone").onchange = (event) => {
 };
 document.getElementById("backupRecipientEmail")?.addEventListener("input", (event) => {
   state.backupSettings = { ...getBackupSettings(), recipientEmail: event.target.value.trim() || "j3010@ymail.com" };
-  saveState({ fastSave: true });
-  renderBackupCenter();
+  saveState({ input: true });
 });
 document.getElementById("backupCadence")?.addEventListener("change", (event) => {
   state.backupSettings = { ...getBackupSettings(), cadence: event.target.value };

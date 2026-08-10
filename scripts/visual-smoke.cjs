@@ -615,6 +615,72 @@ async function checkPhoneWorklog(browser) {
   await page.close();
 }
 
+async function checkWorklogInputResponsiveness(browser) {
+  const { page, errors } = await openPage(browser, { width: 360, height: 800 });
+  await seedApprovedBangjuEmployee(page);
+  await page.evaluate(() => {
+    window.switchView?.("bangju-log");
+    document.body.classList.add("physical-phone-device");
+    document.body.dataset.layoutMode = "phone";
+    document.body.dataset.viewMode = "ceo";
+  });
+  await page.waitForTimeout(180);
+  const immediate = await page.evaluate(() => {
+    const originalSetItem = Storage.prototype.setItem;
+    window.__inputQaLocalWrites = 0;
+    Storage.prototype.setItem = function patchedSetItem(key, value) {
+      if (key === storageKey) window.__inputQaLocalWrites += 1;
+      return originalSetItem.call(this, key, value);
+    };
+    const task = document.querySelector(".task-text-input");
+    const report = document.getElementById("employeeReport");
+    if (!task || !report) return { missing: true };
+    task.focus();
+    const startedAt = performance.now();
+    for (let index = 1; index <= 24; index += 1) {
+      task.value = `지연 없는 우선업무 ${index}`;
+      task.dispatchEvent(new Event("input", { bubbles: true }));
+      report.value = `지연 없는 업무보고 ${index}`;
+      report.dispatchEvent(new Event("input", { bubbles: true }));
+    }
+    return {
+      missing: false,
+      elapsed: performance.now() - startedAt,
+      localWrites: window.__inputQaLocalWrites,
+      taskValue: task.value,
+      reportValue: report.value,
+      taskFocused: document.activeElement === task,
+    };
+  });
+  if (immediate.missing
+    || immediate.localWrites !== 0
+    || immediate.elapsed > 250
+    || !immediate.taskFocused
+    || immediate.taskValue !== "지연 없는 우선업무 24"
+    || immediate.reportValue !== "지연 없는 업무보고 24") {
+    fail("rapid worklog typing should remain responsive and defer heavy persistence", JSON.stringify(immediate));
+  }
+  await page.waitForTimeout(260);
+  const persisted = await page.evaluate(() => {
+    const stored = JSON.parse(localStorage.getItem(storageKey) || "{}");
+    const employeeId = getProfileMappedEmployeeId() || "profile-user";
+    const dateKey = getActiveDateKey();
+    const log = stored.employeeLogs?.[dateKey]?.[employeeId] || stored.employeeLogs?.[dateKey]?.["profile-user"];
+    return {
+      localWrites: window.__inputQaLocalWrites,
+      task: log?.tasks?.[0]?.text || "",
+      report: log?.report || "",
+    };
+  });
+  if (persisted.localWrites !== 1
+    || persisted.task !== "지연 없는 우선업무 24"
+    || persisted.report !== "지연 없는 업무보고 24") {
+    fail("batched input persistence should save the final worklog values exactly once", JSON.stringify(persisted));
+  }
+  if (errors.length) fail("worklog input responsiveness page errors", errors.join(" | "));
+  await page.close();
+}
+
 async function checkExplicitWorklogExpandOutsidePhoneMode(browser) {
   const { page, errors } = await openPage(browser, { width: 430, height: 900 });
   await seedApprovedBangjuEmployee(page);
@@ -5159,6 +5225,7 @@ async function checkUnifiedCommandPalette(browser) {
     await checkTabletRepresentativeWorklogChrome(browser);
     await checkDesktopEmployeeWorklog(browser);
     await checkPhoneWorklog(browser);
+    await checkWorklogInputResponsiveness(browser);
     await checkExplicitWorklogExpandOutsidePhoneMode(browser);
     await checkOverviewCommandBoard(browser);
     await checkControlTower(browser);
