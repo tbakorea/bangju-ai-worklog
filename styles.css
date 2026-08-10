@@ -14492,10 +14492,17 @@ body[data-layout-mode="phone"] .fitness-log-schedule-panel .appointment-merge-bu
 
 @media (max-width: 760px) {
   .fitness-report-sheet {
-    inset: auto 10px max(10px, env(safe-area-inset-bottom));
-    left: 10px;
+    top: auto;
+    right: max(8px, env(safe-area-inset-right));
+    bottom: max(8px, env(safe-area-inset-bottom));
+    left: max(8px, env(safe-area-inset-left));
+    box-sizing: border-box;
+    grid-template-rows: auto minmax(0, 1fr) auto;
     width: auto;
+    min-width: 0;
+    max-width: none;
     max-height: min(88dvh, 760px);
+    overflow: hidden;
     transform: translateY(12px);
   }
 
@@ -14504,15 +14511,39 @@ body[data-layout-mode="phone"] .fitness-log-schedule-panel .appointment-merge-bu
   }
 
   .fitness-report-preview {
-    overflow: hidden;
+    box-sizing: border-box;
+    width: 100%;
+    min-width: 0;
+    max-width: 100%;
+    overflow: hidden auto;
     padding: 10px;
+    overscroll-behavior-x: none;
   }
 
   .fitness-report-page {
+    flex: none;
     width: 720px;
     max-width: none;
     transform: scale(var(--fitness-report-scale, 0.48));
     transform-origin: top left;
+  }
+
+  .fitness-report-sheet > header,
+  .fitness-report-sheet > footer,
+  .fitness-report-sheet > header > div {
+    min-width: 0;
+    max-width: 100%;
+  }
+
+  .fitness-report-sheet > header > div {
+    overflow: hidden;
+  }
+
+  .fitness-report-sheet > header :is(strong, span, small) {
+    overflow: hidden;
+    max-width: 100%;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 }
 

@@ -19948,9 +19948,13 @@ function fitFitnessReportPreview() {
   if (!preview || !page) return;
   preview.style.removeProperty("--fitness-report-scale");
   preview.style.removeProperty("height");
+  preview.scrollLeft = 0;
   if (!window.matchMedia("(max-width: 760px)").matches) return;
   const pageWidth = 720;
-  const scale = Math.min(1, Math.max(0.42, (preview.clientWidth - 2) / pageWidth));
+  const previewStyle = window.getComputedStyle(preview);
+  const horizontalPadding = Number.parseFloat(previewStyle.paddingLeft || "0") + Number.parseFloat(previewStyle.paddingRight || "0");
+  const availableWidth = Math.max(1, preview.clientWidth - horizontalPadding);
+  const scale = Math.min(1, Math.max(0.3, availableWidth / pageWidth));
   preview.style.setProperty("--fitness-report-scale", String(scale));
   preview.style.height = `${Math.ceil(page.offsetHeight * scale) + 4}px`;
 }

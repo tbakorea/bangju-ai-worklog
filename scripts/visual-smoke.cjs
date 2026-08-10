@@ -3762,6 +3762,46 @@ async function checkFitnessCenterReportConfirmation(browser) {
       fail("fitness center report should use the compact center operations sheet", `${label} should be removed`);
     }
   });
+  await page.setViewportSize({ width: 360, height: 800 });
+  await page.evaluate(() => fitFitnessReportPreview());
+  await page.waitForTimeout(120);
+  const galaxyReportLayout = await page.evaluate(() => {
+    const sheet = document.querySelector("#fitnessReportSheet");
+    const header = sheet?.querySelector(":scope > header");
+    const preview = document.querySelector("#fitnessReportPreview");
+    const report = preview?.querySelector(".fitness-report-page");
+    const rect = (node) => {
+      const value = node?.getBoundingClientRect();
+      return value ? { left: value.left, right: value.right, width: value.width } : null;
+    };
+    return {
+      viewportWidth: window.innerWidth,
+      sheet: rect(sheet),
+      header: rect(header),
+      preview: rect(preview),
+      report: rect(report),
+      previewOverflowX: preview ? getComputedStyle(preview).overflowX : "",
+      previewScrollLeft: preview?.scrollLeft || 0,
+      scale: Number.parseFloat(getComputedStyle(preview).getPropertyValue("--fitness-report-scale") || "0"),
+    };
+  });
+  const galaxyTolerance = 1.5;
+  if (!galaxyReportLayout.sheet
+    || !galaxyReportLayout.header
+    || !galaxyReportLayout.preview
+    || !galaxyReportLayout.report
+    || galaxyReportLayout.sheet.left < -galaxyTolerance
+    || galaxyReportLayout.sheet.right > galaxyReportLayout.viewportWidth + galaxyTolerance
+    || galaxyReportLayout.header.left < galaxyReportLayout.sheet.left - galaxyTolerance
+    || galaxyReportLayout.header.right > galaxyReportLayout.sheet.right + galaxyTolerance
+    || galaxyReportLayout.report.left < galaxyReportLayout.preview.left - galaxyTolerance
+    || galaxyReportLayout.report.right > galaxyReportLayout.preview.right + galaxyTolerance
+    || galaxyReportLayout.previewOverflowX !== "hidden"
+    || galaxyReportLayout.previewScrollLeft !== 0
+    || galaxyReportLayout.scale <= 0
+    || galaxyReportLayout.scale >= 0.6) {
+    fail("Galaxy portrait fitness report should scale inside the modal without horizontal clipping", JSON.stringify(galaxyReportLayout));
+  }
   if (errors.length) fail("fitness center confirmation page errors", errors.join(" | "));
   await page.close();
 }
