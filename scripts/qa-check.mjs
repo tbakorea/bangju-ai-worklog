@@ -16,6 +16,9 @@ const dagymNightlyApi = existsSync(join(root, "api/dagym-nightly-analysis.js")) 
 const dagymDatabaseCron = existsSync(join(root, "supabase/migrations/20260811170000_dagym_database_cron.sql"))
   ? read("supabase/migrations/20260811170000_dagym_database_cron.sql")
   : "";
+const dagymCeoReportIngest = existsSync(join(root, "supabase/migrations/20260811180000_dagym_ceo_report_ingest.sql"))
+  ? read("supabase/migrations/20260811180000_dagym_ceo_report_ingest.sql")
+  : "";
 const loginCardHtml = html.slice(html.indexOf('<section class="login-card"'), html.indexOf('<div class="auth-panel'));
 const failures = [];
 
@@ -64,6 +67,17 @@ check(
     && js.includes("previousDayAnalysis")
     && fitnessCoachApi.includes("previousDayAnalysis"),
   "database cron must persist the previous-day analysis at 01:00 KST and feed today's AI coaching"
+);
+check(
+  "DaGym CEO report intake is private, duplicate-safe, and feeds nightly analysis",
+  dagymCeoReportIngest.includes("create table if not exists public.dagym_ceo_report_inbox")
+    && dagymCeoReportIngest.includes("content_hash text not null unique")
+    && dagymCeoReportIngest.includes("ingest_dagym_ceo_report")
+    && dagymCeoReportIngest.includes("rotate_dagym_ceo_ingest_token")
+    && dagymCeoReportIngest.includes("perform public.run_dagym_nightly_analysis")
+    && !dagymCeoReportIngest.includes("raw_text")
+    && schema.includes("create table if not exists public.dagym_ceo_report_inbox"),
+  "CEO report ingestion must store aggregate metrics only and update the existing coaching pipeline"
 );
 check("fitness coach keeps OpenAI key server-side", fitnessCoachApi.includes("process.env.OPENAI_API_KEY") && !js.includes("OPENAI_API_KEY"));
 check("fitness coach verifies signed-in user", fitnessCoachApi.includes("/auth/v1/user") && fitnessCoachApi.includes("Authorization"));
