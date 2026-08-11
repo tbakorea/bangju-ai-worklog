@@ -12594,6 +12594,36 @@ body.physical-phone-device #view-fitness-log .fitness-log-schedule-panel .fitnes
   text-align: center;
 }
 
+.worklog-report-progress-section {
+  margin-top: 10px;
+}
+
+.worklog-report-progress-section th,
+.worklog-report-progress-section td {
+  height: 20px;
+  padding: 2px 6px;
+  font-size: 9.5px;
+  line-height: 1.15;
+}
+
+.worklog-report-progress-section .worklog-report-status {
+  display: inline-flex;
+  min-width: 54px;
+  gap: 3px;
+  align-items: baseline;
+  justify-content: center;
+  padding: 2px 6px;
+  white-space: nowrap;
+}
+
+.worklog-report-progress-section .worklog-report-status b {
+  font-size: 9px;
+}
+
+.worklog-report-progress-section .worklog-report-status small {
+  font-size: 7px;
+}
+
 .worklog-report-status {
   display: inline-grid;
   min-width: 58px;

@@ -19460,7 +19460,7 @@ function renderWorklogDailyReportTemplate(model = buildWorklogDailyReportModel()
         <div><span>실행 근거</span><strong>${model.evidenceCount}건</strong></div>
         <p><b>금일 핵심 성과</b>${escapeHtml(model.reportText || model.tasks.find((task) => task.status === "완료")?.text || "업무보고 내용을 입력해주세요.")}</p>
       </section>
-      <section class="worklog-report-table-section">
+      <section class="worklog-report-table-section worklog-report-progress-section">
         <h3>1. 업무 진행 현황</h3>
         <table><thead><tr><th>우선</th><th>업무내용</th><th>상태</th></tr></thead><tbody>${taskRows.map((task) => `<tr class="worklog-report-task-${escapeAttr(task.key || "planned")}"><td>${escapeHtml(task.priority)}</td><td>${escapeHtml(task.text)}</td><td><span class="worklog-report-status is-${escapeAttr(task.key || "planned")}"><b>${escapeHtml(task.label || task.status || "예정")}</b><small>${escapeHtml(task.detail || "")}</small></span></td></tr>`).join("")}</tbody></table>
       </section>
