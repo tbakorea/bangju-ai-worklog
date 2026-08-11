@@ -13758,6 +13758,7 @@ body[data-layout-mode="phone"] .fitness-log-schedule-panel .appointment-merge-bu
   border-radius: 22px;
   background: rgba(255, 254, 250, 0.98);
   box-shadow: 0 26px 70px rgba(17, 20, 17, 0.24);
+  max-height: min(94dvh, 1080px);
 }
 
 .fitness-report-sheet header,
@@ -13795,6 +13796,10 @@ body[data-layout-mode="phone"] .fitness-log-schedule-panel .appointment-merge-bu
   display: flex;
   flex-direction: column;
   gap: 7px;
+  min-height: 297mm;
+  height: auto;
+  aspect-ratio: auto;
+  overflow: visible;
   padding: 7mm;
 }
 
@@ -14375,6 +14380,25 @@ body[data-layout-mode="phone"] .fitness-log-schedule-panel .appointment-merge-bu
   border: 1px solid rgba(18, 59, 45, 0.22);
 }
 
+.fitness-paper-summary .fitness-paper-kpi > header {
+  display: flex;
+  grid-column: 1 / -1;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  border-bottom: 1px solid rgba(18, 59, 45, 0.14);
+  background: rgba(237, 244, 224, 0.72);
+  padding: 5px 7px;
+}
+
+.fitness-paper-summary .fitness-paper-kpi > header h3,
+.fitness-paper-summary .fitness-paper-kpi > header span {
+  margin: 0;
+  color: #123b2d;
+  font-size: 9px;
+  font-weight: 950;
+}
+
 .fitness-paper-summary .fitness-paper-kpi div {
   min-height: 43px;
   border-right: 1px solid rgba(18, 59, 45, 0.12);
@@ -14565,16 +14589,18 @@ body[data-layout-mode="phone"] .fitness-log-schedule-panel .appointment-merge-bu
 
 @media (max-width: 760px) {
   .fitness-report-sheet {
-    top: auto;
-    right: max(8px, env(safe-area-inset-right));
-    bottom: max(8px, env(safe-area-inset-bottom));
-    left: max(8px, env(safe-area-inset-left));
+    top: max(4px, env(safe-area-inset-top));
+    right: max(4px, env(safe-area-inset-right));
+    bottom: max(4px, env(safe-area-inset-bottom));
+    left: max(4px, env(safe-area-inset-left));
     box-sizing: border-box;
     grid-template-rows: auto minmax(0, 1fr) auto;
     width: auto;
     min-width: 0;
     max-width: none;
-    max-height: min(88dvh, 760px);
+    max-height: none;
+    padding: 8px;
+    gap: 6px;
     overflow: hidden;
     transform: translateY(12px);
   }
@@ -14589,7 +14615,7 @@ body[data-layout-mode="phone"] .fitness-log-schedule-panel .appointment-merge-bu
     min-width: 0;
     max-width: 100%;
     overflow: hidden auto;
-    padding: 10px;
+    padding: 6px;
     overscroll-behavior-x: none;
   }
 

@@ -3761,9 +3761,15 @@ async function checkFitnessCenterReportConfirmation(browser) {
     || before.managerClassStats.labels[1] !== "무료PT"
     || before.managerClassStats.values[0] !== "2/5"
     || before.managerClassStats.values[1] !== "0/1"
+    || before.managerClassStats.values[2] !== "1/1"
+    || before.managerClassStats.values[3] !== "2/2"
+    || before.managerClassStats.values[4] !== "0/0"
+    || before.managerClassStats.values[5] !== "0/0"
+    || before.managerClassStats.values[6] !== "1/1"
+    || !before.managerClassStats.html.includes("당일/월누계")
     || !before.managerClassStats.html.includes("2/5")
     || !before.managerClassStats.html.includes("0/1")) {
-    fail("personal fitness report should separate paid/free PT as today/month totals", JSON.stringify(before.managerClassStats));
+    fail("personal fitness report should show every performance count as today/month totals", JSON.stringify(before.managerClassStats));
   }
   ["pjhong1", "pjhong9"].forEach((retiredEmailPrefix) => {
     if (before.centerRows.some((row) => row.includes(retiredEmailPrefix))) {

@@ -20145,7 +20145,7 @@ function buildFitnessReportModel(options = {}) {
   const sourceLog = options.log || logEntries[0]?.log || getReportArchiveEmployeeLog(employee, dateKey);
   const nextLogEntries = getFitnessReportLogEntries(getNextDateKey(dateKey), isCenter, employee);
   const entries = logEntries.flatMap(({ log }) => (log.schedule || []).filter((entry) => entry.time && (isCenter ? getScheduleEntryText(entry) : true)));
-  const { rows: staffRows, totals, monthlyTotals } = summarizeFitnessReportRows(logEntries, dateKey, isCenter);
+  const { rows: staffRows, totals, monthlyTotals } = summarizeFitnessReportRows(logEntries, dateKey, true);
   const attendanceWarnings = isCenter ? getFitnessReportAttendanceWarnings(logEntries, dateKey) : [];
   const warningByEmployeeId = new Map(attendanceWarnings.map((item) => [item.employeeId, item]));
   staffRows.forEach((row) => { row.attendanceWarning = warningByEmployeeId.get(row.employeeId) || null; });
@@ -20216,11 +20216,11 @@ function buildFitnessReportModel(options = {}) {
     kpis: [
       ["유료PT", `${classStats.paid.today}/${classStats.paid.month}`],
       ["무료PT", `${classStats.free.today}/${classStats.free.month}`],
-      ["상담", `${numberValue(totals.consultation)}건`],
-      ["계약", `${numberValue(totals.contractTotal)}건`],
+      ["상담", `${numberValue(totals.consultation)}/${numberValue(monthlyTotals.consultation)}`],
+      ["계약", `${numberValue(totals.contractTotal)}/${numberValue(monthlyTotals.contractTotal)}`],
       ["SNS 홍보", `${numberValue(totals.snsPromotion)}/${numberValue(monthlyTotals.snsPromotion)}`],
-      ["홍보", `${numberValue(totals.outbound)}건`],
-      ["마케팅", `${numberValue(totals.outsideSales)}건`],
+      ["홍보", `${numberValue(totals.outbound)}/${numberValue(monthlyTotals.outbound)}`],
+      ["마케팅", `${numberValue(totals.outsideSales)}/${numberValue(monthlyTotals.outsideSales)}`],
     ],
     issueRows: getFitnessReportRecordRows(logEntries, { isCenter, totals, weatherText }),
     coaching: getFitnessCoachingMessages({ page, employee, log: sourceLog, dateKey }),
@@ -20411,7 +20411,8 @@ function renderFitnessReportTemplate(model = buildFitnessReportModel()) {
 
       ${!model.isCenter ? `
         <section class="fitness-paper-summary">
-          <div class="fitness-paper-kpi">
+          <div class="fitness-paper-kpi" aria-label="개인 실적 당일 월누계">
+            <header><h3>개인 실적</h3><span>당일/월누계</span></header>
             ${model.kpis.map(([label, value]) => `<div><span>${escapeHtml(label)}</span><strong>${escapeHtml(value)}</strong></div>`).join("")}
           </div>
         </section>
@@ -20539,6 +20540,8 @@ function openFitnessReportSheet() {
   const model = buildFitnessReportModel();
   activeFitnessReportAiKey = model.aiKey;
   if (subtitle) subtitle.textContent = `${formatKoreanDate(getActiveDateKey())} 보고서`;
+  preview.scrollTop = 0;
+  preview.scrollLeft = 0;
   preview.innerHTML = renderFitnessReportTemplate(model);
   updateFitnessReportConfirmButton(model);
   setFitnessReportAiStatus(model.aiCoaching ? "cached" : "ready");
@@ -20603,7 +20606,12 @@ function getFitnessReportFileBase() {
 }
 
 function getFitnessReportExportHeight(model = buildFitnessReportModel()) {
-  if (model.isCenter) return 1754;
+  if (model.isCenter) {
+    const staffOverflow = Math.max(0, (model.staffRows?.length || 0) - 6) * 72;
+    const issueOverflow = Math.max(0, (model.issueRows?.length || 0) - 3) * 44;
+    const dagymSpace = model.dagymSummary ? 220 : 0;
+    return 2050 + staffOverflow + issueOverflow + dagymSpace;
+  }
   const taskOverflow = Math.max(0, Math.max(model.topTasks?.length || 0, model.tomorrowTasks?.length || 0) - 3) * 50;
   const issueOverflow = Math.max(0, (model.issueRows?.length || 0) - 3) * 50;
   return 1754 + taskOverflow + issueOverflow;
@@ -20958,6 +20966,23 @@ function getFitnessReportExportCss(reportHeight = 1754) {
     .fitness-paper-summary .fitness-paper-kpi {
       display: grid;
       grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+    .fitness-paper-summary .fitness-paper-kpi > header {
+      display: flex;
+      grid-column: 1 / -1;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      border-bottom: 2px solid rgba(18, 59, 45, 0.14);
+      background: rgba(237, 244, 224, 0.72);
+      padding: 10px 14px;
+    }
+    .fitness-paper-summary .fitness-paper-kpi > header h3,
+    .fitness-paper-summary .fitness-paper-kpi > header span {
+      margin: 0;
+      color: #123b2d;
+      font-size: 17px;
+      font-weight: 950;
     }
     .fitness-paper-summary .fitness-paper-kpi div {
       min-height: 82px;
