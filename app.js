@@ -1337,8 +1337,8 @@ function normalizeEmployeeLogRows(log, dateKey = getActiveDateKey()) {
 }
 
 let deferredStateSaveTimer = null;
-let deferredInputRenderTimer = null;
 const deferredInputRenderJobs = new Map();
+const deferredInputRenderTimers = new Map();
 
 function writeStateToLocalStorage() {
   recordActiveCorrectionAudits();
@@ -1363,25 +1363,30 @@ function scheduleDeferredStateSave(delay = 180) {
   }, delay);
 }
 
-function flushDeferredInputRenders() {
-  window.clearTimeout(deferredInputRenderTimer);
-  deferredInputRenderTimer = null;
-  const jobs = [...deferredInputRenderJobs.values()];
+function cancelDeferredInputRenders() {
+  deferredInputRenderTimers.forEach((timer) => window.clearTimeout(timer));
+  deferredInputRenderTimers.clear();
   deferredInputRenderJobs.clear();
-  jobs.forEach((job) => job());
 }
 
-function scheduleInputRender(key, callback, delay = 140) {
+function runDeferredInputRender(key) {
+  const job = deferredInputRenderJobs.get(key);
+  deferredInputRenderJobs.delete(key);
+  deferredInputRenderTimers.delete(key);
+  if (job) job();
+}
+
+function scheduleInputRender(key, callback, delay = 700) {
   deferredInputRenderJobs.set(key, callback);
-  window.clearTimeout(deferredInputRenderTimer);
-  deferredInputRenderTimer = window.setTimeout(flushDeferredInputRenders, delay);
+  window.clearTimeout(deferredInputRenderTimers.get(key));
+  deferredInputRenderTimers.set(key, window.setTimeout(() => runDeferredInputRender(key), delay));
 }
 
 function saveState(options = {}) {
   if (options.input) {
     markOwnedWorklogUpdated();
     scheduleDeferredStateSave(options.localDelay || 180);
-    scheduleRemoteSave(options.remoteDelay || 1100);
+    scheduleRemoteSave(options.remoteDelay || 1600);
     return;
   }
   flushDeferredStateSave({ write: false });
@@ -8930,9 +8935,7 @@ function executeGlobalCommandItem(item) {
 
 function clearAuthRuntimeState() {
   flushDeferredStateSave();
-  window.clearTimeout(deferredInputRenderTimer);
-  deferredInputRenderTimer = null;
-  deferredInputRenderJobs.clear();
+  cancelDeferredInputRenders();
   authState.session = null;
   authState.user = null;
   clearTimeout(authState.saveTimer);
@@ -12480,7 +12483,7 @@ function renderWorklogTaskRow(ref, currentLog, options = {}) {
       renderFitnessAppointments(currentLog);
       renderTodayContext();
     });
-    scheduleInputRender("worklog-report", renderReport);
+    scheduleInputRender("worklog-report", renderReport, 1600);
   };
   row.querySelector(".task-text-input").addEventListener("blur", () => {
     flushDeferredStateSave();
@@ -12950,7 +12953,7 @@ function renderAppointmentRow(entry, log, scope = "worklog") {
         if (scope === "worklog") renderFitnessAppointments(log);
         else renderWorklogAppointments(log);
       });
-      scheduleInputRender("worklog-report", renderReport);
+      scheduleInputRender("worklog-report", renderReport, 1600);
     };
     text.addEventListener("blur", () => {
       flushDeferredStateSave();
@@ -22230,7 +22233,7 @@ document.getElementById("employeeReport").oninput = (event) => {
   log.report = event.target.value;
   promptAttendanceBeforeWorklogInput(log, event.target.value);
   saveState({ input: true });
-  scheduleInputRender("worklog-report", renderReport);
+  scheduleInputRender("worklog-report", renderReport, 1600);
 };
 document.getElementById("employeeMemo").oninput = (event) => {
   if (!guardWorklogEdit()) return;
@@ -22238,7 +22241,7 @@ document.getElementById("employeeMemo").oninput = (event) => {
   log.memo = event.target.value;
   promptAttendanceBeforeWorklogInput(log, event.target.value);
   saveState({ input: true });
-  scheduleInputRender("worklog-report", renderReport);
+  scheduleInputRender("worklog-report", renderReport, 1600);
 };
 document.querySelectorAll("[data-fitness-field]").forEach((field) => {
   field.oninput = (event) => {
@@ -22259,7 +22262,7 @@ document.querySelectorAll("[data-fitness-field]").forEach((field) => {
       renderFitnessOpsSummaryButton(log);
       renderFitnessDashboard();
     });
-    scheduleInputRender("worklog-report", renderReport);
+    scheduleInputRender("worklog-report", renderReport, 1600);
   };
 });
 document.querySelectorAll("[data-dagym-field]").forEach((field) => {
