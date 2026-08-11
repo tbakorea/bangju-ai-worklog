@@ -10521,7 +10521,16 @@ function renderFitnessCenterMonthNav() {
   if (input) input.value = month;
 }
 
-function buildFitnessCenterEmployeeMonthRow(employee, monthPrefix) {
+function getFitnessMonthRollupDateKeys(monthPrefix, throughDateKey = getActiveDateKey()) {
+  const month = String(monthPrefix || "").slice(0, 7);
+  const through = String(throughDateKey || getActiveDateKey());
+  if (!/^\d{4}-\d{2}$/.test(month)) return [];
+  if (through.slice(0, 7) < month) return [];
+  if (through.slice(0, 7) > month) return getMonthDateKeys(month);
+  return getMonthDateKeys(month).filter((dateKey) => dateKey <= through);
+}
+
+function buildFitnessCenterEmployeeMonthRow(employee, monthPrefix, throughDateKey = getActiveDateKey()) {
   const ops = createFitnessOps();
   let paidPtTotal = 0;
   let freePtTotal = 0;
@@ -10535,7 +10544,7 @@ function buildFitnessCenterEmployeeMonthRow(employee, monthPrefix) {
   let earlyCount = 0;
   let absenceCount = 0;
   const notes = [];
-  getMonthDateKeys(monthPrefix).forEach((dateKey) => {
+  getFitnessMonthRollupDateKeys(monthPrefix, throughDateKey).forEach((dateKey) => {
     const log = getFitnessEmployeeLogForDate(employee, dateKey);
     if (!log) return;
     syncFitnessOpsFromSchedule(log);
@@ -13515,8 +13524,11 @@ function applyFitnessOpsItemCount(totals, type = "업무", text = "") {
   const source = `${normalizedType} ${text}`;
   // SNS 홍보는 한 개의 등록 일정(게시물·릴스·블로그 작업)을 한 건으로 셉니다.
   // "블로그 작성 및 업데이트"처럼 한 산출물을 설명하는 문구가 두 건으로 부풀지 않게 합니다.
-  const count = normalizedType === "SNS 홍보" ? 1 : countFitnessScheduleUnits(text);
-  if (normalizedType === "무료PT" || normalizedType === "유료PT" || /pt|p\/t|피티|수업|운동지도/i.test(source)) {
+  const isPtActivity = normalizedType === "무료PT" || normalizedType === "유료PT" || /pt|p\/t|피티|수업|운동지도/i.test(source);
+  // 수업은 설명 속 쉼표나 "및"이 아니라 시간표에 등록된 수업 항목 한 개를 1회로 셉니다.
+  // 같은 시간에 복수 수업이 있으면 일정 편집기에서 수업 항목을 각각 추가하고, 예외는 작성자 확정값으로 보정합니다.
+  const count = normalizedType === "SNS 홍보" || isPtActivity ? 1 : countFitnessScheduleUnits(text);
+  if (isPtActivity) {
     if (normalizedType === "무료PT" || /무료|체험|서비스|무상/.test(source)) totals.ptFree += count;
     else if (/기타|보강|대체/.test(source)) totals.ptOther += count;
     else totals.ptRegular += count;
@@ -19043,7 +19055,7 @@ function getFitnessReportLogEntries(dateKey, isCenter, employee) {
 }
 
 function getFitnessReportMonthlyStats(employee = {}, monthPrefix = getActiveDateKey().slice(0, 7), dateKey = getActiveDateKey(), dailyStats = {}) {
-  const aggregate = buildFitnessCenterEmployeeMonthRow(employee, monthPrefix);
+  const aggregate = buildFitnessCenterEmployeeMonthRow(employee, monthPrefix, dateKey);
   const ops = { ...createFitnessOps(), ...(aggregate.ops || {}) };
   const resolvedDayOps = { ...createFitnessOps(), ...(getFitnessEmployeeLogForDate(employee, dateKey)?.fitnessOps || {}) };
   const replaceDayContribution = (key) => Math.max(0,
@@ -19806,7 +19818,7 @@ function getFitnessReportClassStats(employee = {}, dateKey = getActiveDateKey(),
   const monthly = roster
     .filter(isAssignedWorklogEmployee)
     .reduce((summary, item) => {
-      const row = buildFitnessCenterEmployeeMonthRow(item, monthPrefix);
+      const row = buildFitnessCenterEmployeeMonthRow(item, monthPrefix, dateKey);
       summary.paid += numberValue(row.paidPtTotal) + numberValue(row.ops?.ptOther);
       summary.free += numberValue(row.freePtTotal);
       return summary;

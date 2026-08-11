@@ -2392,6 +2392,24 @@ async function checkFitnessManagerCanEditOwnWorklog(browser) {
   if (saved.savedScheduleType !== "유료PT" || saved.savedScheduleText !== "김영수 수업" || saved.storageScheduleText !== "김영수 수업") {
     fail("Park fitness manager schedule editor should persist", saveMetrics);
   }
+  const fitnessRollupRules = await page.evaluate(() => window.eval(`(() => {
+    const totals = createFitnessOps();
+    applyFitnessOpsItemCount(totals, "유료PT", "김영수 PT, 자세 교정 및 피드백");
+    const selectedDay = getFitnessMonthRollupDateKeys("2026-07", "2026-07-24");
+    const closedMonth = getFitnessMonthRollupDateKeys("2026-07", "2026-08-01");
+    const futureMonth = getFitnessMonthRollupDateKeys("2026-09", "2026-08-01");
+    return JSON.stringify({
+      paidPt: Number(totals.ptRegular || 0),
+      selectedLast: selectedDay.at(-1) || "",
+      closedLast: closedMonth.at(-1) || "",
+      futureCount: futureMonth.length
+    });
+  })()`));
+  const rollupRules = JSON.parse(fitnessRollupRules);
+  if (rollupRules.paidPt !== 1 || rollupRules.selectedLast !== "2026-07-24"
+    || rollupRules.closedLast !== "2026-07-31" || rollupRules.futureCount !== 0) {
+    fail("fitness class and month rollup rules should count one schedule item and stop at the selected date", fitnessRollupRules);
+  }
   await page.evaluate(() => window.eval("setFitnessLogPage(0); setFitnessCenterMonth('2026-07')"));
   await page.waitForTimeout(220);
   const centerMonth = await page.evaluate(() => ({

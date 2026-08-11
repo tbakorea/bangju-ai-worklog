@@ -273,7 +273,7 @@ check(
   "fitness schedule tracks SNS promotion as an independent activity",
   /fitness:\s*\[[^\]]*"SNS 홍보"[^\]]*"마케팅활동"/.test(js)
     && js.includes('snsPromotion: ""')
-    && js.includes('normalizedType === "SNS 홍보" ? 1')
+    && js.includes('normalizedType === "SNS 홍보" || isPtActivity ? 1')
     && html.includes('data-fitness-field="snsPromotion"')
     && /인스타그램\|인스타\|instagram\|블로그\|blog/.test(js),
   "SNS promotion must be classified and counted separately from general marketing"
@@ -432,7 +432,7 @@ check(
   /function renderFitnessOpsSummaryButton\(log = getSelectedLog\(\)\)[\s\S]{0,1000}buildFitnessCenterEmployeeMonthRow\(employee, getActiveDateKey\(\)\.slice\(0, 7\)\)/.test(js)
     && /<strong>\$\{paidPtTotal\}\/\$\{monthlyPaidPtTotal\}<\/strong>/.test(js)
     && /function renderFitnessPersonalMonthSummary[\s\S]{0,180}panel\.hidden = true;/.test(js)
-    && /function buildFitnessCenterEmployeeMonthRow\(employee, monthPrefix\)[\s\S]{0,900}getMonthDateKeys\(monthPrefix\)\.forEach/.test(js)
+    && /function buildFitnessCenterEmployeeMonthRow\(employee, monthPrefix, throughDateKey = getActiveDateKey\(\)\)[\s\S]{0,900}getFitnessMonthRollupDateKeys\(monthPrefix, throughDateKey\)\.forEach/.test(js)
     && /const employeesForCenter = getFitnessCenterEmployees\(\);[\s\S]{0,180}buildFitnessCenterEmployeeMonthRow\(employee, centerMonth\)/.test(js),
   "personal worklogs should show today/month in existing summary cells without a separate grid"
 );
@@ -442,6 +442,15 @@ check(
   /Object\.keys\(ops\)\.forEach\(\(key\)[\s\S]{0,240}ops\[key\] = String\(numberValue\(ops\[key\]\) \+ numberValue\(dayOps\[key\]\)/.test(js)
     && /summary\.dayPass \+= numberValue\(row\.ops\.dayPass\)[\s\S]{0,420}summary\.customerOther \+= numberValue\(row\.ops\.customerOther\)/.test(js),
   "PT, contracts, customer management, day passes, and other activity fields must all roll up"
+);
+
+check(
+  "fitness cumulative totals stop at the selected date and count one lesson per schedule item",
+  /function getFitnessMonthRollupDateKeys\(monthPrefix, throughDateKey = getActiveDateKey\(\)\)[\s\S]{0,520}dateKey <= through/.test(js)
+    && /function buildFitnessCenterEmployeeMonthRow\(employee, monthPrefix, throughDateKey = getActiveDateKey\(\)\)[\s\S]{0,900}getFitnessMonthRollupDateKeys\(monthPrefix, throughDateKey\)/.test(js)
+    && /const isPtActivity = [\s\S]{0,360}normalizedType === "SNS 홍보" \|\| isPtActivity \? 1 : countFitnessScheduleUnits\(text\)/.test(js)
+    && /buildFitnessCenterEmployeeMonthRow\(employee, monthPrefix, dateKey\)/.test(js),
+  "month totals must exclude later dates, while one PT schedule item remains one lesson even when its description contains commas"
 );
 
 check(
