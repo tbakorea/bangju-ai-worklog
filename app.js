@@ -1113,6 +1113,7 @@ function createEmployeeLog(employee = employees[0], profile = defaultProfile, da
     clockOut: "",
     attendanceBreaks: [],
     workHoursOverride: "",
+    workHoursBeforeOff: "",
     manualScheduleSlots: [],
     tasks: Array.from({ length: 14 }, () => ({ priority: "?", text: "", status: "예정", done: false })),
     schedule: getScheduleTimes(workHours).map((time) => ({ time, text: "", status: "예정" })),
@@ -1301,6 +1302,7 @@ function normalizeEmployeeLogRows(log, dateKey = getActiveDateKey()) {
   log.tasks ||= [];
   log.schedule ||= [];
   log.workHoursOverride = normalizeWorkHoursText(log.workHoursOverride || "");
+  log.workHoursBeforeOff = normalizeWorkHoursText(log.workHoursBeforeOff || "");
   log.manualScheduleSlots = Array.isArray(log.manualScheduleSlots)
     ? Array.from(new Set(log.manualScheduleSlots.map(normalizeScheduleTimeInput).filter(Boolean))).sort((a, b) => timeToMinutes(a) - timeToMinutes(b))
     : [];
@@ -1604,6 +1606,29 @@ function getProfileWorkHoursForDate(profile = state?.profile, dateKey = getActiv
   const weeklyHours = profile?.weeklyWorkHours || {};
   if (Object.keys(weeklyHours).length && !Object.prototype.hasOwnProperty.call(weeklyHours, dayKey)) return "휴무";
   return normalizeWorkHoursText(weeklyHours[dayKey] || profile?.workHours || defaultProfile.workHours);
+}
+
+function getEmployeeScheduledWorkHours(employeeId = state?.selectedEmployeeId, profile = state?.profile, dateKey = getActiveDateKey()) {
+  const id = String(employeeId || "").trim();
+  if (id === "profile-user" || isEmployeeLinkedToProfile(id)) {
+    const scheduled = getProfileWorkHoursForDate(profile, dateKey) || profile?.workHours || defaultProfile.workHours;
+    return applyApprovedLeaveToWorkHours(scheduled, id, dateKey);
+  }
+  const employee = findEmployeeRecordById(id);
+  if (employee) return getOverviewScheduledWorkHours(employee, dateKey, {});
+  return applyApprovedLeaveToWorkHours(defaultProfile.workHours, id, dateKey);
+}
+
+function getEmployeeSubstituteWorkHours(employeeId = state?.selectedEmployeeId, profile = state?.profile) {
+  const id = String(employeeId || "").trim();
+  const employee = id === "profile-user" || isEmployeeLinkedToProfile(id)
+    ? profile
+    : findEmployeeRecordById(id);
+  const weeklyHours = employee?.weeklyWorkHours || employee?.weekly_work_hours || {};
+  const candidates = [employee?.workHours, employee?.work_hours, ...Object.values(weeklyHours || {}), defaultProfile.workHours];
+  return candidates
+    .map(normalizeWorkHoursText)
+    .find((value) => value && !isOffWorkHours(value) && /[-~]/.test(value)) || defaultProfile.workHours;
 }
 
 function getWorkdayKey(dateKey = getActiveDateKey()) {
@@ -10342,6 +10367,7 @@ function renderFitnessWorklog(log = getSelectedLog()) {
   if (unitButton) unitButton.textContent = log.scheduleUnit === "60" ? "1시간" : "30분";
   updateWorklogScheduleControlLabels(log, "fitness");
   renderFitnessLogPager();
+  renderFitnessWorkModeControl(log, page);
   renderFitnessDesktopCoworkers(page);
   const hasGuidance = Boolean((state.fitnessDailyGuidance?.[getActiveDateKey()] || []).length);
   if (isCenter && canManageDagymOperations() && !hasGuidance && getPreviousDagymOperatingDate()) {
@@ -10494,6 +10520,11 @@ function applyFitnessLogPermissionState() {
     }
     control.disabled = readOnly;
   });
+  const workModeButton = document.getElementById("fitnessWorkModeButton");
+  if (workModeButton) {
+    workModeButton.disabled = readOnly || isCenter;
+    workModeButton.setAttribute("aria-disabled", String(readOnly || isCenter));
+  }
 }
 
 function applyCurrentWorklogPermissionState(viewName = activeView) {
@@ -11997,6 +12028,62 @@ function updateWorklogScheduleControlLabels(log = getSelectedLog(), scope = "wor
     addButton.textContent = "+시간";
     addButton.title = "시간별일정에 시간대를 직접 추가";
   }
+}
+
+function renderFitnessWorkModeControl(log = getSelectedLog(), page = getCurrentFitnessLogPage()) {
+  const button = document.getElementById("fitnessWorkModeButton");
+  if (!button) return;
+  const isEmployeePage = page?.type === "employee";
+  button.hidden = !isEmployeePage;
+  if (!isEmployeePage) return;
+  const employeeId = String(log?.employeeId || page?.id || "").trim();
+  const scheduledHours = getEmployeeScheduledWorkHours(employeeId, state?.profile, getActiveDateKey());
+  const effectiveHours = getEmployeeWorkHours(employeeId, state?.profile, getActiveDateKey());
+  const isWorking = !isOffWorkHours(effectiveHours);
+  const isScheduledOff = isOffWorkHours(scheduledHours);
+  button.dataset.workMode = isWorking ? "work" : "off";
+  button.classList.toggle("is-working", isWorking);
+  button.classList.toggle("is-off", !isWorking);
+  button.setAttribute("aria-pressed", String(isWorking));
+  button.setAttribute("aria-label", isWorking ? "현재 근무 · 눌러 휴무로 전환" : "현재 휴무 · 눌러 근무로 전환");
+  button.querySelector("strong").textContent = isWorking ? "근무" : "휴무";
+  button.querySelector("small").textContent = isScheduledOff
+    ? isWorking
+      ? "대체근무 · " + effectiveHours
+      : "기본 휴무 · 눌러 대체근무"
+    : isWorking
+      ? "직원설정 · " + effectiveHours
+      : "휴무 처리 · 기본 " + scheduledHours;
+}
+
+function toggleFitnessWorkMode() {
+  if (!guardWorklogEdit("fitness-log")) return;
+  const page = getCurrentFitnessLogPage();
+  if (page?.type !== "employee") return;
+  const employee = page.employee || findEmployeeRecordById(page.id) || { id: page.id };
+  const log = getFitnessEmployeeLogForDate(employee, getActiveDateKey())
+    || getEmployeeLogForDate(page.id, getActiveDateKey());
+  const employeeId = String(log?.employeeId || page.id || "").trim();
+  const scheduledHours = getEmployeeScheduledWorkHours(employeeId, state?.profile, getActiveDateKey());
+  const effectiveHours = getEmployeeWorkHours(employeeId, state?.profile, getActiveDateKey());
+  const switchingToWork = isOffWorkHours(effectiveHours);
+  if (switchingToWork) {
+    const rememberedHours = normalizeWorkHoursText(log.workHoursBeforeOff || "");
+    const restoredHours = rememberedHours && !isOffWorkHours(rememberedHours)
+      ? rememberedHours
+      : getEmployeeSubstituteWorkHours(employeeId, state?.profile);
+    log.workHoursOverride = !isOffWorkHours(scheduledHours) && restoredHours === scheduledHours ? "" : restoredHours;
+    if (!log.clockIn && !log.clockOut && /휴무|비번/.test(String(log.attendanceStatus || ""))) log.attendanceStatus = "";
+  } else {
+    log.workHoursBeforeOff = effectiveHours;
+    log.workHoursOverride = "휴무";
+    if (!log.clockIn && !log.clockOut) log.attendanceStatus = "휴무";
+  }
+  normalizeEmployeeLogRows(log, getActiveDateKey());
+  saveState();
+  renderEntries();
+  const appliedHours = getEmployeeWorkHours(employeeId, state?.profile, getActiveDateKey());
+  showAppToast(switchingToWork ? "대체근무 " + appliedHours + " 시간표를 만들었습니다" : "이 날짜를 휴무로 전환했습니다");
 }
 
 function promptWorklogDayWorkHours(scope = "worklog") {
@@ -22604,6 +22691,7 @@ document.getElementById("fitnessScheduleUnitButton")?.addEventListener("click", 
 });
 document.getElementById("fitnessHoursButton")?.addEventListener("click", () => promptWorklogDayWorkHours("fitness"));
 document.getElementById("fitnessAddTimeButton")?.addEventListener("click", () => promptAddWorklogScheduleSlot("fitness"));
+document.getElementById("fitnessWorkModeButton")?.addEventListener("click", toggleFitnessWorkMode);
 document.getElementById("fitnessPrevDateButton")?.addEventListener("click", () => moveSelectedDate(-1));
 document.getElementById("fitnessNextDateButton")?.addEventListener("click", () => moveSelectedDate(1));
 document.getElementById("fitnessTodayButton")?.addEventListener("click", () => setSelectedDateKey(todayKey));

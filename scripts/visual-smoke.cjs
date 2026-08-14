@@ -5065,6 +5065,15 @@ async function checkFitnessRosterHoursAndCompactTotals(browser) {
       const fridayOffStatus = getAttendanceStatusForLog(saturdayOnlyEmployee, fridayLog, "2026-08-07", new Date("2026-08-08T12:00:00+09:00"));
       const fridayOffTimes = fridayLog.schedule.map((entry) => entry.time);
       const fridayOffWarnings = getFitnessReportAttendanceWarnings([{ employee: saturdayOnlyEmployee, log: fridayLog }], "2026-08-07", new Date("2026-08-08T12:00:00+09:00"));
+      fridayLog.workHoursOverride = getEmployeeSubstituteWorkHours(saturdayOnlyId, state.profile);
+      normalizeEmployeeLogRows(fridayLog, "2026-08-07");
+      const plannedSubstitute = {
+        hours: getEmployeeWorkHours(saturdayOnlyId, state.profile, "2026-08-07"),
+        times: fridayLog.schedule.map((entry) => entry.time),
+        blankRows: fridayLog.schedule.every((entry) => !getScheduleEntryText(entry))
+      };
+      fridayLog.workHoursOverride = "";
+      normalizeEmployeeLogRows(fridayLog, "2026-08-07");
       fridayLog.clockIn = "09:35";
       fridayLog.attendanceStatus = "출근";
       fridayLog.attendanceStep = "in";
@@ -5090,6 +5099,7 @@ async function checkFitnessRosterHoursAndCompactTotals(browser) {
           fridayTimes: fridayOffTimes,
           fridayWarnings: fridayOffWarnings.length,
           fridayScheduled: saturdayLabor.dayRows.find((row) => row.dateKey === "2026-08-07")?.scheduled,
+          plannedSubstitute,
           substituteActive,
           substituteDone: {
             status: getAttendanceStatusForLog(saturdayOnlyEmployee, fridayLog, "2026-08-07", new Date("2026-08-08T12:00:00+09:00")),
@@ -5134,6 +5144,13 @@ async function checkFitnessRosterHoursAndCompactTotals(browser) {
     || saturdayOnly?.saturdayHours !== "10:00-18:00" || saturdayOnly?.saturdayTimes?.[0] !== "10:00" || saturdayOnly?.saturdayTimes?.at(-1) !== "18:00"
     || saturdayOnly?.saturdayTimes?.length !== 9 || saturdayOnly?.saturdayScheduled !== 480) {
     fail("worklog, attendance, and center labor views should share each employee's weekly hours", JSON.stringify(saturdayOnly));
+  }
+  if (saturdayOnly?.plannedSubstitute?.hours !== "10:00-18:00"
+    || saturdayOnly?.plannedSubstitute?.times?.[0] !== "10:00"
+    || saturdayOnly?.plannedSubstitute?.times?.at(-1) !== "18:00"
+    || saturdayOnly?.plannedSubstitute?.times?.length !== 9
+    || !saturdayOnly?.plannedSubstitute?.blankRows) {
+    fail("off-day substitute-work planning should create blank rows from the employee's configured hours", JSON.stringify(saturdayOnly?.plannedSubstitute));
   }
   if (saturdayOnly?.substituteActive?.status !== "대체근무" || saturdayOnly?.substituteActive?.overview !== "대체근무중"
     || saturdayOnly?.substituteActive?.times?.join("|") !== "09:00"

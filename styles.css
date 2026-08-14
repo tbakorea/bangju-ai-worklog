@@ -9813,6 +9813,80 @@ textarea:focus-visible {
   white-space: nowrap;
 }
 
+#view-fitness-log .fitness-work-mode-button {
+  display: grid;
+  grid-template-columns: auto auto minmax(0, 1fr);
+  gap: 8px;
+  align-items: center;
+  min-height: 40px;
+  width: 100%;
+  border: 1px solid rgba(15, 59, 46, 0.15);
+  border-radius: 15px;
+  padding: 6px 12px;
+  background: rgba(255, 254, 250, 0.94);
+  color: var(--fitness-green);
+  text-align: left;
+  box-shadow: 0 7px 18px rgba(17, 20, 17, 0.045);
+}
+
+#view-fitness-log .fitness-work-mode-button[hidden] {
+  display: none;
+}
+
+#view-fitness-log .fitness-work-mode-button span {
+  font-size: 11px;
+  font-weight: 850;
+  color: rgba(31, 48, 41, 0.62);
+}
+
+#view-fitness-log .fitness-work-mode-button strong {
+  min-width: 46px;
+  border-radius: 999px;
+  padding: 5px 10px;
+  background: var(--fitness-green);
+  color: var(--nordic-sheet);
+  font-size: 13px;
+  font-weight: 950;
+  text-align: center;
+}
+
+#view-fitness-log .fitness-work-mode-button small {
+  min-width: 0;
+  overflow: hidden;
+  color: rgba(31, 48, 41, 0.72);
+  font-size: 11px;
+  font-weight: 800;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+#view-fitness-log .fitness-work-mode-button.is-off {
+  border-color: rgba(166, 105, 39, 0.24);
+  background: rgba(255, 248, 232, 0.92);
+}
+
+#view-fitness-log .fitness-work-mode-button.is-off strong {
+  background: #9a6427;
+}
+
+#view-fitness-log .fitness-work-mode-button:disabled {
+  cursor: default;
+  opacity: 0.76;
+}
+
+@media (max-width: 420px) {
+  #view-fitness-log .fitness-work-mode-button {
+    grid-template-columns: auto auto minmax(0, 1fr);
+    gap: 6px;
+    min-height: 38px;
+    padding: 5px 9px;
+  }
+
+  #view-fitness-log .fitness-work-mode-button small {
+    font-size: 10px;
+  }
+}
+
 .fitness-log-view.is-readonly .fitness-log-pager div::after {
   content: "열람 전용";
   justify-self: start;

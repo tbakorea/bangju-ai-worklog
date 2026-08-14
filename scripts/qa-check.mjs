@@ -530,6 +530,19 @@ check(
 );
 
 check(
+  "fitness employee worklogs expose a safe off-duty substitute-work toggle",
+  html.includes('id="fitnessWorkModeButton"')
+    && js.includes("function renderFitnessWorkModeControl")
+    && js.includes("function toggleFitnessWorkMode")
+    && js.includes("function getEmployeeSubstituteWorkHours")
+    && js.includes('log.workHoursOverride = "휴무"')
+    && js.includes("normalizeEmployeeLogRows(log, getActiveDateKey())")
+    && js.includes('document.getElementById("fitnessWorkModeButton")?.addEventListener("click", toggleFitnessWorkMode)')
+    && css.includes(".fitness-work-mode-button.is-off"),
+  "an employee off day must default to off and create that employee's blank schedule rows only after switching to substitute work"
+);
+
+check(
   "fitness center report uses canonical roster",
   /function getFitnessReportLogEntries\(dateKey, isCenter, employee\) \{[\s\S]{0,80}if \(isCenter\) \{[\s\S]{0,80}return getFitnessCenterEmployees\(\)\.map/.test(js),
   "center operating reports must use the same canonical roster as the center page"
