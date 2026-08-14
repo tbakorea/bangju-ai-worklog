@@ -579,6 +579,32 @@
               <button type="button" id="dagymClearButton">초기화</button>
             </div>
           </div>
+          <section class="member-outreach-panel" id="memberOutreachPanel" hidden>
+            <header>
+              <div>
+                <span>CONSENT-BASED MEMBER CARE</span>
+                <strong>회원 동의·재가입 관리</strong>
+                <p>분석자료와 연락처를 분리 보관하고, 동의 회원만 후속업무로 연결합니다.</p>
+              </div>
+              <button type="button" id="memberOutreachRefreshButton">후보 새로고침</button>
+            </header>
+            <form class="member-consent-form" id="memberConsentForm">
+              <label>다짐 회원번호 <input id="memberConsentExternalId" type="text" autocomplete="off" required /></label>
+              <label>회원 이름 <input id="memberConsentName" type="text" autocomplete="off" required /></label>
+              <label>연락처 <input id="memberConsentPhone" type="tel" autocomplete="off" placeholder="010-0000-0000" /></label>
+              <label>이용권 만료일 <input id="memberConsentExpiry" type="date" /></label>
+              <label>담당 직원 <input id="memberConsentAssignee" type="text" autocomplete="off" placeholder="예: 인포 신세민" /></label>
+              <label class="member-consent-check"><input id="memberServiceConsent" type="checkbox" /><span>필수정보 이용 동의</span></label>
+              <label class="member-consent-check"><input id="memberMarketingConsent" type="checkbox" /><span>광고성 정보 수신 동의</span></label>
+              <label class="member-consent-check"><input id="memberSmsConsent" type="checkbox" /><span>문자 수신 동의</span></label>
+              <label class="member-consent-check"><input id="memberKakaoConsent" type="checkbox" /><span>카카오 수신 동의</span></label>
+              <label class="member-consent-check"><input id="memberPushConsent" type="checkbox" /><span>앱 푸시 수신 동의</span></label>
+              <label>동의 근거 <input id="memberConsentEvidence" type="text" autocomplete="off" placeholder="예: 다짐 가입동의 2026-08" /></label>
+              <button type="submit">동의 회원 보안 등록</button>
+            </form>
+            <p class="member-consent-notice">개인정보 이용과 광고성 수신을 분리 확인합니다. 철회 즉시 모든 대기 연락에서 제외되고 연락처 열람은 감사기록에 남습니다.</p>
+            <div class="member-outreach-list" id="memberOutreachList"><p>등록된 동의 회원을 불러오는 중입니다.</p></div>
+          </section>
           <div class="fitness-ai-briefing">
             <h4>AI 총괄 코칭</h4>
             <div id="fitnessCenterCoachingList"></div>

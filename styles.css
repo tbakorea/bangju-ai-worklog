@@ -10361,6 +10361,64 @@ body.physical-phone-device .representative-analysis-body {
   padding: 10px;
 }
 
+.member-outreach-panel {
+  display: grid;
+  gap: 10px;
+  border: 1px solid var(--hardline);
+  background: linear-gradient(135deg, rgba(240, 247, 239, 0.94), rgba(255, 253, 247, 0.96));
+  padding: 12px;
+}
+
+.member-outreach-panel[hidden] { display: none; }
+
+.member-outreach-panel > header {
+  display: flex;
+  align-items: start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.member-outreach-panel > header div { display: grid; gap: 2px; }
+.member-outreach-panel > header span { color: rgba(15, 59, 46, 0.58); font-size: 10px; font-weight: 950; letter-spacing: 0.12em; }
+.member-outreach-panel > header strong { color: var(--fitness-green); font-size: 18px; font-weight: 950; }
+.member-outreach-panel > header p, .member-consent-notice { margin: 0; color: var(--muted); font-size: 11px; font-weight: 800; }
+.member-outreach-panel button { min-height: 36px; border: 1px solid rgba(15, 59, 46, 0.18); border-radius: 10px; background: var(--fitness-green); color: #fff; padding: 7px 12px; font-weight: 950; }
+
+.member-consent-form {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 7px;
+}
+
+.member-consent-form > label { display: grid; gap: 3px; min-width: 0; color: var(--muted); font-size: 10px; font-weight: 900; }
+.member-consent-form input[type="text"], .member-consent-form input[type="tel"], .member-consent-form input[type="date"] { min-width: 0; min-height: 36px; border: 1px solid var(--hardline); border-radius: 8px; background: #fffefa; color: var(--ink); padding: 6px 8px; font-size: 13px; font-weight: 850; }
+.member-consent-form .member-consent-check { display: flex; align-items: center; gap: 6px; min-height: 36px; border: 1px solid var(--hardline); border-radius: 8px; background: rgba(255,255,255,.68); padding: 6px 8px; }
+.member-consent-form .member-consent-check input { width: 17px; height: 17px; }
+
+.member-outreach-list { display: grid; gap: 6px; }
+.member-outreach-list > p { margin: 0; color: var(--muted); font-size: 12px; font-weight: 850; }
+.member-outreach-card { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 10px; align-items: center; border: 1px solid var(--hardline); border-radius: 10px; background: rgba(255,255,255,.72); padding: 8px 10px; }
+.member-outreach-card > div { min-width: 0; }
+.member-outreach-card strong, .member-outreach-card span, .member-outreach-card small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.member-outreach-card strong { color: var(--ink); font-size: 14px; font-weight: 950; }
+.member-outreach-card span { color: var(--fitness-green); font-size: 12px; font-weight: 900; }
+.member-outreach-card small { color: var(--muted); font-size: 10px; font-weight: 800; }
+.member-outreach-card.is-urgent { border-color: rgba(174, 61, 43, .35); background: rgba(255, 239, 232, .72); }
+.member-outreach-card.is-attention { border-color: rgba(192, 130, 33, .34); background: rgba(255, 248, 224, .72); }
+.member-outreach-actions { display: flex; gap: 5px; }
+.member-outreach-actions button { min-height: 32px; font-size: 11px; }
+.member-outreach-actions button:first-child { background: #fffefa; color: var(--fitness-green); }
+.member-outreach-actions button:last-child { background: rgba(255,255,255,.7); color: #8a342d; }
+.member-outreach-actions button:disabled { cursor: not-allowed; opacity: .45; }
+
+@media (max-width: 760px) {
+  .member-consent-form { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .member-consent-form > button { grid-column: 1 / -1; }
+  .member-outreach-card { grid-template-columns: 1fr; }
+  .member-outreach-actions { justify-content: stretch; }
+  .member-outreach-actions button { flex: 1; }
+}
+
 .dagym-ops-panel header {
   display: flex;
   justify-content: space-between;

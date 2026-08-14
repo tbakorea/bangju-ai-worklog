@@ -10707,6 +10707,142 @@ function renderDagymOpsFields() {
       importMeta.removeAttribute("title");
     }
   }
+  const canViewMemberCare = canViewFitnessMemberCare();
+  const outreachPanel = document.getElementById("memberOutreachPanel");
+  if (outreachPanel) outreachPanel.hidden = !canViewMemberCare;
+  const consentForm = document.getElementById("memberConsentForm");
+  if (consentForm) consentForm.hidden = !canManageDagymOperations();
+  if (canViewMemberCare && authState.session?.access_token && !memberOutreachState.loaded && !memberOutreachState.loading) {
+    window.setTimeout(() => loadMemberOutreachCandidates(), 0);
+  }
+}
+
+const memberOutreachState = { loading: false, loaded: false, canManage: false, members: [] };
+
+function memberOutreachHeaders() {
+  return {
+    Authorization: `Bearer ${authState.session?.access_token || ""}`,
+    "Content-Type": "application/json",
+  };
+}
+
+function renderMemberOutreachList() {
+  const list = document.getElementById("memberOutreachList");
+  if (!list) return;
+  if (memberOutreachState.loading) {
+    list.innerHTML = "<p>동의 회원과 재가입 후보를 확인하고 있습니다.</p>";
+    return;
+  }
+  const members = memberOutreachState.members.filter((member) => member.status === "active" && member.marketingConsent);
+  if (!members.length) {
+    list.innerHTML = "<p>재가입 안내에 동의한 회원이 아직 없습니다.</p>";
+    return;
+  }
+  list.innerHTML = members.map((member) => `
+    <article class="member-outreach-card is-${escapeHtml(member.candidate?.priority || "normal")}">
+      <div>
+        <strong>${escapeHtml(member.name || "회원")} · ${escapeHtml(member.candidate?.label || "만료일 확인 필요")}</strong>
+        <span>${escapeHtml(member.maskedPhone || "연락처 등록")} · ${escapeHtml(member.membershipExpiresOn || "만료일 미등록")}</span>
+        <small>${escapeHtml(member.assignedEmployeeId || "담당자 미배정")} · 재가입 안내 동의 완료</small>
+      </div>
+      <div class="member-outreach-actions">
+        <button type="button" data-member-contact-reveal="${escapeHtml(member.id)}">연락처 확인</button>
+        <button type="button" data-member-followup="${escapeHtml(member.id)}" data-followup-type="renewal" ${member.candidate?.days === null || member.candidate.days > 30 ? "disabled title=\"만료 30일 전부터 생성\"" : ""}>재가입 안내</button>
+        <button type="button" data-member-followup="${escapeHtml(member.id)}" data-followup-type="consultation">상담 배정</button>
+        <button type="button" data-member-followup="${escapeHtml(member.id)}" data-followup-type="recontact">재연락 예약</button>
+        ${memberOutreachState.canManage ? `<button type="button" data-member-consent-withdraw="${escapeHtml(member.id)}">동의 철회</button>` : ""}
+      </div>
+    </article>
+  `).join("");
+}
+
+async function loadMemberOutreachCandidates({ force = false } = {}) {
+  if (!canViewFitnessMemberCare() || !authState.session?.access_token || memberOutreachState.loading || (memberOutreachState.loaded && !force)) return;
+  memberOutreachState.loading = true;
+  renderMemberOutreachList();
+  try {
+    const response = await fetch("/api/member-outreach", { headers: memberOutreachHeaders() });
+    const result = await response.json().catch(() => ({}));
+    if (!response.ok || !result.ok) throw new Error(result.error || "동의 회원을 불러오지 못했습니다.");
+    memberOutreachState.members = Array.isArray(result.members) ? result.members : [];
+    memberOutreachState.canManage = Boolean(result.access?.canManage);
+    memberOutreachState.loaded = true;
+  } catch (error) {
+    const list = document.getElementById("memberOutreachList");
+    if (list) list.innerHTML = `<p>${escapeHtml(error.message || "동의 회원을 불러오지 못했습니다.")}</p>`;
+  } finally {
+    memberOutreachState.loading = false;
+    renderMemberOutreachList();
+  }
+}
+
+async function submitMemberConsent(event) {
+  event.preventDefault();
+  if (!canManageDagymOperations() || !authState.session?.access_token) return;
+  const serviceConsent = Boolean(document.getElementById("memberServiceConsent")?.checked);
+  const marketingConsent = Boolean(document.getElementById("memberMarketingConsent")?.checked);
+  const smsConsent = Boolean(document.getElementById("memberSmsConsent")?.checked);
+  const kakaoConsent = Boolean(document.getElementById("memberKakaoConsent")?.checked);
+  const appPushConsent = Boolean(document.getElementById("memberPushConsent")?.checked);
+  if (!serviceConsent && !marketingConsent) {
+    showAppToast("회원이 동의한 항목을 확인해주세요");
+    return;
+  }
+  const payload = {
+    action: "upsert",
+    centerKey: "beyond-fitness",
+    externalMemberId: document.getElementById("memberConsentExternalId")?.value || "",
+    name: document.getElementById("memberConsentName")?.value || "",
+    phone: document.getElementById("memberConsentPhone")?.value || "",
+    membershipExpiresOn: document.getElementById("memberConsentExpiry")?.value || "",
+    assignedEmployeeId: document.getElementById("memberConsentAssignee")?.value || "",
+    requiredUseConsent: serviceConsent,
+    marketingConsent,
+    smsConsent,
+    kakaoConsent,
+    appPushConsent,
+    consentSource: "member-signup",
+    consentVersion: "2026-08",
+    evidenceReference: document.getElementById("memberConsentEvidence")?.value || "",
+  };
+  try {
+    const response = await fetch("/api/member-outreach", { method: "POST", headers: memberOutreachHeaders(), body: JSON.stringify(payload) });
+    const result = await response.json().catch(() => ({}));
+    if (!response.ok || !result.ok) throw new Error(result.error || "동의 회원을 등록하지 못했습니다.");
+    event.currentTarget.reset();
+    memberOutreachState.loaded = false;
+    await loadMemberOutreachCandidates({ force: true });
+    showAppToast("동의 회원을 보안 명부에 등록했습니다");
+  } catch (error) {
+    showAppToast(error.message || "동의 회원을 등록하지 못했습니다", 4200);
+  }
+}
+
+async function handleMemberOutreachAction(event) {
+  const revealButton = event.target.closest("[data-member-contact-reveal]");
+  const queueButton = event.target.closest("[data-member-followup]");
+  const withdrawButton = event.target.closest("[data-member-consent-withdraw]");
+  const button = revealButton || queueButton || withdrawButton;
+  if (!button || !authState.session?.access_token) return;
+  const memberId = revealButton?.dataset.memberContactReveal || queueButton?.dataset.memberFollowup || withdrawButton?.dataset.memberConsentWithdraw;
+  const action = revealButton ? "reveal" : queueButton ? "queue" : "withdraw";
+  button.disabled = true;
+  try {
+    const response = await fetch("/api/member-outreach", { method: "POST", headers: memberOutreachHeaders(), body: JSON.stringify({ action, memberId, actionType: queueButton?.dataset.followupType || "renewal", dueDate: getActiveDateKey() }) });
+    const result = await response.json().catch(() => ({}));
+    if (!response.ok || !result.ok) throw new Error(result.error || "후속 처리를 완료하지 못했습니다.");
+    if (action === "reveal") showAppToast(`${result.contact.name} · ${result.contact.phone}`, 8000);
+    else if (action === "queue") showAppToast("담당 직원의 회원 후속업무를 생성했습니다");
+    else {
+      memberOutreachState.loaded = false;
+      await loadMemberOutreachCandidates({ force: true });
+      showAppToast("회원의 연락 동의를 철회하고 대기 업무를 취소했습니다");
+    }
+  } catch (error) {
+    showAppToast(error.message || "후속 처리를 완료하지 못했습니다", 4200);
+  } finally {
+    button.disabled = false;
+  }
 }
 
 function canManageDagymOperations() {
@@ -10717,6 +10853,11 @@ function canManageDagymOperations() {
     || hasProfilePermission("worklogAll")
     || isFitnessManagerRosterIdentity(profileEmployee)
   );
+}
+
+function canViewFitnessMemberCare() {
+  const profileEmployee = getProfileEmployee();
+  return Boolean(canManageDagymOperations() || isFitnessEmployeeRecord(profileEmployee));
 }
 
 function getPreviousDagymOperatingDate(dateKey = getActiveDateKey()) {
@@ -22319,6 +22460,9 @@ document.getElementById("dagymFileInput")?.addEventListener("change", async (eve
 });
 document.getElementById("dagymClearButton")?.addEventListener("click", clearDagymOps);
 document.getElementById("dagymCloseButton")?.addEventListener("click", toggleDagymDailyClose);
+document.getElementById("memberConsentForm")?.addEventListener("submit", submitMemberConsent);
+document.getElementById("memberOutreachRefreshButton")?.addEventListener("click", () => loadMemberOutreachCandidates({ force: true }));
+document.getElementById("memberOutreachList")?.addEventListener("click", handleMemberOutreachAction);
 document.getElementById("fitnessGuidanceGenerateButton")?.addEventListener("click", () => generateTodayFitnessGuidance());
 document.getElementById("fitnessDailyGuidancePanel")?.addEventListener("click", (event) => {
   const button = event.target.closest("[data-accept-fitness-guidance]");

@@ -13,6 +13,7 @@ const backupApi = existsSync(join(root, "api/backup-mail.js")) ? read("api/backu
 const fitnessCoachApi = existsSync(join(root, "api/fitness-coach.js")) ? read("api/fitness-coach.js") : "";
 const dagymSyncApi = existsSync(join(root, "api/dagym-sync.js")) ? read("api/dagym-sync.js") : "";
 const dagymNightlyApi = existsSync(join(root, "api/dagym-nightly-analysis.js")) ? read("api/dagym-nightly-analysis.js") : "";
+const memberOutreachApi = existsSync(join(root, "api/member-outreach.js")) ? read("api/member-outreach.js") : "";
 const dagymDatabaseCron = existsSync(join(root, "supabase/migrations/20260811170000_dagym_database_cron.sql"))
   ? read("supabase/migrations/20260811170000_dagym_database_cron.sql")
   : "";
@@ -44,6 +45,20 @@ const dagymSyncApiSyntax = dagymSyncApi ? spawnSync(process.execPath, ["--check"
 check("DaGym sync api exists and parses", Boolean(dagymSyncApi) && dagymSyncApiSyntax.status === 0, dagymSyncApiSyntax?.stderr?.trim() || "api/dagym-sync.js is missing");
 const dagymNightlyApiSyntax = dagymNightlyApi ? spawnSync(process.execPath, ["--check", join(root, "api/dagym-nightly-analysis.js")], { encoding: "utf8" }) : null;
 check("DaGym nightly analysis api exists and parses", Boolean(dagymNightlyApi) && dagymNightlyApiSyntax.status === 0, dagymNightlyApiSyntax?.stderr?.trim() || "api/dagym-nightly-analysis.js is missing");
+const memberOutreachApiSyntax = memberOutreachApi ? spawnSync(process.execPath, ["--check", join(root, "api/member-outreach.js")], { encoding: "utf8" }) : null;
+check("member outreach api exists and parses", Boolean(memberOutreachApi) && memberOutreachApiSyntax.status === 0, memberOutreachApiSyntax?.stderr?.trim() || "api/member-outreach.js is missing");
+check(
+  "member CRM separates consent, operations, follow-up, and message history",
+  ["fitness_members", "member_consents", "member_contracts", "member_attendance", "member_pt_sessions", "member_followups", "member_message_logs", "member_contact_audit_logs"]
+    .every((table) => schema.includes(`create table if not exists public.${table}`))
+    && schema.includes("cancel_member_followups_on_consent_change")
+    && schema.includes("revoke all on public.fitness_members from public, anon, authenticated")
+    && memberOutreachApi.includes("function isAssignedTo")
+    && memberOutreachApi.includes("MEMBER_CONTACT_ENCRYPTION_KEY")
+    && !memberOutreachApi.includes("member_contact_vault")
+    && !memberOutreachApi.includes("member_outreach_queue"),
+  "member PII must be encrypted, direct DB access blocked, staff limited to assigned members, and withdrawals cancel pending follow-ups"
+);
 check(
   "DaGym direct sync stays server-side and authenticated",
   dagymSyncApi.includes("process.env.DAGYM_SYNC_TOKEN")
