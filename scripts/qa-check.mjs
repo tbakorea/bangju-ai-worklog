@@ -13,6 +13,11 @@ const backupApi = existsSync(join(root, "api/backup-mail.js")) ? read("api/backu
 const fitnessCoachApi = existsSync(join(root, "api/fitness-coach.js")) ? read("api/fitness-coach.js") : "";
 const dagymSyncApi = existsSync(join(root, "api/dagym-sync.js")) ? read("api/dagym-sync.js") : "";
 const dagymNightlyApi = existsSync(join(root, "api/dagym-nightly-analysis.js")) ? read("api/dagym-nightly-analysis.js") : "";
+const dagymMonthlyScheduleApi = existsSync(join(root, "api/dagym-monthly-schedule.js")) ? read("api/dagym-monthly-schedule.js") : "";
+const dagymMonthlyScheduleMigration = existsSync(join(root, "supabase/migrations/20260815013000_dagym_monthly_pt_schedule.sql"))
+  ? read("supabase/migrations/20260815013000_dagym_monthly_pt_schedule.sql")
+  : "";
+const dagymMonthlyScheduleCollector = existsSync(join(root, "scripts/dagym-monthly-pt-sync.mjs")) ? read("scripts/dagym-monthly-pt-sync.mjs") : "";
 const memberOutreachApi = existsSync(join(root, "api/member-outreach.js")) ? read("api/member-outreach.js") : "";
 const dagymDatabaseCron = existsSync(join(root, "supabase/migrations/20260811170000_dagym_database_cron.sql"))
   ? read("supabase/migrations/20260811170000_dagym_database_cron.sql")
@@ -45,6 +50,8 @@ const dagymSyncApiSyntax = dagymSyncApi ? spawnSync(process.execPath, ["--check"
 check("DaGym sync api exists and parses", Boolean(dagymSyncApi) && dagymSyncApiSyntax.status === 0, dagymSyncApiSyntax?.stderr?.trim() || "api/dagym-sync.js is missing");
 const dagymNightlyApiSyntax = dagymNightlyApi ? spawnSync(process.execPath, ["--check", join(root, "api/dagym-nightly-analysis.js")], { encoding: "utf8" }) : null;
 check("DaGym nightly analysis api exists and parses", Boolean(dagymNightlyApi) && dagymNightlyApiSyntax.status === 0, dagymNightlyApiSyntax?.stderr?.trim() || "api/dagym-nightly-analysis.js is missing");
+const dagymMonthlyScheduleApiSyntax = dagymMonthlyScheduleApi ? spawnSync(process.execPath, ["--check", join(root, "api/dagym-monthly-schedule.js")], { encoding: "utf8" }) : null;
+check("DaGym monthly schedule api exists and parses", Boolean(dagymMonthlyScheduleApi) && dagymMonthlyScheduleApiSyntax.status === 0, dagymMonthlyScheduleApiSyntax?.stderr?.trim() || "api/dagym-monthly-schedule.js is missing");
 const memberOutreachApiSyntax = memberOutreachApi ? spawnSync(process.execPath, ["--check", join(root, "api/member-outreach.js")], { encoding: "utf8" }) : null;
 check("member outreach api exists and parses", Boolean(memberOutreachApi) && memberOutreachApiSyntax.status === 0, memberOutreachApiSyntax?.stderr?.trim() || "api/member-outreach.js is missing");
 check(
@@ -93,6 +100,35 @@ check(
     && !dagymCeoReportIngest.includes("raw_text")
     && schema.includes("create table if not exists public.dagym_ceo_report_inbox"),
   "CEO report ingestion must store aggregate metrics only and update the existing coaching pipeline"
+);
+check(
+  "DaGym monthly PT schedule is encrypted, permission-scoped, and status-driven",
+  dagymMonthlyScheduleApi.includes("MEMBER_CONTACT_ENCRYPTION_KEY")
+    && dagymMonthlyScheduleApi.includes("aes-256-gcm")
+    && dagymMonthlyScheduleApi.includes("trainer_profile_id")
+    && dagymMonthlyScheduleApi.includes('status_source: "worklog"')
+    && dagymMonthlyScheduleMigration.includes("member_name_ciphertext")
+    && dagymMonthlyScheduleMigration.includes("'postponed'")
+    && js.includes('["completed", "no-show"].includes(item.dagymStatus)')
+    && js.includes("auditDagymClassRows")
+    && js.includes("skipPt: hasDagymClass")
+    && js.includes('dagymClassStatusOptions = [')
+    && ["미정", "출석", "노쇼", "취소", "연기"].every((label) => js.includes(`\"${label}\"`)),
+  "member names must be encrypted, rows limited by trainer permission, and only attendance/no-show counted after source-ID deduplication"
+);
+check(
+  "DaGym local monthly audit excludes member names",
+  dagymMonthlyScheduleCollector.includes("const safeEvents = capture.events.map(({ memberName, ...event }) => event)")
+    && !dagymMonthlyScheduleCollector.includes("...capture }, null, 2"),
+  "local audit files must not retain member names"
+);
+check(
+  "fitness revenue coaching protects data quality and enforces operating targets",
+  js.includes("Math.max(30000000")
+    && js.includes("Math.max(50000000")
+    && js.includes("coverageRate < 80")
+    && js.includes("누락일을 0원으로 추정하지 않습니다"),
+  "sales coaching must distinguish missing data from zero revenue and keep 30M/50M target floors"
 );
 check("fitness coach keeps OpenAI key server-side", fitnessCoachApi.includes("process.env.OPENAI_API_KEY") && !js.includes("OPENAI_API_KEY"));
 check("fitness coach verifies signed-in user", fitnessCoachApi.includes("/auth/v1/user") && fitnessCoachApi.includes("Authorization"));
