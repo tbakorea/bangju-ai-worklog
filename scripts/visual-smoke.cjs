@@ -384,6 +384,8 @@ async function checkDesktopEmployeeWorklog(browser) {
     return {
       activeView: document.body.dataset.activeView,
       layoutMode: document.body.dataset.layoutMode,
+      viewportDensity: document.body.dataset.viewportDensity,
+      resolutionClass: document.body.dataset.resolutionClass,
       shellWidth: shell?.getBoundingClientRect().width || 0,
       reportDisplay: getComputedStyle(reportView).display,
       todayDisplay: getComputedStyle(today).display,
@@ -405,6 +407,9 @@ async function checkDesktopEmployeeWorklog(browser) {
 
   if (metrics.activeView !== "bangju-log") fail("desktop active view mismatch", metrics.activeView);
   if (metrics.layoutMode !== "wide") fail("desktop worklog should automatically use wide classic layout", metrics.layoutMode);
+  if (metrics.viewportDensity !== "high" || metrics.resolutionClass !== "desktop") {
+    fail("desktop monitor should automatically use the compact resolution profile", JSON.stringify(metrics));
+  }
   if (metrics.reportDisplay !== "none") fail("inactive report view leaked under worklog", metrics.reportDisplay);
   if (metrics.todayDisplay !== "grid") fail("desktop worklog should use compact grid", metrics.todayDisplay);
   if (metrics.dateFont > 36) fail("desktop date font is too large", `${metrics.dateFont}px`);
@@ -495,6 +500,28 @@ async function checkDesktopEmployeeWorklog(browser) {
   }
   if (fitnessDesktop.desktopGridDisplay !== "grid" || fitnessDesktop.coworkerDisplay !== "grid" || fitnessDesktop.coworkerCount < 2 || !fitnessDesktop.columnsAligned || fitnessDesktop.openButtonCount !== fitnessDesktop.coworkerCount) {
     fail("desktop fitness worklog should align personal tasks, schedule, and coworker worklogs", JSON.stringify(fitnessDesktop));
+  }
+
+  await page.setViewportSize({ width: 768, height: 1024 });
+  await page.evaluate(() => {
+    renderResponsiveMode();
+    window.switchView?.("fitness-log");
+  });
+  await page.waitForTimeout(180);
+  const portraitTablet = await page.evaluate(() => ({
+    flow: document.body.dataset.responsiveFlow || "",
+    layout: document.body.dataset.layoutMode || "",
+    isPhysicalPhone: document.body.classList.contains("physical-phone-device"),
+    shellWidth: document.querySelector(".worklog-shell")?.getBoundingClientRect().width || 0,
+    desktopGridDisplay: getComputedStyle(document.querySelector(".fitness-desktop-worklog-grid")).display,
+    coworkerDisplay: getComputedStyle(document.querySelector("#fitnessDesktopCoworkerBoard")).display,
+    horizontalOverflow: document.documentElement.scrollWidth - window.innerWidth,
+  }));
+  if (portraitTablet.flow !== "portrait" || portraitTablet.layout !== "phone" || portraitTablet.isPhysicalPhone
+    || portraitTablet.shellWidth < 580 || portraitTablet.shellWidth > 630
+    || portraitTablet.desktopGridDisplay !== "block" || portraitTablet.coworkerDisplay !== "none"
+    || portraitTablet.horizontalOverflow > 2) {
+    fail("portrait tablet should automatically use a full-height single-column smartphone flow", JSON.stringify(portraitTablet));
   }
 
   if (errors.length) fail("desktop page errors", errors.join(" | "));
@@ -2586,7 +2613,7 @@ async function checkApprovedEmployeeWorklogEditMatrix(browser) {
           permissions: {},
           ...${JSON.stringify(payload.profile)}
         };
-        state.selectedDateKey = "2026-08-10";
+        state.selectedDateKey = todayKey;
         normalizeState();
         switchView(getInitialLandingView());
       `);
@@ -2806,6 +2833,8 @@ async function checkPriorityCarryoverAndDateRules(browser) {
     fail("worklog edit window should allow future dates and 48 hours after a past workday ends", metrics);
   }
   const employeeFutureMatrix = await page.evaluate(() => window.eval(`(() => {
+    const futureDate1 = formatDateKey(new Date(parseDateKey(todayKey).getTime() + 86400000));
+    const futureDate2 = formatDateKey(new Date(parseDateKey(todayKey).getTime() + (2 * 86400000)));
     const cases = [
       ["이소미", "재무 대리", "(주)방주", "본사", "회계 정산", "isomi@example.com", "bangju-finance-assistant", "bangju-log"],
       ["최희진", "재무과장", "(주)방주", "본사", "자금 회계", "finance.manager@example.com", "bangju-finance-manager", "bangju-log"],
@@ -2820,7 +2849,7 @@ async function checkPriorityCarryoverAndDateRules(browser) {
     const results = cases.map(([name, role, org, workplace, primaryWork, email, expectedId, view], index) => {
       authState.user = { id: "future-user-" + index, email };
       state.profile = { ...defaultProfile, name, nickname: name, role, org, workplace, primaryWork, email, approvalStatus: "approved", accessPreset: "employee", permissions: {} };
-      state.selectedDateKey = "2026-08-10";
+      state.selectedDateKey = futureDate1;
       normalizeState();
       state.selectedEmployeeId = expectedId;
       if (view === "fitness-log") {
@@ -2834,22 +2863,22 @@ async function checkPriorityCarryoverAndDateRules(browser) {
     authState.user = { id: "isomi-future-save", email: "isomi@example.com" };
     state.profile = { ...defaultProfile, name: "이소미", nickname: "이소미", role: "재무 대리", org: "(주)방주", workplace: "본사", approvalStatus: "approved", accessPreset: "employee", permissions: {} };
     state.selectedEmployeeId = "bangju-finance-assistant";
-    state.selectedDateKey = "2026-08-10";
-    getEmployeeLogForDate("bangju-finance-assistant", "2026-08-10").tasks[0].text = "미래 업무 저장 검증";
+    state.selectedDateKey = futureDate1;
+    getEmployeeLogForDate("bangju-finance-assistant", futureDate1).tasks[0].text = "미래 업무 저장 검증";
     saveState({ fastSave: true });
-    state.selectedDateKey = "2026-08-11";
+    state.selectedDateKey = futureDate2;
     saveState({ fastSave: true });
     const queuedDates = [...authState.saveTimers.keys()].sort();
     authState.saveTimers.forEach((timer) => clearTimeout(timer));
     authState.saveTimers = new Map();
-    return JSON.stringify({ results, queuedDates });
+    return JSON.stringify({ results, queuedDates, expectedDates: [futureDate1, futureDate2] });
   })()`));
   const futureMatrix = JSON.parse(employeeFutureMatrix);
   const brokenFutureEmployees = futureMatrix.results.filter((item) => item.mappedId !== item.expectedId || !item.editable);
   if (brokenFutureEmployees.length) {
     fail("every mapped employee should be able to edit only their own future worklog", JSON.stringify(brokenFutureEmployees));
   }
-  if (futureMatrix.queuedDates.join(",") !== "2026-08-10,2026-08-11") {
+  if (futureMatrix.queuedDates.join(",") !== futureMatrix.expectedDates.join(",")) {
     fail("rapid date navigation must not cancel a pending future-date remote save", employeeFutureMatrix);
   }
   if (errors.length) fail("priority carryover/date-rule page errors", errors.join(" | "));

@@ -642,6 +642,15 @@ check(
 );
 
 check(
+  "worklog layout responds to aspect ratio and monitor resolution",
+  js.includes('const isPhoneFlow = isPhysicalPhone || (isPortraitFlow && viewportWidth <= 900)')
+    && js.includes('document.body.dataset.resolutionClass = viewportWidth >= 1800 ? "wide-monitor"')
+    && css.includes('body[data-responsive-flow="landscape"][data-viewport-density="high"] .worklog-shell')
+    && css.includes('@media (min-width: 641px) and (max-width: 900px) and (orientation: portrait)'),
+  "wide monitors should use compact expanded cards while tall portrait screens use one full-height column"
+);
+
+check(
   "backup is not duplicated as a new main menu",
   !html.includes('data-menu-view="backup"') && !html.includes('data-view="backup"'),
   "backup should live inside the existing report flow to avoid menu duplication"

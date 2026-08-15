@@ -3613,22 +3613,28 @@ function setupAttendancePopover() {
 function renderResponsiveMode() {
   const viewportWidth = Math.max(document.documentElement.clientWidth || 0, window.innerWidth || 0);
   const viewportHeight = Math.max(document.documentElement.clientHeight || 0, window.innerHeight || 0);
-  const isLandscapeFlow = viewportWidth >= 600 && viewportWidth > viewportHeight * 1.08;
-  const isNarrow = viewportWidth <= 760 && !isLandscapeFlow;
-  const isPhoneWidth = viewportWidth <= 640 && !isLandscapeFlow;
+  const aspectRatio = viewportWidth / Math.max(viewportHeight, 1);
+  const isLandscapeFlow = viewportWidth >= 600 && aspectRatio >= 1.08;
+  const isPortraitFlow = !isLandscapeFlow && viewportHeight > viewportWidth * 1.08;
+  const isPhysicalPhone = viewportWidth <= 640 && !isLandscapeFlow;
+  const isPhoneFlow = isPhysicalPhone || (isPortraitFlow && viewportWidth <= 900);
+  const isNarrow = isPhoneFlow || (viewportWidth <= 760 && !isLandscapeFlow);
   const mode = isNarrow ? "narrow" : "expanded";
   const viewMode = getGlobalViewMode();
-  const layoutMode = isLandscapeFlow ? "wide" : (isPhoneWidth || viewMode === "ceo" ? "phone" : "wide");
+  const layoutMode = isLandscapeFlow ? "wide" : (isPhoneFlow || viewMode === "ceo" ? "phone" : "wide");
+  const isUltraDenseLandscape = isLandscapeFlow && (viewportHeight <= 720 || viewportWidth >= 1800);
+  const isDenseLandscape = isLandscapeFlow && (isUltraDenseLandscape || viewportHeight <= 900 || viewportWidth >= 1280);
   localStorage.setItem(layoutModeStorageKey, layoutMode);
   document.body.dataset.deviceMode = mode;
   document.body.dataset.layoutMode = layoutMode;
   document.body.dataset.responsiveFlow = isLandscapeFlow ? "landscape" : "portrait";
-  document.body.dataset.viewportDensity = viewportHeight <= 720 && isLandscapeFlow ? "high" : "regular";
-  document.body.classList.toggle("smartphone-device", layoutMode === "phone" || isPhoneWidth);
-  document.body.classList.toggle("physical-phone-device", isPhoneWidth);
+  document.body.dataset.viewportDensity = isDenseLandscape ? "high" : "regular";
+  document.body.dataset.resolutionClass = viewportWidth >= 1800 ? "wide-monitor" : (viewportWidth >= 1280 ? "desktop" : "standard");
+  document.body.classList.toggle("smartphone-device", layoutMode === "phone" || isPhoneFlow);
+  document.body.classList.toggle("physical-phone-device", isPhysicalPhone);
   applyGlobalViewMode();
   const layoutToggle = document.querySelector(".layout-mode-toggle");
-  if (layoutToggle) layoutToggle.hidden = isPhoneWidth;
+  if (layoutToggle) layoutToggle.hidden = isPhoneFlow;
   document.querySelectorAll("[data-layout-mode-choice]").forEach((button) => {
     button.classList.toggle("is-active", button.dataset.layoutModeChoice === layoutMode);
   });
@@ -3639,7 +3645,9 @@ function renderResponsiveMode() {
 function isPhysicalPhoneLayout() {
   const viewportWidth = Math.max(document.documentElement.clientWidth || 0, window.innerWidth || 0);
   const viewportHeight = Math.max(document.documentElement.clientHeight || 0, window.innerHeight || 0);
-  return viewportWidth <= 640 && !(viewportWidth >= 600 && viewportWidth > viewportHeight * 1.08);
+  const isLandscapeFlow = viewportWidth >= 600 && viewportWidth / Math.max(viewportHeight, 1) >= 1.08;
+  const isPortraitFlow = !isLandscapeFlow && viewportHeight > viewportWidth * 1.08;
+  return !isLandscapeFlow && (viewportWidth <= 640 || (isPortraitFlow && viewportWidth <= 900));
 }
 
 function getGlobalViewMode() {
@@ -13769,7 +13777,8 @@ function normalizeWorklogSchedule(log, dateKey = getActiveDateKey()) {
 
 function getWorklogScheduleSlots(log, dateKey = getActiveDateKey()) {
   const unit = log?.scheduleUnit === "60" ? 60 : 30;
-  const workHours = getEmployeeWorkHours(log?.employeeId, state?.profile, dateKey);
+  const workHours = normalizeWorkHoursText(log?.workHoursOverride || "")
+    || getEmployeeWorkHours(log?.employeeId, state?.profile, dateKey);
   const baseTimes = getScheduleTimes(workHours);
   const manualTimes = (Array.isArray(log?.manualScheduleSlots) ? log.manualScheduleSlots : [])
     .map(normalizeScheduleTimeInput)
