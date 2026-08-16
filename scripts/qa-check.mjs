@@ -18,6 +18,11 @@ const dagymMonthlyScheduleMigration = existsSync(join(root, "supabase/migrations
   ? read("supabase/migrations/20260815013000_dagym_monthly_pt_schedule.sql")
   : "";
 const dagymMonthlyScheduleCollector = existsSync(join(root, "scripts/dagym-monthly-pt-sync.mjs")) ? read("scripts/dagym-monthly-pt-sync.mjs") : "";
+const dagymDailyBrowserApi = existsSync(join(root, "api/dagym-browser-daily.js")) ? read("api/dagym-browser-daily.js") : "";
+const dagymDailyBrowserCollector = existsSync(join(root, "scripts/dagym-daily-sync.mjs")) ? read("scripts/dagym-daily-sync.mjs") : "";
+const dagymDailyPipelineMigration = existsSync(join(root, "supabase/migrations/20260816090000_dagym_daily_sync_pipeline.sql"))
+  ? read("supabase/migrations/20260816090000_dagym_daily_sync_pipeline.sql")
+  : "";
 const memberOutreachApi = existsSync(join(root, "api/member-outreach.js")) ? read("api/member-outreach.js") : "";
 const dagymDatabaseCron = existsSync(join(root, "supabase/migrations/20260811170000_dagym_database_cron.sql"))
   ? read("supabase/migrations/20260811170000_dagym_database_cron.sql")
@@ -52,6 +57,10 @@ const dagymNightlyApiSyntax = dagymNightlyApi ? spawnSync(process.execPath, ["--
 check("DaGym nightly analysis api exists and parses", Boolean(dagymNightlyApi) && dagymNightlyApiSyntax.status === 0, dagymNightlyApiSyntax?.stderr?.trim() || "api/dagym-nightly-analysis.js is missing");
 const dagymMonthlyScheduleApiSyntax = dagymMonthlyScheduleApi ? spawnSync(process.execPath, ["--check", join(root, "api/dagym-monthly-schedule.js")], { encoding: "utf8" }) : null;
 check("DaGym monthly schedule api exists and parses", Boolean(dagymMonthlyScheduleApi) && dagymMonthlyScheduleApiSyntax.status === 0, dagymMonthlyScheduleApiSyntax?.stderr?.trim() || "api/dagym-monthly-schedule.js is missing");
+const dagymDailyBrowserApiSyntax = dagymDailyBrowserApi ? spawnSync(process.execPath, ["--check", join(root, "api/dagym-browser-daily.js")], { encoding: "utf8" }) : null;
+check("DaGym daily browser api exists and parses", Boolean(dagymDailyBrowserApi) && dagymDailyBrowserApiSyntax.status === 0, dagymDailyBrowserApiSyntax?.stderr?.trim() || "api/dagym-browser-daily.js is missing");
+const dagymDailyBrowserCollectorSyntax = dagymDailyBrowserCollector ? spawnSync(process.execPath, ["--check", join(root, "scripts/dagym-daily-sync.mjs")], { encoding: "utf8" }) : null;
+check("DaGym daily browser collector exists and parses", Boolean(dagymDailyBrowserCollector) && dagymDailyBrowserCollectorSyntax.status === 0, dagymDailyBrowserCollectorSyntax?.stderr?.trim() || "scripts/dagym-daily-sync.mjs is missing");
 const memberOutreachApiSyntax = memberOutreachApi ? spawnSync(process.execPath, ["--check", join(root, "api/member-outreach.js")], { encoding: "utf8" }) : null;
 check("member outreach api exists and parses", Boolean(memberOutreachApi) && memberOutreachApiSyntax.status === 0, memberOutreachApiSyntax?.stderr?.trim() || "api/member-outreach.js is missing");
 check(
@@ -91,6 +100,20 @@ check(
   "database cron must persist the previous-day analysis at 01:00 KST and feed today's AI coaching"
 );
 check(
+  "DaGym browser collection persists daily snapshots and sync health",
+  dagymDailyBrowserApi.includes("dagym_daily_snapshots")
+    && dagymDailyBrowserApi.includes("dagym_sync_runs")
+    && dagymDailyBrowserApi.includes("run_dagym_nightly_analysis")
+    && dagymDailyBrowserCollector.includes("DAGYM_ATTENDANCE_URL")
+    && dagymDailyBrowserCollector.includes("DAGYM_SALES_URL")
+    && dagymDailyBrowserCollector.includes("DAGYM_MEMBERS_URL")
+    && dagymDailyPipelineMigration.includes("create table if not exists public.dagym_daily_snapshots")
+    && dagymDailyPipelineMigration.includes("create table if not exists public.dagym_sync_runs")
+    && schema.includes("create table if not exists public.dagym_daily_snapshots")
+    && dagymNightlyApi.includes("loadDailySnapshot"),
+  "daily attendance, sales, member and PT data must be saved independently of worklog state and feed the next-day analysis"
+);
+check(
   "DaGym CEO report intake is private, duplicate-safe, and feeds nightly analysis",
   dagymCeoReportIngest.includes("create table if not exists public.dagym_ceo_report_inbox")
     && dagymCeoReportIngest.includes("content_hash text not null unique")
@@ -115,6 +138,18 @@ check(
     && js.includes('dagymClassStatusOptions = [')
     && ["미정", "출석", "노쇼", "취소", "연기"].every((label) => js.includes(`\"${label}\"`)),
   "member names must be encrypted, rows limited by trainer permission, and only attendance/no-show counted after source-ID deduplication"
+);
+check(
+  "DaGym lessons project only to one exact trainer and upcoming worklog slots",
+  js.includes("function normalizeDagymTrainerName")
+    && /function resolveDagymTrainerEmployeeId[\s\S]{0,700}filter\(isFitnessEmployeeRecord\)[\s\S]{0,350}matches\.length !== 1[\s\S]{0,220}directId !== matchedId/.test(js)
+    && /function isDagymScheduleProjectionEligible[\s\S]{0,520}dateKey < nowParts\.dateKey[\s\S]{0,220}timeToMinutes\(scheduleParts\.time\) >= timeToMinutes\(nowParts\.time\)/.test(js)
+    && /function applyDagymPtScheduleRows[\s\S]{0,420}if \(dateKey < todayKey\) return 0;/.test(js)
+    && /const isUpcoming = isDagymScheduleProjectionEligible\(row, dateKey, now\);[\s\S]{0,260}if \(!isUpcoming && !existingEntry\) return;/.test(js)
+    && js.includes("if (!isUpcoming) return;")
+    && /function resolveTrainerProfileId[\s\S]{0,520}exact\.length === 1 \? exact\[0\]\.id : null/.test(dagymMonthlyScheduleApi)
+    && !dagymMonthlyScheduleApi.includes('"홍트"'),
+  "past lessons must not be injected, and ambiguous or mismatched trainer names must never enter another employee's worklog"
 );
 check(
   "DaGym local monthly audit excludes member names",
@@ -495,15 +530,30 @@ check(
     && /<strong>\$\{paidPtTotal\}\/\$\{monthlyPaidPtTotal\}<\/strong>/.test(js)
     && /function renderFitnessPersonalMonthSummary[\s\S]{0,180}panel\.hidden = true;/.test(js)
     && /function buildFitnessCenterEmployeeMonthRow\(employee, monthPrefix, throughDateKey = getActiveDateKey\(\)\)[\s\S]{0,900}getFitnessMonthRollupDateKeys\(monthPrefix, throughDateKey\)\.forEach/.test(js)
-    && /const employeesForCenter = getFitnessCenterEmployees\(\);[\s\S]{0,180}buildFitnessCenterEmployeeMonthRow\(employee, centerMonth\)/.test(js),
+    && js.includes("const aggregate = buildFitnessCenterEmployeeDayMonthRow(employee, dateKey, centerMonth);")
+    && js.includes("function buildFitnessCenterEmployeeDayMonthRow"),
   "personal worklogs should show today/month in existing summary cells without a separate grid"
 );
 
 check(
   "fitness monthly totals include every quantity field",
   /Object\.keys\(ops\)\.forEach\(\(key\)[\s\S]{0,240}ops\[key\] = String\(numberValue\(ops\[key\]\) \+ numberValue\(dayOps\[key\]\)/.test(js)
-    && /summary\.dayPass \+= numberValue\(row\.ops\.dayPass\)[\s\S]{0,420}summary\.customerOther \+= numberValue\(row\.ops\.customerOther\)/.test(js),
+    && /target\.dayPass \+= numberValue\(ops\.dayPass\)[\s\S]{0,420}target\.customerOther \+= numberValue\(ops\.customerOther\)/.test(js)
+    && /formatCount\(total\.daily\.ptPaid, total\.monthly\.ptPaid\)[\s\S]{0,1000}formatCount\(total\.daily\.customerOther, total\.monthly\.customerOther\)/.test(js),
   "PT, contracts, customer management, day passes, and other activity fields must all roll up"
+);
+
+check(
+  "fitness center exposes sync health and reconciliation",
+  html.includes('id="dagymSyncHealth"')
+    && html.includes('id="fitnessCenterCountGuide"')
+    && js.includes("async function loadRemoteDagymSyncHealth")
+    && js.includes('.from("dagym_daily_snapshots")')
+    && js.includes('.from("dagym_sync_runs")')
+    && js.includes("const audit = summarizeFitnessReportRows")
+    && js.includes('["집계점검", auditIssues')
+    && js.includes("void loadRemoteDagymSyncHealth(dateKey)"),
+  "center managers must be able to see DaGym domain status and schedule-count reconciliation without opening admin tools"
 );
 
 check(

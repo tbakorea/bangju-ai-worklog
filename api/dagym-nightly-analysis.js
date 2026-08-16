@@ -28,6 +28,12 @@ function hasDagymActivity(record = {}) {
     || Boolean(String(record?.importText || "").trim());
 }
 
+function hasUsableDagymRecord(record = {}) {
+  return record?.snapshotAvailable === true
+    || numeric(record?.fieldCount) > 0
+    || hasDagymActivity(record);
+}
+
 function collectStoredSource(rows = [], sourceDateKey) {
   const latestByUser = new Map();
   rows.forEach((row) => {
@@ -57,11 +63,36 @@ function collectStoredSource(rows = [], sourceDateKey) {
   return { record: candidates[0]?.record || null, staff };
 }
 
+async function loadDailySnapshot(sourceDate, headers) {
+  const query = new URL(`${SUPABASE_URL}/rest/v1/dagym_daily_snapshots`);
+  query.searchParams.set("select", "metrics,quality,field_count,source,source_updated_at,updated_at");
+  query.searchParams.set("center_key", "eq.beyond-fitness");
+  query.searchParams.set("snapshot_date", `eq.${sourceDate}`);
+  query.searchParams.set("limit", "1");
+  const result = await fetch(query, { headers });
+  if (!result.ok) {
+    const message = await result.text();
+    if (/dagym_daily_snapshots|schema cache|PGRST205|42P01/i.test(message)) return null;
+    throw new Error(`다짐 일일 스냅샷 조회 실패 (${result.status})`);
+  }
+  const [row] = await result.json().catch(() => []);
+  if (!row?.metrics || typeof row.metrics !== "object") return null;
+  return {
+    ...row.metrics,
+    syncMode: "browser-daily",
+    source: row.source || "dagym-browser-daily",
+    quality: row.quality || "partial",
+    fieldCount: numeric(row.field_count),
+    snapshotAvailable: row.quality !== "missing" && numeric(row.field_count) > 0,
+    updatedAt: row.source_updated_at || row.updated_at || null,
+  };
+}
+
 function buildAnalysis(analysisDate, sourceDate, record, staff = {}) {
   const metrics = Object.fromEntries(METRIC_KEYS.map((key) => [key, numeric(record?.[key])]));
   const populated = METRIC_KEYS.filter((key) => String(record?.[key] ?? "").trim() !== "").length;
   const generatedAt = new Date().toISOString();
-  if (!hasDagymActivity(record)) {
+  if (!hasUsableDagymRecord(record)) {
     return {
       analysis_date: analysisDate,
       source_date: sourceDate,
@@ -119,17 +150,25 @@ module.exports = async function handler(request, response) {
   if (!serviceKey) return response.status(501).json({ ok: false, error: "SUPABASE_SERVICE_ROLE_KEY 설정이 필요합니다." });
   const analysisDate = getSeoulDateKey();
   const sourceDate = previousDateKey(analysisDate);
+  const headers = { apikey: serviceKey, Authorization: `Bearer ${serviceKey}`, "Content-Type": "application/json" };
+  let snapshotRecord;
+  try {
+    snapshotRecord = await loadDailySnapshot(sourceDate, headers);
+  } catch (error) {
+    return response.status(502).json({ ok: false, error: error.message || "다짐 일일 스냅샷 조회 실패" });
+  }
   const query = new URL(`${SUPABASE_URL}/rest/v1/worklog_states`);
   query.searchParams.set("select", "user_id,state,updated_at");
   query.searchParams.set("log_date", `eq.${sourceDate}`);
   query.searchParams.set("order", "updated_at.desc");
   query.searchParams.set("limit", "200");
-  const headers = { apikey: serviceKey, Authorization: `Bearer ${serviceKey}`, "Content-Type": "application/json" };
   const sourceResponse = await fetch(query, { headers });
   if (!sourceResponse.ok) return response.status(502).json({ ok: false, error: `전날 업무자료 조회 실패 (${sourceResponse.status})` });
   const rows = await sourceResponse.json().catch(() => []);
-  const { record, staff } = collectStoredSource(Array.isArray(rows) ? rows : [], sourceDate);
-  const analysis = buildAnalysis(analysisDate, sourceDate, record, staff);
+  const stored = collectStoredSource(Array.isArray(rows) ? rows : [], sourceDate);
+  const record = hasUsableDagymRecord(snapshotRecord) ? snapshotRecord : stored.record;
+  const analysis = buildAnalysis(analysisDate, sourceDate, record, stored.staff);
+  if (hasUsableDagymRecord(snapshotRecord)) analysis.source = "dagym-browser-daily";
   analysis.updated_at = analysis.generated_at;
   const saveResponse = await fetch(`${SUPABASE_URL}/rest/v1/dagym_daily_analyses?on_conflict=analysis_date`, {
     method: "POST",

@@ -12,4 +12,4 @@ cp "$SOURCE" "$TARGET"
 launchctl bootout "$DOMAIN/$LABEL" >/dev/null 2>&1 || true
 launchctl bootstrap "$DOMAIN" "$TARGET"
 launchctl enable "$DOMAIN/$LABEL"
-echo "설치 완료: 매일 02:25 다짐 월간 PT 일정 동기화"
+echo "설치 완료: 매일 01:05~03:35 다짐 일일자료와 월간 PT 일정 통합 동기화"

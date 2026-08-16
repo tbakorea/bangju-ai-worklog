@@ -573,6 +573,13 @@
               </div>
               <em id="dagymDailyStatus">오늘 입력 중</em>
             </header>
+            <div class="dagym-sync-health" id="dagymSyncHealth" aria-live="polite">
+              <div>
+                <b id="dagymSyncHealthTitle">자동수집 상태 확인 중</b>
+                <span id="dagymSyncHealthDetail">출석·회원·매출·PT 일정 반영 여부를 확인합니다.</span>
+              </div>
+              <div class="dagym-sync-domains" id="dagymSyncDomains" aria-label="다짐 자료 영역별 수집 상태"></div>
+            </div>
             <div class="dagym-ops-grid">
               <label>오늘 출석 <input data-dagym-field="visits" type="number" min="0" inputmode="numeric" /></label>
               <label>신규 등록 <input data-dagym-field="newMembers" type="number" min="0" inputmode="numeric" /></label>
@@ -628,6 +635,7 @@
             <div id="fitnessCenterCoachingList"></div>
           </div>
           <div class="fitness-center-summary-grid" id="fitnessCenterSummaryGrid"></div>
+          <p class="fitness-center-count-guide" id="fitnessCenterCountGuide">계수 표기: 선택일 / 표시 월 누계 · 출퇴근은 선택일 기준</p>
           <div class="fitness-center-table-wrap">
             <table class="fitness-center-table">
               <thead>

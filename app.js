@@ -853,6 +853,8 @@ const authState = {
   visibleWorklogsLoading: false,
   visibleWorklogsTimer: null,
   dagymPtScheduleMonthCache: new Map(),
+  dagymSyncHealthCache: new Map(),
+  dagymSyncHealthLoading: new Set(),
   approvalRepairTried: false,
   approvalRepairUnavailable: false,
   passwordResetRows: [],
@@ -8998,6 +9000,8 @@ function clearAuthRuntimeState() {
   clearInterval(authState.visibleWorklogsTimer);
   authState.visibleWorklogsTimer = null;
   authState.dagymPtScheduleMonthCache = new Map();
+  authState.dagymSyncHealthCache = new Map();
+  authState.dagymSyncHealthLoading = new Set();
 }
 
 function isSameAuthProfile(user = authState.user, profile = state.profile || {}) {
@@ -9446,6 +9450,7 @@ async function loadRemoteWorklogForActiveDate() {
   const sharedWeatherRows = await loadSharedSiteWeatherSettings();
   if (Array.isArray(sharedWeatherRows)) await publishRepresentativeSiteWeatherSettings(sharedWeatherRows);
   await loadRemoteDagymDailyAnalysis(key);
+  await loadRemoteDagymSyncHealth(key);
   await loadRemoteLaborPayrollDrafts();
   await loadRemoteLeaveRequests();
   if (canAccessAllWorklogs()) await loadVisibleStaffWorklogsForDate(key);
@@ -9477,16 +9482,34 @@ function getDagymScheduleKstParts(value = "") {
   };
 }
 
+function normalizeDagymTrainerName(value = "") {
+  return String(value || "")
+    .normalize("NFKC")
+    .replace(/\s+|선생님|강사님|트레이너님|코치님|센터장|트레이너|코치/g, "")
+    .trim()
+    .toLocaleLowerCase("ko");
+}
+
 function resolveDagymTrainerEmployeeId(row = {}) {
-  const directId = String(row.trainer_employee_id || "").trim();
-  if (directId && findEmployeeRecordById(directId)) return directId;
-  const trainerName = String(row.trainer_name || "").replace(/\s+|선생님|강사님|트레이너님|코치님/g, "").trim();
+  const trainerName = normalizeDagymTrainerName(row.trainer_name);
   if (!trainerName) return "";
-  const employee = getEmployeeOptions().find((item) => {
-    const employeeName = String(item.name || item.nickname || "").replace(/\s+/g, "").trim();
-    return employeeName === trainerName;
-  });
-  return employee ? getEmployeeWorklogId(employee) : "";
+  const matches = getEmployeeOptions()
+    .filter(isFitnessEmployeeRecord)
+    .filter((employee) => normalizeDagymTrainerName(employee.name || employee.nickname) === trainerName);
+  if (matches.length !== 1) return "";
+  const matchedId = getEmployeeWorklogId(matches[0]);
+  const directId = String(row.trainer_employee_id || "").trim();
+  if (directId && directId !== matchedId) return "";
+  return matchedId;
+}
+
+function isDagymScheduleProjectionEligible(row = {}, dateKey = getActiveDateKey(), now = new Date()) {
+  const scheduleParts = getDagymScheduleKstParts(row.scheduled_at);
+  const nowParts = getDagymScheduleKstParts(now);
+  if (!scheduleParts.dateKey || scheduleParts.dateKey !== dateKey) return false;
+  if (dateKey < nowParts.dateKey) return false;
+  if (dateKey > nowParts.dateKey) return true;
+  return timeToMinutes(scheduleParts.time) >= timeToMinutes(nowParts.time);
 }
 
 function getDagymPtScheduleItemText(row = {}) {
@@ -9553,6 +9576,9 @@ function bindDagymClassStatusControls(root, item, log) {
 
 function applyDagymPtScheduleRows(rows = [], dateKey = getActiveDateKey()) {
   if (!Array.isArray(rows)) return 0;
+  const now = new Date();
+  const todayKey = getDagymScheduleKstParts(now).dateKey;
+  if (dateKey < todayKey) return 0;
   const ownEmployeeId = getProfileMappedEmployeeId() || "profile-user";
   const isRepresentative = isRepresentativeProfile();
   const activeRows = rows.filter((row) => row?.active !== false);
@@ -9577,7 +9603,8 @@ function applyDagymPtScheduleRows(rows = [], dateKey = getActiveDateKey()) {
     log.schedule.forEach((entry) => {
       normalizeScheduleEntryItems(entry);
       const before = entry.items.length;
-      entry.items = entry.items.filter((item) => item.source !== "dagym-monthly-pt" || validSourceIds.has(String(item.sourceId || "")));
+      const isElapsedTodaySlot = dateKey === todayKey && timeToMinutes(entry.time) < timeToMinutes(getDagymScheduleKstParts(now).time);
+      entry.items = entry.items.filter((item) => item.source !== "dagym-monthly-pt" || isElapsedTodaySlot || validSourceIds.has(String(item.sourceId || "")));
       if (!entry.items.length) entry.items.push(createScheduleItem());
       if (entry.items.length !== before) {
         syncScheduleEntryText(entry);
@@ -9588,11 +9615,20 @@ function applyDagymPtScheduleRows(rows = [], dateKey = getActiveDateKey()) {
       const sourceId = String(row.id || row.source_key || "");
       const { time } = getDagymScheduleKstParts(row.scheduled_at);
       if (!sourceId || !time) return;
+      const existingEntry = log.schedule.find((entry) => {
+        normalizeScheduleEntryItems(entry);
+        return entry.items.some((item) => item.source === "dagym-monthly-pt" && String(item.sourceId || "") === sourceId);
+      });
+      const isUpcoming = isDagymScheduleProjectionEligible(row, dateKey, now);
+      // 지나간 수업은 새로 만들지 않되, 이미 예정표에 들어간 수업의
+      // 출석·노쇼·취소 상태는 마감 집계를 위해 계속 갱신합니다.
+      if (!isUpcoming && !existingEntry) return;
       if (!log.schedule.some((entry) => entry.time === time)) {
+        if (!isUpcoming) return;
         log.manualScheduleSlots = [...new Set([...(log.manualScheduleSlots || []), time])].sort((a, b) => timeToMinutes(a) - timeToMinutes(b));
         normalizeEmployeeLogRows(log, dateKey);
       }
-      const entry = log.schedule.find((item) => item.time === time);
+      const entry = existingEntry || log.schedule.find((item) => item.time === time);
       if (!entry) return;
       normalizeScheduleEntryItems(entry);
       const type = row.session_type === "free" ? "무료PT" : row.session_type === "paid" ? "유료PT" : "업무";
@@ -9684,6 +9720,95 @@ async function loadRemoteDagymDailyAnalysis(dateKey = getActiveDateKey()) {
     state.dagymDailyAnalyses[dateKey] = remoteAnalysis;
   }
   return remoteAnalysis;
+}
+
+function getDagymSyncDomainLabel(key = "") {
+  return { attendance: "출석", members: "회원", sales: "매출", schedule: "PT 일정" }[key] || key;
+}
+
+function formatDagymSyncHealthTime(value = "") {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "시간 미확인";
+  return date.toLocaleString("ko-KR", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" });
+}
+
+function renderDagymSyncHealth(dateKey = getActiveDateKey()) {
+  const panel = document.getElementById("dagymSyncHealth");
+  const title = document.getElementById("dagymSyncHealthTitle");
+  const detail = document.getElementById("dagymSyncHealthDetail");
+  const domainsNode = document.getElementById("dagymSyncDomains");
+  if (!panel || !title || !detail || !domainsNode) return;
+  const canInspect = canManageDagymOperations();
+  panel.hidden = !canInspect;
+  if (!canInspect) return;
+  const health = authState.dagymSyncHealthCache.get(dateKey);
+  if (!health) {
+    title.textContent = authState.dagymSyncHealthLoading.has(dateKey) ? "자동수집 상태 확인 중" : "자동수집 기록 없음";
+    detail.textContent = authState.dagymSyncHealthLoading.has(dateKey)
+      ? "출석·회원·매출·PT 일정 반영 여부를 확인합니다."
+      : `${formatShortDate(dateKey)} 자동수집 기록이 없습니다. 수기 입력값은 그대로 유지됩니다.`;
+    domainsNode.innerHTML = "";
+    panel.dataset.quality = "missing";
+    return;
+  }
+  const quality = health.snapshot?.quality || health.run?.quality || "missing";
+  const runStatus = health.run?.status || "";
+  const fieldCount = Number(health.snapshot?.field_count || health.run?.metrics_count || 0);
+  const syncedAt = health.snapshot?.source_updated_at || health.run?.finished_at || health.run?.started_at || "";
+  const domainData = health.snapshot?.domains || health.run?.domains || {};
+  const domainKeys = ["attendance", "members", "sales", "schedule"];
+  const completed = domainKeys.filter((key) => domainData?.[key]?.ok === true).length;
+  title.textContent = quality === "complete" && runStatus !== "failed"
+    ? "자동수집 정상 반영"
+    : quality === "partial" || completed
+      ? "자동수집 일부 확인 필요"
+      : runStatus === "failed"
+        ? "자동수집 실패"
+        : "자동수집 자료 대기";
+  detail.textContent = `${formatShortDate(dateKey)} · 지표 ${fieldCount}/8 · ${formatDagymSyncHealthTime(syncedAt)}${health.run?.warnings?.length ? ` · 확인 ${health.run.warnings.length}건` : ""}`;
+  domainsNode.innerHTML = domainKeys.map((key) => {
+    const domain = domainData?.[key] || {};
+    const stateClass = domain.ok === true ? "is-ok" : domain.error ? "is-error" : "is-waiting";
+    const stateLabel = domain.ok === true ? "완료" : domain.error ? "확인" : "대기";
+    return `<span class="${stateClass}" title="${escapeAttr(domain.error || domain.source || "")}"><b>${escapeHtml(getDagymSyncDomainLabel(key))}</b>${stateLabel}</span>`;
+  }).join("");
+  panel.dataset.quality = quality;
+}
+
+async function loadRemoteDagymSyncHealth(dateKey = getActiveDateKey()) {
+  if (!supabaseClient || !authState.user || !canManageDagymOperations() || !/^\d{4}-\d{2}-\d{2}$/.test(String(dateKey || ""))) return null;
+  if (authState.dagymSyncHealthLoading.has(dateKey)) return null;
+  authState.dagymSyncHealthLoading.add(dateKey);
+  renderDagymSyncHealth(dateKey);
+  try {
+    const [snapshotResult, runResult] = await Promise.all([
+      supabaseClient
+        .from("dagym_daily_snapshots")
+        .select("snapshot_date,quality,field_count,domains,source,source_updated_at,updated_at")
+        .eq("center_key", "beyond-fitness")
+        .eq("snapshot_date", dateKey)
+        .maybeSingle(),
+      supabaseClient
+        .from("dagym_sync_runs")
+        .select("target_date,status,quality,metrics_count,domains,warnings,started_at,finished_at")
+        .eq("center_key", "beyond-fitness")
+        .eq("target_date", dateKey)
+        .order("started_at", { ascending: false })
+        .limit(1)
+        .maybeSingle(),
+    ]);
+    const missingTable = (error) => /dagym_daily_snapshots|dagym_sync_runs|schema cache|PGRST205|42P01/i.test(String(error?.message || ""));
+    if (snapshotResult.error && !missingTable(snapshotResult.error)) throw snapshotResult.error;
+    if (runResult.error && !missingTable(runResult.error)) throw runResult.error;
+    authState.dagymSyncHealthCache.set(dateKey, { snapshot: snapshotResult.data || null, run: runResult.data || null, loadedAt: Date.now() });
+  } catch (error) {
+    console.warn("Failed to load DaGym sync health", error);
+    authState.dagymSyncHealthCache.set(dateKey, { snapshot: null, run: { status: "failed", warnings: ["상태 조회 지연"] }, loadedAt: Date.now() });
+  } finally {
+    authState.dagymSyncHealthLoading.delete(dateKey);
+    renderDagymSyncHealth(dateKey);
+  }
+  return authState.dagymSyncHealthCache.get(dateKey) || null;
 }
 
 function mergeOwnRemoteEmployeeLogs(remoteEmployeeLogs = {}) {
@@ -10593,51 +10718,60 @@ function renderFitnessCenterDaily() {
   syncFitnessCenterMonthToActiveDate();
   renderDagymOpsFields();
   renderFitnessCenterMonthNav();
+  const dateKey = getActiveDateKey();
   const centerMonth = getFitnessCenterMonth();
   const employeesForCenter = getFitnessCenterEmployees();
   const rows = employeesForCenter.map((employee, index) => {
-    const aggregate = buildFitnessCenterEmployeeMonthRow(employee, centerMonth);
+    const aggregate = buildFitnessCenterEmployeeDayMonthRow(employee, dateKey, centerMonth);
     return { ...aggregate, index };
   });
+  const createCenterTotals = () => ({ pt: 0, ptPaid: 0, ptFree: 0, ptOther: 0, new: 0, renewal: 0, dayPass: 0, contractOther: 0, consultation: 0, snsPromotion: 0, inbound: 0, outbound: 0, outsideSales: 0, customerOther: 0, workMinutes: 0, recorded: 0 });
   const total = rows.reduce((summary, row) => {
-    summary.ptPaid += row.paidPtTotal;
-    summary.ptFree += row.freePtTotal;
-    summary.ptOther += numberValue(row.ops.ptOther);
-    summary.pt += row.ptTotal;
-    summary.new += numberValue(row.ops.customerNew);
-    summary.renewal += numberValue(row.ops.customerRenewal);
-    summary.dayPass += numberValue(row.ops.dayPass);
-    summary.contractOther += numberValue(row.ops.contractOther);
-    summary.consultation += numberValue(row.ops.consultation);
-    summary.snsPromotion += numberValue(row.ops.snsPromotion);
-    summary.inbound += numberValue(row.ops.inbound);
-    summary.outbound += numberValue(row.ops.outbound);
-    summary.outsideSales += numberValue(row.ops.outsideSales);
-    summary.customerOther += numberValue(row.ops.customerOther);
-    summary.workMinutes += row.workMinutes;
-    summary.recordedDays += row.recordedDays;
+    const addOps = (target, ops, paid, free, other, workMinutes, recorded) => {
+      target.ptPaid += paid;
+      target.ptFree += free;
+      target.ptOther += other;
+      target.pt += paid + free + other;
+      target.new += numberValue(ops.customerNew);
+      target.renewal += numberValue(ops.customerRenewal);
+      target.dayPass += numberValue(ops.dayPass);
+      target.contractOther += numberValue(ops.contractOther);
+      target.consultation += numberValue(ops.consultation);
+      target.snsPromotion += numberValue(ops.snsPromotion);
+      target.inbound += numberValue(ops.inbound);
+      target.outbound += numberValue(ops.outbound);
+      target.outsideSales += numberValue(ops.outsideSales);
+      target.customerOther += numberValue(ops.customerOther);
+      target.workMinutes += workMinutes;
+      target.recorded += recorded;
+    };
+    addOps(summary.daily, row.dailyOps, row.dailyPaidPt, row.dailyFreePt, row.dailyOtherPt, row.workMinutes, row.recordedToday);
+    addOps(summary.monthly, row.monthly.ops, row.monthly.paidPtTotal, row.monthly.freePtTotal, numberValue(row.monthly.ops.ptOther), row.monthly.workMinutes, row.monthly.recordedDays);
     return summary;
-  }, { pt: 0, ptPaid: 0, ptFree: 0, ptOther: 0, new: 0, renewal: 0, dayPass: 0, contractOther: 0, consultation: 0, snsPromotion: 0, inbound: 0, outbound: 0, outsideSales: 0, customerOther: 0, workMinutes: 0, recordedDays: 0 });
+  }, { daily: createCenterTotals(), monthly: createCenterTotals() });
+  const audit = summarizeFitnessReportRows(rows.filter((row) => row.log).map(({ employee, log }) => ({ employee, log })), dateKey, false).reconciliation;
+  const auditIssues = numberValue(audit.differences) + numberValue(audit.audit?.duplicateRows);
+  const formatCount = (daily, monthly) => `${numberValue(daily)}/${numberValue(monthly)}`;
 
   const summaryGrid = document.getElementById("fitnessCenterSummaryGrid");
   if (summaryGrid) {
     summaryGrid.innerHTML = [
-      ["기준월", formatCenterMonthLabel(centerMonth)],
-      ["기록일", `${total.recordedDays}일`],
-      ["총 근무", formatWorkDuration(total.workMinutes)],
-      ["유료 PT", `${total.ptPaid}건`],
-      ["무료 PT", `${total.ptFree}건`],
-      ["기타 PT", `${total.ptOther}건`],
-      ["신규", `${total.new}건`],
-      ["재등록", `${total.renewal}건`],
-      ["일일권", `${total.dayPass}건`],
-      ["계약 기타", `${total.contractOther}건`],
-      ["상담", `${total.consultation}건`],
-      ["SNS 홍보", `${total.snsPromotion}건`],
-      ["아웃바운드", `${total.outbound}건`],
-      ["인바운드", `${total.inbound}건`],
-      ["외부영업", `${total.outsideSales}건`],
-      ["고객관리 기타", `${total.customerOther}건`],
+      ["기준일", formatShortDate(dateKey)],
+      ["업무일지", formatCount(total.daily.recorded, total.monthly.recorded)],
+      ["근무", `${formatWorkDuration(total.daily.workMinutes) || "-"} / ${formatWorkDuration(total.monthly.workMinutes) || "-"}`],
+      ["유료 PT", formatCount(total.daily.ptPaid, total.monthly.ptPaid)],
+      ["무료 PT", formatCount(total.daily.ptFree, total.monthly.ptFree)],
+      ["기타 PT", formatCount(total.daily.ptOther, total.monthly.ptOther)],
+      ["신규", formatCount(total.daily.new, total.monthly.new)],
+      ["재등록", formatCount(total.daily.renewal, total.monthly.renewal)],
+      ["일일권", formatCount(total.daily.dayPass, total.monthly.dayPass)],
+      ["계약 기타", formatCount(total.daily.contractOther, total.monthly.contractOther)],
+      ["상담", formatCount(total.daily.consultation, total.monthly.consultation)],
+      ["SNS 홍보", formatCount(total.daily.snsPromotion, total.monthly.snsPromotion)],
+      ["아웃바운드", formatCount(total.daily.outbound, total.monthly.outbound)],
+      ["인바운드", formatCount(total.daily.inbound, total.monthly.inbound)],
+      ["외부영업", formatCount(total.daily.outsideSales, total.monthly.outsideSales)],
+      ["집계점검", auditIssues ? `확인 ${auditIssues}건` : `일치 · 수업 ${audit.audit?.countedRows || 0}건`],
     ].map(([label, value]) => `<article><span>${label}</span><strong>${value}</strong></article>`).join("");
   }
 
@@ -10652,20 +10786,20 @@ function renderFitnessCenterDaily() {
         <td>${escapeHtml(row.lastClockOut || "-")}</td>
         <td>${row.workMinutes ? formatWorkDuration(row.workMinutes) : "-"}</td>
         <td>${escapeHtml(row.breakSummary || "-")}</td>
-        <td>${row.paidPtTotal || ""}</td>
-        <td>${row.freePtTotal || ""}</td>
-        <td>${escapeHtml(row.ops.ptOther || "")}</td>
-        <td>${escapeHtml(row.ops.customerNew || "")}</td>
-        <td>${escapeHtml(row.ops.customerRenewal || "")}</td>
-        <td>${escapeHtml(row.ops.dayPass || "")}</td>
-        <td>${escapeHtml(row.ops.contractOther || "")}</td>
-        <td>${escapeHtml(row.ops.consultation || "")}</td>
-        <td>${escapeHtml(row.ops.snsPromotion || "")}</td>
-        <td>${escapeHtml(row.ops.inbound || "")}</td>
-        <td>${escapeHtml(row.ops.outbound || "")}</td>
-        <td>${escapeHtml(row.ops.outsideSales || "")}</td>
-        <td>${escapeHtml(row.ops.customerOther || "")}</td>
-        <td>${escapeHtml(row.ops.specialReport || row.ops.shiftNote || "")}</td>
+        <td>${formatCount(row.dailyPaidPt, row.monthly.paidPtTotal)}</td>
+        <td>${formatCount(row.dailyFreePt, row.monthly.freePtTotal)}</td>
+        <td>${formatCount(row.dailyOtherPt, row.monthly.ops.ptOther)}</td>
+        <td>${formatCount(row.dailyOps.customerNew, row.monthly.ops.customerNew)}</td>
+        <td>${formatCount(row.dailyOps.customerRenewal, row.monthly.ops.customerRenewal)}</td>
+        <td>${formatCount(row.dailyOps.dayPass, row.monthly.ops.dayPass)}</td>
+        <td>${formatCount(row.dailyOps.contractOther, row.monthly.ops.contractOther)}</td>
+        <td>${formatCount(row.dailyOps.consultation, row.monthly.ops.consultation)}</td>
+        <td>${formatCount(row.dailyOps.snsPromotion, row.monthly.ops.snsPromotion)}</td>
+        <td>${formatCount(row.dailyOps.inbound, row.monthly.ops.inbound)}</td>
+        <td>${formatCount(row.dailyOps.outbound, row.monthly.ops.outbound)}</td>
+        <td>${formatCount(row.dailyOps.outsideSales, row.monthly.ops.outsideSales)}</td>
+        <td>${formatCount(row.dailyOps.customerOther, row.monthly.ops.customerOther)}</td>
+        <td>${escapeHtml(row.dailyOps.specialReport || row.dailyOps.shiftNote || "")}</td>
       </tr>
     `).join("");
   }
@@ -10675,19 +10809,19 @@ function renderFitnessCenterDaily() {
     foot.innerHTML = `
       <tr>
         <td colspan="7">합계</td>
-        <td>${total.ptPaid}</td>
-        <td>${total.ptFree}</td>
-        <td>${total.ptOther}</td>
-        <td>${total.new}</td>
-        <td>${total.renewal}</td>
-        <td>${total.dayPass}</td>
-        <td>${total.contractOther}</td>
-        <td>${total.consultation}</td>
-        <td>${total.snsPromotion}</td>
-        <td>${total.inbound}</td>
-        <td>${total.outbound}</td>
-        <td>${total.outsideSales}</td>
-        <td>${total.customerOther}</td>
+        <td>${formatCount(total.daily.ptPaid, total.monthly.ptPaid)}</td>
+        <td>${formatCount(total.daily.ptFree, total.monthly.ptFree)}</td>
+        <td>${formatCount(total.daily.ptOther, total.monthly.ptOther)}</td>
+        <td>${formatCount(total.daily.new, total.monthly.new)}</td>
+        <td>${formatCount(total.daily.renewal, total.monthly.renewal)}</td>
+        <td>${formatCount(total.daily.dayPass, total.monthly.dayPass)}</td>
+        <td>${formatCount(total.daily.contractOther, total.monthly.contractOther)}</td>
+        <td>${formatCount(total.daily.consultation, total.monthly.consultation)}</td>
+        <td>${formatCount(total.daily.snsPromotion, total.monthly.snsPromotion)}</td>
+        <td>${formatCount(total.daily.inbound, total.monthly.inbound)}</td>
+        <td>${formatCount(total.daily.outbound, total.monthly.outbound)}</td>
+        <td>${formatCount(total.daily.outsideSales, total.monthly.outsideSales)}</td>
+        <td>${formatCount(total.daily.customerOther, total.monthly.customerOther)}</td>
         <td></td>
       </tr>
     `;
@@ -10696,10 +10830,12 @@ function renderFitnessCenterDaily() {
   const record = document.getElementById("fitnessCenterTodayRecord");
   if (record) {
     const notes = rows.flatMap((row) => row.notes);
-    record.textContent = notes.length ? notes.slice(0, 12).join(" / ") : "선택 월에 등록된 특이사항이 없습니다.";
+    record.textContent = notes.length ? notes.slice(0, 12).join(" / ") : "선택일에 등록된 특이사항이 없습니다.";
   }
+  renderDagymSyncHealth(dateKey);
+  if (canManageDagymOperations() && !authState.dagymSyncHealthCache.has(dateKey)) void loadRemoteDagymSyncHealth(dateKey);
   renderFitnessCenterConfirmPanel();
-  renderFitnessCenterCoaching(total, rows);
+  renderFitnessCenterCoaching(total.daily, rows.map((row) => ({ ...row, ops: row.dailyOps })));
   renderFitnessDailyGuidance(getCurrentFitnessLogPage(), true);
 }
 
@@ -10835,6 +10971,40 @@ function buildFitnessCenterEmployeeMonthRow(employee, monthPrefix, throughDateKe
     attendanceStatus,
     breakSummary: breakCount ? `${breakCount}건` : "-",
     notes,
+  };
+}
+
+function buildFitnessCenterEmployeeDayMonthRow(employee, dateKey = getActiveDateKey(), monthPrefix = dateKey.slice(0, 7)) {
+  const log = getFitnessEmployeeLogForDate(employee, dateKey);
+  if (log) syncFitnessOpsFromSchedule(log);
+  const dailyOps = { ...createFitnessOps(), ...(log?.fitnessOps || {}) };
+  const dailyPaidPt = numberValue(dailyOps.ptRegular);
+  const dailyFreePt = numberValue(dailyOps.ptFree);
+  const dailyOtherPt = numberValue(dailyOps.ptOther);
+  const workMinutes = log ? getWorkMinutes(log.clockIn, log.clockOut) : 0;
+  const monthlyThroughDate = monthPrefix === dateKey.slice(0, 7)
+    ? dateKey
+    : `${monthPrefix}-${String(new Date(Number(monthPrefix.slice(0, 4)), Number(monthPrefix.slice(5, 7)), 0).getDate()).padStart(2, "0")}`;
+  const monthly = buildFitnessCenterEmployeeMonthRow(employee, monthPrefix, monthlyThroughDate);
+  const breakCount = (log?.attendanceBreaks || []).filter((item) => item?.start || item?.end).length;
+  const notes = [dailyOps.shiftNote, dailyOps.specialReport]
+    .map((value) => String(value || "").trim())
+    .filter(Boolean)
+    .map((value) => `${formatShortDate(dateKey)} ${getEmployeeAdminLabel(employee)}: ${value}`);
+  return {
+    employee,
+    log,
+    dailyOps,
+    dailyPaidPt,
+    dailyFreePt,
+    dailyOtherPt,
+    workMinutes,
+    recordedToday: log && hasFitnessEmployeeLogContent(log) ? 1 : 0,
+    firstClockIn: log?.clockIn || "",
+    lastClockOut: log?.clockOut || "",
+    breakSummary: breakCount ? `${breakCount}건` : "-",
+    notes,
+    monthly,
   };
 }
 

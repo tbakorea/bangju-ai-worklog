@@ -9,7 +9,7 @@ const CENTER_KEY = "beyond-fitness";
 
 const trainerEmployeeAliases = [
   { id: "beyond-fitness-manager", names: ["박주홍", "센터장박주홍"] },
-  { id: "fitness-trainer-1", names: ["홍현규", "트레이너홍현규", "홍트"] },
+  { id: "fitness-trainer-1", names: ["홍현규", "트레이너홍현규"] },
 ];
 
 function secureEqual(left = "", right = "") {
@@ -40,7 +40,7 @@ function decrypt(value = "") {
 }
 
 function normalizeName(value = "") {
-  return String(value || "").normalize("NFKC").replace(/\s+|선생님|강사님|트레이너님|코치님/g, "").trim().toLowerCase();
+  return String(value || "").normalize("NFKC").replace(/\s+|선생님|강사님|트레이너님|코치님|센터장|트레이너|코치/g, "").trim().toLowerCase();
 }
 
 function resolveEmployeeId(trainerName = "") {
@@ -165,16 +165,12 @@ async function loadFitnessProfiles() {
 
 function resolveTrainerProfileId(event, profiles = []) {
   const target = normalizeName(event.trainerName);
-  const exact = profiles.find((profile) => normalizeName(profile.name) === target);
-  if (exact) return exact.id;
-  const fitnessProfiles = profiles.filter((profile) => /피트니스|fitness/i.test(`${profile.workplace || ""} ${profile.role || ""}`));
-  if (event.trainerEmployeeId === "beyond-fitness-manager") {
-    return fitnessProfiles.find((profile) => /박주홍|센터장|운영총괄|manager/i.test(`${profile.name || ""} ${profile.role || ""}`))?.id || null;
-  }
-  if (event.trainerEmployeeId === "fitness-trainer-1") {
-    return fitnessProfiles.find((profile) => /홍현규|트레이너|trainer/i.test(`${profile.name || ""} ${profile.role || ""}`))?.id || null;
-  }
-  return null;
+  if (!target) return null;
+  const exact = profiles.filter((profile) => (
+    /피트니스|fitness/i.test(`${profile.workplace || ""} ${profile.role || ""}`)
+    && normalizeName(profile.name) === target
+  ));
+  return exact.length === 1 ? exact[0].id : null;
 }
 
 module.exports = async function handler(request, response) {

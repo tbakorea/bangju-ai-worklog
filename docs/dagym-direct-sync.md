@@ -54,7 +54,7 @@ DAGYM_CENTER_ID=센터_식별자
 - `CEO 리포트`: 신규·유효·만료 회원, 매출, 일정을 일간·주간·월간으로 지정 전화번호에 전송하는 설정형 기능
 - `다짐 분석`: 월·분기·년 화면 집계를 제공하지만 별도 내보내기 버튼은 확인되지 않음
 
-현재 공개 API 또는 연동 토큰 발급 화면은 확인되지 않았습니다. 따라서 비공개 브라우저 세션을 자동화하지 않고, 공식 엑셀 내보내기와 공식 연동 정보만 사용합니다.
+현재 공개 API 또는 연동 토큰 발급 화면은 확인되지 않았습니다. 공식 API가 제공되기 전까지는 센터 전용 Mac의 별도 브라우저 프로필을 읽기 전용 수집기로 사용하고, 실패 시 공식 엑셀과 CEO 리포트를 보완 경로로 사용합니다. 수집기는 회원 연락처와 원본 표를 업로드하지 않고 날짜별 합계와 암호화된 PT 일정만 전송합니다.
 
 ## CEO 리포트 자동 수신 구조
 
@@ -114,15 +114,31 @@ supabase/migrations/20260811170000_dagym_database_cron.sql
 
 새벽 배치가 일시 실패해도 앱은 오전 1시 이후 첫 로그인 때 동일한 전날 기준으로 로컬 보완 분석을 실행합니다. 전날 자료가 없으면 임의의 실적을 추정하지 않고 `전날 다짐자료 미확인`을 오늘 경영신호로 표시합니다.
 
-## 월간 PT 일정과 업무일지 자동 연결
+## 일일 운영자료·월간 PT 일정 통합 자동 연결
 
-다짐 전용 Chrome에 로그인된 세션이 있는 Mac에서 아래 설치 스크립트를 한 번 실행하면 매일 02:25에 해당 월 전체 PT 일정을 다시 읽습니다.
+다짐 전용 Chrome에 한 번 로그인한 Mac에서 아래 설치 스크립트를 실행하면 매일 01:05에 작업을 시작하고, 동일 시각 반복 접근을 피하기 위해 0~150분을 임의 대기한 뒤 전날 운영자료와 해당 월 전체 PT 일정을 함께 읽습니다. 수집을 위해 브라우저를 항상 열어둘 필요는 없습니다.
 
 ```bash
 ./scripts/dagym-install-monthly-pt-launchd.sh
 ```
 
 로컬 `.env.local`과 Vercel에는 동일한 `DAGYM_BROWSER_SYNC_SECRET`가 필요합니다. Vercel에는 기존 `SUPABASE_SERVICE_ROLE_KEY`, `SUPABASE_ANON_KEY`, `MEMBER_CONTACT_ENCRYPTION_KEY`도 설정되어 있어야 합니다. 회원 이름은 서버에서 AES-256-GCM으로 암호화하며 로컬 감사 JSON에는 이름을 남기지 않습니다.
+
+일일 수집은 출석, 매출·계약, 회원 현황을 각각 확인하고 월간 PT 일정 DB와 교차 집계합니다. 결과는 `dagym_daily_snapshots`에 날짜별 한 건만 저장하며 `dagym_sync_runs`에는 성공·부분성공·실패와 화면별 수집 건수를 남깁니다. 저장 직후 `run_dagym_nightly_analysis()`를 다시 실행하므로 새벽 1시 최초 분석이 자료 없음이었더라도 실제 수집이 끝난 뒤 오늘 AI 코칭이 갱신됩니다.
+
+다짐 화면 메뉴나 주소가 달라진 경우 로컬 `.env.local`에 아래 주소를 설정하면 코드 수정 없이 교체할 수 있습니다. `{date}`와 `{gymId}`는 실행 시 자동 치환됩니다.
+
+```text
+DAGYM_ATTENDANCE_URL=https://www.dagym-manager.com/...{gymId}...{date}
+DAGYM_SALES_URL=https://www.dagym-manager.com/...{gymId}...{date}
+DAGYM_MEMBERS_URL=https://www.dagym-manager.com/...{gymId}...{date}
+```
+
+새 데이터베이스에는 다음 마이그레이션도 적용합니다.
+
+```text
+supabase/migrations/20260816090000_dagym_daily_sync_pipeline.sql
+```
 
 동기화한 일정은 강사 이름을 승인된 직원 계정에 연결하고 해당 직원의 시간별일정에 `수강생 이름 + PT 수업`으로 표시합니다. 상태 메뉴는 다음 원칙을 따릅니다.
 

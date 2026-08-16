@@ -14,13 +14,13 @@
   <key>StartCalendarInterval</key>
   <dict>
     <key>Hour</key>
-    <integer>2</integer>
+    <integer>1</integer>
     <key>Minute</key>
-    <integer>25</integer>
+    <integer>5</integer>
   </dict>
   <key>StandardOutPath</key>
-  <string>/Users/bangju/Documents/Bangju AI Worklog/work/dagym-monthly-pt.log</string>
+  <string>/Users/bangju/Documents/Bangju AI Worklog/work/dagym-sync.log</string>
   <key>StandardErrorPath</key>
-  <string>/Users/bangju/Documents/Bangju AI Worklog/work/dagym-monthly-pt.err.log</string>
+  <string>/Users/bangju/Documents/Bangju AI Worklog/work/dagym-sync.err.log</string>
 </dict>
 </plist>

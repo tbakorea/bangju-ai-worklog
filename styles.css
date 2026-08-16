@@ -10658,6 +10658,41 @@ body.physical-phone-device .representative-analysis-body {
   font-weight: 800;
 }
 
+.dagym-sync-health {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  align-items: center;
+  border: 1px solid rgba(15, 77, 58, 0.2);
+  border-radius: 10px;
+  background: rgba(15, 77, 58, 0.045);
+  padding: 7px 9px;
+}
+
+.dagym-sync-health[hidden] { display: none; }
+.dagym-sync-health > div:first-child { display: grid; gap: 1px; min-width: 0; }
+.dagym-sync-health b { color: var(--fitness-green); font-size: 12px; font-weight: 950; }
+.dagym-sync-health > div:first-child span { color: var(--muted); font-size: 10px; font-weight: 800; }
+.dagym-sync-health[data-quality="complete"] { border-color: rgba(28, 119, 78, 0.28); background: rgba(225, 244, 232, 0.72); }
+.dagym-sync-health[data-quality="partial"] { border-color: rgba(192, 130, 33, 0.32); background: rgba(255, 248, 224, 0.76); }
+.dagym-sync-health[data-quality="missing"] { border-color: rgba(138, 52, 45, 0.22); background: rgba(255, 239, 232, 0.52); }
+.dagym-sync-domains { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 4px; }
+.dagym-sync-domains span { display: inline-flex; gap: 3px; align-items: center; border: 1px solid var(--hardline); border-radius: 999px; background: rgba(255,255,255,.7); padding: 3px 6px; color: var(--muted); font-size: 9px; font-weight: 900; white-space: nowrap; }
+.dagym-sync-domains span b { font-size: 9px; }
+.dagym-sync-domains .is-ok { color: #196d4b; border-color: rgba(25,109,75,.25); }
+.dagym-sync-domains .is-error { color: #9a332b; border-color: rgba(154,51,43,.28); }
+
+.fitness-center-count-guide {
+  margin: 0;
+  border-inline: 1px solid var(--hardline);
+  background: rgba(255,255,255,.62);
+  color: var(--muted);
+  padding: 5px 8px;
+  font-size: 10px;
+  font-weight: 900;
+  text-align: right;
+}
+
 .dagym-ops-grid {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -11895,6 +11930,16 @@ body[data-layout-mode="phone"] .fitness-center-summary-grid span {
 
 body[data-layout-mode="phone"] .fitness-center-summary-grid strong {
   font-size: 15px;
+}
+
+body[data-layout-mode="phone"] .dagym-sync-health {
+  display: grid;
+  gap: 5px;
+  padding: 6px 7px;
+}
+
+body[data-layout-mode="phone"] .dagym-sync-domains {
+  justify-content: flex-start;
 }
 
 body[data-layout-mode="phone"] .fitness-center-table {
