@@ -9500,6 +9500,123 @@ textarea:focus-visible {
   font-weight: 700;
 }
 
+.fitness-sns-review {
+  display: grid;
+  gap: 8px;
+  border: 1px solid rgba(18, 59, 45, 0.22);
+  border-radius: 14px;
+  background: rgba(239, 246, 235, 0.7);
+  padding: 10px;
+}
+
+.fitness-sns-review > header {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.fitness-sns-review > header small,
+.fitness-sns-review > header strong,
+.fitness-sns-review > header span {
+  display: block;
+}
+
+.fitness-sns-review > header small {
+  color: #6b7b72;
+  font-size: 8px;
+  font-weight: 950;
+  letter-spacing: 0.12em;
+}
+
+.fitness-sns-review > header strong {
+  color: #113f34;
+  font-size: 15px;
+  font-weight: 950;
+}
+
+.fitness-sns-review > header span {
+  color: #6b7b72;
+  font-size: 10px;
+  font-weight: 850;
+}
+
+.fitness-sns-inputs {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.fitness-sns-inputs label {
+  display: grid;
+  gap: 4px;
+  color: #53655c;
+  font-size: 11px;
+  font-weight: 900;
+}
+
+.fitness-sns-inputs label.is-wide {
+  grid-column: 1 / -1;
+}
+
+.fitness-sns-inputs input,
+.fitness-sns-inputs textarea {
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+  border: 1px solid rgba(18, 59, 45, 0.18);
+  border-radius: 9px;
+  background: rgba(255, 255, 252, 0.9);
+  color: var(--ink);
+  padding: 8px 9px;
+  font: inherit;
+  font-weight: 750;
+  resize: vertical;
+}
+
+.fitness-sns-link-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.fitness-sns-link-actions a {
+  border-radius: 999px;
+  background: #124d3c;
+  color: #fff;
+  padding: 6px 10px;
+  font-size: 10px;
+  font-weight: 900;
+  text-decoration: none;
+}
+
+.fitness-sns-feedback {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.fitness-sns-feedback article {
+  display: grid;
+  gap: 3px;
+  border-radius: 10px;
+  background: rgba(255, 254, 250, 0.9);
+  padding: 8px;
+}
+
+.fitness-sns-feedback b {
+  color: #124d3c;
+  font-size: 10px;
+  font-weight: 950;
+}
+
+.fitness-sns-feedback span {
+  color: #506158;
+  font-size: 10px;
+  font-weight: 750;
+  line-height: 1.35;
+}
+
 @media (max-width: 760px) {
   .fitness-ops-section {
     gap: 8px;
@@ -9530,6 +9647,15 @@ textarea:focus-visible {
 
   .fitness-ops-notes textarea {
     min-height: 44px;
+  }
+
+  .fitness-sns-inputs,
+  .fitness-sns-feedback {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .fitness-sns-inputs label.is-wide {
+    grid-column: auto;
   }
 }
 
@@ -14149,7 +14275,8 @@ body[data-layout-mode="phone"] .fitness-log-schedule-panel .appointment-merge-bu
 .fitness-report-page.is-center-report .fitness-paper-wide-table,
 .fitness-report-page.is-center-report .fitness-paper-footer-grid,
 .fitness-report-page.is-center-report .fitness-paper-approval,
-.fitness-report-page.is-center-report .fitness-paper-dagym {
+.fitness-report-page.is-center-report .fitness-paper-dagym,
+.fitness-report-page.is-center-report .fitness-paper-sns-review {
   margin-top: 0;
 }
 
@@ -14430,6 +14557,60 @@ body[data-layout-mode="phone"] .fitness-log-schedule-panel .appointment-merge-bu
 
 .fitness-paper-dagym-insights p.is-report-good {
   color: #1d654b;
+}
+
+.fitness-paper-sns-review {
+  overflow: hidden;
+  border: 1px solid rgba(18, 59, 45, 0.22);
+  border-radius: 8px;
+  background: rgba(255, 254, 250, 0.92);
+}
+
+.fitness-paper-sns-review > header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background: rgba(237, 244, 224, 0.82);
+  padding: 5px 8px;
+}
+
+.fitness-paper-sns-review h3,
+.fitness-paper-sns-review header span {
+  margin: 0;
+  font-size: 9px;
+  font-weight: 950;
+}
+
+.fitness-paper-sns-review article {
+  display: grid;
+  grid-template-columns: 60px 80px minmax(0, 1fr);
+  gap: 6px;
+  align-items: center;
+  border-top: 1px solid rgba(18, 59, 45, 0.12);
+  padding: 4px 6px;
+  font-size: 8px;
+  line-height: 1.25;
+}
+
+.fitness-paper-sns-review article > b,
+.fitness-paper-sns-review article > p,
+.fitness-paper-sns-review article > small {
+  margin: 0;
+}
+
+.fitness-paper-sns-review article > small {
+  grid-column: 3;
+  color: #52645a;
+}
+
+.fitness-paper-sns-links {
+  display: flex;
+  gap: 3px;
+}
+
+.fitness-paper-sns-links a {
+  color: #124d3c;
+  font-weight: 950;
 }
 
 .fitness-paper-tasks h3,

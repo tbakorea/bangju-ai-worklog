@@ -671,6 +671,9 @@ function createFitnessOps() {
     customerOther: "",
     shiftNote: "",
     specialReport: "",
+    snsBlogUrl: "",
+    snsInstagramUrl: "",
+    snsContentSummary: "",
   };
 }
 
@@ -11461,6 +11464,7 @@ function getFitnessCoachingMessages(context = {}) {
   const visits = numberValue(dagym.visits);
   const expiring = numberValue(dagym.expiring);
   const nightlyAnalysis = getDagymDailyAnalysis(dateKey);
+  const snsReview = buildFitnessSnsReview(log);
   const messages = [
     ["오늘 환영", getPersonalizedWelcomeMessage(employee, log)],
     ...(nightlyAnalysis?.coaching?.headline ? [
@@ -11471,6 +11475,7 @@ function getFitnessCoachingMessages(context = {}) {
     ["시간관리", nextEntry ? `다음 일정은 ${nextEntry.time} ${getScheduleEntryText(nextEntry)}입니다. 시작 전 준비물과 고객 응대 포인트를 5분 전에 확인하세요.` : "다음 일정이 비어 있습니다. 센터관리, 상담 후보 확인, 시설 점검 중 하나를 시간표에 배치하세요."],
     ["센터운영", visits ? `오늘 출석 ${visits}명 기준으로 상담/재등록 행동 ${salesAction}건입니다. 출석 대비 3% 이상을 상담 기록으로 남기는 것을 권장합니다.` : "다짐 출석/매출 자료를 입력하면 운영 코칭이 더 구체화됩니다."],
     ["영업", expiring ? `만료 예정 ${expiring}명을 우선 확인하세요. PT ${ptTotal}건 이후 재등록 가능 회원에게 당일 안내를 연결하세요.` : "만료 예정자가 없거나 미입력 상태입니다. 상담, 아웃바운드, 재등록 후보를 기록해 매출 루프를 만드세요."],
+    ["SNS 홍보", `${snsReview.headline} ${snsReview.channelCoach}`],
   ];
   return messages;
 }
@@ -13882,6 +13887,73 @@ function renderFitnessOperations(log = getSelectedLog()) {
     applyFitnessOpsFieldSourceStyle(field, log);
   });
   renderFitnessOpsSummaryButton(log);
+  renderFitnessSnsReview(log);
+}
+
+function normalizeFitnessSnsUrl(value = "") {
+  const raw = String(value || "").trim();
+  if (!raw) return "";
+  const candidate = /^https?:\/\//i.test(raw) ? raw : `https://${raw}`;
+  try {
+    const url = new URL(candidate);
+    return ["http:", "https:"].includes(url.protocol) ? url.href : "";
+  } catch {
+    return "";
+  }
+}
+
+function buildFitnessSnsReview(log = getSelectedLog()) {
+  const ops = { ...createFitnessOps(), ...(log?.fitnessOps || {}) };
+  const blogUrl = normalizeFitnessSnsUrl(ops.snsBlogUrl);
+  const instagramUrl = normalizeFitnessSnsUrl(ops.snsInstagramUrl);
+  const hasInvalidUrl = Boolean((ops.snsBlogUrl && !blogUrl) || (ops.snsInstagramUrl && !instagramUrl));
+  const summary = String(ops.snsContentSummary || "").trim();
+  const source = `${summary} ${ops.shiftNote || ""}`;
+  const checks = {
+    local: /울산|남구|삼산|대공원|지역|근처|피트니스|헬스장/i.test(source),
+    benefit: /효과|변화|장점|개선|체형|건강|운동|후기|사례|전후|전문/i.test(source),
+    action: /문의|예약|상담|신청|전화|카카오|톡|dm|디엠|방문/i.test(source),
+    visual: /사진|영상|릴스|reels|카드뉴스|전후|비포|애프터/i.test(source),
+  };
+  let headline = "홍보 링크를 등록하면 게시물별 실행기록으로 관리합니다.";
+  let feedback = "블로그 링크와 제목·핵심내용을 함께 입력하면 검색성, 고객효익, 문의유도 문구를 검토할 수 있습니다.";
+  if (blogUrl || instagramUrl || summary || hasInvalidUrl) {
+    const missing = [];
+    if (hasInvalidUrl) missing.push("올바른 링크 주소");
+    if (!summary) missing.push("제목·핵심내용");
+    if (!checks.local) missing.push("울산·지역 검색어");
+    if (!checks.benefit) missing.push("고객이 얻는 변화");
+    if (!checks.action) missing.push("문의·예약 행동문구");
+    headline = missing.length ? `보완하면 좋은 항목 ${missing.length}개` : "검색·효익·문의 흐름이 갖춰졌습니다.";
+    feedback = missing.length
+      ? `${missing.join(", ")}를 보완하세요.`
+      : "블로그 내용을 인스타그램 릴스·카드뉴스로 재가공하면 같은 소재로 도달 범위를 넓힐 수 있습니다.";
+  }
+  const channelCoach = blogUrl && !instagramUrl
+    ? "블로그 게시 후 핵심 장면 3개를 인스타그램 카드뉴스나 15초 릴스로 병행하세요."
+    : instagramUrl && !blogUrl
+      ? "인스타그램 게시물을 지역 검색어가 포함된 블로그 상세글로 연결하세요."
+      : blogUrl && instagramUrl
+        ? "두 채널의 문구와 이미지를 맞추고, 각각의 문의·예약 반응을 기록해 성과를 비교하세요."
+        : "블로그 1건을 원본으로 만들고 인스타그램 릴스·카드뉴스, 네이버 플레이스 소식으로 확장해보세요.";
+  return { blogUrl, instagramUrl, summary, headline, feedback, channelCoach, checks, hasInvalidUrl };
+}
+
+function renderFitnessSnsReview(log = getSelectedLog()) {
+  const feedbackNode = document.getElementById("fitnessSnsFeedback");
+  const actionsNode = document.getElementById("fitnessSnsLinkActions");
+  if (!feedbackNode || !actionsNode) return;
+  const review = buildFitnessSnsReview(log);
+  const links = [
+    ["블로그 글 열기", review.blogUrl],
+    ["인스타그램 열기", review.instagramUrl],
+  ].filter(([, url]) => url);
+  actionsNode.innerHTML = links.map(([label, url]) => `<a href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(label)}</a>`).join("");
+  actionsNode.hidden = !links.length;
+  feedbackNode.innerHTML = `
+    <article><b>콘텐츠 점검</b><span>${escapeHtml(review.headline)} ${escapeHtml(review.feedback)}</span></article>
+    <article><b>채널 확장</b><span>${escapeHtml(review.channelCoach)}</span></article>
+  `;
 }
 
 function applyFitnessOpsFieldSourceStyle(field, log = getSelectedLog()) {
@@ -14041,6 +14113,9 @@ function formatFitnessOpsReport(fitnessOps = createFitnessOps()) {
     `수업현황: 정규 ${ops.ptRegular || 0}, 체험/무료 ${ops.ptFree || 0}, 보강/기타 ${ops.ptOther || 0}, 합계 ${ptTotal}`,
     `계약현황: 신규 ${ops.customerNew || 0}, 재등록 ${ops.customerRenewal || 0}, 일일권 ${ops.dayPass || 0}, 기타 ${ops.contractOther || 0}, 소계 ${contractTotal}`,
     `SNS 홍보: ${ops.snsPromotion || 0}건`,
+    `블로그 링크: ${normalizeFitnessSnsUrl(ops.snsBlogUrl) || "-"}`,
+    `인스타그램 링크: ${normalizeFitnessSnsUrl(ops.snsInstagramUrl) || "-"}`,
+    `SNS 핵심내용: ${ops.snsContentSummary || "-"}`,
     `고객관리: 인바운드 ${ops.inbound || 0}, 아웃바운드 ${ops.outbound || 0}, 외부영업 ${ops.outsideSales || 0}, 상담 ${ops.consultation || 0}, 기타 ${ops.customerOther || 0}, 소계 ${customerTotal}`,
     `업무 메모: ${ops.shiftNote || "-"}`,
     `특이사항 보고: ${ops.specialReport || "-"}`,
@@ -20490,6 +20565,20 @@ function buildFitnessReportAiContext({ dateKey, isCenter, employee, sourceLog, l
   }));
   const assignedMission = getAssignedMissionForEmployee(employee);
   const nightlyAnalysis = getDagymDailyAnalysis(dateKey);
+  const snsContent = logEntries.map(({ employee: itemEmployee, log }) => {
+    const review = buildFitnessSnsReview(log);
+    if (!review.blogUrl && !review.instagramUrl && !review.summary) return null;
+    return {
+      writer: sanitizeFitnessCoachText(itemEmployee?.name || "직원"),
+      blogUrl: review.blogUrl,
+      instagramUrl: review.instagramUrl,
+      contentSummary: sanitizeFitnessCoachText(review.summary),
+      localKeyword: review.checks.local,
+      customerBenefit: review.checks.benefit,
+      callToAction: review.checks.action,
+      visualContent: review.checks.visual,
+    };
+  }).filter(Boolean).slice(0, 8);
   return {
     dateKey,
     reportType: isCenter ? "센터 운영 취합" : "개인 업무보고",
@@ -20517,6 +20606,11 @@ function buildFitnessReportAiContext({ dateKey, isCenter, employee, sourceLog, l
       snsPromotion: numberValue(totals.snsPromotion),
       promotion: numberValue(totals.outbound),
       marketing: numberValue(totals.outsideSales),
+    },
+    snsContent: {
+      reviewBasis: "입력된 링크와 업무일지의 제목·핵심내용만 검토하며 외부 페이지 본문을 열람했다고 가정하지 않음",
+      items: snsContent,
+      channelGoal: "블로그 원문을 인스타그램 릴스·카드뉴스와 네이버 플레이스 소식으로 재가공하고 채널별 문의 반응을 기록",
     },
     dagym: dagymSummary ? {
       sourceDateKey: dagymSummary.sourceDateKey,
@@ -20580,11 +20674,12 @@ function getFitnessReportCoachingRows(model = {}) {
       ? `시간별 일정 ${scheduleTotal}건을 기록해 업무 흐름을 남긴 점이 좋습니다.`
       : "업무보고서를 열어 오늘의 실행을 점검한 태도가 좋습니다.";
   const fallback = model.coaching || [];
+  const snsCoach = fallback.find(([title]) => title === "SNS 홍보")?.[1] || "";
   const manualLine = model.aiContext?.manual?.guidelines?.[0] || "직급별 매뉴얼의 핵심 기준을 다음 근무 전에 확인해주세요.";
   return [
     ["성과 하이라이트", praise],
-    ["피드백", fallback.find(([title]) => title === "우선업무")?.[1] || "업무 결과와 후속 조치를 한 줄 더 남겨주세요."],
-    ["다음 행동", fallback.find(([title]) => title === "시간관리")?.[1] || "다음 근무의 첫 실행업무를 미리 정해주세요."],
+    ["피드백", snsCoach || fallback.find(([title]) => title === "우선업무")?.[1] || "업무 결과와 후속 조치를 한 줄 더 남겨주세요."],
+    ["다음 행동", snsCoach ? "블로그 원문 1건을 인스타그램 릴스·카드뉴스로 재가공하고 채널별 문의 반응을 기록하세요." : fallback.find(([title]) => title === "시간관리")?.[1] || "다음 근무의 첫 실행업무를 미리 정해주세요."],
     ["매뉴얼", manualLine],
   ];
 }
@@ -20774,6 +20869,10 @@ function buildFitnessReportModel(options = {}) {
   const aiCacheEntry = getFitnessAiCoachingCache()[aiKey] || null;
   const topTasks = getFitnessReportTaskRows(logEntries, { limit: isCenter ? 3 : Infinity, minRows: 3 });
   const tomorrowTasks = getFitnessReportTaskRows(nextLogEntries, { limit: isCenter ? 3 : Infinity, minRows: 3 });
+  const snsReviews = logEntries.map(({ employee: itemEmployee, log }) => ({
+    writer: itemEmployee?.name || "직원",
+    ...buildFitnessSnsReview(log),
+  })).filter((item) => item.blogUrl || item.instagramUrl || item.summary);
   const centerCommand = isCenter ? buildFitnessCenterCommandSummary({
     staffRows,
     totals,
@@ -20808,6 +20907,7 @@ function buildFitnessReportModel(options = {}) {
     approvalColumns: ["담당", "팀장", "센터장"],
     topTasks,
     tomorrowTasks,
+    snsReviews,
     centerCommand,
     schedule: entries.map((entry) => ({
       time: entry.time,
@@ -20878,6 +20978,27 @@ function renderFitnessDagymReportHtml(model = {}) {
       <div class="fitness-paper-dagym-insights">
         ${summary.insights.map((item) => `<p class="${item.level === "danger" ? "is-report-warning" : "is-report-good"}"><b>${escapeHtml(item.title)}</b><span>${escapeHtml(item.text)}</span></p>`).join("")}
       </div>
+    </section>
+  `;
+}
+
+function renderFitnessSnsReportHtml(model = {}) {
+  const reviews = model.snsReviews || [];
+  if (!reviews.length) return "";
+  return `
+    <section class="fitness-paper-sns-review">
+      <header><h3>SNS 홍보 콘텐츠 검토</h3><span>입력 링크·핵심내용 기준</span></header>
+      ${reviews.map((review) => `
+        <article>
+          <b>${escapeHtml(review.writer)}</b>
+          <div class="fitness-paper-sns-links">
+            ${review.blogUrl ? `<a href="${escapeHtml(review.blogUrl)}" target="_blank" rel="noopener noreferrer">블로그</a>` : ""}
+            ${review.instagramUrl ? `<a href="${escapeHtml(review.instagramUrl)}" target="_blank" rel="noopener noreferrer">인스타그램</a>` : ""}
+          </div>
+          <p>${escapeHtml(review.summary || "제목·핵심내용 미입력")}</p>
+          <small>${escapeHtml(review.headline)} ${escapeHtml(review.channelCoach)}</small>
+        </article>
+      `).join("")}
     </section>
   `;
 }
@@ -21030,6 +21151,8 @@ function renderFitnessReportTemplate(model = buildFitnessReportModel()) {
       </section>` : ""}
 
       ${renderFitnessDagymReportHtml(model)}
+
+      ${renderFitnessSnsReportHtml(model)}
 
       <section class="fitness-paper-footer-grid">
         <div>
@@ -22887,6 +23010,7 @@ document.querySelectorAll("[data-fitness-field]").forEach((field) => {
     scheduleInputRender("fitness-ops-derived", () => {
       if (getSelectedLog() !== log) return;
       renderFitnessOpsSummaryButton(log);
+      renderFitnessSnsReview(log);
       renderFitnessDashboard();
     });
     scheduleInputRender("worklog-report", renderReport, 1600);

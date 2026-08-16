@@ -134,6 +134,17 @@ check("fitness coach keeps OpenAI key server-side", fitnessCoachApi.includes("pr
 check("fitness coach verifies signed-in user", fitnessCoachApi.includes("/auth/v1/user") && fitnessCoachApi.includes("Authorization"));
 check("fitness coach uses structured Responses output", fitnessCoachApi.includes("/v1/responses") && fitnessCoachApi.includes('type: "json_schema"'));
 check(
+  "fitness SNS promotion stores links, reviews content, and coaches channel expansion",
+  ["snsBlogUrl", "snsInstagramUrl", "snsContentSummary"].every((field) => html.includes(`data-fitness-field="${field}"`) && js.includes(`${field}: ""`))
+    && js.includes("function buildFitnessSnsReview")
+    && js.includes("function renderFitnessSnsReportHtml")
+    && js.includes("인스타그램 릴스·카드뉴스")
+    && fitnessCoachApi.includes("외부 링크 본문을 실제로 열람했다고 말하지 마세요")
+    && css.includes(".fitness-sns-review")
+    && css.includes(".fitness-paper-sns-review"),
+  "fitness staff must be able to save promotion links and receive evidence-based cross-channel coaching"
+);
+check(
   "fitness center report keeps manager ownership, Dagym analysis, weather refresh, and attendance warnings",
   /function canConfirmFitnessCenterReport[\s\S]{0,260}return isFitnessCenterManagerEmployee\(actor\)/.test(js)
     && js.includes("getFitnessReportDagymSummary")
