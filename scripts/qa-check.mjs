@@ -317,6 +317,19 @@ check(
 );
 
 check(
+  "report exports use native photo sharing and multipage A4 PDF",
+  ids.includes("fitnessReportPdfButton")
+    && js.includes("function splitReportCanvasIntoA4Pages")
+    && js.includes("async function saveReportPhoto")
+    && js.includes("async function shareReportArtifacts")
+    && js.includes("async function saveFitnessReportPdf")
+    && js.includes('document.getElementById("fitnessReportPdfButton")?.addEventListener')
+    && /function createPdfBlobFromCanvas\(canvas\)[\s\S]{0,500}splitReportCanvasIntoA4Pages\(canvas\)/.test(js)
+    && /\/Count \$\{pages\.length\}/.test(js),
+  "fitness and general reports must save/share photos and multipage PDF without shrinking long reports"
+);
+
+check(
   "general worklog reports receive automatic business-specific AI coaching",
   html.includes('id="worklogReportAiStatus"')
     && js.includes("function getWorklogReportBusinessArea")
@@ -529,8 +542,8 @@ check(
   /function renderFitnessOpsSummaryButton\(log = getSelectedLog\(\)\)[\s\S]{0,1000}buildFitnessCenterEmployeeMonthRow\(employee, getActiveDateKey\(\)\.slice\(0, 7\)\)/.test(js)
     && /<strong>\$\{paidPtTotal\}\/\$\{monthlyPaidPtTotal\}<\/strong>/.test(js)
     && /function renderFitnessPersonalMonthSummary[\s\S]{0,180}panel\.hidden = true;/.test(js)
-    && /function buildFitnessCenterEmployeeMonthRow\(employee, monthPrefix, throughDateKey = getActiveDateKey\(\)\)[\s\S]{0,900}getFitnessMonthRollupDateKeys\(monthPrefix, throughDateKey\)\.forEach/.test(js)
-    && js.includes("const aggregate = buildFitnessCenterEmployeeDayMonthRow(employee, dateKey, centerMonth);")
+    && /function buildFitnessCenterEmployeeMonthRow\(employee, monthPrefix, throughDateKey = getActiveDateKey\(\), options = \{\}\)[\s\S]{0,1800}getFitnessMonthRollupDateKeys\(monthPrefix, throughDateKey\)\.forEach/.test(js)
+    && js.includes("const aggregate = buildFitnessCenterEmployeeDayMonthRow(employee, dateKey, centerMonth, {")
     && js.includes("function buildFitnessCenterEmployeeDayMonthRow"),
   "personal worklogs should show today/month in existing summary cells without a separate grid"
 );
@@ -559,10 +572,23 @@ check(
 check(
   "fitness cumulative totals stop at the selected date and count one lesson per schedule item",
   /function getFitnessMonthRollupDateKeys\(monthPrefix, throughDateKey = getActiveDateKey\(\)\)[\s\S]{0,520}dateKey <= through/.test(js)
-    && /function buildFitnessCenterEmployeeMonthRow\(employee, monthPrefix, throughDateKey = getActiveDateKey\(\)\)[\s\S]{0,900}getFitnessMonthRollupDateKeys\(monthPrefix, throughDateKey\)/.test(js)
+    && /function buildFitnessCenterEmployeeMonthRow\(employee, monthPrefix, throughDateKey = getActiveDateKey\(\), options = \{\}\)[\s\S]{0,1800}getFitnessMonthRollupDateKeys\(monthPrefix, throughDateKey\)/.test(js)
     && /const isPtActivity = [\s\S]{0,360}normalizedType === "SNS 홍보" \|\| isPtActivity \? 1 : countFitnessScheduleUnits\(text\)/.test(js)
-    && /buildFitnessCenterEmployeeMonthRow\(employee, monthPrefix, dateKey\)/.test(js),
+    && /buildFitnessCenterEmployeeMonthRow\(employee, monthPrefix, dateKey(?:,|\))/.test(js),
   "month totals must exclude later dates, while one PT schedule item remains one lesson even when its description contains commas"
+);
+
+check(
+  "fitness center totals deduplicate imported lessons and preserve local-only days",
+  js.includes("function resolveFitnessOpsForAggregation")
+    && js.includes("const dailyDagymSourceIds = new Set()")
+    && js.includes("const monthlyDagymSourceIds = new Set()")
+    && js.includes("const centerMonthlyDagymSourceIds = new Set()")
+    && js.includes("dailyDagymSourceIds,")
+    && js.includes("monthlyDagymSourceIds,")
+    && js.includes("sharedDagymSourceIds: centerMonthlyDagymSourceIds")
+    && /function getDagymMonthlyClassCounts[\s\S]{0,1800}authoritativeDates\.has\(dateKey\)[\s\S]{0,160}else totals\[key\] \+= numberValue\(dayOps\[key\]\)/.test(js),
+  "one DaGym lesson must count once center-wide, while worklog PT remains on dates absent from the imported ledger"
 );
 
 check(

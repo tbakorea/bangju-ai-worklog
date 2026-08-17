@@ -10721,8 +10721,15 @@ function renderFitnessCenterDaily() {
   const dateKey = getActiveDateKey();
   const centerMonth = getFitnessCenterMonth();
   const employeesForCenter = getFitnessCenterEmployees();
+  // 다짐 수업 고유키는 센터 전체에서 한 번만 계수합니다. 과거에 잘못 복제된
+  // 동일 수업이 다른 직원 원장에도 남아 있어도 일/월 누계를 부풀리지 않습니다.
+  const dailyDagymSourceIds = new Set();
+  const monthlyDagymSourceIds = new Set();
   const rows = employeesForCenter.map((employee, index) => {
-    const aggregate = buildFitnessCenterEmployeeDayMonthRow(employee, dateKey, centerMonth);
+    const aggregate = buildFitnessCenterEmployeeDayMonthRow(employee, dateKey, centerMonth, {
+      dailyDagymSourceIds,
+      monthlyDagymSourceIds,
+    });
     return { ...aggregate, index };
   });
   const createCenterTotals = () => ({ pt: 0, ptPaid: 0, ptFree: 0, ptOther: 0, new: 0, renewal: 0, dayPass: 0, contractOther: 0, consultation: 0, snsPromotion: 0, inbound: 0, outbound: 0, outsideSales: 0, customerOther: 0, workMinutes: 0, recorded: 0 });
@@ -10910,7 +10917,19 @@ function getFitnessMonthRollupDateKeys(monthPrefix, throughDateKey = getActiveDa
   return getMonthDateKeys(month).filter((dateKey) => dateKey <= through);
 }
 
-function buildFitnessCenterEmployeeMonthRow(employee, monthPrefix, throughDateKey = getActiveDateKey()) {
+function resolveFitnessOpsForAggregation(log = {}, sharedDagymSourceIds = null) {
+  const saved = { ...createFitnessOps(), ...(log?.fitnessOps || {}) };
+  const manual = { ...createFitnessOpsManual(), ...(log?.fitnessOpsManual || {}) };
+  const derived = collectFitnessOpsFromSchedule(log, sharedDagymSourceIds);
+  const resolved = { ...saved };
+  Object.keys(derived).forEach((key) => {
+    if (manual[key]) return;
+    resolved[key] = derived[key] ? String(derived[key]) : "";
+  });
+  return resolved;
+}
+
+function buildFitnessCenterEmployeeMonthRow(employee, monthPrefix, throughDateKey = getActiveDateKey(), options = {}) {
   const ops = createFitnessOps();
   let paidPtTotal = 0;
   let freePtTotal = 0;
@@ -10927,9 +10946,8 @@ function buildFitnessCenterEmployeeMonthRow(employee, monthPrefix, throughDateKe
   getFitnessMonthRollupDateKeys(monthPrefix, throughDateKey).forEach((dateKey) => {
     const log = getFitnessEmployeeLogForDate(employee, dateKey);
     if (!log) return;
-    syncFitnessOpsFromSchedule(log);
     if (dateKey === getActiveDateKey()) syncAttendanceRecordFromLog(employee, log);
-    const dayOps = { ...createFitnessOps(), ...(log.fitnessOps || {}) };
+    const dayOps = resolveFitnessOpsForAggregation(log, options.sharedDagymSourceIds || null);
     Object.keys(ops).forEach((key) => {
       if (["shiftNote", "specialReport"].includes(key)) return;
       ops[key] = String(numberValue(ops[key]) + numberValue(dayOps[key]) || "");
@@ -10974,10 +10992,11 @@ function buildFitnessCenterEmployeeMonthRow(employee, monthPrefix, throughDateKe
   };
 }
 
-function buildFitnessCenterEmployeeDayMonthRow(employee, dateKey = getActiveDateKey(), monthPrefix = dateKey.slice(0, 7)) {
+function buildFitnessCenterEmployeeDayMonthRow(employee, dateKey = getActiveDateKey(), monthPrefix = dateKey.slice(0, 7), options = {}) {
   const log = getFitnessEmployeeLogForDate(employee, dateKey);
-  if (log) syncFitnessOpsFromSchedule(log);
-  const dailyOps = { ...createFitnessOps(), ...(log?.fitnessOps || {}) };
+  const dailyOps = log
+    ? resolveFitnessOpsForAggregation(log, options.dailyDagymSourceIds || null)
+    : createFitnessOps();
   const dailyPaidPt = numberValue(dailyOps.ptRegular);
   const dailyFreePt = numberValue(dailyOps.ptFree);
   const dailyOtherPt = numberValue(dailyOps.ptOther);
@@ -10985,7 +11004,9 @@ function buildFitnessCenterEmployeeDayMonthRow(employee, dateKey = getActiveDate
   const monthlyThroughDate = monthPrefix === dateKey.slice(0, 7)
     ? dateKey
     : `${monthPrefix}-${String(new Date(Number(monthPrefix.slice(0, 4)), Number(monthPrefix.slice(5, 7)), 0).getDate()).padStart(2, "0")}`;
-  const monthly = buildFitnessCenterEmployeeMonthRow(employee, monthPrefix, monthlyThroughDate);
+  const monthly = buildFitnessCenterEmployeeMonthRow(employee, monthPrefix, monthlyThroughDate, {
+    sharedDagymSourceIds: options.monthlyDagymSourceIds || null,
+  });
   const breakCount = (log?.attendanceBreaks || []).filter((item) => item?.start || item?.end).length;
   const notes = [dailyOps.shiftNote, dailyOps.specialReport]
     .map((value) => String(value || "").trim())
@@ -19807,13 +19828,16 @@ function getDagymMonthlyClassCounts(employee = {}, monthPrefix = getActiveDateKe
   const employeeId = getEmployeeWorklogId(employee);
   const seen = new Set();
   const byDate = {};
+  const authoritativeDates = new Set();
   cached.rows.forEach((row) => {
-    if (row?.active === false || !["completed", "no-show"].includes(row?.status)) return;
+    if (row?.active === false) return;
     if (resolveDagymTrainerEmployeeId(row) !== employeeId) return;
     const sourceId = String(row.id || row.source_key || "");
     const dateKey = getDagymScheduleKstParts(row.scheduled_at).dateKey;
     if (!sourceId || seen.has(sourceId) || !dateKey.startsWith(monthPrefix) || dateKey > throughDateKey) return;
     seen.add(sourceId);
+    authoritativeDates.add(dateKey);
+    if (!["completed", "no-show"].includes(row?.status)) return;
     byDate[dateKey] ||= { ptRegular: 0, ptFree: 0, ptOther: 0 };
     if (row.session_type === "free") byDate[dateKey].ptFree += 1;
     else if (row.session_type === "paid") byDate[dateKey].ptRegular += 1;
@@ -19823,19 +19847,24 @@ function getDagymMonthlyClassCounts(employee = {}, monthPrefix = getActiveDateKe
   getMonthDateKeys(monthPrefix).filter((dateKey) => dateKey <= throughDateKey).forEach((dateKey) => {
     const imported = byDate[dateKey] || { ptRegular: 0, ptFree: 0, ptOther: 0 };
     const dayLog = getFitnessEmployeeLogForDate(employee, dateKey);
-    const dayOps = { ...createFitnessOps(), ...(dayLog?.fitnessOps || {}) };
+    const dayOps = dayLog ? resolveFitnessOpsForAggregation(dayLog) : createFitnessOps();
     const manual = { ...createFitnessOpsManual(), ...(dayLog?.fitnessOpsManual || {}) };
     ["ptRegular", "ptFree", "ptOther"].forEach((key) => {
-      totals[key] += manual[key] ? numberValue(dayOps[key]) : numberValue(imported[key]);
+      if (manual[key]) totals[key] += numberValue(dayOps[key]);
+      else if (authoritativeDates.has(dateKey)) totals[key] += numberValue(imported[key]);
+      else totals[key] += numberValue(dayOps[key]);
     });
   });
-  return { ...totals, uniqueSourceRows: seen.size };
+  return { ...totals, uniqueSourceRows: seen.size, authoritativeDates: authoritativeDates.size };
 }
 
-function getFitnessReportMonthlyStats(employee = {}, monthPrefix = getActiveDateKey().slice(0, 7), dateKey = getActiveDateKey(), dailyStats = {}) {
-  const aggregate = buildFitnessCenterEmployeeMonthRow(employee, monthPrefix, dateKey);
+function getFitnessReportMonthlyStats(employee = {}, monthPrefix = getActiveDateKey().slice(0, 7), dateKey = getActiveDateKey(), dailyStats = {}, options = {}) {
+  const aggregate = buildFitnessCenterEmployeeMonthRow(employee, monthPrefix, dateKey, {
+    sharedDagymSourceIds: options.sharedDagymSourceIds || null,
+  });
   const ops = { ...createFitnessOps(), ...(aggregate.ops || {}) };
-  const resolvedDayOps = { ...createFitnessOps(), ...(getFitnessEmployeeLogForDate(employee, dateKey)?.fitnessOps || {}) };
+  const currentDayLog = getFitnessEmployeeLogForDate(employee, dateKey);
+  const resolvedDayOps = currentDayLog ? resolveFitnessOpsForAggregation(currentDayLog) : createFitnessOps();
   const replaceDayContribution = (key) => Math.max(0,
     numberValue(ops[key]) - numberValue(resolvedDayOps[key]) + numberValue(dailyStats[key]));
   const stats = {
@@ -19909,6 +19938,7 @@ function auditDagymClassRows(logEntries = []) {
 function summarizeFitnessReportRows(logEntries = [], dateKey = getActiveDateKey(), includeMonthly = false) {
   const monthPrefix = String(dateKey || getActiveDateKey()).slice(0, 7);
   const centerDagymSourceIds = new Set();
+  const centerMonthlyDagymSourceIds = new Set();
   const dagymAudit = auditDagymClassRows(logEntries);
   let reconciliationDifferences = 0;
   const rows = logEntries.map(({ employee, log }, index) => {
@@ -19978,6 +20008,8 @@ function summarizeFitnessReportRows(logEntries = [], dateKey = getActiveDateKey(
         consultation,
         snsPromotion,
         customerOther,
+      }, {
+        sharedDagymSourceIds: centerMonthlyDagymSourceIds,
       }) : {},
       ptNote: ptRegular + ptFree + ptOther ? String(ops.shiftNote || "").trim() : "",
       customerNote: customerNew + customerRenewal + dayPass + contractOther + inbound + outbound + outsideSales + consultation + customerOther
@@ -20581,34 +20613,27 @@ async function renderWorklogReportCanvas() {
 
 async function saveWorklogReportImage() {
   const model = buildWorklogDailyReportModel();
-  const blob = await canvasToBlob(await renderWorklogReportCanvas(), "image/jpeg", 0.94);
-  downloadBlob(blob, `${getWorklogReportFileBase(model)}.jpg`);
-  showAppToast("보고서를 JPEG 이미지로 저장했습니다");
+  await saveReportPhoto(await renderWorklogReportCanvas(), `${getWorklogReportFileBase(model)}.jpg`);
 }
 
 async function saveWorklogReportPdf() {
   const model = buildWorklogDailyReportModel();
   const pdf = createPdfBlobFromCanvas(await renderWorklogReportCanvas());
   downloadBlob(pdf, `${getWorklogReportFileBase(model)}.pdf`);
+  showAppToast("A4 PDF 보고서를 저장했습니다");
 }
 
 async function shareWorklogDailyReport() {
   const model = buildWorklogDailyReportModel();
   const canvas = await renderWorklogReportCanvas();
-  const jpegBlob = await canvasToBlob(canvas, "image/jpeg", 0.94);
   const base = getWorklogReportFileBase(model);
-  const files = [new File([jpegBlob], `${base}.jpg`, { type: "image/jpeg" })];
-  if (navigator.canShare?.({ files }) && navigator.share) {
-    await navigator.share({ title: model.title, text: `${model.dateLabel} ${model.writer} 업무보고서`, files });
-    return;
-  }
   const text = buildWorklogDailyReportLines(model).join("\n");
-  if (navigator.share) {
-    await navigator.share({ title: model.title, text });
-    return;
-  }
-  await navigator.clipboard?.writeText(text);
-  showAppToast("보내기 대신 보고서 내용을 복사했습니다");
+  await shareReportArtifacts({
+    canvas,
+    base,
+    title: model.title,
+    text: `${model.dateLabel} ${model.writer} 업무보고서\n${text}`,
+  });
 }
 
 async function copyWorklogDailyReport() {
@@ -22070,34 +22095,98 @@ function downloadBlob(blob, filename) {
   document.body.appendChild(link);
   link.click();
   link.remove();
-  window.setTimeout(() => URL.revokeObjectURL(url), 500);
+  // Mobile browsers can start the download after the click handler returns.
+  // Keep the object URL alive long enough for Safari/Android download managers.
+  window.setTimeout(() => URL.revokeObjectURL(url), 30000);
+}
+
+function isIOSLikeDevice() {
+  return /iPad|iPhone|iPod/i.test(navigator.userAgent || "")
+    || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+}
+
+function createShareFile(blob, filename) {
+  if (typeof File !== "function") return null;
+  return new File([blob], filename, { type: blob.type || "application/octet-stream" });
+}
+
+async function saveReportPhoto(canvas, filename) {
+  const blob = await canvasToBlob(canvas, "image/jpeg", 0.94);
+  const file = createShareFile(blob, filename);
+  // iOS does not consistently place a downloaded JPEG in Photos. Opening the
+  // native share sheet lets the employee choose "Save Image" reliably.
+  if (isIOSLikeDevice() && file && navigator.share && navigator.canShare?.({ files: [file] })) {
+    await navigator.share({ title: filename.replace(/\.jpe?g$/i, ""), files: [file] });
+    showAppToast("공유창에서 ‘이미지 저장’을 선택하세요");
+    return;
+  }
+  downloadBlob(blob, filename);
+  showAppToast("보고서 사진을 저장했습니다");
+}
+
+async function shareReportArtifacts({ canvas, base, title, text }) {
+  const jpegBlob = await canvasToBlob(canvas, "image/jpeg", 0.94);
+  const pdfBlob = createPdfBlobFromCanvas(canvas);
+  const jpegFile = createShareFile(jpegBlob, `${base}.jpg`);
+  const pdfFile = createShareFile(pdfBlob, `${base}.pdf`);
+  const files = [jpegFile, pdfFile].filter(Boolean);
+  if (files.length && navigator.share && navigator.canShare?.({ files })) {
+    await navigator.share({ title, text, files });
+    return;
+  }
+  if (jpegFile && navigator.share && navigator.canShare?.({ files: [jpegFile] })) {
+    await navigator.share({ title, text, files: [jpegFile] });
+    return;
+  }
+  if (navigator.share) {
+    await navigator.share({ title, text });
+    return;
+  }
+  await navigator.clipboard?.writeText(text);
+  showAppToast("공유를 지원하지 않아 보고서 내용을 복사했습니다");
+}
+
+function splitReportCanvasIntoA4Pages(canvas) {
+  const pageRatio = 297 / 210;
+  const sourcePageHeight = Math.max(1, Math.round(canvas.width * pageRatio));
+  const pages = [];
+  for (let sourceY = 0; sourceY < canvas.height; sourceY += sourcePageHeight) {
+    const sourceHeight = Math.min(sourcePageHeight, canvas.height - sourceY);
+    const page = document.createElement("canvas");
+    page.width = canvas.width;
+    page.height = sourcePageHeight;
+    const context = page.getContext("2d");
+    context.fillStyle = "#ffffff";
+    context.fillRect(0, 0, page.width, page.height);
+    context.drawImage(canvas, 0, sourceY, canvas.width, sourceHeight, 0, 0, canvas.width, sourceHeight);
+    pages.push(page);
+  }
+  return pages.length ? pages : [canvas];
 }
 
 async function printReportCanvas(canvas, title = "Daily Report") {
-  const blob = await canvasToBlob(canvas, "image/jpeg", 0.96);
-  const imageUrl = URL.createObjectURL(blob);
+  const pageBlobs = await Promise.all(splitReportCanvasIntoA4Pages(canvas)
+    .map((page) => canvasToBlob(page, "image/jpeg", 0.96)));
+  const imageUrls = pageBlobs.map((blob) => URL.createObjectURL(blob));
   const frame = document.createElement("iframe");
   frame.title = `${title} 인쇄 전용 문서`;
   frame.setAttribute("aria-hidden", "true");
   frame.style.cssText = "position:fixed;right:100%;bottom:0;width:1px;height:1px;border:0;opacity:0;pointer-events:none";
   document.body.appendChild(frame);
   const cleanup = () => {
-    URL.revokeObjectURL(imageUrl);
+    imageUrls.forEach((url) => URL.revokeObjectURL(url));
     frame.remove();
   };
   const printDocument = frame.contentDocument;
   printDocument.open();
-  printDocument.write(`<!doctype html><html lang="ko"><head><meta charset="utf-8"><title>${escapeHtml(title)}</title><style>@page{size:A4 portrait;margin:0}html,body{margin:0;padding:0;background:#fff}body{width:210mm;min-height:297mm;display:grid;place-items:start center}img{display:block;width:210mm;height:297mm;object-fit:contain;object-position:top center}</style></head><body><img alt="${escapeHtml(title)}" src="${imageUrl}"></body></html>`);
+  printDocument.write(`<!doctype html><html lang="ko"><head><meta charset="utf-8"><title>${escapeHtml(title)}</title><style>@page{size:A4 portrait;margin:0}html,body{margin:0;padding:0;background:#fff}.report-print-page{width:210mm;height:297mm;break-after:page;page-break-after:always;overflow:hidden}.report-print-page:last-child{break-after:auto;page-break-after:auto}img{display:block;width:210mm;height:297mm;object-fit:contain;object-position:top center}</style></head><body>${imageUrls.map((url, index) => `<section class="report-print-page"><img alt="${escapeHtml(title)} ${index + 1}쪽" src="${url}"></section>`).join("")}</body></html>`);
   printDocument.close();
-  const image = printDocument.querySelector("img");
-  await new Promise((resolve, reject) => {
-    if (image.complete && image.naturalWidth) {
-      resolve();
-      return;
-    }
+  const images = [...printDocument.querySelectorAll("img")];
+  await Promise.all(images.map((image) => new Promise((resolve, reject) => {
+    if (image.complete && image.naturalWidth) return resolve();
     image.addEventListener("load", resolve, { once: true });
     image.addEventListener("error", () => reject(new Error("인쇄용 보고서 이미지를 준비하지 못했습니다.")), { once: true });
-  });
+  })));
   const printWindow = frame.contentWindow;
   printWindow.addEventListener("afterprint", cleanup, { once: true });
   printWindow.focus();
@@ -22126,21 +22215,30 @@ function dataUrlToUint8Array(dataUrl) {
 
 function createPdfBlobFromCanvas(canvas) {
   const encoder = new TextEncoder();
-  const jpegBytes = dataUrlToUint8Array(canvas.toDataURL("image/jpeg", 0.92));
+  const pages = splitReportCanvasIntoA4Pages(canvas);
   const pageWidth = 595.28;
   const pageHeight = 841.89;
   const content = `q\n${pageWidth} 0 0 ${pageHeight} 0 0 cm\n/Im0 Do\nQ`;
+  const pageObjectIds = pages.map((_, index) => 3 + index * 3);
   const objects = [
     encoder.encode("1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n"),
-    encoder.encode("2 0 obj\n<< /Type /Pages /Kids [3 0 R] /Count 1 >>\nendobj\n"),
-    encoder.encode(`3 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${pageWidth} ${pageHeight}] /Resources << /XObject << /Im0 5 0 R >> >> /Contents 4 0 R >>\nendobj\n`),
-    encoder.encode(`4 0 obj\n<< /Length ${content.length} >>\nstream\n${content}\nendstream\nendobj\n`),
-    concatUint8Arrays([
-      encoder.encode(`5 0 obj\n<< /Type /XObject /Subtype /Image /Width ${canvas.width} /Height ${canvas.height} /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode /Length ${jpegBytes.length} >>\nstream\n`),
-      jpegBytes,
-      encoder.encode("\nendstream\nendobj\n"),
-    ]),
+    encoder.encode(`2 0 obj\n<< /Type /Pages /Kids [${pageObjectIds.map((id) => `${id} 0 R`).join(" ")}] /Count ${pages.length} >>\nendobj\n`),
   ];
+  pages.forEach((page, index) => {
+    const pageObjectId = pageObjectIds[index];
+    const contentObjectId = pageObjectId + 1;
+    const imageObjectId = pageObjectId + 2;
+    const jpegBytes = dataUrlToUint8Array(page.toDataURL("image/jpeg", 0.92));
+    objects.push(
+      encoder.encode(`${pageObjectId} 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${pageWidth} ${pageHeight}] /Resources << /XObject << /Im0 ${imageObjectId} 0 R >> >> /Contents ${contentObjectId} 0 R >>\nendobj\n`),
+      encoder.encode(`${contentObjectId} 0 obj\n<< /Length ${content.length} >>\nstream\n${content}\nendstream\nendobj\n`),
+      concatUint8Arrays([
+        encoder.encode(`${imageObjectId} 0 obj\n<< /Type /XObject /Subtype /Image /Width ${page.width} /Height ${page.height} /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode /Length ${jpegBytes.length} >>\nstream\n`),
+        jpegBytes,
+        encoder.encode("\nendstream\nendobj\n"),
+      ]),
+    );
+  });
   const chunks = [encoder.encode("%PDF-1.4\n%\n")];
   const offsets = [0];
   let length = chunks[0].length;
@@ -22167,31 +22265,25 @@ function createPdfBlobFromCanvas(canvas) {
 
 async function saveFitnessReportImage() {
   const canvas = await renderFitnessReportCanvas();
-  const blob = await canvasToBlob(canvas, "image/jpeg", 0.94);
-  downloadBlob(blob, `${getFitnessReportFileBase()}.jpg`);
-  showAppToast("보고서를 JPEG 이미지로 저장했습니다");
+  await saveReportPhoto(canvas, `${getFitnessReportFileBase()}.jpg`);
+}
+
+async function saveFitnessReportPdf() {
+  const pdf = createPdfBlobFromCanvas(await renderFitnessReportCanvas());
+  downloadBlob(pdf, `${getFitnessReportFileBase()}.pdf`);
+  showAppToast("A4 PDF 보고서를 저장했습니다");
 }
 
 async function shareFitnessReport() {
   const canvas = await renderFitnessReportCanvas();
-  const jpegBlob = await canvasToBlob(canvas, "image/jpeg", 0.94);
   const base = getFitnessReportFileBase();
-  const jpegFile = new File([jpegBlob], `${base}.jpg`, { type: "image/jpeg" });
-  if (navigator.canShare?.({ files: [jpegFile] }) && navigator.share) {
-    await navigator.share({
-      title: "Beyond Fitness Report",
-      text: "비욘드 피트니스 업무보고서입니다.",
-      files: [jpegFile],
-    });
-    return;
-  }
   const text = buildFitnessReportLines().join("\n");
-  if (navigator.share) {
-    await navigator.share({ title: "Beyond Fitness Report", text });
-    return;
-  }
-  await navigator.clipboard?.writeText(text);
-  alert("보고서 내용을 클립보드에 복사했습니다.");
+  await shareReportArtifacts({
+    canvas,
+    base,
+    title: "Beyond Fitness Report",
+    text,
+  });
 }
 
 function switchView(view) {
@@ -23071,7 +23163,12 @@ document.getElementById("fitnessReportPrintButton")?.addEventListener("click", (
 });
 document.getElementById("fitnessReportConfirmButton")?.addEventListener("click", toggleFitnessCenterReportConfirmation);
 document.getElementById("fitnessReportImageButton")?.addEventListener("click", () => {
-  saveFitnessReportImage().catch(() => alert("JPEG 이미지를 만들지 못했습니다. 잠시 후 다시 시도해주세요."));
+  saveFitnessReportImage().catch((error) => {
+    if (error?.name !== "AbortError") alert("보고서 사진을 만들지 못했습니다. 잠시 후 다시 시도해주세요.");
+  });
+});
+document.getElementById("fitnessReportPdfButton")?.addEventListener("click", () => {
+  saveFitnessReportPdf().catch(() => alert("PDF 파일을 만들지 못했습니다. 출력 메뉴에서 PDF 저장을 이용해주세요."));
 });
 document.getElementById("fitnessReportShareButton")?.addEventListener("click", () => {
   shareFitnessReport().catch((error) => {
@@ -23082,7 +23179,9 @@ document.getElementById("worklogReportMenuButton")?.addEventListener("click", op
 document.getElementById("worklogReportCloseButton")?.addEventListener("click", closeWorklogReportSheet);
 document.getElementById("worklogReportBackdrop")?.addEventListener("click", closeWorklogReportSheet);
 document.getElementById("worklogReportImageButton")?.addEventListener("click", () => {
-  saveWorklogReportImage().catch(() => alert("보고서 사진을 만들지 못했습니다. 출력 메뉴를 이용해주세요."));
+  saveWorklogReportImage().catch((error) => {
+    if (error?.name !== "AbortError") alert("보고서 사진을 만들지 못했습니다. 출력 메뉴를 이용해주세요.");
+  });
 });
 document.getElementById("worklogReportPdfButton")?.addEventListener("click", () => {
   saveWorklogReportPdf().catch(() => alert("PDF 파일을 만들지 못했습니다. 출력 메뉴에서 PDF 저장을 이용해주세요."));
