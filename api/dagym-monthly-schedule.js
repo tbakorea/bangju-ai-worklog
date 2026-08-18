@@ -111,11 +111,21 @@ async function verifyUser(request) {
 
 async function loadProfileAccess(request, user) {
   const authorization = String(request.headers.authorization || "");
-  const result = await fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${encodeURIComponent(user.id)}&select=id,name,nickname,role,workplace,access_preset,permissions,approval_status&limit=1`, {
-    headers: { apikey: SUPABASE_ANON_KEY, Authorization: authorization },
-  });
-  if (!result.ok) return null;
-  const [profile] = await result.json().catch(() => []);
+  const profileBaseUrl = `${SUPABASE_URL}/rest/v1/profiles?id=eq.${encodeURIComponent(user.id)}&limit=1&select=`;
+  const selectCandidates = [
+    "id,name,nickname,role,workplace,access_preset,permissions,approval_status",
+    "id,name,nickname,role,workplace,approval_status",
+    "id,name,role,workplace,approval_status",
+  ];
+  let profile = null;
+  for (const fields of selectCandidates) {
+    const result = await fetch(`${profileBaseUrl}${fields}`, {
+      headers: { apikey: SUPABASE_ANON_KEY, Authorization: authorization },
+    });
+    if (!result.ok) continue;
+    [profile] = await result.json().catch(() => []);
+    break;
+  }
   if (!profile || profile.approval_status !== "approved") return null;
   const permissions = profile.permissions && typeof profile.permissions === "object" ? profile.permissions : {};
   const roleText = `${profile.role || ""} ${profile.workplace || ""}`;

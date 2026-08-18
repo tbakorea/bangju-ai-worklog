@@ -20,12 +20,15 @@ function responseRecorder() {
 
 test("masked anon key falls back to the project public key", async () => {
   const calls = [];
+  let profileRequestCount = 0;
   global.fetch = async (url, options = {}) => {
     calls.push({ url, options });
     if (String(url).includes("/auth/v1/user")) {
       return { ok: true, json: async () => ({ id: "user-1" }) };
     }
     if (String(url).includes("/rest/v1/profiles")) {
+      profileRequestCount += 1;
+      if (profileRequestCount === 1) return { ok: false, status: 400 };
       return {
         ok: true,
         json: async () => ([{
@@ -52,6 +55,7 @@ test("masked anon key falls back to the project public key", async () => {
   assert.equal(response.statusCode, 200);
   assert.match(calls[0].options.headers.apikey, /^eyJ/);
   assert.doesNotMatch(calls[0].options.headers.apikey, /•/);
+  assert.equal(profileRequestCount, 2);
 });
 
 test("masked service role key returns a configuration error instead of crashing", async () => {
