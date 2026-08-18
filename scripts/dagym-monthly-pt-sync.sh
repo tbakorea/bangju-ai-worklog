@@ -25,6 +25,16 @@ if [ -f "$ROOT_DIR/.env.local" ]; then
   set +a
 fi
 
+# 자동 실행용 비밀값은 평문 파일보다 macOS Keychain을 우선 사용한다.
+if [ -z "${DAGYM_BROWSER_SYNC_SECRET:-}" ]; then
+  DAGYM_BROWSER_SYNC_SECRET="$(security find-generic-password -a "$USER" -s "com.bangju.dagym-sync" -w 2>/dev/null || true)"
+  export DAGYM_BROWSER_SYNC_SECRET
+fi
+if [ "${DAGYM_SYNC_DRY_RUN:-0}" != "1" ] && [ -z "${DAGYM_BROWSER_SYNC_SECRET:-}" ]; then
+  echo "다짐 동기화키가 없습니다. macOS Keychain 서비스 com.bangju.dagym-sync를 설정해주세요." >&2
+  exit 1
+fi
+
 if [ "${DAGYM_SYNC_SKIP_JITTER:-0}" != "1" ]; then
   # 매일 동일한 초에 접근하지 않도록 01:05~03:35 사이에서 분산합니다.
   JITTER_SECONDS=$((RANDOM % 9001))
