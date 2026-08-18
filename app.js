@@ -9731,11 +9731,14 @@ function applyDagymPtScheduleMonth(rows = [], anchorDateKey = getActiveDateKey()
   return futureDateKeys.reduce((total, dateKey) => total + applyDagymPtScheduleRows(rows, dateKey), 0);
 }
 
-async function loadDagymMonthlyPtSchedules(dateKey = getActiveDateKey()) {
+async function loadDagymMonthlyPtSchedules(dateKey = getActiveDateKey(), options = {}) {
   if (!supabaseClient || !authState.user || !/^\d{4}-\d{2}-\d{2}$/.test(String(dateKey || ""))) return [];
   const monthKey = dateKey.slice(0, 7);
   const cached = authState.dagymPtScheduleMonthCache.get(monthKey);
-  let rows = cached && Date.now() - Number(cached.loadedAt || 0) < 5 * 60 * 1000 ? cached.rows : null;
+  // 센터운영현황은 직원이 방금 확정한 출석·노쇼 상태까지 빠르게 반영해야 합니다.
+  // 월간 원장을 매 렌더마다 다시 읽지는 않되, 기존 5분 캐시보다 짧게 유지합니다.
+  const cacheTtlMs = Math.max(5 * 1000, Number(options.cacheTtlMs || 30 * 1000) || 30 * 1000);
+  let rows = !options.force && cached && Date.now() - Number(cached.loadedAt || 0) < cacheTtlMs ? cached.rows : null;
   if (!rows) {
     const accessToken = authState.session?.access_token || "";
     if (!accessToken) return [];
@@ -10057,16 +10060,22 @@ function createRemoteCoworkerEmployee(row = {}) {
   };
 }
 
-async function refreshVisibleStaffWorklogsForActiveDate() {
+async function refreshVisibleStaffWorklogsForActiveDate(options = {}) {
   if (!supabaseClient || !authState.user || !canAccessAllWorklogs() || authState.visibleWorklogsLoading) return;
   authState.visibleWorklogsLoading = true;
   try {
     const dateKey = getActiveDateKey();
     await loadVisibleStaffWorklogsForDate(dateKey);
     if (dateKey !== getActiveDateKey()) return;
+    if (activeView === "fitness-log") {
+      // 직원 원장을 새로 합친 뒤 다짐 수업을 다시 투사해야 센터현황의
+      // 유료/무료 PT가 최신 업무일지와 동일한 원천에서 계산됩니다.
+      await loadDagymMonthlyPtSchedules(dateKey, { force: Boolean(options.forceDagym) });
+    }
     normalizeState();
     localStorage.setItem(storageKey, JSON.stringify(state));
-    renderWorklogOverview();
+    if (activeView === "fitness-log") renderEntries();
+    else renderWorklogOverview();
   } finally {
     authState.visibleWorklogsLoading = false;
   }
@@ -10077,7 +10086,7 @@ function startVisibleWorklogPolling() {
   authState.visibleWorklogsTimer = null;
   if (!authState.user || !canAccessAllWorklogs()) return;
   authState.visibleWorklogsTimer = setInterval(() => {
-    if (document.visibilityState !== "visible" || activeView !== "worklog-overview") return;
+    if (document.visibilityState !== "visible" || !["worklog-overview", "fitness-log"].includes(activeView)) return;
     refreshVisibleStaffWorklogsForActiveDate();
   }, 15000);
 }
@@ -10089,6 +10098,7 @@ async function refreshCoworkerWorklogsForActiveDate() {
     const dateKey = getActiveDateKey();
     await loadCoworkerWorklogsForDate(dateKey);
     if (dateKey !== getActiveDateKey()) return;
+    if (activeView === "fitness-log") await loadDagymMonthlyPtSchedules(dateKey);
     normalizeState();
     localStorage.setItem(storageKey, JSON.stringify(state));
     renderEntries();
@@ -22600,7 +22610,10 @@ function switchView(view) {
   dockGlobalHeaderActions(panelView);
   applyCurrentWorklogPermissionState(view);
   if (view === "fitness-log") window.setTimeout(() => showFitnessPageToast(), 80);
-  if (view === "fitness-log" && authState.session) refreshCoworkerWorklogsForActiveDate();
+  if (view === "fitness-log" && authState.session) {
+    if (canAccessAllWorklogs()) refreshVisibleStaffWorklogsForActiveDate({ forceDagym: true });
+    else refreshCoworkerWorklogsForActiveDate();
+  }
   if (view === "worklog-overview") {
     if (canAccessAllWorklogs()) refreshVisibleStaffWorklogsForActiveDate();
     else refreshCoworkerWorklogsForActiveDate();
@@ -23752,6 +23765,10 @@ document.addEventListener("visibilitychange", () => {
   }
   restoreTodayAfterAppResume();
   if (activeView === "worklog-overview" && canAccessAllWorklogs()) refreshVisibleStaffWorklogsForActiveDate();
+  if (activeView === "fitness-log") {
+    if (canAccessAllWorklogs()) refreshVisibleStaffWorklogsForActiveDate({ forceDagym: true });
+    else refreshCoworkerWorklogsForActiveDate();
+  }
 });
 window.addEventListener("pageshow", (event) => {
   restoreTodayAfterAppResume();

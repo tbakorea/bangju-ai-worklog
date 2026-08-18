@@ -632,6 +632,15 @@ check(
 );
 
 check(
+  "fitness center refreshes today's staff PT and recent DaGym class status",
+  /if \(view === "fitness-log" && authState\.session\) \{[\s\S]{0,220}canAccessAllWorklogs\(\)[\s\S]{0,180}refreshVisibleStaffWorklogsForActiveDate\(\{ forceDagym: true \}\)/.test(js)
+    && /async function refreshVisibleStaffWorklogsForActiveDate\(options = \{\}\)[\s\S]{0,900}loadVisibleStaffWorklogsForDate\(dateKey\)[\s\S]{0,420}loadDagymMonthlyPtSchedules\(dateKey, \{ force: Boolean\(options\.forceDagym\) \}\)[\s\S]{0,260}renderEntries\(\)/.test(js)
+    && /\["worklog-overview", "fitness-log"\]\.includes\(activeView\)/.test(js)
+    && /const cacheTtlMs = Math\.max\(5 \* 1000, Number\(options\.cacheTtlMs \|\| 30 \* 1000\)/.test(js),
+  "representative center pages must reload employee ledgers and refresh class outcomes instead of keeping stale PT counts"
+);
+
+check(
   "fitness center reports preserve the handwritten ledger structure",
   html.includes('data-fitness-field="contractOther"')
     && html.includes('data-fitness-field="customerOther"')
