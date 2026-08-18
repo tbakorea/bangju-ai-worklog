@@ -199,6 +199,16 @@ check(
     && !js.includes('["칭찬", model.aiCoaching.praise]')
 );
 check(
+  "non-fitness daily report places priorities and schedules side by side",
+  js.includes('class="worklog-report-main-grid"')
+    && js.includes("1. 오늘의 우선업무")
+    && js.includes("2. 시간별일정")
+    && css.includes(".worklog-report-main-grid")
+    && /\.worklog-report-main-grid\s*\{[\s\S]{0,220}grid-template-columns:\s*repeat\(2, minmax\(0, 1fr\)\)/.test(css)
+    && /getWorklogReportExportCss[\s\S]{0,5000}\.worklog-report-main-grid \{ display: grid; grid-template-columns: minmax\(0, 1fr\) minmax\(0, 1fr\)/.test(js),
+  "general worklog preview and exported report must keep the two primary ledgers in a balanced two-column grid"
+);
+check(
   "representative weather addresses are shared with every authenticated workplace",
   js.includes("function mergeSharedSiteWeatherSettings")
     && js.includes('.from("site_weather_settings")')

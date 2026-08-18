@@ -20574,14 +20574,16 @@ function renderWorklogDailyReportTemplate(model = buildWorklogDailyReportModel()
         <div><span>실행 근거</span><strong>${model.evidenceCount}건</strong></div>
         <p><b>금일 핵심 성과</b>${escapeHtml(model.reportText || model.tasks.find((task) => task.status === "완료")?.text || "업무보고 내용을 입력해주세요.")}</p>
       </section>
-      <section class="worklog-report-table-section worklog-report-progress-section">
-        <h3>1. 업무 진행 현황</h3>
-        <table><thead><tr><th>우선</th><th>업무내용</th><th>상태</th></tr></thead><tbody>${taskRows.map((task) => `<tr class="worklog-report-task-${escapeAttr(task.key || "planned")}"><td>${escapeHtml(task.priority)}</td><td>${escapeHtml(task.text)}</td><td><span class="worklog-report-status is-${escapeAttr(task.key || "planned")}"><b>${escapeHtml(task.label || task.status || "예정")}</b><small>${escapeHtml(task.detail || "")}</small></span></td></tr>`).join("")}</tbody></table>
-      </section>
-      <section class="worklog-report-table-section">
-        <h3>2. 시간대별 실행 내역</h3>
-        <table><thead><tr><th>시간</th><th>세부업무</th><th>분류</th></tr></thead><tbody>${scheduleRows.map((entry) => `<tr><td>${escapeHtml(entry.time)}</td><td>${escapeHtml(entry.text)}</td><td>${escapeHtml(entry.type)}</td></tr>`).join("")}</tbody></table>
-      </section>
+      <div class="worklog-report-main-grid">
+        <section class="worklog-report-table-section worklog-report-progress-section">
+          <h3>1. 오늘의 우선업무</h3>
+          <table><thead><tr><th>우선</th><th>업무내용</th><th>상태</th></tr></thead><tbody>${taskRows.map((task) => `<tr class="worklog-report-task-${escapeAttr(task.key || "planned")}"><td>${escapeHtml(task.priority)}</td><td>${escapeHtml(task.text)}</td><td><span class="worklog-report-status is-${escapeAttr(task.key || "planned")}"><b>${escapeHtml(task.label || task.status || "예정")}</b><small>${escapeHtml(task.detail || "")}</small></span></td></tr>`).join("")}</tbody></table>
+        </section>
+        <section class="worklog-report-table-section worklog-report-schedule-section">
+          <h3>2. 시간별일정</h3>
+          <table><thead><tr><th>시간</th><th>세부업무</th><th>분류</th></tr></thead><tbody>${scheduleRows.map((entry) => `<tr><td>${escapeHtml(entry.time)}</td><td>${escapeHtml(entry.text)}</td><td>${escapeHtml(entry.type)}</td></tr>`).join("")}</tbody></table>
+        </section>
+      </div>
       <section class="worklog-report-bottom-grid">
         <div><h3>3. 이슈·리스크·지원 요청</h3>${model.issueRows.map((row) => `<p>• ${escapeHtml(row)}</p>`).join("")}</div>
         <div><h3>4. 명일 계획·인수인계</h3>${model.tomorrowRows.map((row) => `<p>• ${escapeHtml(row)}</p>`).join("")}</div>
@@ -20801,6 +20803,8 @@ function getWorklogReportExportCss(height = 1754) {
     .worklog-report-executive strong { display: block; margin-top: 4px; color: #123d2f; font-size: 28px; }
     .worklog-report-executive p { font-size: 16px; line-height: 1.5; }
     .worklog-report-executive p b { margin-bottom: 5px; }
+    .worklog-report-main-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 18px; align-items: start; }
+    .worklog-report-main-grid .worklog-report-table-section { min-width: 0; }
     section h3 { margin: 20px 0 8px; color: #173f32; font-size: 20px; }
     .worklog-report-table-section table th:first-child, .worklog-report-table-section table td:first-child { width: 110px; text-align: center; }
     .worklog-report-table-section table th:last-child, .worklog-report-table-section table td:last-child { width: 150px; text-align: center; }

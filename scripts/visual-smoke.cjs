@@ -4743,6 +4743,17 @@ async function checkSiteWeatherAndGeneralDailyReport(browser) {
         classes: [...badge.classList],
       })),
       reportScheduleTypes: [...(preview.querySelectorAll(".worklog-report-table-section")[1]?.querySelectorAll("tbody tr") || [])].map((row) => row.lastElementChild?.textContent?.trim() || ""),
+      reportMainGrid: (() => {
+        const grid = preview.querySelector(".worklog-report-main-grid");
+        const sections = [...(grid?.querySelectorAll(":scope > .worklog-report-table-section") || [])];
+        const taskRect = sections[0]?.getBoundingClientRect();
+        const scheduleRect = sections[1]?.getBoundingClientRect();
+        return {
+          columns: grid ? getComputedStyle(grid).gridTemplateColumns.split(" ").filter(Boolean).length : 0,
+          sideBySide: Boolean(taskRect && scheduleRect && Math.abs(taskRect.top - scheduleRect.top) <= 2 && taskRect.right <= scheduleRect.left),
+          titles: sections.map((section) => section.querySelector("h3")?.textContent?.trim() || ""),
+        };
+      })(),
       directReportTypes: {
         meal: getScheduleEntryReportType({ time: "12:00", text: "중식" }, employee),
         payroll: getScheduleEntryReportType({ time: "13:00", text: "급여 지급과 4대보험 신고" }, employee),
@@ -4806,9 +4817,14 @@ async function checkSiteWeatherAndGeneralDailyReport(browser) {
     };
     return { past, future };
   });
-  ["업무 진행 현황", "시간대별 실행 내역", "이슈·리스크·지원 요청", "명일 계획·인수인계", "재무·자금관리 AI 코칭", "성과 하이라이트", "핵심 피드백", "다음 실행", "직무 기준", "Bangju Action Brief", "맑음", "월 마감 자료 검토", "거래처 증빙 대조", "재무 자료 취합", "세금계산서 원장 대조", "회계 원장 실행기록을 저장했습니다.", "명일 거래처 확인이 필요합니다."].forEach((label) => {
+  ["오늘의 우선업무", "시간별일정", "이슈·리스크·지원 요청", "명일 계획·인수인계", "재무·자금관리 AI 코칭", "성과 하이라이트", "핵심 피드백", "다음 실행", "직무 기준", "Bangju Action Brief", "맑음", "월 마감 자료 검토", "거래처 증빙 대조", "재무 자료 취합", "세금계산서 원장 대조", "회계 원장 실행기록을 저장했습니다.", "명일 거래처 확인이 필요합니다."].forEach((label) => {
     if (!metrics.previewText.includes(label)) fail("general daily report should include corporate and Bangju report sections", `${label} missing · AI=${metrics.reportAiTitle || "none"}`);
   });
+  if (metrics.reportMainGrid.columns !== 2
+    || !metrics.reportMainGrid.sideBySide
+    || metrics.reportMainGrid.titles.join("|") !== "1. 오늘의 우선업무|2. 시간별일정") {
+    fail("general daily report should place priority work and hourly schedule side by side", JSON.stringify(metrics.reportMainGrid));
+  }
   if (!metrics.sheetOpen || metrics.previewOverflow < 0) fail("general daily report sheet should open and remain scrollable", JSON.stringify(metrics));
   if (!metrics.archiveHasDesignedReport || !metrics.pastUsesArchive || !metrics.futureUsesForecast || !metrics.snapshotHasWeather || !metrics.fitnessReportPreserved || !metrics.exportButtons || !metrics.reportPrintIsolated || !metrics.reportOwnerText.includes("담당자")) {
     fail("site weather and general report data flow should remain connected without changing fitness report", JSON.stringify(metrics));

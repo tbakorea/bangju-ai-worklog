@@ -12920,6 +12920,38 @@ body.physical-phone-device #view-fitness-log .fitness-log-schedule-panel .fitnes
   margin-top: 13px;
 }
 
+.worklog-report-main-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  align-items: start;
+}
+
+.worklog-report-main-grid .worklog-report-table-section {
+  min-width: 0;
+  margin-top: 10px;
+}
+
+.worklog-report-main-grid .worklog-report-progress-section th:first-child,
+.worklog-report-main-grid .worklog-report-progress-section td:first-child {
+  width: 44px;
+}
+
+.worklog-report-main-grid .worklog-report-progress-section th:last-child,
+.worklog-report-main-grid .worklog-report-progress-section td:last-child {
+  width: 72px;
+}
+
+.worklog-report-main-grid .worklog-report-schedule-section th:first-child,
+.worklog-report-main-grid .worklog-report-schedule-section td:first-child {
+  width: 54px;
+}
+
+.worklog-report-main-grid .worklog-report-schedule-section th:last-child,
+.worklog-report-main-grid .worklog-report-schedule-section td:last-child {
+  width: 70px;
+}
+
 .worklog-report-table-section h3,
 .worklog-report-bottom-grid h3 {
   margin: 0;
