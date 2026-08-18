@@ -9540,12 +9540,19 @@ function normalizeDagymTrainerName(value = "") {
     .toLocaleLowerCase("ko");
 }
 
+function getDagymTrainerIdentityNames(employee = {}) {
+  return [...new Set([
+    employee.name,
+    employee.nickname,
+  ].map(normalizeDagymTrainerName).filter(Boolean))];
+}
+
 function resolveDagymTrainerEmployeeId(row = {}) {
   const trainerName = normalizeDagymTrainerName(row.trainer_name);
   if (!trainerName) return "";
   const matches = getEmployeeOptions()
     .filter(isFitnessEmployeeRecord)
-    .filter((employee) => normalizeDagymTrainerName(employee.name || employee.nickname) === trainerName);
+    .filter((employee) => getDagymTrainerIdentityNames(employee).includes(trainerName));
   if (matches.length !== 1) return "";
   const matchedId = getEmployeeWorklogId(matches[0]);
   const directId = String(row.trainer_employee_id || "").trim();
@@ -9712,6 +9719,18 @@ function applyDagymPtScheduleRows(rows = [], dateKey = getActiveDateKey()) {
   return changed;
 }
 
+function applyDagymPtScheduleMonth(rows = [], anchorDateKey = getActiveDateKey()) {
+  if (!Array.isArray(rows)) return 0;
+  const todayKey = getDagymScheduleKstParts(new Date()).dateKey;
+  const monthKey = String(anchorDateKey || "").slice(0, 7);
+  const futureDateKeys = [...new Set(rows
+    .filter((row) => row?.active !== false)
+    .map((row) => getDagymScheduleKstParts(row.scheduled_at).dateKey)
+    .filter((dateKey) => dateKey && dateKey >= todayKey && dateKey.startsWith(`${monthKey}-`)))]
+    .sort();
+  return futureDateKeys.reduce((total, dateKey) => total + applyDagymPtScheduleRows(rows, dateKey), 0);
+}
+
 async function loadDagymMonthlyPtSchedules(dateKey = getActiveDateKey()) {
   if (!supabaseClient || !authState.user || !/^\d{4}-\d{2}-\d{2}$/.test(String(dateKey || ""))) return [];
   const monthKey = dateKey.slice(0, 7);
@@ -9732,7 +9751,10 @@ async function loadDagymMonthlyPtSchedules(dateKey = getActiveDateKey()) {
     rows = payload.rows || [];
     authState.dagymPtScheduleMonthCache.set(monthKey, { rows, loadedAt: Date.now() });
   }
-  const changed = applyDagymPtScheduleRows(rows, dateKey);
+  // 월간 다짐 시간표를 한 번 불러오면 오늘의 남은 수업과 미래 수업을
+  // 강사별 업무일지에 미리 배치합니다. 과거 날짜와 지난 시간은
+  // applyDagymPtScheduleRows에서 다시 차단합니다.
+  const changed = applyDagymPtScheduleMonth(rows, dateKey);
   if (changed) localStorage.setItem(storageKey, JSON.stringify(state));
   return rows;
 }

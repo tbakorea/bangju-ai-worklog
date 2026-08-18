@@ -142,12 +142,16 @@ check(
 check(
   "DaGym lessons project only to one exact trainer and upcoming worklog slots",
   js.includes("function normalizeDagymTrainerName")
-    && /function resolveDagymTrainerEmployeeId[\s\S]{0,700}filter\(isFitnessEmployeeRecord\)[\s\S]{0,350}matches\.length !== 1[\s\S]{0,220}directId !== matchedId/.test(js)
+    && js.includes("function getDagymTrainerIdentityNames")
+    && /function resolveDagymTrainerEmployeeId[\s\S]{0,700}filter\(isFitnessEmployeeRecord\)[\s\S]{0,350}getDagymTrainerIdentityNames\(employee\)\.includes\(trainerName\)[\s\S]{0,220}matches\.length !== 1[\s\S]{0,220}directId !== matchedId/.test(js)
     && /function isDagymScheduleProjectionEligible[\s\S]{0,520}dateKey < nowParts\.dateKey[\s\S]{0,220}timeToMinutes\(scheduleParts\.time\) >= timeToMinutes\(nowParts\.time\)/.test(js)
     && /function applyDagymPtScheduleRows[\s\S]{0,420}if \(dateKey < todayKey\) return 0;/.test(js)
+    && /function applyDagymPtScheduleMonth[\s\S]{0,620}dateKey >= todayKey[\s\S]{0,220}applyDagymPtScheduleRows\(rows, dateKey\)/.test(js)
     && /const isUpcoming = isDagymScheduleProjectionEligible\(row, dateKey, now\);[\s\S]{0,260}if \(!isUpcoming && !existingEntry\) return;/.test(js)
     && js.includes("if (!isUpcoming) return;")
-    && /function resolveTrainerProfileId[\s\S]{0,520}exact\.length === 1 \? exact\[0\]\.id : null/.test(dagymMonthlyScheduleApi)
+    && /function resolveTrainerProfileId[\s\S]{0,520}profile\.nickname[\s\S]{0,220}exact\.length === 1 \? exact\[0\]\.id : null/.test(dagymMonthlyScheduleApi)
+    && dagymMonthlyScheduleApi.includes("trainer_profile_id=is.null")
+    && dagymMonthlyScheduleApi.includes("ownNames.includes(normalizeName(row.trainer_name))")
     && !dagymMonthlyScheduleApi.includes('"홍트"'),
   "past lessons must not be injected, and ambiguous or mismatched trainer names must never enter another employee's worklog"
 );

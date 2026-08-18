@@ -5506,6 +5506,58 @@ async function checkDagymDirectReportImport(browser) {
   await page.close();
 }
 
+async function checkDagymTrainerScheduleProjection(browser) {
+  const { page, errors } = await openPage(browser, { width: 1024, height: 768 });
+  const result = await page.evaluate(() => window.eval(`(() => {
+    authState.user = { id: "dagym-owner-qa", email: "j3010@ymail.com" };
+    state.profile = {
+      ...state.profile,
+      authUserId: "dagym-owner-qa",
+      email: "j3010@ymail.com",
+      name: "대표",
+      role: "대표",
+      approvalStatus: "approved"
+    };
+    const trainer = findEmployeeRecordById("fitness-trainer-1");
+    const previousNickname = trainer.nickname;
+    trainer.nickname = "홍트";
+    const tomorrow = parseDateKey(todayKey);
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    const tomorrowKey = formatDateKey(tomorrow);
+    const yesterday = parseDateKey(todayKey);
+    yesterday.setDate(yesterday.getDate() - 1);
+    const yesterdayKey = formatDateKey(yesterday);
+    const rows = [
+      { id: "dagym-manager-future", trainer_name: "센터장 박주홍", trainer_employee_id: "beyond-fitness-manager", scheduled_at: tomorrowKey + "T09:00:00+09:00", session_type: "paid", status: "scheduled", active: true },
+      { id: "dagym-trainer-future", trainer_name: "홍트 코치님", trainer_employee_id: "fitness-trainer-1", scheduled_at: tomorrowKey + "T10:00:00+09:00", session_type: "free", status: "scheduled", active: true },
+      { id: "dagym-past", trainer_name: "박주홍", trainer_employee_id: "beyond-fitness-manager", scheduled_at: yesterdayKey + "T09:00:00+09:00", session_type: "paid", status: "scheduled", active: true },
+      { id: "dagym-conflict", trainer_name: "박주홍", trainer_employee_id: "fitness-trainer-1", scheduled_at: tomorrowKey + "T11:00:00+09:00", session_type: "paid", status: "scheduled", active: true }
+    ];
+    applyDagymPtScheduleMonth(rows, tomorrowKey);
+    const sourceIds = (employeeId, dateKey) => getEmployeeLogForDate(employeeId, dateKey).schedule
+      .flatMap((entry) => entry.items || [])
+      .filter((item) => item.source === "dagym-monthly-pt")
+      .map((item) => item.sourceId)
+      .sort();
+    const metrics = {
+      managerFuture: sourceIds("beyond-fitness-manager", tomorrowKey),
+      trainerFuture: sourceIds("fitness-trainer-1", tomorrowKey),
+      managerPast: sourceIds("beyond-fitness-manager", yesterdayKey),
+      trainerPast: sourceIds("fitness-trainer-1", yesterdayKey)
+    };
+    trainer.nickname = previousNickname;
+    return metrics;
+  })()`));
+  if (result.managerFuture.join("|") !== "dagym-manager-future"
+    || result.trainerFuture.join("|") !== "dagym-trainer-future"
+    || result.managerPast.length
+    || result.trainerPast.length) {
+    fail("DaGym monthly lessons should map exact trainer names and nicknames only to future owner worklogs", JSON.stringify(result));
+  }
+  if (errors.length) fail("DaGym trainer schedule projection page errors", errors.join(" | "));
+  await page.close();
+}
+
 async function checkLaborLeaveWorkflow(browser) {
   const { page, errors } = await openPage(browser, { width: 390, height: 844 });
   const result = await page.evaluate(() => window.eval(`(() => {
@@ -5635,6 +5687,7 @@ async function checkUnifiedCommandPalette(browser) {
     await checkApprovalRepairMissingRpcFallsBack(browser);
     await checkDagymPreviousDayGuidanceFlow(browser);
     await checkDagymDirectReportImport(browser);
+    await checkDagymTrainerScheduleProjection(browser);
     await checkFitnessRosterHoursAndCompactTotals(browser);
     await checkLaborLeaveWorkflow(browser);
     await checkUnifiedCommandPalette(browser);

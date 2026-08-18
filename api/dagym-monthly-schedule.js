@@ -97,7 +97,7 @@ async function verifyUser(request) {
 
 async function loadProfileAccess(request, user) {
   const authorization = String(request.headers.authorization || "");
-  const result = await fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${encodeURIComponent(user.id)}&select=id,name,role,workplace,access_preset,permissions,approval_status&limit=1`, {
+  const result = await fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${encodeURIComponent(user.id)}&select=id,name,nickname,role,workplace,access_preset,permissions,approval_status&limit=1`, {
     headers: { apikey: process.env.SUPABASE_ANON_KEY || "", Authorization: authorization },
   });
   if (!result.ok) return null;
@@ -118,9 +118,23 @@ async function handleUserRequest(request, response) {
   if (request.method === "GET") {
     const monthKey = String(request.query?.monthKey || "").trim();
     if (!/^\d{4}-\d{2}$/.test(monthKey)) return response.status(400).json({ ok: false, error: "기준월 형식이 올바르지 않습니다." });
-    const filter = access.canViewAll ? "" : `&trainer_profile_id=eq.${encodeURIComponent(user.id)}`;
-    const rows = await supabaseRequest(`/rest/v1/dagym_pt_schedule_events?center_key=eq.${CENTER_KEY}&month_key=eq.${monthKey}&active=eq.true${filter}&select=id,month_key,trainer_name,trainer_employee_id,trainer_profile_id,member_name_ciphertext,scheduled_at,ended_at,session_type,status,status_source,postponed_to,class_label,active,source_updated_at,updated_at&order=scheduled_at.asc&limit=2500`);
-    return response.status(200).json({ ok: true, rows: rows.map((row) => ({ ...row, member_name: decrypt(row.member_name_ciphertext), member_name_ciphertext: undefined })) });
+    const fields = "id,month_key,trainer_name,trainer_employee_id,trainer_profile_id,member_name_ciphertext,scheduled_at,ended_at,session_type,status,status_source,postponed_to,class_label,active,source_updated_at,updated_at";
+    const basePath = `/rest/v1/dagym_pt_schedule_events?center_key=eq.${CENTER_KEY}&month_key=eq.${monthKey}&active=eq.true&select=${fields}&order=scheduled_at.asc&limit=2500`;
+    const ownNames = [access.profile.name, access.profile.nickname].map(normalizeName).filter(Boolean);
+    let visibleRows;
+    if (access.canViewAll) {
+      visibleRows = await supabaseRequest(basePath);
+    } else {
+      const [mappedRows, unmappedRows] = await Promise.all([
+        supabaseRequest(`${basePath}&trainer_profile_id=eq.${encodeURIComponent(user.id)}`),
+        supabaseRequest(`${basePath}&trainer_profile_id=is.null`),
+      ]);
+      visibleRows = [...new Map([
+        ...mappedRows,
+        ...unmappedRows.filter((row) => ownNames.includes(normalizeName(row.trainer_name))),
+      ].map((row) => [row.id, row])).values()];
+    }
+    return response.status(200).json({ ok: true, rows: visibleRows.map((row) => ({ ...row, member_name: decrypt(row.member_name_ciphertext), member_name_ciphertext: undefined })) });
   }
   if (request.method === "PATCH") {
     const id = String(request.body?.id || "").trim();
@@ -158,7 +172,7 @@ async function supabaseRequest(path, options = {}) {
 }
 
 async function loadFitnessProfiles() {
-  return supabaseRequest("/rest/v1/profiles?approval_status=eq.approved&select=id,name,email,role,workplace", {
+  return supabaseRequest("/rest/v1/profiles?approval_status=eq.approved&select=id,name,nickname,email,role,workplace", {
     headers: { Accept: "application/json" },
   });
 }
@@ -168,7 +182,7 @@ function resolveTrainerProfileId(event, profiles = []) {
   if (!target) return null;
   const exact = profiles.filter((profile) => (
     /피트니스|fitness/i.test(`${profile.workplace || ""} ${profile.role || ""}`)
-    && normalizeName(profile.name) === target
+    && [profile.name, profile.nickname].map(normalizeName).filter(Boolean).includes(target)
   ));
   return exact.length === 1 ? exact[0].id : null;
 }
