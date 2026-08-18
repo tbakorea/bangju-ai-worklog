@@ -904,8 +904,8 @@ declare
 begin
   select case
     when concat_ws(' ', p.org, p.workplace) ~* '피트니스|fitness' then 'fitness'
-    when nullif(trim(p.workplace), '') is not null then lower(trim(p.workplace))
-    else lower(trim(p.org))
+    when concat_ws(' ', p.org, p.workplace, p.primary_work) ~* '비욘드\s*컴퍼니|공유|TBA|티비에이|워크베이스|워크박스|beyond' then 'beyond'
+    else 'bangju'
   end
   into viewer_site
   from public.profiles p
@@ -925,8 +925,8 @@ begin
     and coalesce(colleague.approval_status, 'pending') = 'approved'
     and case
       when concat_ws(' ', colleague.org, colleague.workplace) ~* '피트니스|fitness' then 'fitness'
-      when nullif(trim(colleague.workplace), '') is not null then lower(trim(colleague.workplace))
-      else lower(trim(colleague.org))
+      when concat_ws(' ', colleague.org, colleague.workplace, colleague.primary_work) ~* '비욘드\s*컴퍼니|공유|TBA|티비에이|워크베이스|워크박스|beyond' then 'beyond'
+      else 'bangju'
     end = viewer_site
   order by w.updated_at desc;
 end;

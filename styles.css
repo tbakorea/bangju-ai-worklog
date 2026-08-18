@@ -26668,6 +26668,363 @@ body.is-fitness-focus-open.is-fitness-coaching-open .fitness-coaching-sheet {
   display: grid !important;
 }
 
+/* Worklog workspace navigation: ownership stays obvious and layout choice is
+   independent from the app-wide CEO/classic presentation. */
+.worklog-access-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  min-width: 0;
+  border: 1px solid rgba(15, 59, 46, 0.1);
+  border-radius: 16px;
+  background: rgba(250, 250, 245, 0.86);
+  padding: 6px;
+}
+
+.worklog-page-tabs,
+.worklog-layout-selector {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+}
+
+.worklog-page-tabs button,
+.worklog-layout-selector button {
+  min-height: 34px;
+  border: 1px solid transparent;
+  border-radius: 11px;
+  background: transparent;
+  color: rgba(24, 52, 43, 0.72);
+  padding: 6px 10px;
+  font-size: 11px;
+  font-weight: 920;
+  white-space: nowrap;
+}
+
+.worklog-page-tabs button:hover,
+.worklog-layout-selector button:hover,
+.worklog-page-tabs button:focus-visible,
+.worklog-layout-selector button:focus-visible {
+  border-color: rgba(15, 59, 46, 0.18);
+  background: rgba(15, 59, 46, 0.06);
+  outline: none;
+}
+
+.worklog-page-tabs button.is-active,
+.worklog-layout-selector button.is-active {
+  border-color: rgba(15, 59, 46, 0.12);
+  background: var(--fitness-green);
+  color: var(--nordic-sheet);
+  box-shadow: 0 6px 15px rgba(15, 59, 46, 0.12);
+}
+
+.worklog-page-tabs button span {
+  display: inline-grid;
+  place-items: center;
+  min-width: 20px;
+  min-height: 20px;
+  margin-left: 3px;
+  border-radius: 999px;
+  background: rgba(15, 59, 46, 0.1);
+  color: var(--fitness-green);
+  font-size: 10px;
+}
+
+.worklog-page-tabs button.is-active span {
+  background: rgba(255, 255, 255, 0.18);
+  color: inherit;
+}
+
+.worklog-layout-selector > span {
+  color: rgba(15, 59, 46, 0.52);
+  padding-inline: 5px 2px;
+  font-size: 10px;
+  font-weight: 900;
+  white-space: nowrap;
+}
+
+.worklog-layout-selector[hidden] {
+  display: none !important;
+}
+
+#view-today .worklog-person-chip {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 8px;
+  border-radius: 14px;
+}
+
+#view-today .worklog-person-chip .worklog-identity-kind,
+#view-today .worklog-person-chip em {
+  display: inline-flex;
+  align-items: center;
+  min-height: 22px;
+  border-radius: 999px;
+  padding: 3px 8px;
+  font-size: 10px;
+  font-style: normal;
+  font-weight: 950;
+  white-space: nowrap;
+}
+
+#view-today .worklog-person-chip strong {
+  overflow: hidden;
+  align-self: center;
+  font-size: 13px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+#view-today .worklog-person-chip[data-ownership="mine"] {
+  border-color: rgba(15, 91, 66, 0.22);
+  background: linear-gradient(180deg, rgba(233, 247, 239, 0.98), rgba(242, 249, 244, 0.94));
+  box-shadow: inset 5px 0 0 #176448, 0 10px 24px rgba(15, 59, 46, 0.06);
+}
+
+#view-today .worklog-person-chip[data-ownership="mine"] .worklog-identity-kind,
+#view-today .worklog-person-chip[data-ownership="mine"] em {
+  background: rgba(15, 91, 66, 0.1);
+  color: #0d5a40;
+}
+
+#view-today .worklog-person-chip[data-ownership="coworker"] {
+  border-color: rgba(47, 88, 122, 0.2);
+  background: linear-gradient(180deg, rgba(239, 246, 251, 0.98), rgba(246, 248, 246, 0.94));
+  box-shadow: inset 5px 0 0 #416f8e, 0 10px 24px rgba(34, 72, 100, 0.06);
+}
+
+#view-today .worklog-person-chip[data-ownership="coworker"] .worklog-identity-kind,
+#view-today .worklog-person-chip[data-ownership="coworker"] em {
+  background: rgba(47, 88, 122, 0.1);
+  color: #315f7c;
+}
+
+#view-today .coworker-worklog-item {
+  gap: 9px;
+  border-color: rgba(47, 88, 122, 0.12) !important;
+  background: linear-gradient(180deg, rgba(250, 252, 252, 0.98), rgba(242, 247, 247, 0.9)) !important;
+  box-shadow: inset 4px 0 0 rgba(65, 111, 142, 0.42);
+}
+
+#view-today .coworker-worklog-item.has-worklog {
+  border-color: rgba(15, 91, 66, 0.2) !important;
+  box-shadow: inset 4px 0 0 rgba(15, 91, 66, 0.6);
+}
+
+#view-today .coworker-worklog-item header {
+  align-items: center;
+}
+
+#view-today .coworker-worklog-item header > div {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+#view-today .coworker-worklog-item header > div > span {
+  color: #416f8e;
+  font-size: 9px;
+  letter-spacing: 0.04em;
+}
+
+#view-today .coworker-worklog-item header b {
+  overflow: hidden;
+  color: #123c30;
+  font-size: 14px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+#view-today .coworker-worklog-item header small {
+  color: rgba(31, 55, 48, 0.58);
+  font-size: 10px;
+  font-weight: 850;
+}
+
+#view-today .coworker-worklog-item header button {
+  min-height: 34px;
+  background: #164f3c;
+  color: #fffef8;
+  padding-inline: 11px;
+  font-size: 11px;
+}
+
+#view-today .coworker-worklog-item header button span {
+  color: inherit;
+  font-size: 14px;
+}
+
+@media (min-width: 760px) {
+  body[data-worklog-layout="portrait"][data-active-view="bangju-log"] .worklog-shell,
+  body[data-worklog-layout="portrait"][data-active-view="beyond-log"] .worklog-shell {
+    width: min(760px, calc(100vw - 32px)) !important;
+    max-width: 760px !important;
+  }
+
+  body[data-worklog-layout="portrait"] #view-today.is-active {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+
+  body[data-worklog-layout="portrait"] #view-today > *,
+  body[data-worklog-layout="portrait"] #view-today .worklog-today {
+    grid-column: 1 !important;
+  }
+
+  body[data-worklog-layout="portrait"] #view-today .worklog-main[data-today-page="daily"] {
+    display: block !important;
+  }
+
+  body[data-worklog-layout="portrait"] #view-today .worklog-main[data-today-page="daily"] .worklog-daily-page {
+    display: grid !important;
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+
+  body[data-worklog-layout="portrait"] #view-today .worklog-main[data-today-page="daily"] .worklog-coworker-page {
+    display: none !important;
+  }
+
+  body[data-worklog-layout="expanded"]:not(.physical-phone-device)[data-active-view="bangju-log"] .worklog-shell,
+  body[data-worklog-layout="expanded"]:not(.physical-phone-device)[data-active-view="beyond-log"] .worklog-shell {
+    width: min(1380px, calc(100vw - 40px)) !important;
+    max-width: none !important;
+  }
+
+  body[data-worklog-layout="expanded"]:not(.physical-phone-device) #view-today .worklog-main[data-today-page="daily"] {
+    display: grid !important;
+    grid-template-columns: minmax(0, 2.2fr) minmax(250px, 0.72fr) !important;
+    gap: 8px !important;
+    align-items: start;
+  }
+
+  body[data-worklog-layout="expanded"]:not(.physical-phone-device) #view-today .worklog-main[data-today-page="daily"] .worklog-daily-page {
+    display: grid !important;
+    grid-column: 1;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) !important;
+    gap: 8px !important;
+  }
+
+  body[data-worklog-layout="expanded"]:not(.physical-phone-device) #view-today .worklog-main[data-today-page="daily"] .worklog-coworker-page {
+    display: block !important;
+    grid-column: 2;
+    min-height: 0 !important;
+    max-height: calc(100dvh - 290px);
+    overflow: auto;
+  }
+
+  body[data-worklog-layout="expanded"] #view-today .worklog-main[data-today-page="coworker"] #coworkerWorklogBoard {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 759px) {
+  #view-today .worklog-access-toolbar {
+    position: sticky;
+    top: 0;
+    z-index: 20;
+    padding: 4px;
+    border-radius: 13px;
+    box-shadow: 0 8px 20px rgba(15, 59, 46, 0.08);
+  }
+
+  #view-today .worklog-page-tabs {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    width: 100%;
+  }
+
+  #view-today .worklog-page-tabs button {
+    min-width: 0;
+    min-height: 38px;
+    padding-inline: 4px;
+    overflow: hidden;
+    font-size: clamp(9px, 2.8vw, 11px);
+    text-overflow: ellipsis;
+  }
+
+  #view-today .worklog-person-chip {
+    position: static !important;
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    width: 100% !important;
+    max-width: 100% !important;
+    min-height: 38px !important;
+    padding: 6px 8px !important;
+    border: 1px solid rgba(15, 59, 46, 0.1) !important;
+  }
+
+  #view-today .worklog-person-chip strong {
+    font-size: 11px;
+  }
+
+  #view-today .worklog-person-chip .worklog-identity-kind,
+  #view-today .worklog-person-chip em {
+    padding-inline: 6px;
+    font-size: 9px;
+  }
+
+  #view-today .worklog-main[data-today-page="daily"] .worklog-daily-page {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+
+  #view-today .worklog-main[data-today-page="daily"] .worklog-coworker-page {
+    display: none !important;
+  }
+
+  #view-today #coworkerWorklogBoard {
+    grid-template-columns: minmax(0, 1fr);
+    padding: 8px;
+  }
+}
+
+/* Priority completeness guard: task text is not complete until A/B/C is chosen. */
+.worklog-priority-warning {
+  margin: 0 0 5px;
+  padding: 7px 10px;
+  border: 1px solid rgba(174, 102, 39, 0.34);
+  border-radius: 10px;
+  background: #fff4e8;
+  color: #8b451b;
+  font-size: 11px;
+  font-weight: 800;
+  line-height: 1.35;
+}
+
+.worklog-priority-warning[hidden],
+.task-priority-warning[hidden] {
+  display: none !important;
+}
+
+.worklog-task-row.is-priority-missing {
+  background: linear-gradient(90deg, rgba(255, 238, 218, 0.78), transparent 72%);
+}
+
+.worklog-task-row.is-priority-missing .priority-select {
+  width: 38px;
+  min-height: 28px;
+  border: 1px solid rgba(174, 102, 39, 0.62);
+  border-radius: 7px;
+  background: #fff8ee;
+  color: #9b4b18;
+}
+
+.task-priority-warning {
+  color: #a34c17;
+  font-size: 9px;
+  font-weight: 850;
+  white-space: nowrap;
+}
+
+@media (max-width: 520px) {
+  .task-priority-warning {
+    position: absolute;
+    right: 2px;
+    bottom: 1px;
+    padding-left: 5px;
+    background: rgba(255, 248, 238, 0.94);
+  }
+}
+
 /* 2026-08-09 unified navigation: five stable destinations with contextual tools. */
 .global-command-button,
 .section-menu-dock .global-command-button,
@@ -27615,4 +27972,42 @@ body.is-command-open {
 .worklog-shell > #view-today.is-active,
 .worklog-shell > #view-attendance.is-active {
   display: grid !important;
+}
+
+/* Final worklog workspace authority. */
+@media (min-width: 760px) {
+  body[data-worklog-layout="portrait"][data-active-view][data-view-mode] #view-today .worklog-main[data-today-page="daily"] {
+    display: block !important;
+  }
+  body[data-worklog-layout="portrait"][data-active-view][data-view-mode] #view-today .worklog-main[data-today-page="daily"] .worklog-daily-page {
+    display: grid !important;
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+  body[data-worklog-layout="portrait"][data-active-view][data-view-mode] #view-today .worklog-main[data-today-page="daily"] .worklog-coworker-page {
+    display: none !important;
+  }
+  body[data-worklog-layout="expanded"][data-active-view][data-view-mode]:not(.physical-phone-device) #view-today .worklog-main[data-today-page="daily"] {
+    display: grid !important;
+    grid-template-columns: minmax(0, 2.2fr) minmax(250px, 0.72fr) !important;
+    gap: 8px !important;
+    align-items: start !important;
+  }
+  body[data-worklog-layout="expanded"][data-active-view][data-view-mode]:not(.physical-phone-device) #view-today .worklog-main[data-today-page="daily"] .worklog-daily-page {
+    display: grid !important;
+    grid-column: 1 !important;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) !important;
+  }
+  body[data-worklog-layout="expanded"][data-active-view][data-view-mode]:not(.physical-phone-device) #view-today .worklog-main[data-today-page="daily"] .worklog-coworker-page {
+    display: block !important;
+    grid-column: 2 !important;
+    min-height: 0 !important;
+    max-height: calc(100dvh - 290px) !important;
+    overflow: auto !important;
+  }
+}
+
+@media (max-width: 759px) {
+  body #view-today .worklog-main[data-today-page="daily"] .worklog-daily-page {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
 }

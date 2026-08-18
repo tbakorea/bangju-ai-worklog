@@ -1,6 +1,7 @@
 const storageKey = "beyond-worklog-state-v1";
 const layoutModeStorageKey = "beyond-worklog-layout-mode";
 const globalViewModeStorageKey = "beyond-worklog-global-view-mode";
+const worklogLayoutStorageKey = "beyond-worklog-workspace-layout";
 const localAuthSignedOutKey = "beyond-worklog-auth-signed-out";
 const fitnessAiCoachingStorageKey = "beyond-fitness-ai-coaching-v1";
 const productionAppUrl = "https://bangju-ai-worklog.vercel.app/";
@@ -850,6 +851,7 @@ const authState = {
   pendingPasswordResetCount: 0,
   approvalRows: [],
   approvalRowsLoaded: false,
+  coworkerEmployees: [],
   visibleWorklogsLoading: false,
   visibleWorklogsTimer: null,
   dagymPtScheduleMonthCache: new Map(),
@@ -1450,6 +1452,10 @@ function isWorklogTaskCarryoverEligible(task = {}) {
 
 function hasWorklogCarryoverDateArrived(activeDateKey = getActiveDateKey()) {
   return Boolean(activeDateKey && activeDateKey <= todayKey);
+}
+
+function isHistoricalWorklogDate(dateKey = getActiveDateKey()) {
+  return Boolean(dateKey && dateKey < todayKey);
 }
 
 function getWorklogTaskRolloverDate(task = {}, sourceDateKey = "") {
@@ -3089,6 +3095,22 @@ function getScheduleTimes(workHoursValue) {
   return times;
 }
 
+function getWorklogScheduleBoundarySlots(workHoursValue, unitValue = 60) {
+  const workHours = normalizeWorkHoursText(workHoursValue || "");
+  if (!workHours || isOffWorkHours(workHours)) return [];
+  const match = workHours.match(/(\d{1,2}):(\d{2})\s*[-~]\s*(\d{1,2}):(\d{2})/);
+  if (!match) return [];
+  const rawStart = Number(match[1]) * 60 + Number(match[2]);
+  const rawEnd = Number(match[3]) * 60 + Number(match[4]);
+  if (!Number.isFinite(rawStart) || !Number.isFinite(rawEnd) || rawEnd <= rawStart) return [];
+  const unit = Number(unitValue) === 30 ? 30 : 60;
+  const start = Math.floor(rawStart / 60) * 60;
+  const end = Math.ceil(rawEnd / 60) * 60;
+  const slots = [];
+  for (let minute = start; minute <= end; minute += unit) slots.push(minutesToTime(minute));
+  return slots;
+}
+
 function isOffWorkHours(value = "") {
   return /휴무|off|closed|none|없음/i.test(String(value || ""));
 }
@@ -3635,6 +3657,10 @@ function renderResponsiveMode() {
   document.body.dataset.responsiveFlow = isLandscapeFlow ? "landscape" : "portrait";
   document.body.dataset.viewportDensity = isDenseLandscape ? "high" : "regular";
   document.body.dataset.resolutionClass = viewportWidth >= 1800 ? "wide-monitor" : (viewportWidth >= 1280 ? "desktop" : "standard");
+  const worklogLayout = isPhoneFlow
+    ? "portrait"
+    : (localStorage.getItem(worklogLayoutStorageKey) === "portrait" ? "portrait" : "expanded");
+  document.body.dataset.worklogLayout = worklogLayout;
   document.body.classList.toggle("smartphone-device", layoutMode === "phone" || isPhoneFlow);
   document.body.classList.toggle("physical-phone-device", isPhysicalPhone);
   applyGlobalViewMode();
@@ -3642,6 +3668,13 @@ function renderResponsiveMode() {
   if (layoutToggle) layoutToggle.hidden = isPhoneFlow;
   document.querySelectorAll("[data-layout-mode-choice]").forEach((button) => {
     button.classList.toggle("is-active", button.dataset.layoutModeChoice === layoutMode);
+  });
+  const worklogLayoutSelector = document.querySelector(".worklog-layout-selector");
+  if (worklogLayoutSelector) worklogLayoutSelector.hidden = isPhoneFlow;
+  document.querySelectorAll("[data-worklog-layout-choice]").forEach((button) => {
+    const isActive = button.dataset.worklogLayoutChoice === worklogLayout;
+    button.classList.toggle("is-active", isActive);
+    button.setAttribute("aria-pressed", String(isActive));
   });
   applyMobileDayFocusMode();
   applyFitnessMobileFocusMode();
@@ -6827,7 +6860,23 @@ function renderEmployeeTitle() {
 function renderWorklogIdentityBadges() {
   const generalBadge = document.getElementById("worklogIdentityBadge");
   if (generalBadge) {
-    generalBadge.textContent = getWorklogIdentityText(getSelectedEmployee());
+    const employee = getSelectedEmployee();
+    const ownId = getOwnEditableEmployeeIdForView(activeView);
+    const isOwn = !isRepresentativeProfile() && Boolean(ownId) && (
+      employee?.id === ownId
+      || getEmployeeWorklogId(employee) === ownId
+      || isEmployeeLinkedToProfile(employee?.id)
+    );
+    const accessLabel = isOwn ? "나의 업무일지" : (isRepresentativeProfile() ? "직원 업무일지" : "동료 업무일지");
+    const permissionLabel = isOwn ? "편집 가능" : "열람 전용";
+    generalBadge.dataset.ownership = isOwn ? "mine" : "coworker";
+    generalBadge.innerHTML = `
+      <span class="worklog-identity-kind">${escapeHtml(accessLabel)}</span>
+      <strong>${escapeHtml(getWorklogIdentityText(employee))}</strong>
+      <em>${escapeHtml(permissionLabel)}</em>
+    `;
+    const selectedTab = document.getElementById("selectedWorklogTab");
+    if (selectedTab) selectedTab.textContent = accessLabel;
   }
   const fitnessBadge = document.getElementById("fitnessIdentityBadge");
   if (fitnessBadge) {
@@ -8989,6 +9038,7 @@ function clearAuthRuntimeState() {
   authState.pendingPasswordResetCount = 0;
   authState.approvalRows = [];
   authState.approvalRowsLoaded = false;
+  authState.coworkerEmployees = [];
   authState.passwordResetRows = [];
   authState.selectedApprovalId = "";
   authState.approvalRepairTried = false;
@@ -9955,7 +10005,34 @@ function resolveRemoteWorklogEmployee(row = {}) {
       || (email && normalizeEmailValue(item.email || "") === email)
     ))
     || employees.find((item) => item.id === mappedId)
+    || createRemoteCoworkerEmployee(row)
     || null;
+}
+
+function createRemoteCoworkerEmployee(row = {}) {
+  const profile = row?.state?.profile || {};
+  const sourceProfileId = String(row?.user_id || "").trim();
+  const mappedEmployeeId = getProfileMappedEmployeeId(profile);
+  const name = String(profile.name || profile.nickname || "").trim();
+  if (!sourceProfileId || !name || normalizeApprovalStatus(profile.approvalStatus || "approved") !== "approved") return null;
+  return {
+    ...(employees.find((item) => item.id === mappedEmployeeId) || {}),
+    id: mappedEmployeeId || `profile-${sourceProfileId}`,
+    mappedEmployeeId,
+    profileEmployeeId: sourceProfileId,
+    sourceProfileId,
+    isRemoteProfile: true,
+    name,
+    nickname: String(profile.nickname || "").trim(),
+    org: String(profile.org || "(주)방주").trim(),
+    workplace: String(profile.workplace || "").trim(),
+    role: String(profile.role || "직원").trim(),
+    primaryWork: String(profile.primaryWork || "").trim(),
+    email: normalizeEmailValue(profile.email || ""),
+    workHours: profile.workHours || defaultProfile.workHours,
+    weeklyWorkHours: { ...(profile.weeklyWorkHours || {}) },
+    approvalStatus: "approved",
+  };
 }
 
 async function refreshVisibleStaffWorklogsForActiveDate() {
@@ -10002,6 +10079,7 @@ function mergeVisibleStaffWorklogStates(rows = [], dateKey = getActiveDateKey())
   state.employeeLogs ||= {};
   state.employeeLogs[dateKey] ||= {};
   const candidatesByEmployee = new Map();
+  const coworkerDirectory = new Map((authState.coworkerEmployees || []).map((employee) => [getEmployeeWorklogId(employee), employee]));
   [...rows].forEach((row) => {
     const remoteState = row?.state || {};
     mergeSharedFitnessOperations(remoteState);
@@ -10011,6 +10089,7 @@ function mergeVisibleStaffWorklogStates(rows = [], dateKey = getActiveDateKey())
     if (!employee || !isAssignedWorklogEmployee(employee) || isRepresentativeWorklogEmployee(employee)) return;
     const employeeId = getEmployeeWorklogId(employee);
     if (!employeeId) return;
+    coworkerDirectory.set(employeeId, employee);
 
     const logs = remoteState.employeeLogs?.[dateKey] || {};
     const candidateIds = [...new Set([
@@ -10045,6 +10124,7 @@ function mergeVisibleStaffWorklogStates(rows = [], dateKey = getActiveDateKey())
       employeeId,
     };
   });
+  authState.coworkerEmployees = [...coworkerDirectory.values()];
 }
 
 function mergeSharedFitnessOperations(remoteState = {}) {
@@ -10677,6 +10757,9 @@ function applyCurrentWorklogPermissionState(viewName = activeView) {
     generalView.classList.toggle("is-own-page", isOwnPage);
     generalView.dataset.worklogPermission = readOnly ? "readonly" : "editable";
     generalView.dataset.worklogPageType = isOwnPage ? "own" : "coworker";
+    generalView.querySelectorAll("[data-section-ai]").forEach((button) => {
+      button.hidden = isGeneralWorklog && isHistoricalWorklogDate();
+    });
     generalView.querySelectorAll(`
       #worklogTaskBoard .task-cycle,
       #worklogTaskBoard .delegate-input,
@@ -10698,7 +10781,12 @@ function applyCurrentWorklogPermissionState(viewName = activeView) {
       control.setAttribute("aria-disabled", String(readOnly));
     });
   }
-  if (viewName === "fitness-log") applyFitnessLogPermissionState();
+  if (viewName === "fitness-log") {
+    document.getElementById("view-fitness-log")?.querySelectorAll("[data-section-ai]").forEach((button) => {
+      button.hidden = isHistoricalWorklogDate();
+    });
+    applyFitnessLogPermissionState();
+  }
 }
 
 function updateWorklogOverviewExitButton(viewName = activeView) {
@@ -11696,6 +11784,7 @@ let fitnessCoachingCloseTimer = null;
 let fitnessCoachingReturnFocus = null;
 
 function openFitnessCoachingSheet() {
+  if (isHistoricalWorklogDate()) return;
   renderFitnessCoaching();
   const backdrop = document.getElementById("fitnessCoachingBackdrop");
   const sheet = document.getElementById("fitnessCoachingSheet");
@@ -12402,6 +12491,11 @@ function applyTodayPageMode() {
     const mode = button.dataset.worklogPanel === "weekly" ? "common" : "coworker";
     button.classList.toggle("is-active", todayPageMode === mode);
   });
+  document.querySelectorAll("[data-worklog-page-choice]").forEach((button) => {
+    const isActive = button.dataset.worklogPageChoice === todayPageMode;
+    button.classList.toggle("is-active", isActive);
+    button.setAttribute("aria-current", isActive ? "page" : "false");
+  });
 }
 
 function renderSharedWorklogPanels(log = getSelectedLog()) {
@@ -12520,13 +12614,18 @@ function renderSharedWorklogPanels(log = getSelectedLog()) {
       const completed = tasks.filter((task) => task.done || task.status === "완료").length;
       return { employee, tasks, completed };
     });
+  const coworkerCount = document.getElementById("coworkerWorklogCount");
+  if (coworkerCount) coworkerCount.textContent = String(coworkerRows.length);
   coworkers.innerHTML = coworkerRows.length
     ? coworkerRows.map((row) => `
-      <article class="coworker-worklog-item">
+      <article class="coworker-worklog-item ${row.tasks.length ? "has-worklog" : "is-empty-worklog"}">
         <header>
-          <b>${escapeHtml(getEmployeeAdminLabel(row.employee))}</b>
-          <span>${row.completed}/${row.tasks.length}</span>
-          <button type="button" data-coworker-worklog-open="${escapeAttr(getEmployeeWorklogId(row.employee))}">업무일지 열기</button>
+          <div>
+            <span>동료 업무일지 · 열람 전용</span>
+            <b>${escapeHtml(getEmployeeAdminLabel(row.employee))}</b>
+            <small>${escapeHtml(row.employee.role || "직원")} · 업무 ${row.completed}/${row.tasks.length}</small>
+          </div>
+          <button type="button" data-coworker-worklog-open="${escapeAttr(getEmployeeWorklogId(row.employee))}">열어서 보기 <span aria-hidden="true">›</span></button>
         </header>
         ${renderSharedTaskList(row.tasks.map((task) => ({ text: task.text || task.status || "업무" })), "공유된 업무가 없습니다.")}
       </article>
@@ -12535,7 +12634,8 @@ function renderSharedWorklogPanels(log = getSelectedLog()) {
   coworkers.querySelectorAll("[data-coworker-worklog-open]").forEach((button) => {
     button.addEventListener("click", () => {
       const employeeId = button.dataset.coworkerWorklogOpen || "";
-      if (!getWorklogEmployeeIdsForView(activeView).includes(employeeId)) return;
+      const allowedCoworkerIds = new Set(getCoworkerEmployeesForWorklog(getSelectedEmployee(), activeView).map(getEmployeeWorklogId));
+      if (!allowedCoworkerIds.has(employeeId)) return;
       state.selectedEmployeeId = employeeId;
       saveState({ fastSave: true });
       setTodayPageMode("daily");
@@ -12896,6 +12996,7 @@ function renderCompanyCommonWeekDay(dateKey, items = [], editable = false) {
 function renderWorklogTaskBoard(log) {
   const board = document.getElementById("worklogTaskBoard");
   board.innerHTML = "";
+  board.appendChild(renderWorklogPriorityWarning(log));
   const list = document.createElement("section");
   list.className = "worklog-task-list";
   getVisibleWorklogTaskRefs(log, { view: activeView }).forEach((ref) => {
@@ -12919,6 +13020,7 @@ function renderFitnessTaskBoard(log) {
   const board = document.getElementById("fitnessTaskBoard");
   if (!board) return;
   board.innerHTML = "";
+  board.appendChild(renderWorklogPriorityWarning(log));
   const list = document.createElement("section");
   list.className = "worklog-task-list fitness-task-list";
   const visibleRefs = getVisibleWorklogTaskRefs(log, { view: "fitness-log", compactEditable: true });
@@ -12966,6 +13068,55 @@ function createWorklogTask(priority = "?") {
     delegate: "",
     postponeDate: "",
   };
+}
+
+function isWorklogTaskPriorityMissing(task = {}) {
+  return Boolean(String(task.text || "").trim() && !["A", "B", "C"].includes(String(task.priority || "?")));
+}
+
+function getWorklogPriorityWarningMessage(log = getSelectedLog(), count = 1) {
+  const profile = state?.profile || {};
+  const mappedProfileId = getProfileMappedEmployeeId(profile);
+  const employee = mappedProfileId && mappedProfileId === log?.employeeId
+    ? profile
+    : findEmployeeRecordById(log?.employeeId) || getSelectedEmployee() || {};
+  const name = String(employee.name || employee.nickname || "직원").trim();
+  const role = String(employee.role || "").trim();
+  const person = `${name}${role && !name.includes(role) ? ` ${role}` : ""}`;
+  return `${person}님, 중요도가 없는 우선업무 ${count}건이 있습니다. A·B·C 중 하나를 선택해주세요.`;
+}
+
+function renderWorklogPriorityWarning(log = getSelectedLog()) {
+  const warning = document.createElement("div");
+  warning.className = "worklog-priority-warning";
+  warning.dataset.priorityWarningSummary = "";
+  warning.setAttribute("role", "status");
+  warning.setAttribute("aria-live", "polite");
+  const count = (log?.tasks || []).filter(isWorklogTaskPriorityMissing).length;
+  warning.hidden = !count;
+  warning.textContent = count ? getWorklogPriorityWarningMessage(log, count) : "";
+  return warning;
+}
+
+function updateWorklogPriorityWarningSummary(log = getSelectedLog()) {
+  const count = (log?.tasks || []).filter(isWorklogTaskPriorityMissing).length;
+  document.querySelectorAll("[data-priority-warning-summary]").forEach((warning) => {
+    warning.hidden = !count;
+    warning.textContent = count ? getWorklogPriorityWarningMessage(log, count) : "";
+  });
+  return count;
+}
+
+function updateTaskPriorityWarningState(row, task, { announce = false, log = getSelectedLog() } = {}) {
+  const missing = isWorklogTaskPriorityMissing(task);
+  row?.classList.toggle("is-priority-missing", missing);
+  const select = row?.querySelector(".priority-select");
+  if (select) select.setAttribute("aria-invalid", missing ? "true" : "false");
+  const warning = row?.querySelector(".task-priority-warning");
+  if (warning) warning.hidden = !missing;
+  const count = updateWorklogPriorityWarningSummary(log);
+  if (missing && announce && canEditCurrentWorklog()) showAppToast(getWorklogPriorityWarningMessage(log, count), 2600);
+  return missing;
 }
 
 function getWorklogTaskRefs(log) {
@@ -13076,7 +13227,8 @@ function renderWorklogTaskRow(ref, currentLog, options = {}) {
   const row = document.createElement("div");
   const marker = getWorklogTaskMarker(displayTask);
   const statusClass = getWorklogTaskStatusClass(displayTask);
-  row.className = `worklog-task-row task-row priority-${String(displayTask.priority || "?").toLowerCase()} marker-${marker} ${statusClass} ${displayTask.done ? "done" : ""} ${isCarryover ? "is-carryover" : ""} ${isPostponedFromOtherDate ? "is-postponed-in" : ""}`;
+  const priorityMissing = isWorklogTaskPriorityMissing(displayTask);
+  row.className = `worklog-task-row task-row priority-${String(displayTask.priority || "?").toLowerCase()} marker-${marker} ${statusClass} ${displayTask.done ? "done" : ""} ${isCarryover ? "is-carryover" : ""} ${isPostponedFromOtherDate ? "is-postponed-in" : ""} ${priorityMissing ? "is-priority-missing" : ""}`;
   row.innerHTML = `
     <button class="task-cycle" type="button" aria-label="상태 변경: 완료, 진행중, 해제 순환">${getWorklogTaskMarkerLabel(displayTask)}</button>
     <div class="task-status-cell">${renderTaskMetaControl(displayTask)}</div>
@@ -13084,6 +13236,7 @@ function renderWorklogTaskRow(ref, currentLog, options = {}) {
       <input class="task-text-input" type="text" value="${escapeAttr(displayTask.text)}" placeholder="업무 내용" aria-label="주요업무" />
       ${renderTaskActionControl(displayTask)}
       ${renderWorklogTaskTags(getWorklogTaskTags(displayTask))}
+      <span class="task-priority-warning" ${priorityMissing ? "" : "hidden"}>중요도 선택 필요</span>
       ${(isCarryover || isPostponedFromOtherDate) ? `<span class="task-origin-tag">${escapeHtml(formatShortDate(sourceDateKey))} 이월</span>` : ""}
     </div>
     <button class="task-delete" type="button" aria-label="업무 삭제">×</button>
@@ -13102,10 +13255,12 @@ function renderWorklogTaskRow(ref, currentLog, options = {}) {
   row.querySelector(".task-text-input").oninput = (event) => {
     if (!guardWorklogEdit(viewName)) return;
     const editableRef = materializeWorklogCarryover(ref, currentLog);
+    row.__editableTask = editableRef.task;
     editableRef.task.text = event.target.value;
     promptAttendanceBeforeWorklogInput(editableRef.log, editableRef.task.text);
     syncWorklogTaskTimeHintToSchedule(editableRef.task, editableRef.log);
     saveState({ input: true });
+    updateTaskPriorityWarningState(row, editableRef.task, { log: editableRef.log });
     updateTaskRowTags(row, editableRef.task);
     scheduleInputRender("worklog-task-derived", () => {
       if (getSelectedLog() !== currentLog) return;
@@ -13118,6 +13273,7 @@ function renderWorklogTaskRow(ref, currentLog, options = {}) {
   };
   row.querySelector(".task-text-input").addEventListener("blur", () => {
     flushDeferredStateSave();
+    updateTaskPriorityWarningState(row, row.__editableTask || task, { announce: true, log: currentLog });
     if (row.closest("#fitnessTaskBoard")) {
       scheduleInputRender("fitness-task-rows", () => ensureFitnessTaskRowsVisible(currentLog), 80);
     }
@@ -13159,7 +13315,7 @@ function renderTaskMetaControl(task) {
   const selectedValue = getPriorityValue(task);
   const actionClass = ["진행중", "위임", "연기", "취소"].includes(selectedValue) ? " is-action" : "";
   return `
-    <select class="priority-select${actionClass}" aria-label="중요도 및 처리">
+    <select class="priority-select${actionClass}" aria-label="중요도 및 처리" aria-invalid="${isWorklogTaskPriorityMissing(task) ? "true" : "false"}">
       ${taskPriorityOptions.map((value) => `<option value="${escapeAttr(value)}" ${selectedValue === value ? "selected" : ""}>${value}</option>`).join("")}
     </select>
   `;
@@ -13975,7 +14131,7 @@ function getWorklogScheduleSlots(log, dateKey = getActiveDateKey()) {
   const unit = log?.scheduleUnit === "60" ? 60 : 30;
   const workHours = normalizeWorkHoursText(log?.workHoursOverride || "")
     || getEmployeeWorkHours(log?.employeeId, state?.profile, dateKey);
-  const baseTimes = getScheduleTimes(workHours);
+  const baseTimes = getWorklogScheduleBoundarySlots(workHours, unit);
   const manualTimes = (Array.isArray(log?.manualScheduleSlots) ? log.manualScheduleSlots : [])
     .map(normalizeScheduleTimeInput)
     .filter(Boolean);
@@ -13990,8 +14146,8 @@ function getWorklogScheduleSlots(log, dateKey = getActiveDateKey()) {
   baseTimes.forEach((time) => {
     const minutes = timeToMinutes(time);
     if (!Number.isFinite(minutes)) return;
-    start = Math.min(start, Math.floor(minutes / unit) * unit);
-    end = Math.max(end, Math.floor(minutes / unit) * unit);
+    start = Math.min(start, minutes);
+    end = Math.max(end, minutes);
   });
   if (Number.isFinite(start) && Number.isFinite(end)) {
     for (let minute = start; minute <= end; minute += unit) {
@@ -17363,6 +17519,7 @@ function getStaffDirectoryEmployees() {
   const approvedProfileEmployees = (authState.approvalRows || [])
     .filter((row) => (row.approval_status || "pending") === "approved")
     .map((row) => approvalRowToStaffEmployee(row));
+  (authState.coworkerEmployees || []).forEach((employee) => add(employee, 25));
   const occupiedStaticIds = new Set(approvedProfileEmployees.map((employee) => employee.mappedEmployeeId).filter(Boolean));
   approvedProfileEmployees.forEach((employee) => add(employee, 30));
   employees
@@ -19082,8 +19239,60 @@ function getReportArchiveTaskText(task = {}) {
   return String(task.text || "").trim();
 }
 
-function getReportArchiveTasks(log) {
-  return (log.tasks || []).filter((task) => getReportArchiveTaskText(task));
+function getReportArchiveTaskRefs(employee = {}, dateKey = getActiveDateKey(), log = {}) {
+  const employeeId = getEmployeeWorklogId(employee) || String(log?.employeeId || "").trim();
+  const refs = (log.tasks || []).map((task, index) => ({
+    task,
+    index,
+    sourceDateKey: dateKey,
+    isCarryover: false,
+    isPostponedFromOtherDate: false,
+  }));
+  Object.entries(state.employeeLogs || {})
+    .filter(([sourceDateKey]) => sourceDateKey < dateKey)
+    .sort(([dateA], [dateB]) => dateA.localeCompare(dateB))
+    .forEach(([sourceDateKey]) => {
+      const sourceLog = getExistingEmployeeLogForAnalysis(employee, sourceDateKey)
+        || state.employeeLogs?.[sourceDateKey]?.[employeeId];
+      (sourceLog?.tasks || []).forEach((task, index) => {
+        const deletedFrom = String(task.carryoverDeletedFrom || "");
+        const rolloverDate = getWorklogTaskRolloverDate(task, sourceDateKey);
+        const isPostponedHere = task.status === "연기"
+          && task.postponeDate === dateKey
+          && hasWorklogCarryoverDateArrived(dateKey);
+        const isOpenCarryover = Boolean(
+          isWorklogTaskDueForDate(task, sourceDateKey, dateKey)
+          && (!deletedFrom || deletedFrom > dateKey)
+        );
+        if (!isOpenCarryover && !isPostponedHere) return;
+        refs.push({
+          task,
+          index,
+          sourceDateKey,
+          isCarryover: isOpenCarryover,
+          isPostponedFromOtherDate: task.status === "연기" && rolloverDate <= dateKey,
+        });
+      });
+    });
+  return refs.sort((a, b) => {
+    const activeA = isActiveTask(a.task);
+    const activeB = isActiveTask(b.task);
+    const orderA = getPrioritySortValue(a.task.priority);
+    const orderB = getPrioritySortValue(b.task.priority);
+    return Number(activeB) - Number(activeA) || orderA - orderB || a.index - b.index;
+  });
+}
+
+function getReportArchiveTasks(log, options = {}) {
+  const refs = options.employee && options.dateKey
+    ? getReportArchiveTaskRefs(options.employee, options.dateKey, log)
+    : (log.tasks || []).map((task) => ({ task, sourceDateKey: options.dateKey || "", isCarryover: false, isPostponedFromOtherDate: false }));
+  return refs
+    .filter(({ task }) => getReportArchiveTaskText(task))
+    .map((ref) => ({
+      ...ref.task,
+      reportCarryoverSourceDate: ref.isCarryover || ref.isPostponedFromOtherDate ? ref.sourceDateKey : "",
+    }));
 }
 
 function getReportArchiveScheduleEntries(log) {
@@ -19170,7 +19379,7 @@ function formatWorklogSubmissionStatus(employeeId = "", dateKey = getActiveDateK
 
 function buildEmployeeArchiveReport(employee, dateKey) {
   const log = getReportArchiveEmployeeLog(employee, dateKey);
-  const tasks = getReportArchiveTasks(log);
+  const tasks = getReportArchiveTasks(log, { employee, dateKey });
   const entries = getReportArchiveScheduleEntries(log);
   const completed = tasks.filter((task) => task.done || task.status === "완료");
   const reportText = [...new Set([log.report, log.record].map((text) => String(text || "").trim()).filter(Boolean))].join("\n");
@@ -20241,18 +20450,19 @@ function buildWorklogDailyReportModel(options = {}) {
   const employee = options.employee || getSelectedEmployee();
   const dateKey = options.dateKey || getActiveDateKey();
   const log = options.log || getReportArchiveEmployeeLog(employee, dateKey);
-  const tasks = getReportArchiveTasks(log);
+  const tasks = getReportArchiveTasks(log, { employee, dateKey });
   const schedule = getReportArchiveScheduleEntries(log);
   const completed = tasks.filter((task) => task.done || task.status === "완료");
   const pending = tasks.filter((task) => !task.done && !["완료", "취소", "위임"].includes(task.status));
   const issueTasks = tasks.filter((task) => ["지원필요", "보류", "연기"].includes(task.status));
   const tomorrowLog = getReportArchiveEmployeeLog(employee, getNextDateKey(dateKey));
-  const tomorrowTasks = getReportArchiveTasks(tomorrowLog);
+  const tomorrowTasks = getReportArchiveTasks(tomorrowLog, { employee, dateKey: getNextDateKey(dateKey) });
   const tomorrowSchedule = getReportArchiveScheduleEntries(tomorrowLog);
   const siteKey = getSiteWeatherKeyForEmployee(employee);
   const weather = getWeatherRecordForSite(siteKey, dateKey);
   const reportText = [...new Set([log.report, log.record].map((text) => String(text || "").trim()).filter(Boolean))].join("\n");
   const memoText = String(log.memo || "").trim();
+  const aiEnabled = !isHistoricalWorklogDate(dateKey);
   const completionRate = tasks.length ? Math.round((completed.length / tasks.length) * 100) : 0;
   const nextActions = [
     ...pending.map((task) => task.text),
@@ -20274,11 +20484,16 @@ function buildWorklogDailyReportModel(options = {}) {
     clock: `${log.clockIn || "미기록"} ~ ${log.clockOut || "미기록"}`,
     tasks: tasks.map((task) => {
       const statusMeta = getWorklogReportTaskStatusMeta(task);
+      const carryoverDetail = task.reportCarryoverSourceDate
+        ? `${formatShortDate(task.reportCarryoverSourceDate)} 이월`
+        : "";
       return {
         priority: task.priority === "?" ? "일반" : task.priority || "일반",
         text: task.text,
         status: statusMeta.label,
         ...statusMeta,
+        detail: [statusMeta.detail, carryoverDetail].filter(Boolean).join(" · "),
+        carryoverSourceDate: task.reportCarryoverSourceDate || "",
       };
     }),
     schedule: schedule.map((entry) => ({
@@ -20298,11 +20513,12 @@ function buildWorklogDailyReportModel(options = {}) {
     taskCount: tasks.length,
     completionRate,
     evidenceCount: schedule.length + (reportText ? 1 : 0),
+    aiEnabled,
   };
   model.businessArea = getWorklogReportBusinessArea(employee);
-  model.aiContext = buildWorklogReportAiContext(model);
-  model.aiKey = `worklog:${employee.id || getEmployeeWorklogId(employee)}:${dateKey}:${getFitnessReportAiFingerprint(model.aiContext)}`;
-  const aiCacheEntry = getFitnessAiCoachingCache()[model.aiKey];
+  model.aiContext = aiEnabled ? buildWorklogReportAiContext(model) : null;
+  model.aiKey = aiEnabled ? `worklog:${employee.id || getEmployeeWorklogId(employee)}:${dateKey}:${getFitnessReportAiFingerprint(model.aiContext)}` : "";
+  const aiCacheEntry = aiEnabled ? getFitnessAiCoachingCache()[model.aiKey] : null;
   model.aiCoaching = aiCacheEntry?.coaching || null;
   model.aiCoachModel = aiCacheEntry?.model || "";
   model.aiCoachGeneratedAt = aiCacheEntry?.generatedAt || "";
@@ -20347,10 +20563,10 @@ function renderWorklogDailyReportTemplate(model = buildWorklogDailyReportModel()
       <section class="worklog-report-bottom-grid">
         <div><h3>3. 이슈·리스크·지원 요청</h3>${model.issueRows.map((row) => `<p>• ${escapeHtml(row)}</p>`).join("")}</div>
         <div><h3>4. 명일 계획·인수인계</h3>${model.tomorrowRows.map((row) => `<p>• ${escapeHtml(row)}</p>`).join("")}</div>
-        <div class="worklog-report-ai-coaching">
+        ${model.aiEnabled ? `<div class="worklog-report-ai-coaching">
           <h3>5. ${escapeHtml(model.businessArea.label)} AI 코칭 · ${model.aiCoaching ? "ChatGPT" : "직무 맞춤 기본 코칭"}</h3>
           <div>${getWorklogReportCoachingRows(model).map(([title, text]) => `<p><b>${escapeHtml(title)}</b><span>${escapeHtml(text)}</span></p>`).join("")}</div>
-        </div>
+        </div>` : ""}
       </section>
       <footer class="worklog-report-action-brief">
         <b>Bangju Action Brief</b>
@@ -20366,7 +20582,9 @@ function renderOpenWorklogReport() {
   const previousScrollTop = preview.scrollTop;
   const model = buildWorklogDailyReportModel();
   preview.innerHTML = renderWorklogDailyReportTemplate(model);
-  setWorklogReportAiStatus(model.aiCoaching ? "cached" : "ready");
+  const aiStatus = document.getElementById("worklogReportAiStatus");
+  if (aiStatus) aiStatus.hidden = !model.aiEnabled;
+  if (model.aiEnabled) setWorklogReportAiStatus(model.aiCoaching ? "cached" : "ready");
   fitWorklogReportPreview();
   requestAnimationFrame(() => {
     preview.scrollTop = Math.min(previousScrollTop, Math.max(0, preview.scrollHeight - preview.clientHeight));
@@ -20387,7 +20605,7 @@ function setWorklogReportAiStatus(stateName = "ready") {
 }
 
 async function requestWorklogReportAiCoaching(model = buildWorklogDailyReportModel(), { force = false, silent = false } = {}) {
-  if (!model?.aiKey || !model?.aiContext) return null;
+  if (!model?.aiEnabled || !model?.aiKey || !model?.aiContext) return null;
   activeWorklogReportAiKey = model.aiKey;
   if (model.aiCoaching && !force) {
     setWorklogReportAiStatus("cached");
@@ -20441,13 +20659,15 @@ function openWorklogReportSheet() {
   activeWorklogReportAiKey = model.aiKey;
   if (subtitle) subtitle.textContent = `${formatKoreanDate(getActiveDateKey())} · ${getEmployeeAdminLabel(getSelectedEmployee())}`;
   document.getElementById("worklogReportPreview").innerHTML = renderWorklogDailyReportTemplate(model);
-  setWorklogReportAiStatus(model.aiCoaching ? "cached" : "ready");
+  const aiStatus = document.getElementById("worklogReportAiStatus");
+  if (aiStatus) aiStatus.hidden = !model.aiEnabled;
+  if (model.aiEnabled) setWorklogReportAiStatus(model.aiCoaching ? "cached" : "ready");
   backdrop.hidden = false;
   sheet.hidden = false;
   requestAnimationFrame(() => {
     sheet.classList.add("is-open");
     fitWorklogReportPreview();
-    requestWorklogReportAiCoaching(model, { silent: true });
+    if (model.aiEnabled) requestWorklogReportAiCoaching(model, { silent: true });
   });
 }
 
@@ -21054,14 +21274,17 @@ function buildFitnessReportModel(options = {}) {
   const weatherText = weather
     ? formatWeatherSummary(weather, { compact: true })
     : weatherAddress ? "날씨 확인 중" : "날씨 미기록";
+  const aiEnabled = !isHistoricalWorklogDate(dateKey);
   const { key: manualRoleKey, template: manualTemplate } = getFitnessReportManualTemplate(employee);
   const manual = {
     ...manualTemplate,
     text: getManualSettings().customByRole?.[manualRoleKey] || manualTemplate.text,
   };
-  const aiContext = buildFitnessReportAiContext({ dateKey, isCenter, employee, sourceLog, logEntries, totals, classStats, manual, dagymSummary, attendanceWarnings });
-  const aiKey = `${dateKey}:${isCenter ? "center" : employee.id}:${getFitnessReportAiFingerprint(aiContext)}`;
-  const aiCacheEntry = getFitnessAiCoachingCache()[aiKey] || null;
+  const aiContext = aiEnabled
+    ? buildFitnessReportAiContext({ dateKey, isCenter, employee, sourceLog, logEntries, totals, classStats, manual, dagymSummary, attendanceWarnings })
+    : null;
+  const aiKey = aiEnabled ? `${dateKey}:${isCenter ? "center" : employee.id}:${getFitnessReportAiFingerprint(aiContext)}` : "";
+  const aiCacheEntry = aiEnabled ? getFitnessAiCoachingCache()[aiKey] || null : null;
   const topTasks = getFitnessReportTaskRows(logEntries, { limit: isCenter ? 3 : Infinity, minRows: 3 });
   const tomorrowTasks = getFitnessReportTaskRows(nextLogEntries, { limit: isCenter ? 3 : Infinity, minRows: 3 });
   const snsReviews = logEntries.map(({ employee: itemEmployee, log }) => ({
@@ -21118,7 +21341,8 @@ function buildFitnessReportModel(options = {}) {
       ["마케팅", `${numberValue(totals.outsideSales)}/${numberValue(monthlyTotals.outsideSales)}`],
     ],
     issueRows: getFitnessReportRecordRows(logEntries, { isCenter, totals, weatherText }),
-    coaching: getFitnessCoachingMessages({ page, employee, log: sourceLog, dateKey }),
+    coaching: aiEnabled ? getFitnessCoachingMessages({ page, employee, log: sourceLog, dateKey }) : [],
+    aiEnabled,
     aiContext,
     aiKey,
     aiCoaching: aiCacheEntry?.coaching || null,
@@ -21353,10 +21577,10 @@ function renderFitnessReportTemplate(model = buildFitnessReportModel()) {
         <div>
           ${getFitnessReportIssueRowsHtml(model)}
         </div>
-        <div>
+        ${model.aiEnabled ? `<div>
           <h3>AI 코칭 · ${model.aiCoaching ? "ChatGPT" : "기본 코칭"}</h3>
           ${getFitnessReportCoachingRows(model).map(([title, text]) => `<p><b>${escapeHtml(title)}</b><span>${escapeHtml(text)}</span></p>`).join("")}
-        </div>
+        </div>` : ""}
       </section>
     </article>
   `;
@@ -21405,7 +21629,7 @@ function refreshFitnessReportWeather(model = buildFitnessReportModel()) {
 }
 
 async function requestFitnessReportAiCoaching(model = buildFitnessReportModel(), { force = false, silent = false } = {}) {
-  if (!model?.aiKey || !model?.aiContext) return null;
+  if (!model?.aiEnabled || !model?.aiKey || !model?.aiContext) return null;
   activeFitnessReportAiKey = model.aiKey;
   if (model.aiCoaching && !force) {
     setFitnessReportAiStatus("cached");
@@ -21463,7 +21687,9 @@ function openFitnessReportSheet() {
   preview.scrollLeft = 0;
   preview.innerHTML = renderFitnessReportTemplate(model);
   updateFitnessReportConfirmButton(model);
-  setFitnessReportAiStatus(model.aiCoaching ? "cached" : "ready");
+  const aiStatus = document.getElementById("fitnessReportAiStatus");
+  if (aiStatus) aiStatus.hidden = !model.aiEnabled;
+  if (model.aiEnabled) setFitnessReportAiStatus(model.aiCoaching ? "cached" : "ready");
   backdrop.hidden = false;
   sheet.hidden = false;
   requestAnimationFrame(() => {
@@ -21473,7 +21699,7 @@ function openFitnessReportSheet() {
       showAppToast(`출퇴근 미기록 ${model.attendanceWarnings.length}명 · 48시간 이내 보완이 필요합니다`);
     }
     refreshFitnessReportWeather(model);
-    requestFitnessReportAiCoaching(model, { silent: true });
+    if (model.aiEnabled) requestFitnessReportAiCoaching(model, { silent: true });
   });
 }
 
@@ -22554,6 +22780,17 @@ document.querySelectorAll("[data-layout-mode-choice]").forEach((button) => {
     renderResponsiveMode();
   };
 });
+document.querySelectorAll("[data-worklog-layout-choice]").forEach((button) => {
+  button.addEventListener("click", () => {
+    if (isPhysicalPhoneLayout()) return;
+    const mode = button.dataset.worklogLayoutChoice === "portrait" ? "portrait" : "expanded";
+    localStorage.setItem(worklogLayoutStorageKey, mode);
+    renderResponsiveMode();
+  });
+});
+document.querySelectorAll("[data-worklog-page-choice]").forEach((button) => {
+  button.addEventListener("click", () => setTodayPageMode(button.dataset.worklogPageChoice || "daily"));
+});
 document.getElementById("globalViewModeButton")?.addEventListener("click", toggleGlobalViewMode);
 document.getElementById("fitnessLogPrevPageButton")?.addEventListener("click", moveFitnessLogPrevPage);
 document.getElementById("fitnessLogNextPageButton")?.addEventListener("click", moveFitnessLogNextPage);
@@ -23200,6 +23437,7 @@ document.getElementById("fitnessCenterConfirmPanel")?.addEventListener("click", 
 });
 document.querySelectorAll("[data-section-ai]").forEach((button) => {
   button.onclick = () => {
+    if (isHistoricalWorklogDate()) return;
     const section = button.dataset.sectionAi || "";
     if (section.startsWith("fitness-")) {
       const subtitle = document.getElementById("fitnessCoachingSheetSub");

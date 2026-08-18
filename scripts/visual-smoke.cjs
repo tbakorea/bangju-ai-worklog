@@ -43,6 +43,147 @@ async function seedApprovedBangjuEmployee(page) {
   });
 }
 
+async function checkSameSiteCoworkerReadonlyAndHistoricalAi(browser) {
+  const { page, errors } = await openPage(browser, { width: 390, height: 844 });
+  await seedApprovedBangjuEmployee(page);
+  const raw = await page.evaluate(() => window.eval(`(() => {
+    const dateKey = todayKey;
+    const remoteProfileId = "9d66d01c-83a1-46d8-9da5-6dc1a4942201";
+    const remote = {
+      name: "방주 원격동료",
+      nickname: "원격동료",
+      org: "(주)방주",
+      workplace: "울산 본사 별도표기",
+      role: "직원",
+      primaryWork: "본사 운영지원",
+      approvalStatus: "approved"
+    };
+    const remoteEmployee = { id: "profile-" + remoteProfileId, ...remote };
+    const remoteLog = createEmployeeLog(remoteEmployee, remote, dateKey);
+    remoteLog.tasks[0].text = "같은 사업장 공유 업무";
+    mergeVisibleStaffWorklogStates([{
+      user_id: remoteProfileId,
+      updated_at: new Date().toISOString(),
+      state: { profile: remote, ownerEmployeeId: remoteEmployee.id, ownerWorklog: remoteLog }
+    }], dateKey);
+    state.selectedEmployeeId = "bangju-finance-manager";
+    switchView("bangju-log");
+    setTodayPageMode("coworker");
+    const button = document.querySelector('[data-coworker-worklog-open="profile-' + remoteProfileId + '"]');
+    const visibleInGroup = Boolean(button) && document.getElementById("coworkerWorklogBoard")?.textContent.includes("방주 원격동료");
+    button?.click();
+    applyCurrentWorklogPermissionState();
+    const coworkerReadonly = document.getElementById("view-today")?.dataset.worklogPermission === "readonly"
+      && !canEditCurrentWorklog("bangju-log")
+      && Boolean(document.querySelector("#view-today .task-text-input")?.disabled)
+      && Boolean(document.querySelector("#view-today .schedule-text-input")?.disabled);
+
+    state.selectedEmployeeId = "bangju-finance-manager";
+    setTodayPageMode("daily");
+    renderEntries();
+    applyCurrentWorklogPermissionState();
+    const ownEditable = canEditCurrentWorklog("bangju-log")
+      && !document.querySelector("#view-today .task-text-input")?.disabled;
+
+    const pastDate = getPreviousDateKey(todayKey);
+    state.selectedDateKey = pastDate;
+    renderEntries();
+    applyCurrentWorklogPermissionState();
+    const generalModel = buildWorklogDailyReportModel({
+      dateKey: pastDate,
+      employee: findEmployeeRecordById("bangju-finance-manager"),
+      log: getEmployeeLogForDate("bangju-finance-manager", pastDate)
+    });
+    const fitnessEmployee = findEmployeeRecordById("fitness-trainer-1");
+    const fitnessModel = buildFitnessReportModel({
+      dateKey: pastDate,
+      isCenter: false,
+      employee: fitnessEmployee,
+      log: getEmployeeLogForDate("fitness-trainer-1", pastDate)
+    });
+    const historicalAiHidden = [...document.querySelectorAll("#view-today [data-section-ai]")].every((item) => item.hidden)
+      && generalModel.aiEnabled === false
+      && !renderWorklogDailyReportTemplate(generalModel).includes("AI 코칭")
+      && fitnessModel.aiEnabled === false
+      && !renderFitnessReportTemplate(fitnessModel).includes("AI 코칭");
+    return JSON.stringify({ visibleInGroup, coworkerReadonly, ownEditable, historicalAiHidden });
+  })()`));
+  const metrics = JSON.parse(raw);
+  if (!metrics.visibleInGroup || !metrics.coworkerReadonly || !metrics.ownEditable || !metrics.historicalAiHidden) {
+    fail("same-site dynamic coworker logs should be visible read-only while own logs stay editable and past AI is removed", raw);
+  }
+  if (errors.length) fail("same-site coworker and historical AI page errors", errors.join(" | "));
+  await page.close();
+}
+
+async function checkResponsiveCoworkerWorkspace(browser) {
+  const { page, errors } = await openPage(browser, { width: 390, height: 844 });
+  await seedApprovedBangjuEmployee(page);
+  await page.evaluate(() => window.eval(`
+    localStorage.setItem(worklogLayoutStorageKey, "expanded");
+    state.selectedEmployeeId = "bangju-finance-manager";
+    switchView("bangju-log");
+    setTodayPageMode("daily");
+    renderResponsiveMode();
+    renderEntries();
+  `));
+  await page.waitForTimeout(120);
+  const phone = await page.evaluate(() => ({
+    layout: document.body.dataset.worklogLayout,
+    selectorHidden: document.querySelector(".worklog-layout-selector")?.hidden,
+    identity: document.getElementById("worklogIdentityBadge")?.dataset.ownership || "",
+    tabCount: document.querySelectorAll("[data-worklog-page-choice]").length,
+    fits: document.documentElement.scrollWidth <= window.innerWidth + 2,
+  }));
+  if (phone.layout !== "portrait" || !phone.selectorHidden || phone.identity !== "mine" || phone.tabCount !== 3 || !phone.fits) {
+    fail("phone worklog should force a compact portrait workspace with clear own-work identity", JSON.stringify(phone));
+  }
+
+  await page.setViewportSize({ width: 1180, height: 820 });
+  await page.evaluate(() => window.eval(`renderResponsiveMode(); renderEntries();`));
+  await page.click('[data-worklog-layout-choice="portrait"]');
+  await page.waitForTimeout(80);
+  const portrait = await page.evaluate(() => ({
+    layout: document.body.dataset.worklogLayout,
+    selectorHidden: document.querySelector(".worklog-layout-selector")?.hidden,
+    columns: getComputedStyle(document.querySelector("#view-today .worklog-daily-page")).gridTemplateColumns,
+  }));
+  if (portrait.layout !== "portrait" || portrait.selectorHidden || portrait.columns.split(" ").length !== 1) {
+    fail("tablet/desktop portrait choice should remain one-column and visible", JSON.stringify(portrait));
+  }
+
+  await page.click('[data-worklog-layout-choice="expanded"]');
+  await page.waitForTimeout(80);
+  const expanded = await page.evaluate(() => {
+    const coworker = document.querySelector("#view-today .worklog-coworker-page");
+    return {
+      layout: document.body.dataset.worklogLayout,
+      stored: localStorage.getItem("beyond-worklog-workspace-layout"),
+      coworkerVisible: Boolean(coworker && getComputedStyle(coworker).display !== "none"),
+      mainColumns: getComputedStyle(document.getElementById("worklogMain")).gridTemplateColumns,
+      activeDailyTab: document.querySelector('[data-worklog-page-choice="daily"]')?.classList.contains("is-active"),
+      fits: document.documentElement.scrollWidth <= window.innerWidth + 2,
+    };
+  });
+  if (expanded.layout !== "expanded" || expanded.stored !== "expanded" || !expanded.coworkerVisible
+    || expanded.mainColumns.split(" ").length < 2 || !expanded.activeDailyTab || !expanded.fits) {
+    fail("expanded worklog should persist and show coworker context beside the selected worklog", JSON.stringify(expanded));
+  }
+
+  await page.click('[data-worklog-page-choice="coworker"]');
+  await page.waitForTimeout(60);
+  const coworkerPage = await page.evaluate(() => ({
+    mode: document.getElementById("worklogMain")?.dataset.todayPage,
+    active: document.querySelector('[data-worklog-page-choice="coworker"]')?.classList.contains("is-active"),
+    count: Number(document.getElementById("coworkerWorklogCount")?.textContent || 0),
+  }));
+  if (coworkerPage.mode !== "coworker" || !coworkerPage.active || coworkerPage.count < 1) {
+    fail("coworker worklog tab should be direct, visible, and count same-site coworkers", JSON.stringify(coworkerPage));
+  }
+  if (errors.length) fail("responsive coworker workspace page errors", errors.join(" | "));
+  await page.close();
+}
+
 async function checkTabletRepresentativeWorklogChrome(browser) {
   const { page, errors } = await openPage(browser, { width: 1024, height: 768 });
   await page.evaluate(() => {
@@ -1236,6 +1377,12 @@ async function checkOverviewCommandBoard(browser) {
       todayKey,
       new Date(todayKey + "T10:00:00")
     );
+    const scheduledOffStatus = getOverviewWorkStatus(
+      { role: "토요일 인포", workHours: "10:00-18:00" },
+      { attendanceStatus: "비번", tasks: [], schedule: [] },
+      getPreviousDateKey(todayKey),
+      new Date(todayKey + "T10:00:00")
+    );
     const todayWrittenStatus = getOverviewWorkStatus(
       { role: "실장", workHours: "09:00-18:00" },
       { tasks: [{ text: "오늘 작성 업무", status: "예정" }], schedule: [] },
@@ -1278,6 +1425,7 @@ async function checkOverviewCommandBoard(browser) {
       commonText,
       employeeOrder,
       statusLabels,
+      scheduledOffStatus,
       liveStatus,
       todayWrittenStatus,
       pastWorkedStatus,
@@ -1302,7 +1450,8 @@ async function checkOverviewCommandBoard(browser) {
     || !overviewDetailMetrics.commonText.includes("전 사업장 공통 보고")
     || overviewDetailMetrics.employeeOrder[0] !== "beyond-company-leader"
     || overviewDetailMetrics.employeeOrder[1] !== "beyond-shared-manager"
-    || !overviewDetailMetrics.statusLabels.some((item) => item.key === "off" && item.text.includes("비번"))
+    || overviewDetailMetrics.scheduledOffStatus?.key !== "off"
+    || overviewDetailMetrics.scheduledOffStatus?.label !== "비번"
     || overviewDetailMetrics.liveStatus?.key !== "working"
     || overviewDetailMetrics.liveStatus?.label !== "근무중"
     || overviewDetailMetrics.todayWrittenStatus?.key !== "working"
@@ -2697,6 +2846,12 @@ async function checkPriorityCarryoverAndDateRules(browser) {
       [sourceDateKey]: { "bangju-finance-manager": sourceLog },
       [activeDateKey]: { "bangju-finance-manager": currentLog }
     };
+    const preInputReport = buildWorklogDailyReportModel(employee, currentLog, activeDateKey);
+    const preInputReportTasks = preInputReport.tasks.map((task) => ({
+      text: task.text,
+      detail: task.detail,
+      carryoverSourceDate: task.carryoverSourceDate
+    }));
     const refs = getWorklogTaskRefs(currentLog);
     const carryovers = refs.filter((ref) => ref.isCarryover);
     const openRef = carryovers.find((ref) => ref.task.id === "open-task");
@@ -2783,6 +2938,7 @@ async function checkPriorityCarryoverAndDateRules(browser) {
       postponedDateArrived,
       postponedFutureDay,
       postponedNextDayArrived,
+      preInputReportTasks,
       postponedPreview,
       postponedMaterializedStatus: postponedMaterialized.status,
       postponedMaterializedDate: postponedMaterialized.postponeDate,
@@ -2795,6 +2951,14 @@ async function checkPriorityCarryoverAndDateRules(browser) {
   const parsed = JSON.parse(metrics);
   if (parsed.carryoverIds.join(",") !== "open-task,progress-task,spaced-progress-task") {
     fail("only unresolved priority tasks should carry into the next day", metrics);
+  }
+  const preInputReportTexts = parsed.preInputReportTasks.map((task) => task.text);
+  if (!preInputReportTexts.includes("미처리 이월 업무")
+    || !preInputReportTexts.includes("진행중 이월 업무")
+    || !preInputReportTexts.includes("공백 표기 진행 중 업무")
+    || preInputReportTexts.some((text) => ["완료 업무", "취소 업무", "위임 업무", "연기 업무"].includes(text))
+    || parsed.preInputReportTasks.some((task) => task.carryoverSourceDate !== "2026-08-02" || !task.detail.includes("이월"))) {
+    fail("opening a daily report before the first input should include only arrived unresolved carryover work", metrics);
   }
   if (parsed.futureBeforeArrival || !parsed.nextDayArrived || parsed.postponedBeforeDate
     || !parsed.postponedDateArrived || parsed.postponedFutureDay || !parsed.postponedNextDayArrived) {
@@ -2882,6 +3046,63 @@ async function checkPriorityCarryoverAndDateRules(browser) {
     fail("rapid date navigation must not cancel a pending future-date remote save", employeeFutureMatrix);
   }
   if (errors.length) fail("priority carryover/date-rule page errors", errors.join(" | "));
+  await page.close();
+}
+
+async function checkScheduleBoundaryAndPriorityWarning(browser) {
+  const { page, errors } = await openPage(browser, { width: 390, height: 844 });
+  await seedApprovedBangjuEmployee(page);
+  const schedule = await page.evaluate(() => window.eval(`(() => {
+    state.profile = {
+      ...state.profile,
+      name: "최희진",
+      nickname: "최희진",
+      role: "재무과장",
+      workHours: "08:30-17:30"
+    };
+    state.selectedDateKey = todayKey;
+    state.selectedEmployeeId = "bangju-finance-manager";
+    const employee = findEmployeeRecordById("bangju-finance-manager");
+    const log = createEmployeeLog(employee, state.profile, todayKey);
+    log.employeeId = "bangju-finance-manager";
+    log.workHoursOverride = "08:30-17:30";
+    log.scheduleUnit = "60";
+    normalizeEmployeeLogRows(log, todayKey);
+    state.employeeLogs[todayKey] = { "bangju-finance-manager": log };
+    switchView("bangju-log");
+    renderEntries();
+    return JSON.stringify(log.schedule.map((entry) => entry.time));
+  })()`));
+  const times = JSON.parse(schedule);
+  if (times[0] !== "08:00" || times.at(-1) !== "18:00" || times.length !== 11) {
+    fail("08:30-17:30 work hours should create hourly rows from 08:00 through 18:00", schedule);
+  }
+  const taskInput = page.locator("#worklogTaskBoard .task-text-input").first();
+  await taskInput.fill("중요도 누락 경고 검증");
+  await taskInput.blur();
+  await page.waitForTimeout(120);
+  const missing = await page.evaluate(() => ({
+    row: document.querySelector("#worklogTaskBoard .worklog-task-row")?.classList.contains("is-priority-missing"),
+    invalid: document.querySelector("#worklogTaskBoard .priority-select")?.getAttribute("aria-invalid"),
+    inline: document.querySelector("#worklogTaskBoard .task-priority-warning")?.hidden === false,
+    summary: document.querySelector("#worklogTaskBoard [data-priority-warning-summary]")?.textContent || "",
+    toast: document.getElementById("appToast")?.textContent || "",
+  }));
+  if (!missing.row || missing.invalid !== "true" || !missing.inline
+    || !missing.summary.includes("최희진") || !missing.summary.includes("A·B·C") || !missing.toast.includes("중요도")) {
+    fail("text-only priority work should show a personalized persistent warning", JSON.stringify(missing));
+  }
+  await page.selectOption("#worklogTaskBoard .priority-select", "A");
+  await page.waitForTimeout(120);
+  const resolved = await page.evaluate(() => ({
+    row: document.querySelector("#worklogTaskBoard .worklog-task-row")?.classList.contains("is-priority-missing"),
+    invalid: document.querySelector("#worklogTaskBoard .priority-select")?.getAttribute("aria-invalid"),
+    summaryHidden: document.querySelector("#worklogTaskBoard [data-priority-warning-summary]")?.hidden,
+  }));
+  if (resolved.row || resolved.invalid !== "false" || !resolved.summaryHidden) {
+    fail("selecting A/B/C should clear the priority warning", JSON.stringify(resolved));
+  }
+  if (errors.length) fail("schedule boundary and priority warning page errors", errors.join(" | "));
   await page.close();
 }
 
@@ -3828,6 +4049,7 @@ async function checkFitnessCenterReportConfirmation(browser) {
     previewText: document.querySelector("#fitnessReportPreview")?.textContent?.trim() || "",
     coachButtonAbsent: !document.querySelector("#fitnessReportCoachButton"),
     aiStatusText: document.querySelector("#fitnessReportAiStatus")?.textContent?.trim() || "",
+    aiStatusHidden: document.querySelector("#fitnessReportAiStatus")?.hidden ?? false,
     ownerText: document.querySelector("#fitnessReportPreview .fitness-paper-owner")?.textContent?.replace(/\s+/g, " ").trim() || "",
     dagymText: document.querySelector("#fitnessReportPreview .fitness-paper-dagym")?.textContent?.replace(/\s+/g, " ").trim() || "",
     attendanceWarningText: document.querySelector("#fitnessReportPreview .fitness-paper-warning-banner")?.textContent?.replace(/\s+/g, " ").trim() || "",
@@ -3848,16 +4070,14 @@ async function checkFitnessCenterReportConfirmation(browser) {
   if (reportState.buttonHidden || reportState.buttonText !== "확정 취소" || !reportState.previewText.includes("확정")) {
     fail("fitness report preview should expose confirmation state", JSON.stringify(reportState));
   }
-  if (!aiCoachRequest?.context?.manual?.guidelines?.length
+  if (aiCoachRequest !== null
     || !reportState.coachButtonAbsent
-    || reportState.aiStatusText !== "AI 코칭 반영 완료"
+    || !reportState.aiStatusHidden
     || !reportState.ownerText.includes("담당자")
     || !reportState.ownerText.includes("박주홍")
-    || !aiCoachRequest.context.dagym?.metrics?.length
-    || !reportState.previewText.includes("AI 코칭 · ChatGPT")
-    || !reportState.previewText.includes("직원 운영기록을 빠짐없이 취합한 점이 좋습니다.")
-    || !reportState.previewText.includes("센터장 매뉴얼의 마감 인수인계 기준을 확인해주세요.")) {
-    fail("fitness report should replace fallback guidance with authenticated ChatGPT coaching", JSON.stringify({ aiCoachRequest, reportState }));
+    || reportState.previewText.includes("AI 코칭 · ChatGPT")
+    || reportState.previewText.includes("직원 운영기록을 빠짐없이 취합한 점이 좋습니다.")) {
+    fail("historical fitness reports should omit AI coaching and avoid an AI request", JSON.stringify({ aiCoachRequest, reportState }));
   }
   if (!reportState.dagymText.includes("다짐 운영현황·변이 분석")
     || !reportState.dagymText.includes("-600,000")
@@ -5427,7 +5647,10 @@ async function checkUnifiedCommandPalette(browser) {
     await checkFitnessTrainerCanEditOwnWorklog(browser);
     await checkFitnessManagerCanEditOwnWorklog(browser);
     await checkApprovedEmployeeWorklogEditMatrix(browser);
+    await checkSameSiteCoworkerReadonlyAndHistoricalAi(browser);
+    await checkResponsiveCoworkerWorkspace(browser);
     await checkPriorityCarryoverAndDateRules(browser);
+    await checkScheduleBoundaryAndPriorityWarning(browser);
     await checkStaffDirectoryListAndDetail(browser);
     await checkCalendarAnnotations(browser);
   } finally {

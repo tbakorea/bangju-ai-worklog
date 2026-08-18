@@ -317,6 +317,17 @@ check(
 );
 
 check(
+  "worklog reports include arrived carryover tasks before first daily input",
+  js.includes("function getReportArchiveTaskRefs")
+    && /function getReportArchiveTaskRefs[\s\S]{0,1500}isWorklogTaskDueForDate\(task, sourceDateKey, dateKey\)/.test(js)
+    && /function getReportArchiveTaskRefs[\s\S]{0,1700}!deletedFrom \|\| deletedFrom > dateKey/.test(js)
+    && js.includes("const tasks = getReportArchiveTasks(log, { employee, dateKey });")
+    && js.includes("reportCarryoverSourceDate")
+    && js.includes("carryoverDetail"),
+  "opening today's report before typing must use the same arrived-date and completion rules as the visible task ledger"
+);
+
+check(
   "report exports use native photo sharing and multipage A4 PDF",
   ids.includes("fitnessReportPdfButton")
     && js.includes("function splitReportCanvasIntoA4Pages")
@@ -531,10 +542,25 @@ check(
   "coworker worklogs stay inside the active business group",
   js.includes("function getCoworkerEmployeesForWorklog")
     && js.includes("getStaffSiteGroupForEmployee(employee)?.id === groupId")
+    && js.includes("function createRemoteCoworkerEmployee")
+    && js.includes("authState.coworkerEmployees")
+    && schema.includes("when concat_ws(' ', p.org, p.workplace, p.primary_work)")
+    && schema.includes("else 'bangju'")
     && js.includes("data-coworker-worklog-open")
     && html.includes("전체 업무일지로 돌아가기")
     && /function updateWorklogOverviewExitButton[\s\S]{0,420}canAccessWorklogOverview\(\)/.test(js),
   "Bangju, Beyond, and Fitness coworker navigation must not leak employees across business groups"
+);
+
+check(
+  "historical worklogs remove AI coaching without changing current worklogs",
+  js.includes("function isHistoricalWorklogDate")
+    && js.includes("button.hidden = isGeneralWorklog && isHistoricalWorklogDate();")
+    && (js.match(/const aiEnabled = !isHistoricalWorklogDate\(dateKey\);/g) || []).length >= 2
+    && js.includes('model.aiEnabled ? `<div class="worklog-report-ai-coaching">')
+    && js.includes('${model.aiEnabled ? `<div>')
+    && js.includes("if (!model?.aiEnabled || !model?.aiKey || !model?.aiContext) return null;"),
+  "past dates must not show section coaching, render report coaching, or call the AI endpoint"
 );
 
 check(
@@ -614,6 +640,19 @@ check(
     && js.includes("normalizeEmployeeLogRows(log, dateKey)")
     && js.includes("if (isFitnessEmployeeRecord(employee) && !log.scheduleUnitExplicit)"),
   "aliased and newly added fitness logs must not inherit another employee's hours or 30-minute default"
+);
+
+check(
+  "worklog schedule boundaries and missing priority warnings are enforced",
+  js.includes("function getWorklogScheduleBoundarySlots")
+    && js.includes("const start = Math.floor(rawStart / 60) * 60")
+    && js.includes("const end = Math.ceil(rawEnd / 60) * 60")
+    && js.includes("function isWorklogTaskPriorityMissing")
+    && js.includes("function updateTaskPriorityWarningState")
+    && js.includes("A·B·C 중 하나를 선택해주세요")
+    && css.includes(".worklog-task-row.is-priority-missing")
+    && css.includes(".worklog-priority-warning"),
+  "08:30-17:30 must render 08:00-18:00 rows, and text-only priorities must remain visibly incomplete"
 );
 
 check(
@@ -885,7 +924,7 @@ check(
 
 check(
   "inactive worklog views are force-hidden at the end of CSS",
-  /\.worklog-shell > \.worklog-view:not\(\.is-active\)[\s\S]{0,80}display:\s*none !important;[\s\S]*\.worklog-shell > \.report-backup-view\.is-active[\s\S]{0,80}display:\s*grid !important;/.test(css.slice(-1600)),
+  /\.worklog-shell > \.worklog-view:not\(\.is-active\)[\s\S]{0,80}display:\s*none !important;[\s\S]*\.worklog-shell > \.report-backup-view\.is-active[\s\S]{0,80}display:\s*grid !important;/.test(css.slice(-5000)),
   "page-specific display rules must not make report/backup or other views appear under the active worklog"
 );
 
@@ -894,6 +933,24 @@ check(
   css.includes('body[data-active-view="bangju-log"]:not(.physical-phone-device) #view-today.is-active')
     && css.includes('body[data-active-view="beyond-log"]:not(.physical-phone-device) #view-today > .planner-section textarea'),
   "desktop employee worklogs should avoid oversized content and long report/memo tails"
+);
+
+check(
+  "worklog separates own and coworker identity with responsive layout controls",
+  html.includes('class="worklog-page-tabs"')
+    && html.includes('data-worklog-layout-choice="portrait"')
+    && html.includes('data-worklog-layout-choice="expanded"')
+    && html.includes('id="coworkerWorklogCount"')
+    && js.includes('const worklogLayoutStorageKey = "beyond-worklog-workspace-layout"')
+    && js.includes('document.body.dataset.worklogLayout = worklogLayout')
+    && js.includes('generalBadge.dataset.ownership = isOwn ? "mine" : "coworker"')
+    && js.includes('동료 업무일지 · 열람 전용')
+    && css.includes('body[data-worklog-layout="expanded"]:not(.physical-phone-device) #view-today .worklog-main[data-today-page="daily"]')
+    && css.includes('body[data-worklog-layout="portrait"] #view-today .worklog-main[data-today-page="daily"]')
+    && css.includes('@media (max-width: 759px)')
+    && css.includes('#view-today .worklog-person-chip[data-ownership="mine"]')
+    && css.includes('#view-today .worklog-person-chip[data-ownership="coworker"]'),
+  "phones must stay portrait while tablets/desktops can persist a clear portrait or expanded coworker workspace"
 );
 
 check(
