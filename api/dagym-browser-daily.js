@@ -77,7 +77,13 @@ async function enrichPtMetrics(dateKey, metrics) {
 module.exports = async function handler(request, response) {
   response.setHeader("Cache-Control", "no-store");
   if (request.method !== "POST") return response.status(405).json({ ok: false, error: "POST only" });
-  if (!SERVICE_ROLE_KEY || !SYNC_SECRET) return response.status(501).json({ ok: false, error: "다짐 자동수집 환경설정이 필요합니다." });
+  if (!SERVICE_ROLE_KEY || !SYNC_SECRET) {
+    const missing = [
+      !SERVICE_ROLE_KEY && "SUPABASE_SERVICE_ROLE_KEY",
+      !SYNC_SECRET && "DAGYM_BROWSER_SYNC_SECRET",
+    ].filter(Boolean);
+    return response.status(501).json({ ok: false, error: "다짐 자동수집 환경설정이 필요합니다.", missing });
+  }
   const supplied = String(request.headers["x-dagym-sync-secret"] || request.headers.authorization || "").replace(/^Bearer\s+/i, "");
   if (!secureEqual(supplied, SYNC_SECRET)) return response.status(401).json({ ok: false, error: "동기화 인증에 실패했습니다." });
 

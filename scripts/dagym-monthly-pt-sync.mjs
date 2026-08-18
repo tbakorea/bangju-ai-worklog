@@ -9,8 +9,11 @@ const cdpUrl = process.env.DAGYM_CDP_URL || "http://127.0.0.1:9222";
 const baseUrl = process.env.DAGYM_BASE_URL || "https://www.dagym-manager.com";
 const uploadUrl = process.env.DAGYM_MONTHLY_SCHEDULE_URL || "https://bangju-ai-worklog.vercel.app/api/dagym-monthly-schedule";
 const syncSecret = process.env.DAGYM_BROWSER_SYNC_SECRET || "";
-const pageSize = 50;
+// 다짐 화면은 요청한 limit보다 작은 10건 단위로 응답하는 경우가 있다.
+// offset을 실제 화면 단위와 맞춰 누락 없이 전 페이지를 순회한다.
+const pageSize = Math.max(1, Number(process.env.DAGYM_SCHEDULE_PAGE_SIZE || 10) || 10);
 const maxPages = 80;
+const dryRun = /^(1|true|yes)$/i.test(String(process.env.DAGYM_SYNC_DRY_RUN || ""));
 
 function getKstMonthKey(date = new Date()) {
   return new Intl.DateTimeFormat("en-CA", {
@@ -207,17 +210,40 @@ async function main() {
   const capture = await captureMonth(page);
   const safeDir = path.join(root, "work", "dagym-monthly-schedule");
   fs.mkdirSync(safeDir, { recursive: true });
-  const uploaded = await uploadMonth(capture);
   // 회원 이름은 암호화된 서버 컬럼에만 보관하고 로컬 감사 파일에서는 제거합니다.
   const safeEvents = capture.events.map(({ memberName, ...event }) => event);
-  fs.writeFileSync(path.join(safeDir, `${monthKey}.json`), `${JSON.stringify({
+  const trainerCounts = safeEvents.reduce((counts, event) => {
+    const name = normalizeText(event.trainerName) || "미확인";
+    counts[name] = (counts[name] || 0) + 1;
+    return counts;
+  }, {});
+  const audit = {
     monthKey,
     capturedAt: new Date().toISOString(),
     pagesRead: capture.pagesRead,
     complete: capture.complete,
+    eventCount: safeEvents.length,
+    trainerCounts,
+    firstScheduledAt: safeEvents[0]?.scheduledAt || "",
+    lastScheduledAt: safeEvents.at(-1)?.scheduledAt || "",
     events: safeEvents,
+  };
+  // 서버 장애가 있어도 수집 성공 여부와 강사별 건수를 확인할 수 있어야 한다.
+  fs.writeFileSync(path.join(safeDir, `${monthKey}.json`), `${JSON.stringify({
+    ...audit,
   }, null, 2)}\n`);
-  console.log(JSON.stringify({ ok: true, monthKey, pagesRead: capture.pagesRead, events: capture.events.length, complete: capture.complete, uploaded }, null, 2));
+  const uploaded = dryRun ? { skipped: true, reason: "dry-run" } : await uploadMonth(capture);
+  console.log(JSON.stringify({
+    ok: true,
+    monthKey,
+    pagesRead: capture.pagesRead,
+    events: capture.events.length,
+    trainerCounts,
+    firstScheduledAt: audit.firstScheduledAt,
+    lastScheduledAt: audit.lastScheduledAt,
+    complete: capture.complete,
+    uploaded,
+  }, null, 2));
 }
 
 main().catch((error) => {

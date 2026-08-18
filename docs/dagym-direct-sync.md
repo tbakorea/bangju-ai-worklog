@@ -124,6 +124,12 @@ supabase/migrations/20260811170000_dagym_database_cron.sql
 
 로컬 `.env.local`과 Vercel에는 동일한 `DAGYM_BROWSER_SYNC_SECRET`가 필요합니다. Vercel에는 기존 `SUPABASE_SERVICE_ROLE_KEY`, `SUPABASE_ANON_KEY`, `MEMBER_CONTACT_ENCRYPTION_KEY`도 설정되어 있어야 합니다. 회원 이름은 서버에서 AES-256-GCM으로 암호화하며 로컬 감사 JSON에는 이름을 남기지 않습니다.
 
+월간 일정 수집기는 다짐 화면의 실제 10건 단위 페이지를 끝까지 순회합니다. 서버 업로드가 실패해도 `work/dagym-monthly-schedule/YYYY-MM.json`에 회원 이름을 제외한 강사별 건수·수집 범위·일정 감사기록을 먼저 남깁니다. 아래 명령은 서버에 전송하지 않고 로그인과 전체 페이지 수집만 점검합니다.
+
+```bash
+DAGYM_SYNC_SKIP_JITTER=1 DAGYM_SYNC_MONTHLY_ONLY=1 DAGYM_SYNC_DRY_RUN=1 ./scripts/dagym-monthly-pt-sync.sh
+```
+
 일일 수집은 출석, 매출·계약, 회원 현황을 각각 확인하고 월간 PT 일정 DB와 교차 집계합니다. 결과는 `dagym_daily_snapshots`에 날짜별 한 건만 저장하며 `dagym_sync_runs`에는 성공·부분성공·실패와 화면별 수집 건수를 남깁니다. 저장 직후 `run_dagym_nightly_analysis()`를 다시 실행하므로 새벽 1시 최초 분석이 자료 없음이었더라도 실제 수집이 끝난 뒤 오늘 AI 코칭이 갱신됩니다.
 
 다짐 화면 메뉴나 주소가 달라진 경우 로컬 `.env.local`에 아래 주소를 설정하면 코드 수정 없이 교체할 수 있습니다. `{date}`와 `{gymId}`는 실행 시 자동 치환됩니다.

@@ -3,7 +3,8 @@ const crypto = require("crypto");
 const SUPABASE_URL = String(process.env.SUPABASE_URL || "https://zllpfaijahyfppivkxzu.supabase.co").replace(/\/$/, "");
 const SERVICE_ROLE_KEY = String(process.env.SUPABASE_SERVICE_ROLE_KEY || "");
 const SYNC_SECRET = String(process.env.DAGYM_BROWSER_SYNC_SECRET || "");
-const CONTACT_SECRET = String(process.env.MEMBER_CONTACT_ENCRYPTION_KEY || "");
+// 초기 설정 화면에서 첫 글자 M이 빠진 이름으로 저장된 사례도 안전하게 복구한다.
+const CONTACT_SECRET = String(process.env.MEMBER_CONTACT_ENCRYPTION_KEY || process.env.EMBER_CONTACT_ENCRYPTION_KEY || "");
 const MAX_EVENTS = 2500;
 const CENTER_KEY = "beyond-fitness";
 
@@ -195,7 +196,12 @@ module.exports = async function handler(request, response) {
   }
   if (request.method !== "POST") return response.status(405).json({ ok: false, error: "POST only" });
   if (!SERVICE_ROLE_KEY || !SYNC_SECRET || !CONTACT_SECRET) {
-    return response.status(501).json({ ok: false, error: "다짐 월간 일정 동기화 환경설정이 필요합니다." });
+    const missing = [
+      !SERVICE_ROLE_KEY && "SUPABASE_SERVICE_ROLE_KEY",
+      !SYNC_SECRET && "DAGYM_BROWSER_SYNC_SECRET",
+      !CONTACT_SECRET && "MEMBER_CONTACT_ENCRYPTION_KEY",
+    ].filter(Boolean);
+    return response.status(501).json({ ok: false, error: "다짐 월간 일정 동기화 환경설정이 필요합니다.", missing });
   }
   const suppliedSecret = String(request.headers["x-dagym-sync-secret"] || request.headers.authorization || "").replace(/^Bearer\s+/i, "");
   if (!secureEqual(suppliedSecret, SYNC_SECRET)) return response.status(401).json({ ok: false, error: "동기화 인증에 실패했습니다." });

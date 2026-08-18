@@ -18,6 +18,10 @@
     <key>Minute</key>
     <integer>5</integer>
   </dict>
+  <key>RunAtLoad</key>
+  <true/>
+  <key>ProcessType</key>
+  <string>Background</string>
   <key>StandardOutPath</key>
   <string>/Users/bangju/Documents/Bangju AI Worklog/work/dagym-sync.log</string>
   <key>StandardErrorPath</key>

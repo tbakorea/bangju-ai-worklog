@@ -55,6 +55,10 @@ if ! curl -fsS "$CDP_URL/json/version" >/dev/null 2>&1; then
 fi
 
 STATUS=0
-DAGYM_CDP_URL="$CDP_URL" "$NODE_BIN" "$ROOT_DIR/scripts/dagym-daily-sync.mjs" "$@" || STATUS=1
-DAGYM_CDP_URL="$CDP_URL" "$NODE_BIN" "$ROOT_DIR/scripts/dagym-monthly-pt-sync.mjs" "$@" || STATUS=1
+if [ "${DAGYM_SYNC_MONTHLY_ONLY:-0}" != "1" ]; then
+  DAGYM_CDP_URL="$CDP_URL" "$NODE_BIN" "$ROOT_DIR/scripts/dagym-daily-sync.mjs" "$@" || STATUS=1
+fi
+if [ "${DAGYM_SYNC_DAILY_ONLY:-0}" != "1" ]; then
+  DAGYM_CDP_URL="$CDP_URL" "$NODE_BIN" "$ROOT_DIR/scripts/dagym-monthly-pt-sync.mjs" "$@" || STATUS=1
+fi
 exit "$STATUS"
