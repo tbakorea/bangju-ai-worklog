@@ -57,6 +57,16 @@ const dagymNightlyApiSyntax = dagymNightlyApi ? spawnSync(process.execPath, ["--
 check("DaGym nightly analysis api exists and parses", Boolean(dagymNightlyApi) && dagymNightlyApiSyntax.status === 0, dagymNightlyApiSyntax?.stderr?.trim() || "api/dagym-nightly-analysis.js is missing");
 const dagymMonthlyScheduleApiSyntax = dagymMonthlyScheduleApi ? spawnSync(process.execPath, ["--check", join(root, "api/dagym-monthly-schedule.js")], { encoding: "utf8" }) : null;
 check("DaGym monthly schedule api exists and parses", Boolean(dagymMonthlyScheduleApi) && dagymMonthlyScheduleApiSyntax.status === 0, dagymMonthlyScheduleApiSyntax?.stderr?.trim() || "api/dagym-monthly-schedule.js is missing");
+const dagymMonthlyScheduleCollectorSyntax = dagymMonthlyScheduleCollector ? spawnSync(process.execPath, ["--check", join(root, "scripts/dagym-monthly-pt-sync.mjs")], { encoding: "utf8" }) : null;
+check("DaGym monthly schedule collector exists and parses", Boolean(dagymMonthlyScheduleCollector) && dagymMonthlyScheduleCollectorSyntax.status === 0, dagymMonthlyScheduleCollectorSyntax?.stderr?.trim() || "scripts/dagym-monthly-pt-sync.mjs is missing");
+const dagymMonthlyScheduleCollectorTests = existsSync(join(root, "scripts/dagym-monthly-pt-sync.test.mjs"))
+  ? spawnSync(process.execPath, ["--test", join(root, "scripts/dagym-monthly-pt-sync.test.mjs")], { encoding: "utf8" })
+  : null;
+check("DaGym monthly schedule collector tests pass", Boolean(dagymMonthlyScheduleCollectorTests) && dagymMonthlyScheduleCollectorTests.status === 0, dagymMonthlyScheduleCollectorTests?.stderr?.trim() || "scripts/dagym-monthly-pt-sync.test.mjs is missing");
+const dagymMonthlyScheduleApiTests = existsSync(join(root, "scripts/dagym-monthly-schedule-api.test.cjs"))
+  ? spawnSync(process.execPath, ["--test", join(root, "scripts/dagym-monthly-schedule-api.test.cjs")], { encoding: "utf8" })
+  : null;
+check("DaGym monthly schedule api rejects masked keys safely", Boolean(dagymMonthlyScheduleApiTests) && dagymMonthlyScheduleApiTests.status === 0, dagymMonthlyScheduleApiTests?.stderr?.trim() || "scripts/dagym-monthly-schedule-api.test.cjs is missing");
 const dagymDailyBrowserApiSyntax = dagymDailyBrowserApi ? spawnSync(process.execPath, ["--check", join(root, "api/dagym-browser-daily.js")], { encoding: "utf8" }) : null;
 check("DaGym daily browser api exists and parses", Boolean(dagymDailyBrowserApi) && dagymDailyBrowserApiSyntax.status === 0, dagymDailyBrowserApiSyntax?.stderr?.trim() || "api/dagym-browser-daily.js is missing");
 const dagymDailyBrowserCollectorSyntax = dagymDailyBrowserCollector ? spawnSync(process.execPath, ["--check", join(root, "scripts/dagym-daily-sync.mjs")], { encoding: "utf8" }) : null;
@@ -160,6 +170,15 @@ check(
   dagymMonthlyScheduleCollector.includes("const safeEvents = capture.events.map(({ memberName, ...event }) => event)")
     && !dagymMonthlyScheduleCollector.includes("...capture }, null, 2"),
   "local audit files must not retain member names"
+);
+check(
+  "DaGym monthly lessons come from the authenticated timetable GraphQL",
+  dagymMonthlyScheduleCollector.includes('new URL("/schedule/calendar", baseUrl)')
+    && dagymMonthlyScheduleCollector.includes('const graphqlOperationName = "GetCalendarScheduleItems"')
+    && dagymMonthlyScheduleCollector.includes("request.allHeaders()")
+    && dagymMonthlyScheduleCollector.includes("getKstMonthRangeIso(monthKey)")
+    && !dagymMonthlyScheduleCollector.includes('new URL("/schedule/list", baseUrl)'),
+  "monthly PT collection must use the actual timetable response and an exact KST month range, not the reservation list"
 );
 check(
   "fitness revenue coaching protects data quality and enforces operating targets",
