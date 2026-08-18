@@ -30,8 +30,18 @@ if [ -z "${DAGYM_BROWSER_SYNC_SECRET:-}" ]; then
   DAGYM_BROWSER_SYNC_SECRET="$(security find-generic-password -a "$USER" -s "com.bangju.dagym-sync" -w 2>/dev/null || true)"
   export DAGYM_BROWSER_SYNC_SECRET
 fi
-if [ "${DAGYM_SYNC_DRY_RUN:-0}" != "1" ] && [ -z "${DAGYM_BROWSER_SYNC_SECRET:-}" ]; then
-  echo "다짐 동기화키가 없습니다. macOS Keychain 서비스 com.bangju.dagym-sync를 설정해주세요." >&2
+if [ "${DAGYM_SYNC_DRY_RUN:-0}" != "1" ] && [ -z "${DAGYM_SYNC_ACCESS_TOKEN:-}" ]; then
+  DAGYM_SYNC_EMAIL="${DAGYM_SYNC_EMAIL:-j3010@ymail.com}"
+  DAGYM_SYNC_PASSWORD="${DAGYM_SYNC_PASSWORD:-$(security find-generic-password -a "$DAGYM_SYNC_EMAIL" -s "com.bangju.worklog-sync" -w 2>/dev/null || true)}"
+  export DAGYM_SYNC_EMAIL DAGYM_SYNC_PASSWORD
+  if [ -n "$DAGYM_SYNC_PASSWORD" ]; then
+    DAGYM_SYNC_ACCESS_TOKEN="$("$NODE_BIN" "$ROOT_DIR/scripts/dagym-supabase-login.mjs")"
+    export DAGYM_SYNC_ACCESS_TOKEN
+    unset DAGYM_SYNC_PASSWORD
+  fi
+fi
+if [ "${DAGYM_SYNC_DRY_RUN:-0}" != "1" ] && [ -z "${DAGYM_BROWSER_SYNC_SECRET:-}" ] && [ -z "${DAGYM_SYNC_ACCESS_TOKEN:-}" ]; then
+  echo "다짐 동기화 인증정보가 없습니다. Keychain 서비스 com.bangju.dagym-sync 또는 com.bangju.worklog-sync를 설정해주세요." >&2
   exit 1
 fi
 

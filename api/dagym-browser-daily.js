@@ -3,6 +3,7 @@ const crypto = require("crypto");
 const SUPABASE_URL = String(process.env.SUPABASE_URL || "https://zllpfaijahyfppivkxzu.supabase.co").replace(/\/$/, "");
 const SERVICE_ROLE_KEY = String(process.env.SUPABASE_SERVICE_ROLE_KEY || "");
 const SYNC_SECRET = String(process.env.DAGYM_BROWSER_SYNC_SECRET || "");
+const SUPABASE_ANON_KEY = String(process.env.SUPABASE_ANON_KEY || "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InpsbHBmYWlqYWh5ZnBwaXZreHp1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODMzMzQxNTUsImV4cCI6MjA5ODkxMDE1NX0.C4omaj-e_9PM-iF3-5GUUVX47Wo06UsNTOYMlMMVcZU");
 const CENTER_KEY = "beyond-fitness";
 const METRIC_KEYS = ["visits", "newMembers", "renewals", "expiring", "ptBookings", "noShows", "lockerExpiring", "sales"];
 
@@ -10,6 +11,35 @@ function secureEqual(left = "", right = "") {
   const a = Buffer.from(String(left));
   const b = Buffer.from(String(right));
   return a.length === b.length && a.length > 0 && crypto.timingSafeEqual(a, b);
+}
+
+async function verifySyncUser(request) {
+  const authorization = String(request.headers.authorization || "");
+  if (!authorization.startsWith("Bearer ")) return null;
+  const userResponse = await fetch(`${SUPABASE_URL}/auth/v1/user`, {
+    headers: { apikey: SUPABASE_ANON_KEY, Authorization: authorization },
+  });
+  if (!userResponse.ok) return null;
+  const user = await userResponse.json().catch(() => null);
+  if (!user?.id) return null;
+  const profileResponse = await fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${encodeURIComponent(user.id)}&select=role,workplace,access_preset,permissions,approval_status&limit=1`, {
+    headers: { apikey: SUPABASE_ANON_KEY, Authorization: authorization },
+  });
+  if (!profileResponse.ok) return null;
+  const [profile] = await profileResponse.json().catch(() => []);
+  if (!profile || profile.approval_status !== "approved") return null;
+  const permissions = profile.permissions && typeof profile.permissions === "object" ? profile.permissions : {};
+  const roleText = `${profile.role || ""} ${profile.workplace || ""}`;
+  const canSync = /대표|센터장|관리자|owner|manager|admin/i.test(roleText)
+    || ["owner", "executive_delegate", "operations_admin", "site_manager"].includes(String(profile.access_preset || ""))
+    || Boolean(permissions.worklogAll || permissions.controlTower || permissions.siteControl);
+  return canSync ? user : null;
+}
+
+async function authorizeSyncRequest(request) {
+  const suppliedSecret = String(request.headers["x-dagym-sync-secret"] || "").trim();
+  if (SYNC_SECRET && secureEqual(suppliedSecret, SYNC_SECRET)) return true;
+  return Boolean(await verifySyncUser(request));
 }
 
 function isDateKey(value = "") {
@@ -77,15 +107,13 @@ async function enrichPtMetrics(dateKey, metrics) {
 module.exports = async function handler(request, response) {
   response.setHeader("Cache-Control", "no-store");
   if (request.method !== "POST") return response.status(405).json({ ok: false, error: "POST only" });
-  if (!SERVICE_ROLE_KEY || !SYNC_SECRET) {
+  if (!SERVICE_ROLE_KEY) {
     const missing = [
       !SERVICE_ROLE_KEY && "SUPABASE_SERVICE_ROLE_KEY",
-      !SYNC_SECRET && "DAGYM_BROWSER_SYNC_SECRET",
     ].filter(Boolean);
     return response.status(501).json({ ok: false, error: "다짐 자동수집 환경설정이 필요합니다.", missing });
   }
-  const supplied = String(request.headers["x-dagym-sync-secret"] || request.headers.authorization || "").replace(/^Bearer\s+/i, "");
-  if (!secureEqual(supplied, SYNC_SECRET)) return response.status(401).json({ ok: false, error: "동기화 인증에 실패했습니다." });
+  if (!(await authorizeSyncRequest(request))) return response.status(401).json({ ok: false, error: "동기화 인증에 실패했습니다." });
 
   const dateKey = String(request.body?.dateKey || "").trim();
   if (!isDateKey(dateKey)) return response.status(400).json({ ok: false, error: "수집 날짜가 올바르지 않습니다." });

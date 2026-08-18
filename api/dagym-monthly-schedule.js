@@ -3,6 +3,7 @@ const crypto = require("crypto");
 const SUPABASE_URL = String(process.env.SUPABASE_URL || "https://zllpfaijahyfppivkxzu.supabase.co").replace(/\/$/, "");
 const SERVICE_ROLE_KEY = String(process.env.SUPABASE_SERVICE_ROLE_KEY || "");
 const SYNC_SECRET = String(process.env.DAGYM_BROWSER_SYNC_SECRET || "");
+const SUPABASE_ANON_KEY = String(process.env.SUPABASE_ANON_KEY || "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InpsbHBmYWlqYWh5ZnBwaXZreHp1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODMzMzQxNTUsImV4cCI6MjA5ODkxMDE1NX0.C4omaj-e_9PM-iF3-5GUUVX47Wo06UsNTOYMlMMVcZU");
 // 초기 설정 화면에서 첫 글자 M이 빠진 이름으로 저장된 사례도 안전하게 복구한다.
 const CONTACT_SECRET = String(process.env.MEMBER_CONTACT_ENCRYPTION_KEY || process.env.EMBER_CONTACT_ENCRYPTION_KEY || "");
 const MAX_EVENTS = 2500;
@@ -91,7 +92,7 @@ function normalizeEvent(event = {}, monthKey = "") {
 async function verifyUser(request) {
   const authorization = String(request.headers.authorization || "");
   if (!authorization.startsWith("Bearer ")) return null;
-  const result = await fetch(`${SUPABASE_URL}/auth/v1/user`, { headers: { apikey: process.env.SUPABASE_ANON_KEY || "", Authorization: authorization } });
+  const result = await fetch(`${SUPABASE_URL}/auth/v1/user`, { headers: { apikey: SUPABASE_ANON_KEY, Authorization: authorization } });
   if (!result.ok) return null;
   return result.json().catch(() => null);
 }
@@ -99,7 +100,7 @@ async function verifyUser(request) {
 async function loadProfileAccess(request, user) {
   const authorization = String(request.headers.authorization || "");
   const result = await fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${encodeURIComponent(user.id)}&select=id,name,nickname,role,workplace,access_preset,permissions,approval_status&limit=1`, {
-    headers: { apikey: process.env.SUPABASE_ANON_KEY || "", Authorization: authorization },
+    headers: { apikey: SUPABASE_ANON_KEY, Authorization: authorization },
   });
   if (!result.ok) return null;
   const [profile] = await result.json().catch(() => []);
@@ -110,6 +111,14 @@ async function loadProfileAccess(request, user) {
     || ["owner", "executive_delegate", "operations_admin", "site_manager"].includes(String(profile.access_preset || ""))
     || Boolean(permissions.worklogAll || permissions.controlTower || permissions.siteControl);
   return { profile, canViewAll };
+}
+
+async function authorizeSyncRequest(request) {
+  const suppliedSecret = String(request.headers["x-dagym-sync-secret"] || "").trim();
+  if (SYNC_SECRET && secureEqual(suppliedSecret, SYNC_SECRET)) return true;
+  const user = await verifyUser(request);
+  const access = user ? await loadProfileAccess(request, user) : null;
+  return Boolean(user && access?.canViewAll);
 }
 
 async function handleUserRequest(request, response) {
@@ -195,16 +204,14 @@ module.exports = async function handler(request, response) {
     catch (error) { return response.status(500).json({ ok: false, error: error.message || "수업일정 처리에 실패했습니다." }); }
   }
   if (request.method !== "POST") return response.status(405).json({ ok: false, error: "POST only" });
-  if (!SERVICE_ROLE_KEY || !SYNC_SECRET || !CONTACT_SECRET) {
+  if (!SERVICE_ROLE_KEY || !CONTACT_SECRET) {
     const missing = [
       !SERVICE_ROLE_KEY && "SUPABASE_SERVICE_ROLE_KEY",
-      !SYNC_SECRET && "DAGYM_BROWSER_SYNC_SECRET",
       !CONTACT_SECRET && "MEMBER_CONTACT_ENCRYPTION_KEY",
     ].filter(Boolean);
     return response.status(501).json({ ok: false, error: "다짐 월간 일정 동기화 환경설정이 필요합니다.", missing });
   }
-  const suppliedSecret = String(request.headers["x-dagym-sync-secret"] || request.headers.authorization || "").replace(/^Bearer\s+/i, "");
-  if (!secureEqual(suppliedSecret, SYNC_SECRET)) return response.status(401).json({ ok: false, error: "동기화 인증에 실패했습니다." });
+  if (!(await authorizeSyncRequest(request))) return response.status(401).json({ ok: false, error: "동기화 인증에 실패했습니다." });
 
   const monthKey = String(request.body?.monthKey || "").trim();
   const centerKey = String(request.body?.centerKey || CENTER_KEY).trim() || CENTER_KEY;

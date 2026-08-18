@@ -122,9 +122,11 @@ supabase/migrations/20260811170000_dagym_database_cron.sql
 ./scripts/dagym-install-monthly-pt-launchd.sh
 ```
 
-로컬 `.env.local`과 Vercel에는 동일한 `DAGYM_BROWSER_SYNC_SECRET`가 필요합니다. Vercel에는 기존 `SUPABASE_SERVICE_ROLE_KEY`, `SUPABASE_ANON_KEY`, `MEMBER_CONTACT_ENCRYPTION_KEY`도 설정되어 있어야 합니다. 회원 이름은 서버에서 AES-256-GCM으로 암호화하며 로컬 감사 JSON에는 이름을 남기지 않습니다.
+서버 업로드는 `DAGYM_BROWSER_SYNC_SECRET`가 있으면 기존 전용키를 사용하고, 없으면 승인된 대표·센터장 계정의 짧은 수명 Supabase 인증 토큰으로 검증합니다. Vercel에는 기존 `SUPABASE_SERVICE_ROLE_KEY`, `SUPABASE_ANON_KEY`, `MEMBER_CONTACT_ENCRYPTION_KEY`가 설정되어 있어야 합니다. 회원 이름은 서버에서 AES-256-GCM으로 암호화하며 로컬 감사 JSON에는 이름을 남기지 않습니다.
 
 운영 Mac에서는 평문 `.env.local` 대신 macOS Keychain의 `com.bangju.dagym-sync` 서비스 값을 우선 읽습니다. Vercel의 `DAGYM_BROWSER_SYNC_SECRET`와 이 Keychain 값은 반드시 동일해야 합니다.
+
+Vercel 전용키를 쓸 수 없는 환경에서는 Keychain 서비스 `com.bangju.worklog-sync`, 계정 `j3010@ymail.com`에 업무일지 로그인 암호를 보관합니다. 실행할 때만 인증 토큰을 발급하고 평문 암호와 토큰은 파일이나 로그에 저장하지 않습니다. 서버는 승인 상태와 대표·센터장 권한을 다시 확인한 요청만 허용합니다.
 
 월간 일정 수집기는 다짐 화면의 실제 10건 단위 페이지를 끝까지 순회합니다. 서버 업로드가 실패해도 `work/dagym-monthly-schedule/YYYY-MM.json`에 회원 이름을 제외한 강사별 건수·수집 범위·일정 감사기록을 먼저 남깁니다. 아래 명령은 서버에 전송하지 않고 로그인과 전체 페이지 수집만 점검합니다.
 

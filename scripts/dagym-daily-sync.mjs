@@ -7,6 +7,7 @@ const cdpUrl = process.env.DAGYM_CDP_URL || "http://127.0.0.1:9222";
 const baseUrl = process.env.DAGYM_BASE_URL || "https://www.dagym-manager.com";
 const uploadUrl = process.env.DAGYM_DAILY_SYNC_URL || "https://bangju-ai-worklog.vercel.app/api/dagym-browser-daily";
 const syncSecret = process.env.DAGYM_BROWSER_SYNC_SECRET || "";
+const accessToken = process.env.DAGYM_SYNC_ACCESS_TOKEN || "";
 const targetDate = process.env.DAGYM_DATE || process.argv.find((value) => /^\d{4}-\d{2}-\d{2}$/.test(value)) || previousKstDateKey();
 const startedAt = new Date().toISOString();
 
@@ -131,10 +132,14 @@ function collectMetrics(captures) {
 }
 
 async function upload(payload) {
-  if (!syncSecret) throw new Error("DAGYM_BROWSER_SYNC_SECRET가 로컬 환경에 필요합니다.");
+  if (!syncSecret && !accessToken) throw new Error("다짐 동기화 인증정보가 로컬 환경에 필요합니다.");
   const result = await fetch(uploadUrl, {
     method: "POST",
-    headers: { "Content-Type": "application/json", "X-Dagym-Sync-Secret": syncSecret },
+    headers: {
+      "Content-Type": "application/json",
+      ...(syncSecret ? { "X-Dagym-Sync-Secret": syncSecret } : {}),
+      ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
+    },
     body: JSON.stringify(payload),
   });
   const text = await result.text();

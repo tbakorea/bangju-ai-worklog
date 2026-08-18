@@ -9,6 +9,7 @@ const cdpUrl = process.env.DAGYM_CDP_URL || "http://127.0.0.1:9222";
 const baseUrl = process.env.DAGYM_BASE_URL || "https://www.dagym-manager.com";
 const uploadUrl = process.env.DAGYM_MONTHLY_SCHEDULE_URL || "https://bangju-ai-worklog.vercel.app/api/dagym-monthly-schedule";
 const syncSecret = process.env.DAGYM_BROWSER_SYNC_SECRET || "";
+const accessToken = process.env.DAGYM_SYNC_ACCESS_TOKEN || "";
 // 다짐 화면은 요청한 limit보다 작은 10건 단위로 응답하는 경우가 있다.
 // offset을 실제 화면 단위와 맞춰 누락 없이 전 페이지를 순회한다.
 const pageSize = Math.max(1, Number(process.env.DAGYM_SCHEDULE_PAGE_SIZE || 10) || 10);
@@ -181,12 +182,13 @@ async function captureMonth(page) {
 }
 
 async function uploadMonth(capture) {
-  if (!syncSecret) throw new Error("DAGYM_BROWSER_SYNC_SECRET가 로컬 환경에 필요합니다.");
+  if (!syncSecret && !accessToken) throw new Error("다짐 동기화 인증정보가 로컬 환경에 필요합니다.");
   const response = await fetch(uploadUrl, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      "X-Dagym-Sync-Secret": syncSecret,
+      ...(syncSecret ? { "X-Dagym-Sync-Secret": syncSecret } : {}),
+      ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
     },
     body: JSON.stringify({
       centerKey: "beyond-fitness",
