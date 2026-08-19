@@ -204,9 +204,23 @@ async function supabaseRequest(path, options = {}) {
 }
 
 async function loadFitnessProfiles() {
-  return supabaseRequest("/rest/v1/profiles?approval_status=eq.approved&select=id,name,nickname,email,role,workplace", {
-    headers: { Accept: "application/json" },
-  });
+  const selectCandidates = [
+    "id,name,nickname,email,role,workplace",
+    "id,name,email,role,workplace",
+    "id,name,role,workplace",
+  ];
+  let lastError = null;
+  for (const fields of selectCandidates) {
+    try {
+      return await supabaseRequest(`/rest/v1/profiles?approval_status=eq.approved&select=${fields}`, {
+        headers: { Accept: "application/json" },
+      });
+    } catch (error) {
+      lastError = error;
+      if (!/column profiles\.[a-z_]+ does not exist/i.test(String(error?.message || ""))) throw error;
+    }
+  }
+  throw lastError || new Error("승인된 직원 정보를 불러오지 못했습니다.");
 }
 
 function resolveTrainerProfileId(event, profiles = []) {
