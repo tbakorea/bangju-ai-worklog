@@ -857,6 +857,12 @@ const authState = {
   dagymPtScheduleMonthCache: new Map(),
   dagymSyncHealthCache: new Map(),
   dagymSyncHealthLoading: new Set(),
+  coachingFollowupCache: new Map(),
+  coachingFollowupLoading: new Set(),
+  coachingFollowupOverviewRows: [],
+  coachingFollowupOverviewDateKey: "",
+  coachingFollowupOverviewLoadedAt: 0,
+  coachingFollowupOverviewLoading: false,
   approvalRepairTried: false,
   approvalRepairUnavailable: false,
   passwordResetRows: [],
@@ -1130,6 +1136,8 @@ function createEmployeeLog(employee = employees[0], profile = defaultProfile, da
     record: "",
     fitnessOps: createFitnessOps(),
     fitnessOpsManual: createFitnessOpsManual(),
+    fitnessGrowthMissionDone: false,
+    fitnessGrowthReflection: "",
   };
 }
 
@@ -1313,6 +1321,8 @@ function normalizeEmployeeLogRows(log, dateKey = getActiveDateKey()) {
   log.manualScheduleSlots = Array.isArray(log.manualScheduleSlots)
     ? Array.from(new Set(log.manualScheduleSlots.map(normalizeScheduleTimeInput).filter(Boolean))).sort((a, b) => timeToMinutes(a) - timeToMinutes(b))
     : [];
+  log.fitnessGrowthMissionDone = Boolean(log.fitnessGrowthMissionDone);
+  log.fitnessGrowthReflection = String(log.fitnessGrowthReflection || "");
   log.tasks.forEach((task, index) => {
     task.id ||= `task-${Date.now()}-${index}-${Math.random().toString(36).slice(2, 7)}`;
     const isBlankDefaultTask = !String(task.text || "").trim()
@@ -4703,6 +4713,89 @@ function buildRepresentativeSignalReport(groups = getWorklogOverviewGroups(), da
   return { reports, counts, employeeLevels };
 }
 
+function resolveCoachingFollowupEmployee(row = {}) {
+  const rowId = String(row.employee_id || "").trim();
+  const userId = String(row.user_id || "").trim();
+  const name = String(row.employee_name || "").trim();
+  const organization = String(row.organization || "").trim();
+  return getStaffDirectoryEmployees().find((employee) => {
+    const aliases = new Set(getEmployeeWorklogAliases(employee).map(String));
+    return (rowId && aliases.has(rowId))
+      || (userId && aliases.has(userId))
+      || (name && employee.name === name && (!organization || !employee.org || employee.org === organization));
+  }) || null;
+}
+
+async function loadRepresentativeCoachingFollowups(dateKey = getActiveDateKey(), { force = false } = {}) {
+  if (!supabaseClient || !authState.user || !canAccessAllWorklogs() || authState.coachingFollowupOverviewLoading) return;
+  const isFresh = authState.coachingFollowupOverviewDateKey === dateKey
+    && Date.now() - Number(authState.coachingFollowupOverviewLoadedAt || 0) < 60 * 1000;
+  if (!force && isFresh) return;
+  const start = parseDateKey(dateKey);
+  start.setDate(start.getDate() - 30);
+  authState.coachingFollowupOverviewLoading = true;
+  const { data, error } = await supabaseClient
+    .from("worklog_coaching_followups")
+    .select("*")
+    .gte("log_date", formatDateKey(start))
+    .lte("log_date", dateKey)
+    .order("log_date", { ascending: false })
+    .order("updated_at", { ascending: false })
+    .limit(160);
+  authState.coachingFollowupOverviewLoading = false;
+  authState.coachingFollowupOverviewDateKey = dateKey;
+  authState.coachingFollowupOverviewLoadedAt = Date.now();
+  if (error) {
+    authState.coachingFollowupOverviewRows = [];
+    return;
+  }
+  authState.coachingFollowupOverviewRows = data || [];
+  if (activeView === "worklog-overview" && dateKey === getActiveDateKey()) renderWorklogOverview();
+}
+
+function renderRepresentativeCoachingFollowupBoard(dateKey = getActiveDateKey()) {
+  const rows = authState.coachingFollowupOverviewDateKey === dateKey ? authState.coachingFollowupOverviewRows : [];
+  const priority = (row) => {
+    const status = getCoachingFollowupDisplayStatus(row).key;
+    return ({ overdue: 0, support: 1, recurring: 2, pending: 3, in_progress: 4, acknowledged: 5, completed: 6 }[status] ?? 9);
+  };
+  const visibleRows = [...rows].sort((left, right) => priority(left) - priority(right)
+    || String(right.log_date || "").localeCompare(String(left.log_date || ""))).slice(0, 8);
+  const pending = rows.filter((row) => row.response_code === "pending").length;
+  const active = rows.filter((row) => ["acknowledged", "in_progress", "support_needed", "deferred"].includes(row.status) && row.response_code !== "pending").length;
+  const attention = rows.filter((row) => ["overdue", "support", "recurring"].includes(getCoachingFollowupDisplayStatus(row).key)).length;
+  const improved = rows.filter((row) => row.followup_result === "improved").length;
+  return `
+    <section class="representative-coaching-loop" aria-label="AI 코칭 후속반응 현황">
+      <header>
+        <div><span>AI Action Loop</span><strong>코칭 반응·개선 추적</strong><p>최근 30일의 코칭 확인, 실행, 지원요청과 대표 후속점검을 연결합니다.</p></div>
+        <em>${escapeHtml(formatShortDate(dateKey))} 기준</em>
+      </header>
+      <div class="representative-coaching-summary">
+        <article><span>응답 대기</span><strong>${pending}</strong></article>
+        <article><span>실행 중</span><strong>${active}</strong></article>
+        <article class="${attention ? "is-alert" : ""}"><span>확인 필요</span><strong>${attention}</strong></article>
+        <article><span>개선 확인</span><strong>${improved}</strong></article>
+      </div>
+      <div class="representative-coaching-list">
+        ${visibleRows.length ? visibleRows.map((row) => {
+          const employee = resolveCoachingFollowupEmployee(row);
+          const display = getCoachingFollowupDisplayStatus(row);
+          const view = employee ? (getStaffSiteGroupForEmployee(employee)?.view || "bangju-log") : "";
+          const employeeId = employee ? (getEmployeeWorklogId(employee) || employee.id) : "";
+          return `<article class="is-${escapeAttr(display.key)}">
+            <div><span>${escapeHtml(formatShortDate(row.log_date))} · ${escapeHtml(row.report_scope === "fitness" ? "피트니스" : "업무일지")}</span><strong>${escapeHtml(row.employee_name || "직원")}</strong></div>
+            <p>${escapeHtml(row.action_text || row.coaching_snapshot?.rows?.find((item) => /다음|실행/.test(item.title))?.text || "직원 응답 대기")}</p>
+            <em>${escapeHtml(display.label)}</em>
+            ${employeeId ? `<button type="button" data-overview-employee="${escapeAttr(employeeId)}" data-overview-view="${escapeAttr(view)}" data-overview-date="${escapeAttr(row.log_date)}">확인</button>` : ""}
+          </article>`;
+        }).join("") : `<div class="representative-coaching-empty"><strong>아직 연결된 코칭 반응이 없습니다.</strong><span>직원이 오늘 보고서를 열면 코칭이 전달되고 반응 추적이 시작됩니다.</span></div>`}
+      </div>
+      <footer>AI 코칭은 자동 인사평가가 아닙니다. 실제 업무기록과 직원 설명을 확인한 뒤 개선 여부를 저장합니다.</footer>
+    </section>
+  `;
+}
+
 function renderRepresentativeSignalReportBoard(groups, dateKey) {
   const report = buildRepresentativeSignalReport(groups, dateKey);
   const visibleReports = report.reports.slice(0, 8);
@@ -5111,6 +5204,7 @@ function renderOverviewAllScopeBoard(groups, dateKey, dateLabel) {
       <article><span>피트니스</span><strong>${paidPt}건</strong><em>유료PT</em></article>
     </section>
     ${renderRepresentativeSignalReportBoard(groups, dateKey)}
+    ${renderRepresentativeCoachingFollowupBoard(dateKey)}
     <section class="overview-improvement-strip" aria-label="오늘 개선 10">
       <strong>오늘 개선 10</strong>
       <div>${improvements.map((item, index) => `<span>${String(index + 1).padStart(2, "0")} ${escapeHtml(item)}</span>`).join("")}</div>
@@ -5161,7 +5255,7 @@ function setupWorklogOverviewInteractions(grid, dateKey) {
       const targetView = button.dataset.overviewView || "bangju-log";
       const employee = findEmployeeRecordById(requestedEmployeeId);
       const employeeId = getEmployeeWorklogId(employee || { id: requestedEmployeeId }) || requestedEmployeeId;
-      state.selectedDateKey = dateKey;
+      state.selectedDateKey = button.dataset.overviewDate || dateKey;
       state.selectedEmployeeId = employeeId;
       if (targetView === "fitness-log") {
         const targetPageIndex = getFitnessLogPages().findIndex((page) => page.type === "employee" && page.id === employeeId);
@@ -5227,6 +5321,11 @@ function renderWorklogOverview() {
       });
   }
   const dateKey = getActiveDateKey();
+  const coachingOverviewIsStale = authState.coachingFollowupOverviewDateKey !== dateKey
+    || Date.now() - Number(authState.coachingFollowupOverviewLoadedAt || 0) >= 60 * 1000;
+  if (canAccessAllWorklogs() && coachingOverviewIsStale && !authState.coachingFollowupOverviewLoading) {
+    loadRepresentativeCoachingFollowups(dateKey).catch(() => {});
+  }
   const dateLabel = formatShortDate(dateKey);
   const activeScope = getActiveWorklogOverviewScope();
   const allGroups = getWorklogOverviewGroups();
@@ -9052,6 +9151,12 @@ function clearAuthRuntimeState() {
   authState.dagymPtScheduleMonthCache = new Map();
   authState.dagymSyncHealthCache = new Map();
   authState.dagymSyncHealthLoading = new Set();
+  authState.coachingFollowupCache = new Map();
+  authState.coachingFollowupLoading = new Set();
+  authState.coachingFollowupOverviewRows = [];
+  authState.coachingFollowupOverviewDateKey = "";
+  authState.coachingFollowupOverviewLoadedAt = 0;
+  authState.coachingFollowupOverviewLoading = false;
 }
 
 function isSameAuthProfile(user = authState.user, profile = state.profile || {}) {
@@ -9297,6 +9402,16 @@ async function signOutWithSupabase() {
 }
 
 async function applySession(session) {
+  const previousUserId = String(authState.user?.id || "");
+  const nextUserId = String(session?.user?.id || "");
+  if (previousUserId && previousUserId !== nextUserId) {
+    authState.coachingFollowupCache = new Map();
+    authState.coachingFollowupLoading = new Set();
+    authState.coachingFollowupOverviewRows = [];
+    authState.coachingFollowupOverviewDateKey = "";
+    authState.coachingFollowupOverviewLoadedAt = 0;
+    authState.coachingFollowupOverviewLoading = false;
+  }
   authState.session = session;
   authState.user = session?.user || null;
   if (!authState.user) {
@@ -10072,6 +10187,7 @@ async function refreshVisibleStaffWorklogsForActiveDate(options = {}) {
       // 유료/무료 PT가 최신 업무일지와 동일한 원천에서 계산됩니다.
       await loadDagymMonthlyPtSchedules(dateKey, { force: Boolean(options.forceDagym) });
     }
+    if (activeView === "worklog-overview") await loadRepresentativeCoachingFollowups(dateKey);
     normalizeState();
     localStorage.setItem(storageKey, JSON.stringify(state));
     if (activeView === "fitness-log") renderEntries();
@@ -10759,7 +10875,10 @@ function applyFitnessLogPermissionState() {
     .fitness-log-schedule-panel textarea,
     .fitness-log-schedule-panel button,
     .fitness-ops-section input,
-    .fitness-ops-section textarea
+    .fitness-ops-section textarea,
+    .fitness-growth-panel button,
+    .fitness-personal-month-summary textarea,
+    .fitness-personal-month-summary button
   `).forEach((control) => {
     if (control.matches("[data-mobile-focus-open], [data-mobile-focus-close]")) {
       control.disabled = false;
@@ -10841,6 +10960,10 @@ function renderFitnessCenterDaily() {
   const dateKey = getActiveDateKey();
   const centerMonth = getFitnessCenterMonth();
   const employeesForCenter = getFitnessCenterEmployees();
+  const centerMonthThroughDate = centerMonth === dateKey.slice(0, 7)
+    ? dateKey
+    : `${centerMonth}-${String(new Date(Number(centerMonth.slice(0, 4)), Number(centerMonth.slice(5, 7)), 0).getDate()).padStart(2, "0")}`;
+  const ptLedger = buildFitnessPaidPtLedger(employeesForCenter, centerMonth, centerMonthThroughDate);
   // 다짐 수업 고유키는 센터 전체에서 한 번만 계수합니다. 과거에 잘못 복제된
   // 동일 수업이 다른 직원 원장에도 남아 있어도 일/월 누계를 부풀리지 않습니다.
   const dailyDagymSourceIds = new Set();
@@ -10849,6 +10972,7 @@ function renderFitnessCenterDaily() {
     const aggregate = buildFitnessCenterEmployeeDayMonthRow(employee, dateKey, centerMonth, {
       dailyDagymSourceIds,
       monthlyDagymSourceIds,
+      ptLedger,
     });
     return { ...aggregate, index };
   });
@@ -10876,8 +11000,8 @@ function renderFitnessCenterDaily() {
     addOps(summary.monthly, row.monthly.ops, row.monthly.paidPtTotal, row.monthly.freePtTotal, numberValue(row.monthly.ops.ptOther), row.monthly.workMinutes, row.monthly.recordedDays);
     return summary;
   }, { daily: createCenterTotals(), monthly: createCenterTotals() });
-  const audit = summarizeFitnessReportRows(rows.filter((row) => row.log).map(({ employee, log }) => ({ employee, log })), dateKey, false).reconciliation;
-  const auditIssues = numberValue(audit.differences) + numberValue(audit.audit?.duplicateRows);
+  const audit = ptLedger.audit;
+  const auditIssues = numberValue(audit.reconciliationDifferences) + numberValue(audit.centerPersonalDifference);
   const formatCount = (daily, monthly) => `${numberValue(daily)}/${numberValue(monthly)}`;
 
   const summaryGrid = document.getElementById("fitnessCenterSummaryGrid");
@@ -10898,7 +11022,7 @@ function renderFitnessCenterDaily() {
       ["아웃바운드", formatCount(total.daily.outbound, total.monthly.outbound)],
       ["인바운드", formatCount(total.daily.inbound, total.monthly.inbound)],
       ["외부영업", formatCount(total.daily.outsideSales, total.monthly.outsideSales)],
-      ["집계점검", auditIssues ? `확인 ${auditIssues}건` : `일치 · 수업 ${audit.audit?.countedRows || 0}건`],
+      ["집계점검", auditIssues ? `보정 ${auditIssues}건` : `3중 일치 · ${audit.uniqueRows}건`],
     ].map(([label, value]) => `<article><span>${label}</span><strong>${value}</strong></article>`).join("");
   }
 
@@ -11049,6 +11173,209 @@ function resolveFitnessOpsForAggregation(log = {}, sharedDagymSourceIds = null) 
   return resolved;
 }
 
+const fitnessPaidPtLedgerStartDate = "2026-08-01";
+const fitnessPtLedgerFields = ["ptRegular", "ptFree", "ptOther"];
+
+function createFitnessPtLedgerCounts() {
+  return { ptRegular: 0, ptFree: 0, ptOther: 0 };
+}
+
+function getFitnessPtLedgerEmployeeKey(employee = {}) {
+  return getEmployeeWorklogId(employee) || normalizeEmailValue(employee.email || "") || String(employee.name || "").trim();
+}
+
+function normalizeFitnessPtLedgerToken(value = "") {
+  return String(value || "")
+    .normalize("NFKC")
+    .toLowerCase()
+    .replace(/\([^)]*\)/g, " ")
+    .replace(/(?:유료|무료|정규|체험|서비스|보강|대체)?\s*(?:pt|p\/t|피티|수업)/gi, " ")
+    .replace(/[^0-9a-z가-힣]+/g, "")
+    .slice(0, 40);
+}
+
+function getFitnessPtLedgerField(type = "", text = "", sessionType = "") {
+  const source = `${type} ${text} ${sessionType}`;
+  if (sessionType === "free" || type === "무료PT" || /무료|체험|서비스|무상/.test(source)) return "ptFree";
+  if (sessionType && sessionType !== "paid") return "ptOther";
+  if (/기타|보강|대체/.test(source)) return "ptOther";
+  return "ptRegular";
+}
+
+function isFitnessPtLedgerItem(item = {}) {
+  const text = String(item.text || "");
+  const type = String(item.type || "");
+  return item.source === "dagym-monthly-pt"
+    || ["유료PT", "무료PT"].includes(type)
+    || /(?:^|\s)(?:pt|p\/t|피티|수업)(?:\s|$)/i.test(`${type} ${text}`);
+}
+
+function createFitnessPtEvidenceRegistry() {
+  return { sourceIds: new Set(), composites: new Set() };
+}
+
+function registerFitnessPtEvidence(evidence, registry, audit) {
+  const sourceId = String(evidence.sourceId || "").trim();
+  const composite = String(evidence.composite || "").trim();
+  const duplicate = Boolean(
+    (sourceId && registry.sourceIds.has(sourceId))
+    || (composite && registry.composites.has(composite))
+  );
+  audit.evidenceRows += 1;
+  if (duplicate) {
+    audit.duplicateRows += 1;
+    return false;
+  }
+  if (sourceId) registry.sourceIds.add(sourceId);
+  if (composite) registry.composites.add(composite);
+  audit.uniqueRows += 1;
+  audit.sourceCounts[evidence.source] = (audit.sourceCounts[evidence.source] || 0) + 1;
+  return true;
+}
+
+function getFitnessPtLedgerDay(employee = {}, dateKey = getActiveDateKey(), log = null, registry = createFitnessPtEvidenceRegistry(), audit = null) {
+  const dayAudit = audit || {
+    evidenceRows: 0,
+    uniqueRows: 0,
+    duplicateRows: 0,
+    excludedRows: 0,
+    manualDays: 0,
+    fallbackDays: 0,
+    reconciliationDifferences: 0,
+    sourceCounts: { app: 0, paper: 0, dagym: 0, fallback: 0 },
+  };
+  const employeeKey = getFitnessPtLedgerEmployeeKey(employee);
+  const savedOps = { ...createFitnessOps(), ...(log?.fitnessOps || {}) };
+  const manual = { ...createFitnessOpsManual(), ...(log?.fitnessOpsManual || {}) };
+  const evidenceCounts = createFitnessPtLedgerCounts();
+  let hasDagymRows = false;
+  const addEvidence = ({ source = "app", sourceId = "", time = "", memberName = "", text = "", type = "", sessionType = "" } = {}) => {
+    const memberToken = normalizeFitnessPtLedgerToken(memberName || text) || "member-unknown";
+    const field = getFitnessPtLedgerField(type, text, sessionType);
+    const composite = `${employeeKey}|${dateKey}|${String(time || "").slice(0, 5)}|${memberToken}|${field}`;
+    if (!registerFitnessPtEvidence({ source, sourceId, composite }, registry, dayAudit)) return;
+    evidenceCounts[field] += 1;
+  };
+
+  (log?.schedule || []).forEach((entry) => {
+    normalizeScheduleEntryItems(entry).forEach((item) => {
+      if (!isFitnessPtLedgerItem(item)) return;
+      const isDagym = item.source === "dagym-monthly-pt";
+      if (isDagym) {
+        hasDagymRows = true;
+        if (!["completed", "no-show"].includes(item.dagymStatus)) {
+          dayAudit.excludedRows += 1;
+          return;
+        }
+      }
+      addEvidence({
+        source: isDagym ? "dagym" : item.source === "fitness-paper-scan" ? "paper" : "app",
+        sourceId: isDagym ? String(item.sourceId || "") : String(item.sourceId || ""),
+        time: entry.time,
+        memberName: item.memberName,
+        text: item.text,
+        type: item.type || inferScheduleType(item.text || ""),
+      });
+    });
+  });
+
+  const cached = authState.dagymPtScheduleMonthCache.get(String(dateKey).slice(0, 7));
+  if (Array.isArray(cached?.rows)) {
+    cached.rows.forEach((row) => {
+      if (row?.active === false || resolveDagymTrainerEmployeeId(row) !== employeeKey) return;
+      const parts = getDagymScheduleKstParts(row.scheduled_at);
+      if (parts.dateKey !== dateKey) return;
+      hasDagymRows = true;
+      if (!["completed", "no-show"].includes(row.status)) {
+        dayAudit.excludedRows += 1;
+        return;
+      }
+      addEvidence({
+        source: "dagym",
+        sourceId: String(row.id || row.source_key || ""),
+        time: parts.time,
+        memberName: row.member_name,
+        text: row.class_label || row.member_name || "PT 수업",
+        type: row.session_type === "free" ? "무료PT" : "유료PT",
+        sessionType: row.session_type,
+      });
+    });
+  }
+
+  const counts = createFitnessPtLedgerCounts();
+  let usedManual = false;
+  let usedFallback = false;
+  fitnessPtLedgerFields.forEach((field) => {
+    const saved = numberValue(savedOps[field]);
+    const evidence = numberValue(evidenceCounts[field]);
+    if (manual[field]) {
+      counts[field] = saved;
+      usedManual = true;
+      if (saved !== evidence) dayAudit.reconciliationDifferences += 1;
+      return;
+    }
+    if (evidence) {
+      counts[field] = evidence;
+      return;
+    }
+    // 과거 앱에 숫자만 남고 시간표 원문이 없는 경우에만 보완값으로 살립니다.
+    // 다짐 원장이 있는 날은 예약/취소 상태가 자동 숫자로 남는 것을 막습니다.
+    if (!hasDagymRows && saved) {
+      counts[field] = saved;
+      usedFallback = true;
+      dayAudit.sourceCounts.fallback += 1;
+    }
+  });
+  if (usedManual) dayAudit.manualDays += 1;
+  if (usedFallback) dayAudit.fallbackDays += 1;
+  return { ...counts, paid: counts.ptRegular + counts.ptOther, free: counts.ptFree, evidenceCounts, manual, usedManual, usedFallback };
+}
+
+function buildFitnessPaidPtLedger(employeeList = [], monthPrefix = getActiveDateKey().slice(0, 7), throughDateKey = getActiveDateKey(), options = {}) {
+  const employeesForLedger = employeeList.filter(Boolean);
+  const registry = createFitnessPtEvidenceRegistry();
+  const audit = {
+    startDate: fitnessPaidPtLedgerStartDate,
+    evidenceRows: 0,
+    uniqueRows: 0,
+    duplicateRows: 0,
+    excludedRows: 0,
+    manualDays: 0,
+    fallbackDays: 0,
+    reconciliationDifferences: 0,
+    sourceCounts: { app: 0, paper: 0, dagym: 0, fallback: 0 },
+  };
+  const byEmployee = {};
+  const dateKeys = getFitnessMonthRollupDateKeys(monthPrefix, throughDateKey)
+    .filter((dateKey) => monthPrefix !== "2026-08" || dateKey >= fitnessPaidPtLedgerStartDate);
+  employeesForLedger.forEach((employee) => {
+    const employeeKey = getFitnessPtLedgerEmployeeKey(employee);
+    const row = { employee, byDate: {}, ptRegular: 0, ptFree: 0, ptOther: 0, paid: 0, free: 0 };
+    dateKeys.forEach((dateKey) => {
+      const overrideKey = `${employeeKey}|${dateKey}`;
+      const log = options.logOverrides?.get?.(overrideKey) || getFitnessEmployeeLogForDate(employee, dateKey);
+      const day = getFitnessPtLedgerDay(employee, dateKey, log, registry, audit);
+      row.byDate[dateKey] = day;
+      fitnessPtLedgerFields.forEach((field) => { row[field] += numberValue(day[field]); });
+      row.paid += day.paid;
+      row.free += day.free;
+    });
+    byEmployee[employeeKey] = row;
+  });
+  const totals = Object.values(byEmployee).reduce((sum, row) => {
+    fitnessPtLedgerFields.forEach((field) => { sum[field] += numberValue(row[field]); });
+    sum.paid += numberValue(row.paid);
+    sum.free += numberValue(row.free);
+    return sum;
+  }, { ...createFitnessPtLedgerCounts(), paid: 0, free: 0 });
+  audit.centerPersonalDifference = totals.paid - Object.values(byEmployee).reduce((sum, row) => sum + row.paid, 0);
+  return { monthPrefix, throughDateKey, byEmployee, totals, audit };
+}
+
+function getFitnessPtLedgerEmployeeRow(ledger, employee = {}) {
+  return ledger?.byEmployee?.[getFitnessPtLedgerEmployeeKey(employee)] || null;
+}
+
 function buildFitnessCenterEmployeeMonthRow(employee, monthPrefix, throughDateKey = getActiveDateKey(), options = {}) {
   const ops = createFitnessOps();
   let paidPtTotal = 0;
@@ -11096,6 +11423,16 @@ function buildFitnessCenterEmployeeMonthRow(employee, monthPrefix, throughDateKe
   if (earlyCount) statusParts.push(`조퇴 ${earlyCount}`);
   if (absenceCount) statusParts.push(`결근 ${absenceCount}`);
   const attendanceStatus = statusParts.join(" · ") || (recordedDays ? "기록" : "미기록");
+  const ptLedger = options.ptLedger || buildFitnessPaidPtLedger([employee], monthPrefix, throughDateKey);
+  const ptLedgerRow = getFitnessPtLedgerEmployeeRow(ptLedger, employee);
+  if (ptLedgerRow) {
+    ops.ptRegular = String(ptLedgerRow.ptRegular || "");
+    ops.ptFree = String(ptLedgerRow.ptFree || "");
+    ops.ptOther = String(ptLedgerRow.ptOther || "");
+    paidPtTotal = ptLedgerRow.ptRegular;
+    freePtTotal = ptLedgerRow.ptFree;
+    ptTotal = ptLedgerRow.ptRegular + ptLedgerRow.ptFree + ptLedgerRow.ptOther;
+  }
   return {
     employee,
     ops,
@@ -11117,15 +11454,22 @@ function buildFitnessCenterEmployeeDayMonthRow(employee, dateKey = getActiveDate
   const dailyOps = log
     ? resolveFitnessOpsForAggregation(log, options.dailyDagymSourceIds || null)
     : createFitnessOps();
-  const dailyPaidPt = numberValue(dailyOps.ptRegular);
-  const dailyFreePt = numberValue(dailyOps.ptFree);
-  const dailyOtherPt = numberValue(dailyOps.ptOther);
-  const workMinutes = log ? getWorkMinutes(log.clockIn, log.clockOut) : 0;
   const monthlyThroughDate = monthPrefix === dateKey.slice(0, 7)
     ? dateKey
     : `${monthPrefix}-${String(new Date(Number(monthPrefix.slice(0, 4)), Number(monthPrefix.slice(5, 7)), 0).getDate()).padStart(2, "0")}`;
+  const ptLedger = options.ptLedger || buildFitnessPaidPtLedger([employee], monthPrefix, monthlyThroughDate);
+  const ptLedgerRow = getFitnessPtLedgerEmployeeRow(ptLedger, employee);
+  const dailyLedger = monthPrefix === dateKey.slice(0, 7) ? ptLedgerRow?.byDate?.[dateKey] : null;
+  const dailyPaidPt = dailyLedger ? numberValue(dailyLedger.ptRegular) : numberValue(dailyOps.ptRegular);
+  const dailyFreePt = dailyLedger ? numberValue(dailyLedger.ptFree) : numberValue(dailyOps.ptFree);
+  const dailyOtherPt = dailyLedger ? numberValue(dailyLedger.ptOther) : numberValue(dailyOps.ptOther);
+  dailyOps.ptRegular = String(dailyPaidPt || "");
+  dailyOps.ptFree = String(dailyFreePt || "");
+  dailyOps.ptOther = String(dailyOtherPt || "");
+  const workMinutes = log ? getWorkMinutes(log.clockIn, log.clockOut) : 0;
   const monthly = buildFitnessCenterEmployeeMonthRow(employee, monthPrefix, monthlyThroughDate, {
     sharedDagymSourceIds: options.monthlyDagymSourceIds || null,
+    ptLedger,
   });
   const breakCount = (log?.attendanceBreaks || []).filter((item) => item?.start || item?.end).length;
   const notes = [dailyOps.shiftNote, dailyOps.specialReport]
@@ -11150,9 +11494,75 @@ function buildFitnessCenterEmployeeDayMonthRow(employee, dateKey = getActiveDate
 }
 
 function renderFitnessPersonalMonthSummary(page = getCurrentFitnessLogPage(), isCenter = page?.type === "center") {
-  const panel = document.getElementById("fitnessPersonalMonthSummary");
+  const monthPanel = document.getElementById("fitnessPersonalMonthSummary");
+  if (monthPanel) monthPanel.hidden = true;
+  const panel = document.getElementById("fitnessGrowthPanel");
   if (!panel) return;
-  panel.hidden = true;
+  panel.hidden = isCenter || page?.type !== "employee";
+  if (panel.hidden) {
+    panel.innerHTML = "";
+    return;
+  }
+  const employee = page.employee || findEmployeeRecordById(page.id);
+  const dateKey = getActiveDateKey();
+  const monthPrefix = dateKey.slice(0, 7);
+  const ledger = buildFitnessPaidPtLedger([employee], monthPrefix, dateKey);
+  const row = getFitnessPtLedgerEmployeeRow(ledger, employee) || { byDate: {}, paid: 0, free: 0 };
+  const day = row.byDate?.[dateKey] || createFitnessPtLedgerCounts();
+  const rangeStart = parseDateKey(dateKey);
+  rangeStart.setDate(rangeStart.getDate() - 6);
+  const previousStart = parseDateKey(dateKey);
+  previousStart.setDate(previousStart.getDate() - 13);
+  const previousEnd = parseDateKey(dateKey);
+  previousEnd.setDate(previousEnd.getDate() - 7);
+  const sumPaidRange = (startKey, endKey) => Object.entries(row.byDate || {}).reduce((sum, [key, value]) => (
+    key >= startKey && key <= endKey ? sum + numberValue(value.paid) : sum
+  ), 0);
+  const recentPaid = sumPaidRange(formatDateKey(rangeStart), dateKey);
+  const previousPaid = sumPaidRange(formatDateKey(previousStart), formatDateKey(previousEnd));
+  const progress = recentPaid - previousPaid;
+  const progressText = progress > 0
+    ? `최근 7일 유료 PT가 이전 7일보다 ${progress}회 늘었습니다.`
+    : progress < 0
+      ? `최근 7일은 이전보다 ${Math.abs(progress)}회 적습니다. 수업 후 다음 예약 제안을 한 번 더 확인해보세요.`
+      : "최근 7일 수업 흐름을 유지하고, 수업별 회원 변화 한 가지를 남겨보세요.";
+  const roleSource = `${employee?.role || ""} ${employee?.primaryWork || ""}`;
+  const mission = /센터장|관리/.test(roleSource)
+    ? "수업 1건을 골라 회원 변화·담당 코치 피드백·다음 예약 행동을 한 줄로 정리하세요."
+    : /트레이너|강사/.test(roleSource)
+      ? "오늘 수업 1건의 핵심 큐와 회원 반응, 다음 수업 목표를 한 줄로 남기세요."
+      : "회원 한 명의 재등록·운동 지속 신호를 확인하고 담당 코치에게 연결하세요.";
+  const log = getFitnessEmployeeLogForDate(employee, dateKey) || getEmployeeLogForDate(page.id, dateKey);
+  const editable = isCurrentFitnessLogEditable() && !isHistoricalWorklogDate(dateKey);
+  panel.innerHTML = `
+    <header><div><small>VERIFIED GROWTH</small><strong>검증 PT 성장판 · 1% 스킬 미션</strong></div><em>나의 흐름 기준</em></header>
+    <section class="fitness-growth-kpis" aria-label="개인 유료 PT 검증 집계">
+      <span><b>오늘 유료PT</b><strong>${numberValue(day.ptRegular) + numberValue(day.ptOther)}회</strong></span>
+      <span><b>8월 누계</b><strong>${numberValue(row.paid)}회</strong></span>
+      <span><b>최근 7일</b><strong>${recentPaid}회</strong></span>
+      <span><b>중복 제외</b><strong>${numberValue(ledger.audit.duplicateRows)}건</strong></span>
+    </section>
+    <p class="fitness-growth-message"><b>나의 흐름</b>${escapeHtml(progressText)}</p>
+    <section class="fitness-growth-mission ${log?.fitnessGrowthMissionDone ? "is-done" : ""}">
+      <div><b>오늘의 1% 스킬 미션</b><span>${escapeHtml(mission)}</span></div>
+      <textarea id="fitnessGrowthReflection" rows="2" placeholder="회원 변화·내가 사용한 스킬·다음 행동" ${editable ? "" : "readonly"}>${escapeHtml(log?.fitnessGrowthReflection || "")}</textarea>
+      <button type="button" id="fitnessGrowthMissionButton" ${editable ? "" : "disabled"}>${log?.fitnessGrowthMissionDone ? "연습 완료 ✓" : "연습 완료"}</button>
+    </section>
+    <small class="fitness-growth-audit">8월 1일부터 앱·수기 스캔·다짐을 교차검증하며, 수기 확정값 우선·출석/노쇼 계수·고유키 중복 제외 기준입니다.</small>
+  `;
+  const reflection = panel.querySelector("#fitnessGrowthReflection");
+  reflection?.addEventListener("input", () => {
+    if (!editable || !log) return;
+    log.fitnessGrowthReflection = reflection.value;
+    scheduleDeferredStateSave(240);
+  });
+  panel.querySelector("#fitnessGrowthMissionButton")?.addEventListener("click", () => {
+    if (!editable || !log) return;
+    log.fitnessGrowthMissionDone = !log.fitnessGrowthMissionDone;
+    saveState({ fastSave: true });
+    renderFitnessPersonalMonthSummary(page, false);
+    showAppToast(log.fitnessGrowthMissionDone ? "오늘의 스킬 연습을 기록했습니다" : "스킬 연습 완료를 취소했습니다");
+  });
 }
 
 function getFitnessEmployeeLogForDate(employee = {}, dateKey = getActiveDateKey()) {
@@ -14351,17 +14761,20 @@ function renderFitnessOpsSummaryButton(log = getSelectedLog()) {
   const button = document.getElementById("fitnessOpsSummaryButton");
   if (!button) return;
   const ops = { ...createFitnessOps(), ...(log.fitnessOps || {}) };
-  const paidPtTotal = numberValue(ops.ptRegular) + numberValue(ops.ptOther);
-  const freePtTotal = numberValue(ops.ptFree);
   const contractTotal = ["customerNew", "customerRenewal", "dayPass", "contractOther"].reduce((sum, key) => sum + numberValue(ops[key]), 0);
   const snsPromotionTotal = numberValue(ops.snsPromotion);
   const marketingTotal = snsPromotionTotal + ["outbound", "outsideSales"].reduce((sum, key) => sum + numberValue(ops[key]), 0);
   const page = getCurrentFitnessLogPage();
   const employee = page?.type === "employee" ? page.employee : findEmployeeRecordById(log.employeeId);
-  const aggregate = employee ? buildFitnessCenterEmployeeMonthRow(employee, getActiveDateKey().slice(0, 7)) : null;
+  const ptLedger = employee ? buildFitnessPaidPtLedger([employee], getActiveDateKey().slice(0, 7), getActiveDateKey()) : null;
+  const ptLedgerRow = employee ? getFitnessPtLedgerEmployeeRow(ptLedger, employee) : null;
+  const ptLedgerDay = ptLedgerRow?.byDate?.[getActiveDateKey()] || null;
+  const paidPtTotal = ptLedgerDay ? numberValue(ptLedgerDay.paid) : numberValue(ops.ptRegular) + numberValue(ops.ptOther);
+  const freePtTotal = ptLedgerDay ? numberValue(ptLedgerDay.free) : numberValue(ops.ptFree);
+  const aggregate = employee ? buildFitnessCenterEmployeeMonthRow(employee, getActiveDateKey().slice(0, 7), getActiveDateKey(), { ptLedger }) : null;
   const monthOps = { ...createFitnessOps(), ...(aggregate?.ops || {}) };
-  const monthlyPaidPtTotal = numberValue(aggregate?.paidPtTotal) + numberValue(monthOps.ptOther);
-  const monthlyFreePtTotal = numberValue(aggregate?.freePtTotal);
+  const monthlyPaidPtTotal = ptLedgerRow ? numberValue(ptLedgerRow.paid) : numberValue(aggregate?.paidPtTotal) + numberValue(monthOps.ptOther);
+  const monthlyFreePtTotal = ptLedgerRow ? numberValue(ptLedgerRow.free) : numberValue(aggregate?.freePtTotal);
   const monthlyConsultationTotal = numberValue(monthOps.consultation);
   const monthlyContractTotal = ["customerNew", "customerRenewal", "dayPass", "contractOther"].reduce((sum, key) => sum + numberValue(monthOps[key]), 0);
   const monthlySnsPromotionTotal = numberValue(monthOps.snsPromotion);
@@ -20102,6 +20515,7 @@ function getDagymMonthlyClassCounts(employee = {}, monthPrefix = getActiveDateKe
 function getFitnessReportMonthlyStats(employee = {}, monthPrefix = getActiveDateKey().slice(0, 7), dateKey = getActiveDateKey(), dailyStats = {}, options = {}) {
   const aggregate = buildFitnessCenterEmployeeMonthRow(employee, monthPrefix, dateKey, {
     sharedDagymSourceIds: options.sharedDagymSourceIds || null,
+    ptLedger: options.ptLedger,
   });
   const ops = { ...createFitnessOps(), ...(aggregate.ops || {}) };
   const currentDayLog = getFitnessEmployeeLogForDate(employee, dateKey);
@@ -20123,11 +20537,11 @@ function getFitnessReportMonthlyStats(employee = {}, monthPrefix = getActiveDate
     snsPromotion: replaceDayContribution("snsPromotion"),
     customerOther: replaceDayContribution("customerOther"),
   };
-  const dagymClasses = getDagymMonthlyClassCounts(employee, monthPrefix, dateKey);
-  if (dagymClasses) {
-    stats.ptRegular = dagymClasses.ptRegular;
-    stats.ptFree = dagymClasses.ptFree;
-    stats.ptOther = dagymClasses.ptOther;
+  const ptLedgerRow = getFitnessPtLedgerEmployeeRow(options.ptLedger, employee);
+  if (ptLedgerRow) {
+    stats.ptRegular = numberValue(ptLedgerRow.ptRegular);
+    stats.ptFree = numberValue(ptLedgerRow.ptFree);
+    stats.ptOther = numberValue(ptLedgerRow.ptOther);
   }
   stats.ptTotal = stats.ptRegular + stats.ptFree + stats.ptOther;
   stats.contractTotal = stats.customerNew + stats.customerRenewal + stats.dayPass + stats.contractOther;
@@ -20181,6 +20595,8 @@ function summarizeFitnessReportRows(logEntries = [], dateKey = getActiveDateKey(
   const centerDagymSourceIds = new Set();
   const centerMonthlyDagymSourceIds = new Set();
   const dagymAudit = auditDagymClassRows(logEntries);
+  const logOverrides = new Map(logEntries.map(({ employee, log }) => [`${getFitnessPtLedgerEmployeeKey(employee)}|${dateKey}`, log]));
+  const ptLedger = buildFitnessPaidPtLedger(logEntries.map(({ employee }) => employee), monthPrefix, dateKey, { logOverrides });
   let reconciliationDifferences = 0;
   const rows = logEntries.map(({ employee, log }, index) => {
     const savedOps = { ...createFitnessOps(), ...(log.fitnessOps || {}) };
@@ -20192,9 +20608,10 @@ function summarizeFitnessReportRows(logEntries = [], dateKey = getActiveDateKey(
       if (numberValue(savedOps[key]) !== numberValue(derivedOps[key])) reconciliationDifferences += 1;
       ops[key] = derivedOps[key] ? String(derivedOps[key]) : "";
     });
-    const ptRegular = numberValue(ops.ptRegular);
-    const ptFree = numberValue(ops.ptFree);
-    const ptOther = numberValue(ops.ptOther);
+    const ptLedgerDay = getFitnessPtLedgerEmployeeRow(ptLedger, employee)?.byDate?.[dateKey];
+    const ptRegular = ptLedgerDay ? numberValue(ptLedgerDay.ptRegular) : numberValue(ops.ptRegular);
+    const ptFree = ptLedgerDay ? numberValue(ptLedgerDay.ptFree) : numberValue(ops.ptFree);
+    const ptOther = ptLedgerDay ? numberValue(ptLedgerDay.ptOther) : numberValue(ops.ptOther);
     const customerNew = numberValue(ops.customerNew);
     const customerRenewal = numberValue(ops.customerRenewal);
     const dayPass = numberValue(ops.dayPass);
@@ -20251,6 +20668,7 @@ function summarizeFitnessReportRows(logEntries = [], dateKey = getActiveDateKey(
         customerOther,
       }, {
         sharedDagymSourceIds: centerMonthlyDagymSourceIds,
+        ptLedger,
       }) : {},
       ptNote: ptRegular + ptFree + ptOther ? String(ops.shiftNote || "").trim() : "",
       customerNote: customerNew + customerRenewal + dayPass + contractOther + inbound + outbound + outsideSales + consultation + customerOther
@@ -20276,11 +20694,11 @@ function summarizeFitnessReportRows(logEntries = [], dateKey = getActiveDateKey(
     totals,
     monthlyTotals,
     reconciliation: {
-      status: reconciliationDifferences ? "보정" : "일치",
-      differences: reconciliationDifferences,
+      status: reconciliationDifferences || ptLedger.audit.reconciliationDifferences ? "보정" : "일치",
+      differences: reconciliationDifferences + ptLedger.audit.reconciliationDifferences,
       uniqueDagymClasses: centerDagymSourceIds.size,
-      audit: dagymAudit,
-      rule: "다짐 고유키 중복 제거 · 출석/노쇼만 계수 · 수동 확정값 우선",
+      audit: { ...dagymAudit, ptLedger: ptLedger.audit },
+      rule: "앱·수기·다짐 3중 대조 · 고유키/회원·시간 중복 제거 · 출석/노쇼 계수 · 수기 확정값 우선",
     },
   };
 }
@@ -20478,6 +20896,354 @@ function getWorklogReportCoachingRows(model = {}) {
   ];
 }
 
+const coachingFollowupResponseMeta = {
+  pending: { label: "응답 대기", status: "acknowledged" },
+  execute: { label: "확인·실행", status: "in_progress" },
+  already: { label: "이미 반영", status: "completed" },
+  support: { label: "지원 요청", status: "support_needed" },
+  explain: { label: "상황 설명", status: "acknowledged" },
+  defer: { label: "보류", status: "deferred" },
+};
+
+const coachingFollowupStatusMeta = {
+  acknowledged: "확인",
+  in_progress: "실행 중",
+  completed: "완료",
+  support_needed: "지원 필요",
+  deferred: "보류",
+};
+
+const coachingFollowupResultMeta = {
+  unchecked: "후속 확인 전",
+  improved: "개선 확인",
+  recurring: "같은 문제 반복",
+  blocked: "외부 지원 필요",
+};
+
+function isUuidValue(value = "") {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(String(value || ""));
+}
+
+function getCoachingFollowupOwnerUserId(employee = {}) {
+  if (!authState.user) return "";
+  const employeeKeys = new Set(getEmployeeIdentityKeys(employee).map(String));
+  const ownEmployeeId = getProfileMappedEmployeeId() || "profile-user";
+  if (employeeKeys.has(String(ownEmployeeId)) || employee.id === "profile-user") return authState.user.id;
+  const directId = [employee.sourceProfileId, employee.profileEmployeeId].find(isUuidValue);
+  if (directId) return String(directId);
+  const approvalRow = (authState.approvalRows || []).find((row) => {
+    const rowEmployee = approvalRowToStaffEmployee(row);
+    return getEmployeeIdentityKeys(rowEmployee).some((key) => employeeKeys.has(String(key)))
+      || (employee.email && normalizeEmailValue(row.email || "") === normalizeEmailValue(employee.email));
+  });
+  return isUuidValue(approvalRow?.id) ? String(approvalRow.id) : "";
+}
+
+function getDefaultCoachingFollowupDueDate(dateKey = getActiveDateKey()) {
+  const baseKey = String(dateKey || "") > todayKey ? dateKey : todayKey;
+  const date = parseDateKey(baseKey);
+  date.setDate(date.getDate() + 3);
+  return formatDateKey(date);
+}
+
+function getCoachingFollowupContext(scope = "worklog", suppliedModel = null) {
+  const isFitness = scope === "fitness";
+  const model = suppliedModel || (isFitness ? buildFitnessReportModel() : buildWorklogDailyReportModel());
+  if (!model || (isFitness && model.isCenter)) return null;
+  const employee = model.employee || getSelectedEmployee();
+  const ownerUserId = getCoachingFollowupOwnerUserId(employee);
+  const ownRecord = Boolean(ownerUserId && ownerUserId === authState.user?.id && !isRepresentativeProfile());
+  const canView = Boolean(ownerUserId && (ownRecord || canAccessAllWorklogs()));
+  const canReview = Boolean(ownerUserId && !ownRecord && canAccessAllWorklogs());
+  const coachingRows = isFitness ? getFitnessReportCoachingRows(model) : getWorklogReportCoachingRows(model);
+  const nextAction = coachingRows.find(([title]) => /다음|실행/.test(title))?.[1]
+    || coachingRows[1]?.[1]
+    || "다음 근무에서 실행할 개선 행동 1건을 정해주세요.";
+  const reportScope = isFitness ? "fitness" : "worklog";
+  return {
+    scope: reportScope,
+    hostId: isFitness ? "fitnessCoachingFollowup" : "worklogCoachingFollowup",
+    model,
+    employee,
+    ownerUserId,
+    canView,
+    canEdit: ownRecord,
+    canReview,
+    coachingRows,
+    nextAction,
+    cacheKey: `${ownerUserId}:${model.dateKey}:${reportScope}`,
+  };
+}
+
+function getCoachingFollowupDisplayStatus(record = null) {
+  if (!record || record.response_code === "pending") return { key: "pending", label: "직원 응답 대기" };
+  const overdue = record.due_date
+    && record.due_date < todayKey
+    && !["completed"].includes(record.status);
+  if (overdue) return { key: "overdue", label: "기한 경과" };
+  if (record.followup_result === "recurring") return { key: "recurring", label: "반복 확인" };
+  if (record.followup_result === "blocked" || record.status === "support_needed") return { key: "support", label: "지원 필요" };
+  if (record.status === "completed") return { key: "completed", label: "개선 완료" };
+  return { key: record.status || "acknowledged", label: coachingFollowupStatusMeta[record.status] || "확인" };
+}
+
+function buildCoachingFollowupSnapshot(context = {}) {
+  return {
+    source: context.model?.aiCoaching ? "ai" : "rule",
+    rows: (context.coachingRows || []).map(([title, text]) => ({
+      title: String(title || "").slice(0, 80),
+      text: String(text || "").slice(0, 900),
+    })),
+    taskCount: numberValue(context.model?.taskCount || context.model?.aiContext?.taskSummary?.total),
+    completedCount: numberValue(context.model?.completedCount || context.model?.aiContext?.taskSummary?.completed),
+  };
+}
+
+function renderCoachingFollowup(scope = "worklog", suppliedModel = null) {
+  const context = getCoachingFollowupContext(scope, suppliedModel);
+  const host = document.getElementById(context?.hostId || (scope === "fitness" ? "fitnessCoachingFollowup" : "worklogCoachingFollowup"));
+  if (!host) return;
+  if (!context?.canView) {
+    host.hidden = true;
+    host.innerHTML = "";
+    return;
+  }
+  host.hidden = false;
+  if (authState.coachingFollowupLoading.has(context.cacheKey)) {
+    host.innerHTML = `<div class="coaching-followup-loading">AI 코칭 실행기록을 불러오는 중입니다.</div>`;
+    return;
+  }
+  const hasCached = authState.coachingFollowupCache.has(context.cacheKey);
+  const record = hasCached ? authState.coachingFollowupCache.get(context.cacheKey) : null;
+  if (!hasCached) {
+    host.innerHTML = `<div class="coaching-followup-loading">AI 코칭 실행기록을 확인합니다.</div>`;
+    return;
+  }
+  if (!record && !context.model.aiEnabled) {
+    host.hidden = true;
+    host.innerHTML = "";
+    return;
+  }
+  const display = getCoachingFollowupDisplayStatus(record);
+  const responseCode = record?.response_code || "";
+  const responseLabel = coachingFollowupResponseMeta[responseCode]?.label || "응답 전";
+  const actionText = record?.action_text || context.nextAction;
+  const dueDate = record?.due_date || getDefaultCoachingFollowupDueDate(context.model.dateKey);
+  const status = record?.status || (coachingFollowupResponseMeta[responseCode]?.status || "in_progress");
+  const result = record?.followup_result || "unchecked";
+  const shouldOpen = context.canEdit || ["overdue", "support", "recurring"].includes(display.key);
+  host.innerHTML = `
+    <details class="coaching-followup-card is-${escapeAttr(display.key)}" ${shouldOpen ? "open" : ""}>
+      <summary>
+        <span><small>AI ACTION LOOP</small><strong>코칭 실행·후속점검</strong></span>
+        <em>${escapeHtml(display.label)}</em>
+      </summary>
+      <div class="coaching-followup-body">
+        <p class="coaching-followup-focus"><b>이번 코칭의 다음 행동</b><span>${escapeHtml(context.nextAction)}</span></p>
+        ${context.canEdit ? `
+          <div class="coaching-followup-responses" role="radiogroup" aria-label="코칭에 대한 나의 반응">
+            ${Object.entries(coachingFollowupResponseMeta).filter(([key]) => key !== "pending").map(([key, meta]) => `
+              <label><input type="radio" name="${escapeAttr(context.scope)}-coaching-response" value="${escapeAttr(key)}" ${responseCode === key ? "checked" : ""} /><span>${escapeHtml(meta.label)}</span></label>
+            `).join("")}
+          </div>
+          <label class="coaching-followup-action">개선 행동
+            <textarea data-coaching-followup-field="action" rows="2" placeholder="실행할 행동을 한 문장으로 적어주세요.">${escapeHtml(actionText)}</textarea>
+          </label>
+          <div class="coaching-followup-fields">
+            <label>확인기한<input data-coaching-followup-field="due" type="date" value="${escapeAttr(dueDate)}" /></label>
+            <label>진행상태<select data-coaching-followup-field="status">
+              ${Object.entries(coachingFollowupStatusMeta).map(([key, label]) => `<option value="${escapeAttr(key)}" ${status === key ? "selected" : ""}>${escapeHtml(label)}</option>`).join("")}
+            </select></label>
+          </div>
+          <label>상황·지원 설명<textarea data-coaching-followup-field="note" rows="2" placeholder="어려움, 필요한 지원, 보류 사유를 남길 수 있습니다.">${escapeHtml(record?.response_note || "")}</textarea></label>
+          <label>후속 결과<textarea data-coaching-followup-field="resultNote" rows="2" placeholder="실행 결과와 달라진 점을 기록해주세요.">${escapeHtml(record?.result_note || "")}</textarea></label>
+          <div class="coaching-followup-actions">
+            <small>AI 평가는 참고자료이며, 직원의 설명과 실제 업무기록을 함께 확인합니다.</small>
+            <button type="button" data-coaching-followup-save="${escapeAttr(context.scope)}">${record ? "실행기록 저장" : "코칭에 반응하기"}</button>
+          </div>
+        ` : record ? `
+          <dl class="coaching-followup-readonly">
+            <dt>직원 반응</dt><dd>${escapeHtml(responseLabel)}</dd>
+            <dt>개선 행동</dt><dd>${escapeHtml(actionText || "미입력")}</dd>
+            <dt>확인기한</dt><dd>${escapeHtml(record.due_date || "미정")}</dd>
+            <dt>진행상태</dt><dd>${escapeHtml(coachingFollowupStatusMeta[record.status] || "확인")}</dd>
+            <dt>후속점검</dt><dd>${escapeHtml(coachingFollowupResultMeta[record.followup_result] || "후속 확인 전")}</dd>
+            ${record.response_note ? `<dt>직원 설명</dt><dd>${escapeHtml(record.response_note)}</dd>` : ""}
+            ${record.result_note ? `<dt>실행 결과</dt><dd>${escapeHtml(record.result_note)}</dd>` : ""}
+            ${record.review_note ? `<dt>관리자 확인</dt><dd>${escapeHtml(record.review_note)}</dd>` : ""}
+          </dl>
+          ${context.canReview ? `
+            <div class="coaching-followup-review">
+              <label>대표·관리자 후속점검<select data-coaching-followup-field="reviewResult">
+                ${Object.entries(coachingFollowupResultMeta).map(([key, label]) => `<option value="${escapeAttr(key)}" ${result === key ? "selected" : ""}>${escapeHtml(label)}</option>`).join("")}
+              </select></label>
+              <label>확인 메모<textarea data-coaching-followup-field="reviewNote" rows="2" placeholder="업무기록과 직원 설명을 확인한 결과를 남겨주세요.">${escapeHtml(record.review_note || "")}</textarea></label>
+              <div class="coaching-followup-actions"><small>AI 결과만으로 판단하지 않고 실제 업무기록과 직원 설명을 함께 확인합니다.</small><button type="button" data-coaching-followup-review="${escapeAttr(context.scope)}">후속점검 저장</button></div>
+            </div>
+          ` : ""}
+        ` : `
+          <div class="coaching-followup-empty"><b>직원 응답 대기</b><span>직원이 보고서에서 코칭 확인·실행 여부와 개선기한을 등록하면 이곳에 바로 표시됩니다.</span></div>
+        `}
+      </div>
+    </details>
+  `;
+}
+
+async function loadCoachingFollowup(scope = "worklog", suppliedModel = null, { force = false } = {}) {
+  const context = getCoachingFollowupContext(scope, suppliedModel);
+  if (!context?.canView || !supabaseClient || !authState.user) {
+    renderCoachingFollowup(scope, suppliedModel);
+    return null;
+  }
+  if (!force && authState.coachingFollowupCache.has(context.cacheKey)) {
+    renderCoachingFollowup(scope, suppliedModel);
+    return authState.coachingFollowupCache.get(context.cacheKey);
+  }
+  if (authState.coachingFollowupLoading.has(context.cacheKey)) return null;
+  authState.coachingFollowupLoading.add(context.cacheKey);
+  renderCoachingFollowup(scope, suppliedModel);
+  let { data, error } = await supabaseClient
+    .from("worklog_coaching_followups")
+    .select("*")
+    .eq("user_id", context.ownerUserId)
+    .eq("log_date", context.model.dateKey)
+    .eq("report_scope", context.scope)
+    .maybeSingle();
+  if (!error && !data && context.canEdit && context.model.aiEnabled) {
+    ({ data, error } = await supabaseClient
+      .from("worklog_coaching_followups")
+      .upsert({
+        user_id: authState.user.id,
+        employee_id: getEmployeeWorklogId(context.employee) || context.employee.id || "profile-user",
+        employee_name: context.employee.name || getEmployeeOwnLabel(context.employee),
+        organization: context.employee.org || state.profile?.org || "",
+        log_date: context.model.dateKey,
+        report_scope: context.scope,
+        coaching_key: context.model.aiKey || "",
+        coaching_snapshot: buildCoachingFollowupSnapshot(context),
+        response_code: "pending",
+        action_text: context.nextAction,
+        status: "acknowledged",
+        followup_result: "unchecked",
+        updated_at: new Date().toISOString(),
+      }, { onConflict: "user_id,log_date,report_scope" })
+      .select("*")
+      .single());
+  }
+  authState.coachingFollowupLoading.delete(context.cacheKey);
+  if (error) {
+    const host = document.getElementById(context.hostId);
+    if (host) {
+      host.hidden = false;
+      host.innerHTML = `<div class="coaching-followup-loading is-error">코칭 실행기록 저장 기능을 준비하지 못했습니다. 잠시 후 다시 열어주세요.</div>`;
+    }
+    return null;
+  }
+  authState.coachingFollowupCache.set(context.cacheKey, data || null);
+  renderCoachingFollowup(scope, suppliedModel);
+  return data || null;
+}
+
+async function saveCoachingFollowup(scope = "worklog") {
+  const context = getCoachingFollowupContext(scope);
+  const host = document.getElementById(context?.hostId || "");
+  if (!context?.canEdit || !host || !supabaseClient || !authState.user) {
+    showAppToast("본인 업무일지에서만 코칭 실행기록을 저장할 수 있습니다");
+    return;
+  }
+  const responseCode = host.querySelector(`input[name="${context.scope}-coaching-response"]:checked`)?.value || "";
+  const actionText = String(host.querySelector('[data-coaching-followup-field="action"]')?.value || "").trim();
+  if (!responseCode) {
+    showAppToast("코칭에 대한 나의 반응을 먼저 선택해주세요");
+    return;
+  }
+  if (!actionText) {
+    showAppToast("실행할 개선 행동을 한 문장으로 적어주세요");
+    return;
+  }
+  const current = authState.coachingFollowupCache.get(context.cacheKey) || null;
+  const nowIso = new Date().toISOString();
+  const status = host.querySelector('[data-coaching-followup-field="status"]')?.value
+    || coachingFollowupResponseMeta[responseCode]?.status
+    || "acknowledged";
+  const payload = {
+    user_id: authState.user.id,
+    employee_id: getEmployeeWorklogId(context.employee) || context.employee.id || "profile-user",
+    employee_name: context.employee.name || getEmployeeOwnLabel(context.employee),
+    organization: context.employee.org || state.profile?.org || "",
+    log_date: context.model.dateKey,
+    report_scope: context.scope,
+    coaching_key: context.model.aiKey || "",
+    coaching_snapshot: buildCoachingFollowupSnapshot(context),
+    response_code: responseCode,
+    response_note: String(host.querySelector('[data-coaching-followup-field="note"]')?.value || "").trim().slice(0, 1200),
+    action_text: actionText.slice(0, 1200),
+    due_date: host.querySelector('[data-coaching-followup-field="due"]')?.value || null,
+    status,
+    result_note: String(host.querySelector('[data-coaching-followup-field="resultNote"]')?.value || "").trim().slice(0, 1600),
+    followup_result: current?.followup_result || "unchecked",
+    responded_at: current?.responded_at || nowIso,
+    completed_at: status === "completed" ? (current?.completed_at || nowIso) : null,
+    updated_at: nowIso,
+  };
+  const button = host.querySelector("[data-coaching-followup-save]");
+  if (button) button.disabled = true;
+  const { data, error } = await supabaseClient
+    .from("worklog_coaching_followups")
+    .upsert(payload, { onConflict: "user_id,log_date,report_scope" })
+    .select("*")
+    .single();
+  if (button) button.disabled = false;
+  if (error) {
+    showAppToast("코칭 실행기록을 저장하지 못했습니다. 잠시 후 다시 시도해주세요");
+    return;
+  }
+  authState.coachingFollowupCache.set(context.cacheKey, data);
+  renderCoachingFollowup(scope);
+  showAppToast(status === "completed" ? "개선 결과를 저장했습니다" : "코칭 실행계획을 저장했습니다");
+}
+
+async function saveCoachingFollowupReview(scope = "worklog") {
+  const context = getCoachingFollowupContext(scope);
+  const host = document.getElementById(context?.hostId || "");
+  const current = context ? authState.coachingFollowupCache.get(context.cacheKey) : null;
+  if (!context?.canReview || !host || !current || !supabaseClient || !authState.user) {
+    showAppToast("대표 또는 위임관리자만 후속점검을 저장할 수 있습니다");
+    return;
+  }
+  const reviewResult = host.querySelector('[data-coaching-followup-field="reviewResult"]')?.value || "unchecked";
+  const reviewNote = String(host.querySelector('[data-coaching-followup-field="reviewNote"]')?.value || "").trim().slice(0, 1600);
+  const button = host.querySelector("[data-coaching-followup-review]");
+  if (button) button.disabled = true;
+  const { data, error } = await supabaseClient
+    .rpc("review_worklog_coaching_followup", {
+      p_followup_id: current.id,
+      p_followup_result: reviewResult,
+      p_review_note: reviewNote,
+      p_reviewer_name: state.profile?.name || state.profile?.nickname || authState.user.email || "관리자",
+    })
+    .single();
+  if (button) button.disabled = false;
+  if (error) {
+    showAppToast("후속점검을 저장하지 못했습니다. 잠시 후 다시 시도해주세요");
+    return;
+  }
+  authState.coachingFollowupCache.set(context.cacheKey, data);
+  authState.coachingFollowupOverviewRows = authState.coachingFollowupOverviewRows.map((row) => (
+    row.id === data.id ? data : row
+  ));
+  renderCoachingFollowup(scope);
+  showAppToast(reviewResult === "improved" ? "개선 확인을 저장했습니다" : "후속점검을 저장했습니다");
+}
+
+function handleCoachingFollowupChange(event, scope = "worklog") {
+  const input = event.target.closest(`input[name="${scope}-coaching-response"]`);
+  if (!input) return;
+  const host = document.getElementById(scope === "fitness" ? "fitnessCoachingFollowup" : "worklogCoachingFollowup");
+  const status = host?.querySelector('[data-coaching-followup-field="status"]');
+  if (status) status.value = coachingFollowupResponseMeta[input.value]?.status || "acknowledged";
+}
+
 function buildWorklogDailyReportModel(options = {}) {
   const employee = options.employee || getSelectedEmployee();
   const dateKey = options.dateKey || getActiveDateKey();
@@ -20616,6 +21382,7 @@ function renderOpenWorklogReport() {
   const previousScrollTop = preview.scrollTop;
   const model = buildWorklogDailyReportModel();
   preview.innerHTML = renderWorklogDailyReportTemplate(model);
+  renderCoachingFollowup("worklog", model);
   const aiStatus = document.getElementById("worklogReportAiStatus");
   if (aiStatus) aiStatus.hidden = !model.aiEnabled;
   if (model.aiEnabled) setWorklogReportAiStatus(model.aiCoaching ? "cached" : "ready");
@@ -20693,6 +21460,7 @@ function openWorklogReportSheet() {
   activeWorklogReportAiKey = model.aiKey;
   if (subtitle) subtitle.textContent = `${formatKoreanDate(getActiveDateKey())} · ${getEmployeeAdminLabel(getSelectedEmployee())}`;
   document.getElementById("worklogReportPreview").innerHTML = renderWorklogDailyReportTemplate(model);
+  renderCoachingFollowup("worklog", model);
   const aiStatus = document.getElementById("worklogReportAiStatus");
   if (aiStatus) aiStatus.hidden = !model.aiEnabled;
   if (model.aiEnabled) setWorklogReportAiStatus(model.aiCoaching ? "cached" : "ready");
@@ -20701,6 +21469,7 @@ function openWorklogReportSheet() {
   requestAnimationFrame(() => {
     sheet.classList.add("is-open");
     fitWorklogReportPreview();
+    loadCoachingFollowup("worklog", model);
     if (model.aiEnabled) requestWorklogReportAiCoaching(model, { silent: true });
   });
 }
@@ -20940,17 +21709,18 @@ function getFitnessReportIssueRowsHtml(model = {}) {
   `;
 }
 
-function getFitnessReportClassStats(employee = {}, dateKey = getActiveDateKey(), isCenter = false, dailyTotals = {}) {
+function getFitnessReportClassStats(employee = {}, dateKey = getActiveDateKey(), isCenter = false, dailyTotals = {}, verifiedMonthlyTotals = null) {
   const monthPrefix = String(dateKey || getActiveDateKey()).slice(0, 7);
-  const roster = isCenter ? getFitnessCenterEmployees() : [employee];
-  const monthly = roster
-    .filter(isAssignedWorklogEmployee)
-    .reduce((summary, item) => {
-      const row = buildFitnessCenterEmployeeMonthRow(item, monthPrefix, dateKey);
-      summary.paid += numberValue(row.paidPtTotal) + numberValue(row.ops?.ptOther);
-      summary.free += numberValue(row.freePtTotal);
-      return summary;
-    }, { paid: 0, free: 0 });
+  const monthly = verifiedMonthlyTotals
+    ? {
+      paid: numberValue(verifiedMonthlyTotals.ptRegular) + numberValue(verifiedMonthlyTotals.ptOther),
+      free: numberValue(verifiedMonthlyTotals.ptFree),
+    }
+    : (() => {
+      const roster = isCenter ? getFitnessCenterEmployees() : [employee];
+      const ptLedger = buildFitnessPaidPtLedger(roster.filter(isAssignedWorklogEmployee), monthPrefix, dateKey);
+      return { paid: numberValue(ptLedger.totals.paid), free: numberValue(ptLedger.totals.free) };
+    })();
   return {
     paid: {
       today: numberValue(dailyTotals.ptRegular) + numberValue(dailyTotals.ptOther),
@@ -21295,7 +22065,7 @@ function buildFitnessReportModel(options = {}) {
   const warningByEmployeeId = new Map(attendanceWarnings.map((item) => [item.employeeId, item]));
   staffRows.forEach((row) => { row.attendanceWarning = warningByEmployeeId.get(row.employeeId) || null; });
   const dagymSummary = isCenter ? getFitnessReportDagymSummary(dateKey, totals) : null;
-  const classStats = getFitnessReportClassStats(employee, dateKey, isCenter, totals);
+  const classStats = getFitnessReportClassStats(employee, dateKey, isCenter, totals, monthlyTotals);
   const title = isCenter ? "< 비욘드 피트니스 운영일지 >" : "< 비욘드 피트니스 업무일지 >";
   const confirmation = isCenter ? getFitnessCenterReportRecord(dateKey) : null;
   const centerManager = isCenter
@@ -21342,6 +22112,7 @@ function buildFitnessReportModel(options = {}) {
     title,
     dateKey,
     isCenter,
+    employee,
     confirmation,
     canConfirmCenterReport: isCenter && canConfirmFitnessCenterReport(dateKey),
     dateLabel: formatKoreanDate(dateKey),
@@ -21651,6 +22422,7 @@ function refreshOpenFitnessReport(model = buildFitnessReportModel()) {
   const preview = document.getElementById("fitnessReportPreview");
   if (!preview || !document.getElementById("fitnessReportSheet")?.classList.contains("is-open")) return;
   preview.innerHTML = renderFitnessReportTemplate(model);
+  renderCoachingFollowup("fitness", model);
   updateFitnessReportConfirmButton(model);
   fitFitnessReportPreview();
 }
@@ -21722,6 +22494,7 @@ function openFitnessReportSheet() {
   preview.scrollTop = 0;
   preview.scrollLeft = 0;
   preview.innerHTML = renderFitnessReportTemplate(model);
+  renderCoachingFollowup("fitness", model);
   updateFitnessReportConfirmButton(model);
   const aiStatus = document.getElementById("fitnessReportAiStatus");
   if (aiStatus) aiStatus.hidden = !model.aiEnabled;
@@ -21731,6 +22504,7 @@ function openFitnessReportSheet() {
   requestAnimationFrame(() => {
     sheet.classList.add("is-open");
     fitFitnessReportPreview();
+    loadCoachingFollowup("fitness", model);
     if (model.isCenter && model.attendanceWarnings.length) {
       showAppToast(`출퇴근 미기록 ${model.attendanceWarnings.length}명 · 48시간 이내 보완이 필요합니다`);
     }
@@ -23450,6 +24224,14 @@ document.getElementById("fitnessReportShareButton")?.addEventListener("click", (
   shareFitnessReport().catch((error) => {
     if (error?.name !== "AbortError") alert("공유 기능을 사용할 수 없어 보고서 미리보기를 확인해주세요.");
   });
+});
+["worklog", "fitness"].forEach((scope) => {
+  const host = document.getElementById(scope === "fitness" ? "fitnessCoachingFollowup" : "worklogCoachingFollowup");
+  host?.addEventListener("click", (event) => {
+    if (event.target.closest(`[data-coaching-followup-save="${scope}"]`)) saveCoachingFollowup(scope);
+    if (event.target.closest(`[data-coaching-followup-review="${scope}"]`)) saveCoachingFollowupReview(scope);
+  });
+  host?.addEventListener("change", (event) => handleCoachingFollowupChange(event, scope));
 });
 document.getElementById("worklogReportMenuButton")?.addEventListener("click", openWorklogReportSheet);
 document.getElementById("worklogReportCloseButton")?.addEventListener("click", closeWorklogReportSheet);

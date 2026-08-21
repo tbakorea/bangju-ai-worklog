@@ -1,0 +1,263 @@
+{
+  "surface": "report",
+  "manifest": {
+    "version": 1,
+    "surface": "report",
+    "title": "직원 업무일지 도입 효과 점검",
+    "description": "2026년 8월 19일 기준 직원 업무일지 실제 사용과 회사 운영상 유익을 점검한 경영 보고서입니다.",
+    "generatedAt": "2026-08-19T05:14:18.345Z",
+    "cards": [
+      {
+        "id": "adoption_card",
+        "description": "승인 직원 중 수기 이관이 아닌 의미 있는 업무일지를 한 번 이상 작성한 비율입니다.",
+        "dataset": "headline_metrics",
+        "sourceId": "worklog_usage_snapshot",
+        "filter": { "metric_id": "adoption" },
+        "metrics": [
+          { "label": "실사용 직원", "field": "value", "format": "percent" },
+          { "label": "직원 수", "field": "detail", "format": "text" }
+        ]
+      },
+      {
+        "id": "completion_card",
+        "description": "기록된 우선업무 중 완료·취소·위임·연기로 종결 처리된 비율입니다.",
+        "dataset": "headline_metrics",
+        "sourceId": "worklog_usage_snapshot",
+        "filter": { "metric_id": "task_completion" },
+        "metrics": [
+          { "label": "업무 종결률", "field": "value", "format": "percent" },
+          { "label": "종결/전체", "field": "detail", "format": "text" }
+        ]
+      },
+      {
+        "id": "schedule_card",
+        "description": "수기 이관분을 제외하고 앱에 남은 시간별 실행 기록 수입니다.",
+        "dataset": "headline_metrics",
+        "sourceId": "worklog_usage_snapshot",
+        "filter": { "metric_id": "native_schedule" },
+        "metrics": [
+          { "label": "시간별 실행 기록", "field": "value", "format": "number" },
+          { "label": "집계 기준", "field": "detail", "format": "text" }
+        ]
+      },
+      {
+        "id": "attendance_card",
+        "description": "앱에서 출퇴근 기록을 시작한 날 중 출근과 퇴근이 모두 입력된 비율입니다.",
+        "dataset": "headline_metrics",
+        "sourceId": "worklog_usage_snapshot",
+        "filter": { "metric_id": "attendance" },
+        "metrics": [
+          { "label": "출퇴근 완결률", "field": "value", "format": "percent" },
+          { "label": "완결/시작", "field": "detail", "format": "text" }
+        ]
+      },
+      {
+        "id": "report_card",
+        "description": "8월 10~18일 직원·날짜 기록 중 보고 내용이 저장된 비율입니다.",
+        "dataset": "headline_metrics",
+        "sourceId": "worklog_usage_snapshot",
+        "filter": { "metric_id": "report" },
+        "metrics": [
+          { "label": "최근 보고 작성률", "field": "value", "format": "percent" },
+          { "label": "보고/기록", "field": "detail", "format": "text" }
+        ]
+      }
+    ],
+    "charts": [
+      {
+        "id": "period_comparison_chart",
+        "title": "업무일지 운영지표 비교",
+        "subtitle": "8월 10~14일과 8월 17~18일, 직원·날짜 기록 기준 비율",
+        "type": "bar",
+        "dataset": "period_comparison_chart_data",
+        "sourceId": "worklog_usage_snapshot",
+        "valueFormat": "percent",
+        "encodings": {
+          "x": { "field": "metric", "type": "nominal", "label": "지표" },
+          "y": { "field": "rate", "type": "quantitative", "label": "비율" },
+          "color": { "field": "period", "type": "nominal", "label": "기간" },
+          "tooltip": [
+            { "field": "numerator", "type": "quantitative", "label": "분자", "format": "number" },
+            { "field": "denominator", "type": "quantitative", "label": "분모", "format": "number" }
+          ]
+        },
+        "options": { "grouping": "grouped", "orientation": "vertical" }
+      }
+    ],
+    "tables": [
+      {
+        "id": "period_comparison_table",
+        "title": "최근 운영기간 비교",
+        "subtitle": "첫 안정 운영 주중 5일과 최근 완료 주중 2일의 분자·분모 기준 비교입니다.",
+        "dataset": "period_comparison",
+        "sourceId": "worklog_usage_snapshot",
+        "defaultSort": { "field": "metric", "direction": "asc" },
+        "columns": [
+          { "field": "metric", "label": "지표", "type": "text" },
+          { "field": "first_period", "label": "8월 10~14일", "format": "percent" },
+          { "field": "latest_period", "label": "8월 17~18일", "format": "percent" },
+          { "field": "delta", "label": "변화", "format": "percent", "movement": true }
+        ]
+      },
+      {
+        "id": "evidence_table",
+        "title": "앱에 축적된 운영 증거",
+        "subtitle": "수기 이관분은 별도 표시했으며 실제 앱 기록 중심으로 집계했습니다.",
+        "dataset": "evidence_volume",
+        "sourceId": "worklog_usage_snapshot",
+        "defaultSort": { "field": "evidence", "direction": "asc" },
+        "columns": [
+          { "field": "evidence", "label": "운영 증거", "type": "text" },
+          { "field": "count", "label": "건수", "format": "number" },
+          { "field": "interpretation", "label": "의미", "type": "text" }
+        ]
+      },
+      {
+        "id": "quality_table",
+        "title": "데이터 품질과 정착 과제",
+        "subtitle": "현재 결론의 신뢰도와 다음 개선 우선순위에 직접 영향을 주는 항목입니다.",
+        "dataset": "quality_findings",
+        "sourceId": "worklog_usage_snapshot",
+        "defaultSort": { "field": "finding", "direction": "asc" },
+        "columns": [
+          { "field": "finding", "label": "점검 항목", "type": "text" },
+          { "field": "value", "label": "현재 상태", "type": "text" },
+          { "field": "impact", "label": "경영 영향", "type": "text" }
+        ]
+      }
+    ],
+    "sources": [
+      {
+        "id": "worklog_usage_snapshot",
+        "label": "Bangju AI Worklog 운영 데이터 스냅샷",
+        "path": "supabase/public.worklog_states"
+      }
+    ],
+    "blocks": [
+      {
+        "id": "report_title",
+        "type": "markdown",
+        "body": "# 직원 업무일지 도입 효과 점검"
+      },
+      {
+        "id": "executive_summary",
+        "type": "markdown",
+        "sourceId": "worklog_usage_snapshot",
+        "body": "## Executive Summary\n\n- **회사 차원의 운영상 유익은 실제로 확인됩니다.** 승인 직원 11명 중 9명이 수기 이관이 아닌 의미 있는 업무일지를 남겼고, 앱에는 우선업무 181건과 실제 시간별 실행 기록 635건이 축적됐습니다. 대표가 직원별 실행 근거를 한곳에서 확인할 기반이 만들어졌습니다.\n- **업무를 끝까지 상태 처리하는 습관은 개선 신호가 있습니다.** 첫 안정 운영 주중의 업무 종결률은 55.0%였고 최근 완료 주중은 68.8%로 13.8%p 높았습니다. 다만 최근 구간은 이틀뿐이므로 추세 확정이 아니라 방향성으로 봐야 합니다.\n- **근태와 보고는 아직 회사 효익을 제한합니다.** 앱 출퇴근을 시작한 47건 중 34건만 출근·퇴근이 모두 기록됐고, 최근 보고 작성률은 15.4%에 그쳤습니다. 현재 단계는 ‘운영 가시성은 확보, 관리 규율은 정착 중’입니다.\n- **재무적 ROI는 아직 증명되지 않았습니다.** 앱 도입 전 같은 정의의 기준값과 관리자 시간절감·급여 정정·매출 귀속 자료가 없어 매출 상승이나 비용 절감을 앱 효과라고 단정할 수 없습니다."
+      },
+      { "id": "headline_metrics", "type": "metric-strip", "cardIds": ["adoption_card", "completion_card", "schedule_card", "attendance_card", "report_card"] },
+      {
+        "id": "definitions",
+        "type": "markdown",
+        "body": "## 무엇을 ‘실제 사용’과 ‘개선’으로 보았나\n\n**실제 사용은 단순히 날짜 행이 생성된 경우가 아니라**, 직원이 우선업무·시간별 일정·보고·메모·출퇴근 중 하나 이상을 남긴 경우로 정의했습니다. 수기 업무일지에서 옮긴 20개 기록은 앱 도입 효과와 분리했습니다. 완료율은 완료뿐 아니라 취소·위임·연기로 상태가 종결된 업무를 포함합니다."
+      },
+      {
+        "id": "execution_finding",
+        "type": "markdown",
+        "sourceId": "worklog_usage_snapshot",
+        "body": "## 업무 실행은 더 잘 보이고, 종결 처리는 좋아지는 신호가 있다\n\n**가장 분명한 변화는 업무의 ‘기록 가능성’입니다.** 앱 자체 입력으로 우선업무 181건, 시간별 실행 635건, 중요도 지정 130건이 남았습니다. 구두보고나 수기 문서에 흩어지던 내용을 직원·날짜·상태 기준으로 검색하고 비교할 수 있게 된 것은 회사 차원의 실질적 자산입니다.\n\n**업무 종결률은 55.0%에서 68.8%로 높아졌습니다.** 최근 표본이 짧아 지속 개선이라고 단정할 수는 없지만, 업무를 완료·취소·위임·연기로 명확히 정리하는 행동은 좋아지는 방향입니다."
+      },
+      { "id": "period_comparison_chart_block", "type": "chart", "chartId": "period_comparison_chart" },
+      { "id": "period_comparison", "type": "table", "tableId": "period_comparison_table" },
+      {
+        "id": "company_benefit",
+        "type": "markdown",
+        "sourceId": "worklog_usage_snapshot",
+        "body": "## 회사가 이미 얻고 있는 유익은 ‘운영 가시성’이다\n\n**대표 확인, 인수인계, 근태 점검, 피트니스 수업·상담 집계의 공통 근거가 생겼습니다.** 실제 앱 기록 635건의 시간별 실행과 181건의 우선업무는 누가 언제 무엇을 했는지 확인할 수 있는 최소 증거입니다. 이 효과는 매출 증가보다 먼저 나타나는 내부통제 개선입니다.\n\n**수기 이관 239건도 보존 가치는 있지만 도입 효과와는 다릅니다.** 과거 기록을 잃지 않았다는 장점은 있으나, 직원이 앱을 자발적으로 사용했다는 증거로 계산하지 않았습니다."
+      },
+      { "id": "evidence_volume", "type": "table", "tableId": "evidence_table" },
+      {
+        "id": "discipline_gap",
+        "type": "markdown",
+        "sourceId": "worklog_usage_snapshot",
+        "body": "## 근태와 보고 규율은 아직 기대 수준에 못 미친다\n\n**출퇴근 기록을 시작한 47건 중 완결된 것은 34건으로 72.3%입니다.** 최근 완료 주중의 완결률은 77.8%로 첫 안정 운영 주중의 92.3%보다 낮았습니다. 작은 표본이지만, 누락이 자동으로 사라지지 않는다는 뜻이므로 마감 알림과 다음날 보완 절차가 필요합니다.\n\n**보고 작성률은 최근 두 비교기간 모두 15.4%로 정체됐습니다.** 보고서 생성 기능이 있어도 원문 보고 내용이 비어 있으면 회사가 얻는 학습·인수인계 효과는 제한됩니다."
+      },
+      { "id": "quality_findings", "type": "table", "tableId": "quality_table" },
+      {
+        "id": "recommendations",
+        "type": "markdown",
+        "body": "## 다음 30일은 기능 추가보다 사용 정착과 측정이 우선이다\n\n1. **매주 5개 지표를 고정합니다.** 실사용 직원률, 우선업무 종결률, 중요도 입력률, 출퇴근 완결률, 보고 작성률을 같은 정의로 주간 비교합니다.\n2. **미사용 2명과 누락 유형을 확인합니다.** 실제 휴무·비근무인지, 계정·저장 오류인지, 사용 미정착인지 구분한 뒤 개인별로 보완합니다.\n3. **근태와 보고 마감을 운영 규칙으로 만듭니다.** 퇴근 전 미완결 알림, 다음날 오전 보완 목록, 센터장·팀장 확인까지 한 흐름으로 연결합니다.\n4. **조직명과 중복 행을 정비합니다.** 공백 차이로 분리된 조직명을 하나로 통일하고 직원·날짜 중복 4건의 원인을 제거해야 사업장별 통계가 신뢰를 얻습니다.\n5. **ROI용 기준값을 지금부터 쌓습니다.** 대표 검토시간, 누락 보완 건수, 급여·근태 정정 건수, PT·상담 전환, 매출을 매주 저장하면 30일 뒤 회사 차원의 시간절감과 매출효과를 검증할 수 있습니다."
+      },
+      {
+        "id": "further_questions",
+        "type": "markdown",
+        "body": "## 다음 판단을 위해 확인할 질문\n\n- 앱 도입 전 대표·센터장이 직원 업무를 확인하는 데 주당 몇 분을 썼는가?\n- 출퇴근·급여 정정과 업무 누락 보완 건수가 도입 전후 얼마나 달라졌는가?\n- PT 수업, 상담, 계약, SNS 활동이 실제 매출 또는 재등록으로 이어진 비율은 얼마인가?\n- 의미 있는 기록이 없는 2명은 비근무자·휴무자·계정 문제·사용 미정착 중 어디에 해당하는가?"
+      },
+      {
+        "id": "caveats",
+        "type": "markdown",
+        "sourceId": "worklog_usage_snapshot",
+        "body": "## 해석 시 유의사항\n\n- 앱 도입 전 동일 기준의 데이터가 없어 생산성·매출의 인과효과는 확정할 수 없습니다.\n- 8월 1~9일 피트니스 수기 기록 20행과 시간별 기록 239건은 앱 사용량에서 분리했습니다.\n- 8월 17~18일 비교는 이틀짜리 작은 표본이며 8월 19일 당일 데이터는 진행 중이라 제외했습니다.\n- 자동 생성된 빈 날짜 행과 조직명 표기 차이, 직원·날짜 중복 4건이 있어 전체 행 수를 곧바로 작성률로 해석하면 안 됩니다."
+      }
+    ]
+  },
+  "snapshot": {
+    "version": 1,
+    "generatedAt": "2026-08-19T05:14:18.345Z",
+    "status": "partial",
+    "datasets": {
+      "headline_metrics": [
+        { "metric_id": "adoption", "value": 0.8181818182, "detail": "9/11명" },
+        { "metric_id": "task_completion", "value": 0.5414364641, "detail": "98/181건" },
+        { "metric_id": "native_schedule", "value": 635, "detail": "수기 이관 제외" },
+        { "metric_id": "attendance", "value": 0.7234042553, "detail": "34/47건" },
+        { "metric_id": "report", "value": 0.1538461538, "detail": "8/52건" }
+      ],
+      "period_comparison": [
+        { "order": 1, "metric": "의미 있는 기록 비율", "first_period": 0.7948717949, "latest_period": 0.7692307692, "delta": -0.0256410257 },
+        { "order": 2, "metric": "우선업무 종결률", "first_period": 0.55, "latest_period": 0.6875, "delta": 0.1375 },
+        { "order": 3, "metric": "출퇴근 완결률", "first_period": 0.9230769231, "latest_period": 0.7777777778, "delta": -0.1452991453 },
+        { "order": 4, "metric": "보고 작성률", "first_period": 0.1538461538, "latest_period": 0.1538461538, "delta": 0 }
+      ],
+      "period_comparison_chart_data": [
+        { "metric": "의미 있는 기록", "period": "8월 10~14일", "rate": 0.7948717949, "numerator": 31, "denominator": 39 },
+        { "metric": "의미 있는 기록", "period": "8월 17~18일", "rate": 0.7692307692, "numerator": 10, "denominator": 13 },
+        { "metric": "우선업무 종결", "period": "8월 10~14일", "rate": 0.55, "numerator": 55, "denominator": 100 },
+        { "metric": "우선업무 종결", "period": "8월 17~18일", "rate": 0.6875, "numerator": 11, "denominator": 16 },
+        { "metric": "출퇴근 완결", "period": "8월 10~14일", "rate": 0.9230769231, "numerator": 24, "denominator": 26 },
+        { "metric": "출퇴근 완결", "period": "8월 17~18일", "rate": 0.7777777778, "numerator": 7, "denominator": 9 },
+        { "metric": "보고 작성", "period": "8월 10~14일", "rate": 0.1538461538, "numerator": 6, "denominator": 39 },
+        { "metric": "보고 작성", "period": "8월 17~18일", "rate": 0.1538461538, "numerator": 2, "denominator": 13 }
+      ],
+      "evidence_volume": [
+        { "order": 1, "evidence": "앱에 기록된 우선업무", "count": 181, "interpretation": "직원별 실행과 상태를 추적할 근거" },
+        { "order": 2, "evidence": "종결 처리된 우선업무", "count": 98, "interpretation": "완료·취소·위임·연기로 정리된 업무" },
+        { "order": 3, "evidence": "중요도 지정 업무", "count": 130, "interpretation": "업무 우선순위를 명시한 기록" },
+        { "order": 4, "evidence": "앱 자체 시간별 실행", "count": 635, "interpretation": "수기 이관을 제외한 실행 증거" },
+        { "order": 5, "evidence": "수기에서 이관한 시간별 기록", "count": 239, "interpretation": "과거 보존 가치, 앱 채택 근거에서는 제외" },
+        { "order": 6, "evidence": "완결된 출퇴근 기록", "count": 34, "interpretation": "앱 자체 출퇴근 시작 47건 중 완결" },
+        { "order": 7, "evidence": "저장된 업무보고", "count": 8, "interpretation": "인수인계·학습 자료로는 아직 부족" }
+      ],
+      "quality_findings": [
+        { "priority": 1, "finding": "실사용 공백", "value": "2/11명", "impact": "전 직원 관제의 완전성이 아직 확보되지 않음" },
+        { "priority": 2, "finding": "출퇴근 미완결", "value": "13/47건", "impact": "근태·급여 검증의 수작업 보완이 계속 필요" },
+        { "priority": 3, "finding": "업무보고 저조", "value": "최근 8/52건", "impact": "경영 학습과 인수인계 자료가 충분히 쌓이지 않음" },
+        { "priority": 4, "finding": "중요도 미지정", "value": "51/181건", "impact": "우선순위 분석과 경고 정확도가 낮아짐" },
+        { "priority": 5, "finding": "직원·날짜 중복", "value": "4건", "impact": "조직별 작성률과 집계가 과대 계산될 수 있음" },
+        { "priority": 6, "finding": "조직명 표기 분리", "value": "공백 차이 2종", "impact": "같은 조직의 지표가 서로 다른 사업장처럼 분리됨" }
+      ]
+    },
+    "accessIssues": [
+      {
+        "id": "pre_app_baseline_missing",
+        "dataset": "pre_app_baseline",
+        "message": "앱 도입 전 동일 정의의 업무·근태·보고·관리시간 기준값이 없어 재무 ROI와 인과효과는 아직 확정할 수 없습니다."
+      }
+    ]
+  },
+  "sources": [
+    {
+      "id": "worklog_usage_snapshot",
+      "query": {
+        "engine": "supabase-postgrest",
+        "language": "http",
+        "id": "worklog-benefit-2026-08-19",
+        "sql": "select user_id, log_date, organization, state, updated_at from public.worklog_states order by log_date asc limit 10000; select id, role, workplace, approval_status from public.profiles where approval_status = 'approved';",
+        "description": "대표 권한으로 승인 직원 프로필과 업무일지 상태를 읽어 개인 식별정보와 원문 내용을 제외하고 직원·날짜 단위로 집계했습니다.",
+        "executed_at": "2026-08-19T05:14:18.345Z",
+        "tables_used": ["public.worklog_states", "public.profiles"],
+        "filters": ["profiles.approval_status = approved", "log_date <= 2026-08-19", "fitness-paper-* 수기 이관 행은 앱 자체 사용량에서 제외"]
+      }
+    }
+  ]
+}

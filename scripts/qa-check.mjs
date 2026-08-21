@@ -598,10 +598,10 @@ check(
 
 check(
   "fitness quantities use compact daily/monthly totals",
-  /function renderFitnessOpsSummaryButton\(log = getSelectedLog\(\)\)[\s\S]{0,1000}buildFitnessCenterEmployeeMonthRow\(employee, getActiveDateKey\(\)\.slice\(0, 7\)\)/.test(js)
+  /function renderFitnessOpsSummaryButton\(log = getSelectedLog\(\)\)[\s\S]{0,1800}buildFitnessCenterEmployeeMonthRow\(employee, getActiveDateKey\(\)\.slice\(0, 7\)/.test(js)
     && /<strong>\$\{paidPtTotal\}\/\$\{monthlyPaidPtTotal\}<\/strong>/.test(js)
-    && /function renderFitnessPersonalMonthSummary[\s\S]{0,180}panel\.hidden = true;/.test(js)
-    && /function buildFitnessCenterEmployeeMonthRow\(employee, monthPrefix, throughDateKey = getActiveDateKey\(\), options = \{\}\)[\s\S]{0,1800}getFitnessMonthRollupDateKeys\(monthPrefix, throughDateKey\)\.forEach/.test(js)
+    && /function renderFitnessPersonalMonthSummary[\s\S]{0,220}monthPanel\.hidden = true;/.test(js)
+    && js.includes("function buildFitnessPaidPtLedger")
     && js.includes("const aggregate = buildFitnessCenterEmployeeDayMonthRow(employee, dateKey, centerMonth, {")
     && js.includes("function buildFitnessCenterEmployeeDayMonthRow"),
   "personal worklogs should show today/month in existing summary cells without a separate grid"
@@ -622,7 +622,7 @@ check(
     && js.includes("async function loadRemoteDagymSyncHealth")
     && js.includes('.from("dagym_daily_snapshots")')
     && js.includes('.from("dagym_sync_runs")')
-    && js.includes("const audit = summarizeFitnessReportRows")
+    && (js.includes("const audit = summarizeFitnessReportRows") || js.includes("const audit = ptLedger.audit"))
     && js.includes('["집계점검", auditIssues')
     && js.includes("void loadRemoteDagymSyncHealth(dateKey)"),
   "center managers must be able to see DaGym domain status and schedule-count reconciliation without opening admin tools"

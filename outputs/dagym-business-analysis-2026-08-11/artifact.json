@@ -1,0 +1,218 @@
+{
+  "surface": "report",
+  "manifest": {
+    "version": 1,
+    "surface": "report",
+    "title": "다짐 도입 이후 비욘드 피트니스 운영·매출 분석",
+    "description": "2026년 8월 1일부터 8월 11일까지의 다짐 매출 원장과 운영 화면을 교차 검증한 대표자용 분석 보고서",
+    "generatedAt": "2026-08-11T09:00:00+09:00",
+    "cards": [
+      {
+        "id": "net_sales",
+        "description": "다짐 공식 매출 원장의 결제금액 합계입니다. 환불 행은 확인되지 않았습니다.",
+        "dataset": "sales_summary",
+        "sourceId": "sales_xlsx",
+        "metrics": [{ "label": "순결제액", "field": "net_sales", "format": "number", "unit": "원" }]
+      },
+      {
+        "id": "transactions",
+        "description": "판매번호가 중복되지 않은 매출 행 수입니다.",
+        "dataset": "sales_summary",
+        "sourceId": "sales_xlsx",
+        "metrics": [{ "label": "거래 행", "field": "transactions", "format": "number", "unit": "건" }]
+      },
+      {
+        "id": "pt_share",
+        "description": "상품명에 PT가 포함된 거래의 순결제액 비중입니다.",
+        "dataset": "sales_summary",
+        "sourceId": "sales_xlsx",
+        "metrics": [{ "label": "PT 매출 비중", "field": "pt_share", "format": "percent" }]
+      },
+      {
+        "id": "renewal_share",
+        "description": "재등록 여부가 O인 거래의 순결제액 비중입니다.",
+        "dataset": "sales_summary",
+        "sourceId": "sales_xlsx",
+        "metrics": [{ "label": "재등록 매출 비중", "field": "renewal_share", "format": "percent" }]
+      },
+      {
+        "id": "active_members",
+        "description": "다짐 회원 목록에서 유효 상태로 표시된 회원 수입니다.",
+        "dataset": "member_summary",
+        "sourceId": "member_page",
+        "metrics": [{ "label": "유효 회원", "field": "active_members", "format": "number", "unit": "명" }]
+      },
+      {
+        "id": "attendance",
+        "description": "다짐 출석 화면의 2026년 8월 월간 범위에 표시된 출석 기록 수입니다. 동일 회원의 반복 출석을 포함합니다.",
+        "dataset": "attendance_summary",
+        "sourceId": "attendance_page",
+        "metrics": [{ "label": "8월 출석 기록", "field": "attendance_records", "format": "number", "unit": "건" }]
+      },
+      {
+        "id": "member_missing",
+        "description": "회원권 상태가 미입력으로 표시된 회원 수입니다.",
+        "dataset": "member_summary",
+        "sourceId": "member_page",
+        "metrics": [{ "label": "상태 미입력", "field": "missing_status", "format": "number", "unit": "명" }]
+      },
+      {
+        "id": "prospects",
+        "description": "다짐 예비회원 목록에 등록된 항목 수입니다.",
+        "dataset": "prospect_summary",
+        "sourceId": "prospect_page",
+        "metrics": [{ "label": "등록 예비회원", "field": "prospects", "format": "number", "unit": "명" }]
+      }
+    ],
+    "charts": [
+      {
+        "id": "daily_sales",
+        "title": "일별 순결제액",
+        "subtitle": "2026.08.01~08.11, 매출 원장상 거래가 없는 날짜는 0원",
+        "type": "line",
+        "dataset": "daily_sales",
+        "sourceId": "sales_xlsx",
+        "encodings": {
+          "x": { "field": "date", "type": "temporal", "label": "결제일" },
+          "y": { "field": "net_sales", "type": "quantitative", "label": "순결제액", "format": "number" }
+        },
+        "yAxisTitle": "순결제액(원)",
+        "valueFormat": "number",
+        "layout": "full"
+      },
+      {
+        "id": "revenue_mix",
+        "title": "상품군별 순결제액",
+        "subtitle": "상품명을 PT·헬스 회원권·운동복 대여·일일 이용으로 재분류",
+        "type": "bar",
+        "dataset": "revenue_mix",
+        "sourceId": "sales_xlsx",
+        "encodings": {
+          "x": { "field": "family", "type": "nominal", "label": "상품군" },
+          "y": { "field": "revenue", "type": "quantitative", "label": "순결제액", "format": "number" }
+        },
+        "yAxisTitle": "순결제액(원)",
+        "valueFormat": "number",
+        "layout": "full"
+      },
+      {
+        "id": "member_status",
+        "title": "회원권 상태 구성",
+        "subtitle": "다짐 회원 목록 1,191명 기준; 유효·만료·미입력 상태",
+        "type": "bar",
+        "dataset": "member_status",
+        "sourceId": "member_page",
+        "encodings": {
+          "x": { "field": "status", "type": "nominal", "label": "상태" },
+          "y": { "field": "members", "type": "quantitative", "label": "회원 수", "format": "number" }
+        },
+        "yAxisTitle": "회원 수(명)",
+        "valueFormat": "number",
+        "layout": "full"
+      }
+    ],
+    "tables": [
+      {
+        "id": "daily_sales_table",
+        "title": "일별 거래 내역 집계",
+        "subtitle": "개인정보를 제외한 날짜 단위 집계",
+        "dataset": "daily_sales",
+        "sourceId": "sales_xlsx",
+        "defaultSort": { "field": "date", "direction": "asc" },
+        "density": "dense",
+        "layout": "full",
+        "columns": [
+          { "field": "date", "label": "결제일", "type": "text" },
+          { "field": "transactions", "label": "거래", "format": "number" },
+          { "field": "net_sales", "label": "순결제액", "format": "number" },
+          { "field": "renewals", "label": "재등록 행", "format": "number" }
+        ]
+      }
+    ],
+    "sources": [
+      { "id": "sales_xlsx", "label": "다짐 공식 매출 엑셀", "path": "비욘드 피트니스_매출_2026_08_11.xlsx", "query": { "engine": "xlsx-import", "language": "sql", "sql": "SELECT 결제일, 매출_이름, 매출_유형, 결제_환불_수단, 판매금액, 결제금액_환불금액, 재등록_여부 FROM dagym_official_sales_export WHERE 결제일 BETWEEN DATE '2026-08-01' AND DATE '2026-08-11'", "description": "개인정보 열을 제외한 다짐 공식 매출 원장을 날짜·상품·재등록 기준으로 집계합니다.", "tables_used": ["dagym_official_sales_export"], "filters": ["결제일 2026-08-01~2026-08-11", "회원 이름·연락처 제외"] } },
+      { "id": "attendance_page", "label": "다짐 출석 월간 화면", "path": "https://www.dagym-manager.com/dashboard/attendance", "query": { "engine": "dagym-ui-snapshot", "language": "sql", "sql": "SELECT COUNT(*) AS attendance_records FROM dagym_attendance_snapshot WHERE attendance_date BETWEEN DATE '2026-08-01' AND DATE '2026-08-11'", "description": "다짐 월간 출석 화면에 표시된 출석 기록 수를 집계합니다.", "tables_used": ["dagym_attendance_snapshot"] } },
+      { "id": "member_page", "label": "다짐 회원 목록", "path": "https://www.dagym-manager.com/member/list", "query": { "engine": "dagym-ui-snapshot", "language": "sql", "sql": "SELECT membership_status, COUNT(*) AS members FROM dagym_member_list_snapshot GROUP BY membership_status", "description": "다짐 회원 목록의 유효·만료·미입력 상태별 회원 수를 집계합니다.", "tables_used": ["dagym_member_list_snapshot"] } },
+      { "id": "prospect_page", "label": "다짐 예비회원 목록", "path": "https://www.dagym-manager.com/member/potential-list", "query": { "engine": "dagym-ui-snapshot", "language": "sql", "sql": "SELECT COUNT(*) AS prospects FROM dagym_prospect_snapshot", "description": "다짐 예비회원 목록의 등록 건수를 집계합니다.", "tables_used": ["dagym_prospect_snapshot"] } },
+      { "id": "pt_page", "label": "다짐 P.T 수업 관리", "path": "https://www.dagym-manager.com/schedule/private-class", "query": { "engine": "dagym-ui-snapshot", "language": "sql", "sql": "SELECT instructor_role, class_type FROM dagym_private_class_snapshot", "description": "다짐 P.T 수업 관리 화면의 등록 수업 구성을 확인합니다.", "tables_used": ["dagym_private_class_snapshot"] } },
+      { "id": "analytics_page", "label": "다짐 분석 대시보드", "path": "https://www.dagym-manager.com/dashboard/dagym-analytics", "query": { "engine": "dagym-ui-snapshot", "language": "sql", "sql": "SELECT views, payments, payment_amount FROM dagym_analytics_snapshot", "description": "다짐 분석 화면의 핵심 카드를 확인했으나 값이 undefined로 표시되었습니다.", "tables_used": ["dagym_analytics_snapshot"] } }
+    ],
+    "blocks": [
+      { "id": "title", "type": "markdown", "body": "# 다짐 도입 이후 비욘드 피트니스 운영·매출 분석\n\n**기준일 2026.08.11 · 대표자 의사결정용**" },
+      { "id": "executive", "type": "markdown", "body": "## 결론부터\n\n다짐 도입 초기 실적은 **매출 발생과 기존 회원 재등록에는 강점**이 있지만, **신규 리드 관리·회원 상태 정비·분석 자동화는 아직 운영 체계로 자리 잡지 못했습니다.** 당장은 매출 확대보다 데이터 정비와 전환 퍼널 구축을 먼저 고정해야 향후 계획의 정확도가 올라갑니다." },
+      { "id": "sales_metrics", "type": "metric-strip", "cardIds": ["net_sales", "transactions", "pt_share", "renewal_share"] },
+      { "id": "sales_finding", "type": "markdown", "sourceId": "sales_xlsx", "body": "## 매출은 좋지만 PT·재등록 의존도가 높습니다\n\n8월 1~11일 순결제액은 **866만4천원**, 거래 행은 **36건**입니다. PT 매출이 **514만8천원(59.4%)**, 재등록 거래 매출이 **669만2천원(77.2%)**입니다. 상위 2개 영업일이 전체 매출의 **46.2%**를 차지해 일별 변동성도 큽니다. 현재 속도를 단순 월환산하면 약 **2,442만원**이지만, 도입 초기 재등록 집중 효과가 포함되어 있어 목표치가 아니라 참고 범위로 사용해야 합니다." },
+      { "id": "daily_chart", "type": "chart", "chartId": "daily_sales", "layout": "full" },
+      { "id": "mix_chart", "type": "chart", "chartId": "revenue_mix", "layout": "full" },
+      { "id": "operations", "type": "markdown", "body": "## 운영 기반은 있으나 회원 데이터의 정비가 시급합니다\n\n출석·회원·PT 화면은 실제 운영에 사용할 수 있으나, 회원 상태와 상담 퍼널이 완성되지 않아 매출 원인 분석과 장래 예측이 제한됩니다." },
+      { "id": "operations_metrics", "type": "metric-strip", "cardIds": ["active_members", "attendance", "member_missing", "prospects"] },
+      { "id": "member_finding", "type": "markdown", "sourceId": "member_page", "body": "## 전체 회원 1,191명 중 유효 회원은 290명입니다\n\n회원 목록은 **유효 290명(24.3%)**, **만료 581명(48.8%)**, **상태 미입력 320명(26.9%)**으로 표시됩니다. 상태 미입력 320명은 재등록 대상 선정, 휴면회원 분석, 출석률 계산을 왜곡할 수 있으므로 우선 정비 대상입니다." },
+      { "id": "member_chart", "type": "chart", "chartId": "member_status", "layout": "full" },
+      { "id": "attendance_finding", "type": "markdown", "sourceId": "attendance_page", "body": "## 8월 출석 기록은 219건입니다\n\n8월 1~11일 기준 단순 일평균은 약 **19.9건**이고, 유효회원 1명당 약 **0.76회**입니다. 이는 고유 방문자 수가 아니라 반복 출석을 포함한 기록 수이므로, 향후에는 회원별 주간 방문 빈도와 장기 미방문자를 별도로 추적해야 합니다." },
+      { "id": "prospect_finding", "type": "markdown", "sourceId": "prospect_page", "body": "## 예비회원 목록은 0명입니다\n\n상담·문의·체험·SNS 유입이 예비회원 단계에 기록되지 않으면 신규 회원 전환율과 광고 효율을 계산할 수 없습니다. 매출은 발생해도 다음 달 파이프라인을 예측할 근거가 사라집니다." },
+      { "id": "plan", "type": "markdown", "body": "## 앞으로의 운영계획\n\n### 1주 안에\n\n1. 회원 상태 미입력 320명을 **유효·만료·휴면·테스트/중복**으로 정리합니다.\n2. 상담·전화·방문·체험·SNS 문의를 모두 예비회원으로 등록하고 유입경로를 필수화합니다.\n3. 매일 마감 때 **매출·출석·PT 수행·신규 리드·재등록 예정** 5개 수치를 확인합니다.\n\n### 30일 안에\n\n1. PT 매출을 담당자별 판매액이 아니라 **수업 소진·잔여 회차·재등록 예정일**과 연결합니다.\n2. 만료 30/14/7일 전 회원을 자동 분류해 재등록 접촉 결과를 기록합니다.\n3. 일일 매출 목표보다 **신규상담→체험→등록**, **만료예정→재등록** 전환율을 핵심 지표로 둡니다.\n\n### 90일 안에\n\n1. 회원별 출석 빈도와 매출을 결합해 **충성·이탈위험·휴면·고가치** 군으로 나눕니다.\n2. PT 매출 59.4% 집중을 완화하도록 헬스 회원권·운동복·부가서비스의 교차판매를 설계합니다.\n3. 다짐 원장과 Bangju AI Worklog를 매일 자동 동기화해 센터운영보고서에 매출·출석·PT·리드 변화를 함께 표시합니다." },
+      { "id": "daily_table", "type": "table", "tableId": "daily_sales_table", "layout": "full" },
+      { "id": "caveats", "type": "markdown", "body": "## 데이터 한계와 해석 주의\n\n- 가입일이 별도 표시되지 않아 **공식 매출 원장의 최초 기록일인 2026.08.01을 분석 시작일로 가정**했습니다.\n- 다짐 분석 대시보드의 조회수·결제수·결제금액 카드가 `undefined`로 표시되어 해당 분석값은 사용하지 않았습니다.\n- 매출 원장 36행 중 결제금액 0원인 12개월 헬스권 2행이 있어 무료 연장·이관·입력 누락 여부 확인이 필요합니다.\n- 출석 219건은 고유회원 수가 아니라 반복 출석을 포함한 기록 수입니다.\n- 손익 판단에는 임차료·인건비·카드수수료·광고비·부가세 등 비용 자료가 추가로 필요합니다." },
+      { "id": "decision", "type": "markdown", "body": "## 대표자 결정 제안\n\n**다짐을 단순 출석·결제 프로그램이 아니라 ‘회원 전환과 이탈 방지 원장’으로 운영하십시오.** 다음 30일의 최우선 과제는 신규 매출 확대보다 회원 상태 정비, 예비회원 입력, PT 소진·재등록 연결입니다. 이 세 가지가 갖춰지면 다음 달부터 매출 목표와 인력 배치를 데이터로 계획할 수 있습니다." }
+    ]
+  },
+  "snapshot": {
+    "version": 1,
+    "generatedAt": "2026-08-11T09:00:00+09:00",
+    "status": "partial",
+    "datasets": {
+      "sales_summary": [{ "net_sales": 8664000, "transactions": 36, "pt_share": 0.594, "renewal_share": 0.772 }],
+      "member_summary": [{ "active_members": 290, "total_members": 1191, "expired_members": 581, "missing_status": 320 }],
+      "attendance_summary": [{ "attendance_records": 219, "calendar_days": 11, "daily_average": 19.9 }],
+      "prospect_summary": [{ "prospects": 0 }],
+      "daily_sales": [
+        { "date": "2026-08-01", "transactions": 2, "net_sales": 27500, "renewals": 0 },
+        { "date": "2026-08-02", "transactions": 2, "net_sales": 255500, "renewals": 1 },
+        { "date": "2026-08-03", "transactions": 10, "net_sales": 2147000, "renewals": 1 },
+        { "date": "2026-08-04", "transactions": 7, "net_sales": 746000, "renewals": 7 },
+        { "date": "2026-08-05", "transactions": 2, "net_sales": 425000, "renewals": 2 },
+        { "date": "2026-08-06", "transactions": 6, "net_sales": 1853000, "renewals": 4 },
+        { "date": "2026-08-07", "transactions": 2, "net_sales": 1430000, "renewals": 2 },
+        { "date": "2026-08-08", "transactions": 1, "net_sales": 15000, "renewals": 0 },
+        { "date": "2026-08-09", "transactions": 0, "net_sales": 0, "renewals": 0 },
+        { "date": "2026-08-10", "transactions": 3, "net_sales": 555000, "renewals": 1 },
+        { "date": "2026-08-11", "transactions": 1, "net_sales": 1210000, "renewals": 1 }
+      ],
+      "revenue_mix": [
+        { "family": "PT", "transactions": 6, "revenue": 5148000, "share": 0.594 },
+        { "family": "헬스 회원권", "transactions": 17, "revenue": 3175000, "share": 0.366 },
+        { "family": "운동복 대여", "transactions": 8, "revenue": 297000, "share": 0.034 },
+        { "family": "일일 이용", "transactions": 5, "revenue": 44000, "share": 0.005 }
+      ],
+      "member_status": [
+        { "status": "유효", "members": 290, "share": 0.243 },
+        { "status": "만료", "members": 581, "share": 0.488 },
+        { "status": "미입력", "members": 320, "share": 0.269 }
+      ]
+    },
+    "accessIssues": [
+      {
+        "id": "analytics_cards_undefined",
+        "dataset": "dagym_analytics",
+        "message": "다짐 분석 대시보드의 조회수·결제수·결제금액 카드가 undefined로 표시되어 공식 분석값을 사용할 수 없었습니다. 매출은 공식 엑셀 원장으로 재집계했습니다."
+      },
+      {
+        "id": "cost_data_unavailable",
+        "dataset": "profitability",
+        "message": "비용·원가·수수료 자료가 없어 매출과 운영현황은 분석했지만 영업이익은 계산하지 않았습니다."
+      }
+    ]
+  },
+  "sources": [
+    { "id": "sales_xlsx", "label": "다짐 공식 매출 엑셀", "path": "비욘드 피트니스_매출_2026_08_11.xlsx", "query": { "engine": "xlsx-import", "language": "sql", "sql": "SELECT 결제일, 매출_이름, 매출_유형, 결제_환불_수단, 판매금액, 결제금액_환불금액, 재등록_여부 FROM dagym_official_sales_export WHERE 결제일 BETWEEN DATE '2026-08-01' AND DATE '2026-08-11'", "description": "개인정보 열을 제외한 다짐 공식 매출 원장을 날짜·상품·재등록 기준으로 집계합니다.", "tables_used": ["dagym_official_sales_export"], "filters": ["결제일 2026-08-01~2026-08-11", "회원 이름·연락처 제외"] } },
+    { "id": "attendance_page", "label": "다짐 출석 월간 화면", "path": "https://www.dagym-manager.com/dashboard/attendance", "query": { "engine": "dagym-ui-snapshot", "language": "sql", "sql": "SELECT COUNT(*) AS attendance_records FROM dagym_attendance_snapshot WHERE attendance_date BETWEEN DATE '2026-08-01' AND DATE '2026-08-11'", "description": "다짐 월간 출석 화면에 표시된 출석 기록 수를 집계합니다.", "tables_used": ["dagym_attendance_snapshot"] } },
+    { "id": "member_page", "label": "다짐 회원 목록", "path": "https://www.dagym-manager.com/member/list", "query": { "engine": "dagym-ui-snapshot", "language": "sql", "sql": "SELECT membership_status, COUNT(*) AS members FROM dagym_member_list_snapshot GROUP BY membership_status", "description": "다짐 회원 목록의 유효·만료·미입력 상태별 회원 수를 집계합니다.", "tables_used": ["dagym_member_list_snapshot"] } },
+    { "id": "prospect_page", "label": "다짐 예비회원 목록", "path": "https://www.dagym-manager.com/member/potential-list", "query": { "engine": "dagym-ui-snapshot", "language": "sql", "sql": "SELECT COUNT(*) AS prospects FROM dagym_prospect_snapshot", "description": "다짐 예비회원 목록의 등록 건수를 집계합니다.", "tables_used": ["dagym_prospect_snapshot"] } },
+    { "id": "pt_page", "label": "다짐 P.T 수업 관리", "path": "https://www.dagym-manager.com/schedule/private-class", "query": { "engine": "dagym-ui-snapshot", "language": "sql", "sql": "SELECT instructor_role, class_type FROM dagym_private_class_snapshot", "description": "다짐 P.T 수업 관리 화면의 등록 수업 구성을 확인합니다.", "tables_used": ["dagym_private_class_snapshot"] } },
+    { "id": "analytics_page", "label": "다짐 분석 대시보드", "path": "https://www.dagym-manager.com/dashboard/dagym-analytics", "query": { "engine": "dagym-ui-snapshot", "language": "sql", "sql": "SELECT views, payments, payment_amount FROM dagym_analytics_snapshot", "description": "다짐 분석 화면의 핵심 카드를 확인했으나 값이 undefined로 표시되었습니다.", "tables_used": ["dagym_analytics_snapshot"] } }
+  ],
+  "package_info": {
+    "originUrl": "artifact://dagym-business-analysis-2026-08-11",
+    "controls": { "edit": false, "refresh": false }
+  }
+}

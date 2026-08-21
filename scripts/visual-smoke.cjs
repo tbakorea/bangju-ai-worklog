@@ -5675,6 +5675,80 @@ async function checkUnifiedCommandPalette(browser) {
   await page.close();
 }
 
+async function checkFitnessPaidPtCanonicalLedger(browser) {
+  const { page, errors } = await openPage(browser, { width: 1180, height: 820 });
+  const raw = await page.evaluate(() => window.eval(`(() => {
+    const manager = getFitnessCenterEmployees().find((employee) => isFitnessManagerRosterIdentity(employee));
+    const trainer = getFitnessCenterEmployees().find((employee) => /홍현규/.test(employee.name || employee.nickname || ""));
+    if (!manager || !trainer) return JSON.stringify({ missingRoster: true });
+
+    const makeLog = (employee, dateKey) => {
+      const log = createEmployeeLog(employee, state.profile, dateKey);
+      log.schedule = [];
+      log.fitnessOps = createFitnessOps();
+      log.fitnessOpsManual = createFitnessOpsManual();
+      state.employeeLogs[dateKey] = { ...(state.employeeLogs[dateKey] || {}), [getEmployeeWorklogId(employee)]: log };
+      return log;
+    };
+    const addPt = (log, time, memberName, sourceId = "") => {
+      log.schedule.push({
+        time,
+        text: memberName + " PT 수업",
+        items: [{ type: "유료PT", text: memberName + " PT 수업", memberName, sourceId }],
+        status: "예정",
+        mergeDown: false,
+      });
+    };
+
+    const managerAug1 = makeLog(manager, "2026-08-01");
+    addPt(managerAug1, "09:00", "회원A", "paper-a");
+    managerAug1.fitnessOps.ptRegular = "1";
+    managerAug1.fitnessOpsManual.ptRegular = true;
+
+    const managerAug2 = makeLog(manager, "2026-08-02");
+    addPt(managerAug2, "10:00", "회원B", "app-b");
+    addPt(managerAug2, "10:00", "회원B", "app-b");
+
+    const managerAug3 = makeLog(manager, "2026-08-03");
+    addPt(managerAug3, "11:00", "회원C", "paper-c");
+    managerAug3.fitnessOps.ptRegular = "3";
+    managerAug3.fitnessOpsManual.ptRegular = true;
+
+    makeLog(trainer, "2026-08-01");
+    const trainerId = getEmployeeWorklogId(trainer);
+    authState.dagymPtScheduleMonthCache.set("2026-08", {
+      rows: [
+        { id: "dagym-1", trainer_name: trainer.name, trainer_employee_id: trainerId, member_name: "회원D", scheduled_at: "2026-08-01T19:00:00+09:00", session_type: "paid", status: "completed", active: true },
+        { id: "dagym-1", trainer_name: trainer.name, trainer_employee_id: trainerId, member_name: "회원D", scheduled_at: "2026-08-01T19:00:00+09:00", session_type: "paid", status: "completed", active: true },
+        { id: "dagym-2", trainer_name: trainer.name, trainer_employee_id: trainerId, member_name: "회원E", scheduled_at: "2026-08-01T20:00:00+09:00", session_type: "paid", status: "no-show", active: true },
+        { id: "dagym-3", trainer_name: trainer.name, trainer_employee_id: trainerId, member_name: "회원F", scheduled_at: "2026-08-01T21:00:00+09:00", session_type: "paid", status: "scheduled", active: true },
+      ],
+    });
+
+    const ledger = buildFitnessPaidPtLedger([manager, trainer], "2026-08", "2026-08-03");
+    const managerRow = getFitnessPtLedgerEmployeeRow(ledger, manager);
+    const trainerRow = getFitnessPtLedgerEmployeeRow(ledger, trainer);
+    return JSON.stringify({
+      managerPaid: managerRow?.paid,
+      trainerPaid: trainerRow?.paid,
+      centerPaid: ledger.totals.paid,
+      duplicateRows: ledger.audit.duplicateRows,
+      excludedRows: ledger.audit.excludedRows,
+      manualDays: ledger.audit.manualDays,
+      managerAug2: managerRow?.byDate?.["2026-08-02"]?.paid,
+      managerAug3: managerRow?.byDate?.["2026-08-03"]?.paid,
+    });
+  })()`));
+  const result = JSON.parse(raw);
+  if (result.missingRoster || result.managerPaid !== 5 || result.trainerPaid !== 2 || result.centerPaid !== 7
+    || result.managerAug2 !== 1 || result.managerAug3 !== 3 || result.duplicateRows < 1
+    || result.excludedRows !== 1 || result.manualDays !== 2) {
+    fail("paid PT canonical ledger must deduplicate app/DaGym rows, exclude pending lessons, and honor paper-confirmed counts", raw);
+  }
+  if (errors.length) fail("paid PT canonical ledger page errors", errors.join(" | "));
+  await page.close();
+}
+
 (async () => {
   const browser = await chromium.launch({
     headless: true,
@@ -5704,6 +5778,7 @@ async function checkUnifiedCommandPalette(browser) {
     await checkDagymPreviousDayGuidanceFlow(browser);
     await checkDagymDirectReportImport(browser);
     await checkDagymTrainerScheduleProjection(browser);
+    await checkFitnessPaidPtCanonicalLedger(browser);
     await checkFitnessRosterHoursAndCompactTotals(browser);
     await checkLaborLeaveWorkflow(browser);
     await checkUnifiedCommandPalette(browser);
