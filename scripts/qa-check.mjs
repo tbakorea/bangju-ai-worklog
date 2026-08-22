@@ -23,6 +23,9 @@ const dagymDailyBrowserCollector = existsSync(join(root, "scripts/dagym-daily-sy
 const dagymDailyPipelineMigration = existsSync(join(root, "supabase/migrations/20260816090000_dagym_daily_sync_pipeline.sql"))
   ? read("supabase/migrations/20260816090000_dagym_daily_sync_pipeline.sql")
   : "";
+const dagymDeferredAnalysisMigration = existsSync(join(root, "supabase/migrations/20260822040000_defer_dagym_daily_analysis.sql"))
+  ? read("supabase/migrations/20260822040000_defer_dagym_daily_analysis.sql")
+  : "";
 const memberOutreachApi = existsSync(join(root, "api/member-outreach.js")) ? read("api/member-outreach.js") : "";
 const dagymDatabaseCron = existsSync(join(root, "supabase/migrations/20260811170000_dagym_database_cron.sql"))
   ? read("supabase/migrations/20260811170000_dagym_database_cron.sql")
@@ -113,7 +116,9 @@ check(
   "DaGym browser collection persists daily snapshots and sync health",
   dagymDailyBrowserApi.includes("dagym_daily_snapshots")
     && dagymDailyBrowserApi.includes("dagym_sync_runs")
-    && dagymDailyBrowserApi.includes("run_dagym_nightly_analysis")
+    && dagymDailyBrowserApi.includes("analysisDeferred")
+    && dagymDeferredAnalysisMigration.includes("create or replace function public.apply_dagym_daily_snapshot")
+    && !dagymDeferredAnalysisMigration.includes("perform public.run_dagym_nightly_analysis")
     && dagymDailyBrowserCollector.includes("DAGYM_ATTENDANCE_URL")
     && dagymDailyBrowserCollector.includes("DAGYM_SALES_URL")
     && dagymDailyBrowserCollector.includes("DAGYM_MEMBERS_URL")
@@ -184,8 +189,8 @@ check(
   "fitness revenue coaching protects data quality and enforces operating targets",
   js.includes("Math.max(30000000")
     && js.includes("Math.max(50000000")
-    && js.includes("coverageRate < 80")
-    && js.includes("누락일을 0원으로 추정하지 않습니다"),
+    && js.includes("revenue.isStale || revenue.coverageRate < 80")
+    && js.includes("누락일을 0원으로 간주하지 말고"),
   "sales coaching must distinguish missing data from zero revenue and keep 30M/50M target floors"
 );
 check("fitness coach keeps OpenAI key server-side", fitnessCoachApi.includes("process.env.OPENAI_API_KEY") && !js.includes("OPENAI_API_KEY"));

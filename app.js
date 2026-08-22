@@ -717,6 +717,7 @@ function createDagymDailyRecord(dateKey = todayKey) {
     syncMode: "",
     providerUpdatedAt: "",
     importWarnings: [],
+    domains: {},
     updatedAt: "",
     updatedBy: "",
     closedAt: "",
@@ -11862,7 +11863,10 @@ function buildDagymDailyAnalysis(dateKey = getActiveDateKey(), sourceRecord = nu
   const salesActionGap = Math.max(0, expectedSalesActions - recordedSalesActions);
   const noShowRate = metrics.ptBookings ? Math.round((metrics.noShows / metrics.ptBookings) * 1000) / 10 : 0;
   const renewalCoverage = metrics.expiring ? Math.round((metrics.renewals / metrics.expiring) * 1000) / 10 : 0;
-  const salesPerVisit = metrics.visits ? Math.round(metrics.sales / metrics.visits) : 0;
+  const salesPeriod = String(dagym?.domains?.sales?.period || "");
+  const attendancePeriod = String(dagym?.domains?.attendance?.period || "daily");
+  const salesPerVisitComparable = salesPeriod === "daily" && attendancePeriod === "daily";
+  const salesPerVisit = salesPerVisitComparable && metrics.visits ? Math.round(metrics.sales / metrics.visits) : null;
   const signals = [];
   const add = (signal) => signals.push(signal);
   if (renewalGap) add({ type: "renewal-gap", severity: renewalCoverage < 50 ? "critical" : "warning", title: `만료대응 ${renewalGap}건 부족`, detail: `만료예정 ${metrics.expiring}건 중 재등록 ${metrics.renewals}건으로 대응률은 ${renewalCoverage}%입니다.`, action: "미처리 회원을 재등록·보류·연락불가로 분류하고 담당자를 배정하세요.", targetRole: "인포", dueTime: "11:00", value: renewalGap });
@@ -11880,7 +11884,16 @@ function buildDagymDailyAnalysis(dateKey = getActiveDateKey(), sourceRecord = nu
     generatedAt: new Date().toISOString(),
     sourceUpdatedAt: String(dagym?.updatedAt || dagym?.importedAt || ""),
     metrics,
-    ratios: { noShowRate, renewalCoverage, salesPerVisit, recordedPt: staff.pt, recordedSalesActions },
+    ratios: {
+      noShowRate,
+      renewalCoverage,
+      salesPerVisit,
+      salesPeriod,
+      attendancePeriod,
+      salesPerVisitComparable,
+      recordedPt: staff.pt,
+      recordedSalesActions,
+    },
     signals: signals.slice(0, 8),
     coaching: {
       headline: topSignal.title,
@@ -19098,11 +19111,37 @@ function getFitnessOpsSummary() {
 function buildFitnessRevenueGrowthPlan(dateKey = getActiveDateKey()) {
   const monthKey = String(dateKey).slice(0, 7);
   const monthDays = getMonthDateKeys(monthKey).filter((key) => key <= dateKey);
-  const sourceDays = monthDays.filter((key) => {
-    const record = getDagymOpsForDate(key, { create: false });
-    return Boolean(record && String(record.sales ?? "").trim() !== "");
-  });
-  const sales = sourceDays.reduce((sum, key) => sum + numberValue(getDagymOpsForDate(key, { create: false })?.sales), 0);
+  const sourceRows = monthDays.map((key) => ({ key, record: state.dagymDaily?.[key] || null }))
+    .filter(({ record }) => record && String(record.sales ?? "").trim() !== "")
+    .map(({ key, record }) => ({
+      key,
+      value: numberValue(record.sales),
+      period: String(record.domains?.sales?.period || ""),
+      capturedAt: String(record.domains?.sales?.capturedAt || record.importedAt || record.updatedAt || ""),
+    }))
+    .sort((left, right) => left.key.localeCompare(right.key));
+  const values = sourceRows.map((row) => row.value);
+  const explicitMtd = sourceRows.some((row) => row.period === "month-to-date");
+  const explicitDaily = sourceRows.length > 0 && sourceRows.every((row) => row.period === "daily");
+  const monotonic = values.length > 1 && values.every((value, index) => index === 0 || value >= values[index - 1]);
+  const highValueSeries = values.length > 1 && Math.max(...values) >= 5000000 && Math.min(...values) >= 1000000;
+  const cumulative = explicitMtd || (!explicitDaily && (monotonic || highValueSeries));
+  const latestRow = sourceRows.at(-1) || null;
+  const previousRow = sourceRows.at(-2) || null;
+  const sales = cumulative ? numberValue(latestRow?.value) : sourceRows.reduce((sum, row) => sum + row.value, 0);
+  const dailySales = cumulative
+    ? Math.max(0, numberValue(latestRow?.value) - numberValue(previousRow?.value))
+    : numberValue(latestRow?.value);
+  const basis = explicitMtd
+    ? "month-to-date"
+    : explicitDaily
+      ? "daily-sum"
+      : cumulative
+        ? "inferred-month-to-date"
+        : sourceRows.length === 1
+          ? "single-observation"
+          : "legacy-daily-sum";
+  const latestDistance = latestRow ? Math.max(0, monthDays.length - 1 - monthDays.indexOf(latestRow.key)) : monthDays.length;
   const goals = { ...createFitnessGoals(), ...(state.fitnessGoals || {}) };
   const floorTarget = Math.max(30000000, numberValue(goals.monthlyRevenueTarget));
   const target90 = Math.max(50000000, numberValue(goals.revenue90DayTarget));
@@ -19112,20 +19151,104 @@ function buildFitnessRevenueGrowthPlan(dateKey = getActiveDateKey()) {
   const gap = Math.max(0, paceTarget - sales);
   const remainingDays = Math.max(1, totalDays - elapsedDays + 1);
   const dailyNeeded = Math.ceil(Math.max(0, floorTarget - sales) / remainingDays);
-  const coverageRate = monthDays.length ? Math.round((sourceDays.length / monthDays.length) * 100) : 0;
+  const coverageRate = cumulative
+    ? latestRow ? latestDistance <= 1 ? 100 : latestDistance <= 3 ? 60 : 25 : 0
+    : monthDays.length ? Math.round((sourceRows.length / monthDays.length) * 100) : 0;
   return {
     sales,
+    dailySales,
     floorTarget,
     target90,
     paceTarget,
     gap,
     dailyNeeded,
     paceRate: paceTarget ? Math.round((sales / paceTarget) * 100) : 0,
-    sourceDays: sourceDays.length,
+    sourceDays: sourceRows.length,
     expectedSourceDays: monthDays.length,
     coverageRate,
+    basis,
+    basisLabel: {
+      "month-to-date": "다짐 월누계",
+      "daily-sum": "당일값 합계",
+      "inferred-month-to-date": "월누계 추정",
+      "single-observation": "최근 확인값",
+      "legacy-daily-sum": "일별 합계 추정",
+    }[basis] || "집계 기준 확인",
+    latestSourceDate: latestRow?.key || "",
+    isStale: Boolean(latestRow && latestDistance > 1),
+    requiresReview: !explicitMtd && !explicitDaily,
     milestones: [floorTarget, Math.max(40000000, floorTarget), target90],
   };
+}
+
+function buildFitnessOperatingGrowthLoop(revenue, dateKey = getActiveDateKey()) {
+  const dagym = getDagymOpsForDate(dateKey, { create: false });
+  const analysis = getDagymDailyAnalysis(dateKey) || buildDagymDailyAnalysis(dateKey);
+  const outreachMembers = memberOutreachState.members || [];
+  const marketingMembers = outreachMembers.filter((member) => member.status === "active" && member.marketingConsent);
+  const renewalCandidates = marketingMembers.filter((member) => member.candidate?.days !== null && member.candidate?.days <= 30);
+  const employees = getFitnessCenterEmployees();
+  const scheduled = employees.filter((employee) => {
+    const log = getFitnessEmployeeLogForDate(employee, dateKey) || {};
+    return !isOffWorkHours(getOverviewScheduledWorkHours(employee, dateKey, log));
+  });
+  const attendanceComplete = scheduled.filter((employee) => {
+    const log = getFitnessEmployeeLogForDate(employee, dateKey) || {};
+    return Boolean(log.clockIn && log.clockOut);
+  }).length;
+  const growthCompleted = scheduled.filter((employee) => Boolean(getFitnessEmployeeLogForDate(employee, dateKey)?.fitnessGrowthMissionDone)).length;
+  const noShowRate = numberValue(analysis?.ratios?.noShowRate);
+  const renewalCoverage = numberValue(analysis?.ratios?.renewalCoverage);
+  const dataQuality = analysis?.quality === "complete" ? "완전" : analysis?.quality === "partial" ? "일부" : "대기";
+  return [
+    {
+      key: "member",
+      eyebrow: "MEMBER · MARKETING",
+      title: "회원관리와 재가입",
+      value: memberOutreachState.loaded ? `${renewalCandidates.length}명` : `${numberValue(dagym?.expiring)}명`,
+      meta: memberOutreachState.loaded ? `동의 후속후보 · 재등록 대응 ${renewalCoverage}%` : "동의 명부·만료대상 연결 대기",
+      action: "동의 회원만 재가입 안내·상담 배정·재연락 예약으로 연결합니다.",
+      tone: renewalCandidates.length || numberValue(dagym?.expiring) ? "attention" : "stable",
+      destination: "member",
+    },
+    {
+      key: "people",
+      eyebrow: "PEOPLE · GROWTH",
+      title: "근태와 역량 실행",
+      value: `${attendanceComplete}/${scheduled.length}`,
+      meta: `출퇴근 완결 · 1% 스킬 ${growthCompleted}/${scheduled.length}`,
+      action: "근무표를 기준으로 기록 누락만 알리고, 코칭 수락→실행→회고를 추적합니다.",
+      tone: scheduled.length && attendanceComplete < scheduled.length ? "attention" : "stable",
+      destination: "people",
+    },
+    {
+      key: "profit",
+      eyebrow: "OPERATIONS · PROFIT",
+      title: "매출과 운영 수익성",
+      value: `${revenue.paceRate}%`,
+      meta: `${revenue.basisLabel} · 데이터 ${dataQuality} · 노쇼 ${noShowRate}%`,
+      action: revenue.gap
+        ? `남은 기간 하루 ${Math.round(revenue.dailyNeeded / 10000).toLocaleString()}만원 목표를 상담·체험·재등록 행동으로 배정합니다.`
+        : "목표 페이스를 유지하면서 PT 출석률·재등록률·객단가를 함께 관리합니다.",
+      tone: revenue.gap || revenue.isStale ? "attention" : "stable",
+      destination: "operations",
+    },
+  ];
+}
+
+function renderFitnessOperatingGrowthLoop(revenue) {
+  const node = document.getElementById("fitnessOperatingGrowthLoop");
+  if (!node) return;
+  const rows = buildFitnessOperatingGrowthLoop(revenue);
+  node.innerHTML = rows.map((row, index) => `
+    <article class="is-${escapeAttr(row.tone)}">
+      <header><span>${escapeHtml(row.eyebrow)}</span><em>0${index + 1}</em></header>
+      <div><strong>${escapeHtml(row.title)}</strong><b>${escapeHtml(row.value)}</b></div>
+      <p>${escapeHtml(row.meta)}</p>
+      <small>${escapeHtml(row.action)}</small>
+      <button type="button" data-fitness-growth-destination="${escapeAttr(row.destination)}">실행 화면 열기</button>
+    </article>
+  `).join("");
 }
 
 function renderFitnessDashboard() {
@@ -19152,13 +19275,14 @@ function renderFitnessDashboard() {
     ["상담", `${summary.consultation}/${goals.consultationTarget || 0}`, `${consultationRate}%`],
     ["영업행동", `${customerActions}건`, "오늘"],
     ["특이사항", `${summary.specialReports.length}건`, summary.specialReports.length ? "확인" : "정상"],
-    ["월매출", `${Math.round(revenue.sales / 10000).toLocaleString()}만`, `자료 ${revenue.sourceDays}/${revenue.expectedSourceDays}일`],
+    ["월매출", `${Math.round(revenue.sales / 10000).toLocaleString()}만`, revenue.basisLabel],
     ["90일 목표", `${Math.round(revenue.target90 / 10000).toLocaleString()}만`, "3개월"],
   ].map(([label, value, meta]) => `<article><span>${label}</span><strong>${value}</strong><em>${meta}</em></article>`).join("");
+  renderFitnessOperatingGrowthLoop(revenue);
 
   const coaching = [
-    ["매출 페이스", revenue.coverageRate < 80
-      ? `다짐 매출자료가 ${revenue.sourceDays}/${revenue.expectedSourceDays}일만 확인되어 누락일을 0원으로 추정하지 않습니다. 자료를 먼저 보완한 뒤 월 3,000→4,000→90일 5,000만원 단계로 상담·체험·재등록 행동을 배정하세요.`
+    ["매출 페이스", revenue.isStale || revenue.coverageRate < 80
+      ? `다짐 매출자료의 최근 확인일은 ${revenue.latestSourceDate || "미확인"}이며 집계 기준은 ${revenue.basisLabel}입니다. 누락일을 0원으로 간주하지 말고 자료를 갱신한 뒤 상담·체험·재등록 행동을 배정하세요.`
       : revenue.gap
         ? `현재 목표 페이스보다 ${Math.round(revenue.gap / 10000).toLocaleString()}만원 부족합니다. 남은 기간 하루 평균 ${Math.round(revenue.dailyNeeded / 10000).toLocaleString()}만원을 상담→체험→등록→재등록 담당자별 후속업무로 배정하세요.`
         : `월 최소 ${Math.round(revenue.floorTarget / 10000).toLocaleString()}만원 페이스를 충족하고 있습니다. 객단가와 재등록률을 지키며 90일 ${Math.round(revenue.target90 / 10000).toLocaleString()}만원 목표로 확장하세요.`],
@@ -24376,6 +24500,21 @@ document.getElementById("dagymCloseButton")?.addEventListener("click", toggleDag
 document.getElementById("memberConsentForm")?.addEventListener("submit", submitMemberConsent);
 document.getElementById("memberOutreachRefreshButton")?.addEventListener("click", () => loadMemberOutreachCandidates({ force: true }));
 document.getElementById("memberOutreachList")?.addEventListener("click", handleMemberOutreachAction);
+document.getElementById("fitnessOperatingGrowthLoop")?.addEventListener("click", (event) => {
+  const button = event.target.closest("[data-fitness-growth-destination]");
+  if (!button) return;
+  const destination = button.dataset.fitnessGrowthDestination;
+  if (destination === "people") {
+    switchView("attendance");
+    return;
+  }
+  setFitnessLogPage(0);
+  switchView("fitness-log");
+  window.setTimeout(() => {
+    const target = document.getElementById(destination === "member" ? "memberOutreachPanel" : "fitnessCenterDailyPanel");
+    target?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }, 160);
+});
 document.getElementById("fitnessGuidanceGenerateButton")?.addEventListener("click", () => generateTodayFitnessGuidance());
 document.getElementById("fitnessDailyGuidancePanel")?.addEventListener("click", (event) => {
   const button = event.target.closest("[data-accept-fitness-guidance]");

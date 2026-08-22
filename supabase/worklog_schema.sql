@@ -1701,10 +1701,7 @@ begin
     and concat_ws(' ', p.name, p.role, p.workplace, p.org) ~* '박주홍|센터장|운영총괄|피트니스.*manager'
   order by case when coalesce(p.name, '') = '박주홍' then 0 else 1 end, p.updated_at desc
   limit 1;
-  if manager_id is null then
-    perform public.run_dagym_nightly_analysis(new.snapshot_date + 1);
-    return new;
-  end if;
+  if manager_id is null then return new; end if;
 
   record_payload := new.metrics || jsonb_build_object(
     'date', new.snapshot_date::text,
@@ -1741,7 +1738,6 @@ begin
     ),
     updated_at = greatest(public.worklog_states.updated_at, coalesce(new.source_updated_at, now()));
 
-  perform public.run_dagym_nightly_analysis(new.snapshot_date + 1);
   return new;
 end;
 $$;

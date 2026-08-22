@@ -76,6 +76,8 @@ function normalizeDomains(input = {}) {
       rows: Math.max(0, Number(source.rows || 0)),
       source: String(source.source || "").slice(0, 120),
       error: String(source.error || "").slice(0, 240),
+      period: ["daily", "month-to-date", "point-in-time", "month-schedule"].includes(String(source.period || "")) ? String(source.period) : "",
+      capturedAt: String(source.capturedAt || "").slice(0, 40),
     }];
   }));
 }
@@ -125,7 +127,7 @@ module.exports = async function handler(request, response) {
   try {
     const enriched = await enrichPtMetrics(dateKey, normalizeMetrics(request.body?.metrics));
     const metrics = enriched.metrics;
-    domains.schedule = { ok: true, rows: enriched.scheduleRows, source: "dagym_pt_schedule_events", error: "" };
+    domains.schedule = { ok: true, rows: enriched.scheduleRows, source: "dagym_pt_schedule_events", error: "", period: "month-schedule", capturedAt: collectedAt };
     const fieldCount = METRIC_KEYS.filter((key) => metrics[key] !== undefined).length;
     const successfulDomains = Object.values(domains).filter((domain) => domain.ok).length;
     const quality = fieldCount >= 6 && successfulDomains >= 3 ? "complete" : fieldCount > 0 ? "partial" : "missing";
@@ -135,25 +137,13 @@ module.exports = async function handler(request, response) {
       body: JSON.stringify({ center_key: CENTER_KEY, snapshot_date: dateKey, metrics, domains, quality, field_count: fieldCount, sync_id: syncId, source: "dagym-browser-daily", source_updated_at: collectedAt, updated_at: collectedAt }),
     });
 
-    let analysisUpdated = false;
-    let analysisError = "";
-    try {
-      await supabaseRequest("/rest/v1/rpc/run_dagym_nightly_analysis", {
-        method: "POST",
-        body: JSON.stringify({ target_date: nextDateKey(dateKey) }),
-      });
-      analysisUpdated = true;
-    } catch (error) {
-      analysisError = error.message;
-    }
-
     await supabaseRequest("/rest/v1/dagym_sync_runs", {
       method: "POST",
       headers: { Prefer: "return=minimal" },
-      body: JSON.stringify({ id: syncId, center_key: CENTER_KEY, target_date: dateKey, source: "browser-daily", status: quality === "missing" ? "failed" : quality === "partial" ? "partial" : "success", quality, metrics_count: fieldCount, domains, warnings: [...warnings, ...(analysisError ? ["야간분석 갱신 지연"] : [])], started_at: request.body?.startedAt || collectedAt, finished_at: new Date().toISOString() }),
+      body: JSON.stringify({ id: syncId, center_key: CENTER_KEY, target_date: dateKey, source: "browser-daily", status: quality === "missing" ? "failed" : quality === "partial" ? "partial" : "success", quality, metrics_count: fieldCount, domains, warnings, started_at: request.body?.startedAt || collectedAt, finished_at: new Date().toISOString() }),
     });
 
-    return response.status(200).json({ ok: quality !== "missing", dateKey, quality, fieldCount, domains, analysisUpdated, syncedAt: collectedAt });
+    return response.status(200).json({ ok: quality !== "missing", dateKey, quality, fieldCount, domains, analysisDeferred: true, syncedAt: collectedAt });
   } catch (error) {
     await supabaseRequest("/rest/v1/dagym_sync_runs", {
       method: "POST",

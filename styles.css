@@ -9736,6 +9736,74 @@ textarea:focus-visible {
   line-height: 1;
 }
 
+.fitness-growth-loop {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  margin: 0 0 14px;
+}
+
+.fitness-growth-loop article {
+  display: grid;
+  grid-template-rows: auto auto auto 1fr auto;
+  gap: 7px;
+  min-width: 0;
+  border: 1px solid var(--hardline);
+  border-top: 5px solid var(--fitness-green);
+  background: rgba(252, 252, 247, 0.94);
+  padding: 11px;
+}
+
+.fitness-growth-loop article.is-attention {
+  border-top-color: #b87333;
+  background: rgba(255, 248, 235, 0.94);
+}
+
+.fitness-growth-loop header,
+.fitness-growth-loop article > div {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.fitness-growth-loop header span,
+.fitness-growth-loop header em,
+.fitness-growth-loop p,
+.fitness-growth-loop small {
+  margin: 0;
+  color: var(--muted);
+  font-style: normal;
+  font-size: 10px;
+  font-weight: 850;
+  line-height: 1.35;
+}
+
+.fitness-growth-loop header span {
+  letter-spacing: 0.08em;
+}
+
+.fitness-growth-loop article > div strong {
+  color: var(--ink);
+  font-size: 15px;
+  font-weight: 950;
+}
+
+.fitness-growth-loop article > div b {
+  color: var(--fitness-green);
+  font-size: 22px;
+  font-weight: 950;
+}
+
+.fitness-growth-loop button {
+  min-height: 34px;
+  border: 1px solid var(--hardline);
+  background: var(--nordic-sheet);
+  color: var(--fitness-green);
+  font-size: 11px;
+  font-weight: 950;
+}
+
 .fitness-os-layout {
   display: grid;
   grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr);
@@ -9850,6 +9918,16 @@ textarea:focus-visible {
 
   .fitness-kpi-grid strong {
     font-size: 18px;
+  }
+
+  .fitness-growth-loop {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 7px;
+    margin-bottom: 9px;
+  }
+
+  .fitness-growth-loop article {
+    padding: 9px;
   }
 
   .fitness-os-layout {

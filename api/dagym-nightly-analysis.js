@@ -65,7 +65,7 @@ function collectStoredSource(rows = [], sourceDateKey) {
 
 async function loadDailySnapshot(sourceDate, headers) {
   const query = new URL(`${SUPABASE_URL}/rest/v1/dagym_daily_snapshots`);
-  query.searchParams.set("select", "metrics,quality,field_count,source,source_updated_at,updated_at");
+  query.searchParams.set("select", "metrics,domains,quality,field_count,source,source_updated_at,updated_at");
   query.searchParams.set("center_key", "eq.beyond-fitness");
   query.searchParams.set("snapshot_date", `eq.${sourceDate}`);
   query.searchParams.set("limit", "1");
@@ -79,6 +79,7 @@ async function loadDailySnapshot(sourceDate, headers) {
   if (!row?.metrics || typeof row.metrics !== "object") return null;
   return {
     ...row.metrics,
+    domains: row.domains && typeof row.domains === "object" ? row.domains : {},
     syncMode: "browser-daily",
     source: row.source || "dagym-browser-daily",
     quality: row.quality || "partial",
@@ -113,7 +114,10 @@ function buildAnalysis(analysisDate, sourceDate, record, staff = {}) {
   const salesActionGap = Math.max(0, expectedSalesActions - recordedSalesActions);
   const noShowRate = metrics.ptBookings ? Math.round((metrics.noShows / metrics.ptBookings) * 1000) / 10 : 0;
   const renewalCoverage = metrics.expiring ? Math.round((metrics.renewals / metrics.expiring) * 1000) / 10 : 0;
-  const salesPerVisit = metrics.visits ? Math.round(metrics.sales / metrics.visits) : 0;
+  const salesPeriod = String(record?.domains?.sales?.period || "");
+  const attendancePeriod = String(record?.domains?.attendance?.period || "daily");
+  const salesPerVisitComparable = salesPeriod === "daily" && attendancePeriod === "daily";
+  const salesPerVisit = salesPerVisitComparable && metrics.visits ? Math.round(metrics.sales / metrics.visits) : null;
   const signals = [];
   if (renewalGap) signals.push({ type: "renewal-gap", severity: renewalCoverage < 50 ? "critical" : "warning", title: `만료대응 ${renewalGap}건 부족`, detail: `만료예정 ${metrics.expiring}건 중 재등록 ${metrics.renewals}건, 대응률 ${renewalCoverage}%입니다.`, action: "미처리 회원을 결과별로 분류하고 담당자를 배정하세요.", targetRole: "인포", dueTime: "11:00", value: renewalGap });
   if (metrics.noShows) signals.push({ type: "no-show", severity: noShowRate >= 10 ? "critical" : "warning", title: `노쇼·취소 ${metrics.noShows}건`, detail: `PT 예약 대비 노쇼·취소율 ${noShowRate}%입니다.`, action: "재예약 안내와 사유 기록을 완료하세요.", targetRole: "인포", dueTime: "10:30", value: metrics.noShows });
@@ -128,7 +132,16 @@ function buildAnalysis(analysisDate, sourceDate, record, staff = {}) {
     source: record?.syncMode === "direct" ? "dagym-direct" : "worklog-snapshot",
     quality: populated >= 6 ? "complete" : "partial",
     metrics,
-    ratios: { noShowRate, renewalCoverage, salesPerVisit, recordedPt: numeric(staff.pt), recordedSalesActions },
+    ratios: {
+      noShowRate,
+      renewalCoverage,
+      salesPerVisit,
+      salesPeriod,
+      attendancePeriod,
+      salesPerVisitComparable,
+      recordedPt: numeric(staff.pt),
+      recordedSalesActions,
+    },
     signals: signals.slice(0, 8),
     coaching: {
       headline: top.title,

@@ -31,12 +31,17 @@ function expandUrl(value = "") {
   return value.replaceAll("{gymId}", encodeURIComponent(gymId)).replaceAll("{date}", encodeURIComponent(targetDate));
 }
 
-function withDailyRange(value = "") {
+function getMonthStartDateKey(dateKey = targetDate) {
+  return `${String(dateKey).slice(0, 7)}-01`;
+}
+
+function withCaptureRange(value = "", period = "daily") {
   if (!value) return "";
   const url = new URL(expandUrl(value), baseUrl);
+  const startDate = period === "month-to-date" ? getMonthStartDateKey() : targetDate;
   if (!url.searchParams.has("gymId")) url.searchParams.set("gymId", gymId);
   if (!url.searchParams.has("date")) url.searchParams.set("date", targetDate);
-  if (!url.searchParams.has("startDate")) url.searchParams.set("startDate", `${targetDate}T00:00:00`);
+  if (!url.searchParams.has("startDate")) url.searchParams.set("startDate", `${startDate}T00:00:00`);
   if (!url.searchParams.has("endDate")) url.searchParams.set("endDate", `${targetDate}T23:59:59`);
   return url.toString();
 }
@@ -63,10 +68,14 @@ async function waitForReady(page) {
   return bodyText;
 }
 
-async function applyDateFilter(page) {
+async function applyDateFilter(page, period = "daily") {
   const inputs = page.locator('input[type="date"]');
   const count = await inputs.count().catch(() => 0);
-  for (let index = 0; index < Math.min(count, 3); index += 1) await inputs.nth(index).fill(targetDate).catch(() => {});
+  const startDate = period === "month-to-date" ? getMonthStartDateKey() : targetDate;
+  for (let index = 0; index < Math.min(count, 3); index += 1) {
+    const value = count > 1 && index === 0 ? startDate : targetDate;
+    await inputs.nth(index).fill(value).catch(() => {});
+  }
   if (count) {
     const button = page.getByRole("button", { name: /조회|검색|적용|확인/ }).first();
     if (await button.count().catch(() => 0)) await button.click().catch(() => {});
@@ -87,23 +96,99 @@ async function discoverLinks(page) {
   };
 }
 
+async function extractDomainMetricHints(page, key) {
+  if (key !== "sales") return {};
+  const sales = await page.locator("body *").evaluateAll((elements) => {
+    for (const element of elements) {
+      const ownText = [...element.childNodes]
+        .filter((node) => node.nodeType === Node.TEXT_NODE)
+        .map((node) => node.textContent || "")
+        .join(" ")
+        .replace(/\s+/g, " ")
+        .trim();
+      if (ownText !== "매출") continue;
+      let container = element.parentElement;
+      for (let depth = 0; depth < 3 && container; depth += 1, container = container.parentElement) {
+        const text = String(container.textContent || "").replace(/\s+/g, " ").trim();
+        const match = text.match(/^매출\s*([\d,]+)\s*원/);
+        if (!match) continue;
+        const value = Number(match[1].replace(/,/g, ""));
+        if (Number.isFinite(value) && value >= 0) return value;
+      }
+    }
+    return null;
+  }).catch(() => null);
+  return Number.isFinite(sales) ? { sales } : {};
+}
+
+function getDomainPeriod(key = "") {
+  if (key === "sales") return "month-to-date";
+  if (key === "members") return "point-in-time";
+  return "daily";
+}
+
 async function captureDomain(page, key, url) {
-  if (!url) return { ok: false, rows: 0, source: "", error: `${key} 화면을 찾지 못함`, text: "" };
+  const period = getDomainPeriod(key);
+  if (!url) return { ok: false, rows: 0, source: "", error: `${key} 화면을 찾지 못함`, text: "", period, capturedAt: "" };
   let lastError;
   for (let attempt = 1; attempt <= 3; attempt += 1) {
     try {
-      await page.goto(withDailyRange(url), { waitUntil: "domcontentloaded", timeout: 60000 });
+      await page.goto(withCaptureRange(url, period), { waitUntil: "domcontentloaded", timeout: 60000 });
       await waitForReady(page);
-      await applyDateFilter(page);
+      await applyDateFilter(page, period);
       const text = normalizeText(await page.locator("body").innerText());
       const rows = await page.locator("table tbody tr").count().catch(() => 0);
-      return { ok: true, rows, source: new URL(page.url()).pathname.slice(0, 120), error: "", text };
+      const metricHints = await extractDomainMetricHints(page, key);
+      return { ok: true, rows, source: new URL(page.url()).pathname.slice(0, 120), error: "", text, metricHints, period, capturedAt: new Date().toISOString() };
     } catch (error) {
       lastError = error;
       await page.waitForTimeout(1200 * attempt);
     }
   }
-  return { ok: false, rows: 0, source: "", error: String(lastError?.message || "화면 수집 실패").slice(0, 240), text: "" };
+  return { ok: false, rows: 0, source: "", error: String(lastError?.message || "화면 수집 실패").slice(0, 240), text: "", period, capturedAt: "" };
+}
+
+async function captureMembersViaMenu(page, attendanceUrl) {
+  const period = getDomainPeriod("members");
+  let lastError;
+  for (let attempt = 1; attempt <= 2; attempt += 1) {
+    try {
+      await page.goto(withCaptureRange(attendanceUrl, "daily"), { waitUntil: "domcontentloaded", timeout: 60000 });
+      await waitForReady(page);
+      const memberButtons = page.getByRole("button", { name: "회원", exact: true });
+      const initialCount = await memberButtons.count();
+      if (!initialCount) throw new Error("회원 메뉴 버튼을 찾지 못함");
+      await memberButtons.first().click({ timeout: 15000 });
+      await page.waitForTimeout(500);
+      const expandedButtons = page.getByRole("button", { name: "회원", exact: true });
+      const expandedCount = await expandedButtons.count();
+      if (expandedCount < 2) throw new Error("회원 하위 메뉴를 찾지 못함");
+      await expandedButtons.nth(expandedCount - 1).click({ timeout: 15000 });
+      const text = await waitForReady(page);
+      const rows = await page.locator("table tbody tr").count().catch(() => 0);
+      return {
+        ok: true,
+        rows,
+        source: new URL(page.url()).pathname.slice(0, 120),
+        error: "",
+        text,
+        period,
+        capturedAt: new Date().toISOString(),
+      };
+    } catch (error) {
+      lastError = error;
+      await page.waitForTimeout(1200 * attempt);
+    }
+  }
+  return {
+    ok: false,
+    rows: 0,
+    source: "",
+    error: String(lastError?.message || "회원 화면 수집 실패").slice(0, 240),
+    text: "",
+    period,
+    capturedAt: "",
+  };
 }
 
 function firstNumber(text, patterns = []) {
@@ -117,16 +202,19 @@ function firstNumber(text, patterns = []) {
 }
 
 function collectMetrics(captures) {
-  const all = Object.values(captures).map((capture) => capture.text || "").join(" ");
+  const attendance = captures.attendance?.text || "";
+  const members = captures.members?.text || "";
+  const sales = captures.sales?.text || "";
+  const membership = `${members} ${sales}`;
   const metrics = {
-    visits: firstNumber(all, [/(?:출석|입장|방문)(?:\s*(?:회원|인원|수))?\s*[:：]?\s*([\d,]+)\s*(?:명|건)?/i]),
-    newMembers: firstNumber(all, [/(?:신규\s*(?:등록|회원)|신규)\s*[:：]?\s*([\d,]+)\s*(?:명|건)?/i]),
-    renewals: firstNumber(all, [/(?:재등록|갱신|연장)\s*[:：]?\s*([\d,]+)\s*(?:명|건)?/i]),
-    expiring: firstNumber(all, [/(?:만료\s*예정|만료\s*회원|만료\s*대상)\s*[:：]?\s*([\d,]+)\s*(?:명|건)?/i]),
-    ptBookings: firstNumber(all, [/(?:PT|피티)\s*(?:예약|수업)\s*[:：]?\s*([\d,]+)\s*(?:명|건|회)?/i]),
-    noShows: firstNumber(all, [/(?:노쇼|미출석|예약\s*취소)\s*[:：]?\s*([\d,]+)\s*(?:명|건)?/i]),
-    lockerExpiring: firstNumber(all, [/(?:락커|사물함)\s*만료\s*[:：]?\s*([\d,]+)\s*(?:명|건)?/i]),
-    sales: firstNumber(all, [/(?:총\s*)?(?:매출|결제)(?:액|금액)?\s*[:：]?\s*(?:₩|원)?\s*([\d,]+)\s*원?/i]),
+    visits: firstNumber(attendance, [/(?:출석한\s*회원|출석|입장|방문)(?:\s*(?:회원|인원|수))?\s*[:：]?\s*([\d,]+)\s*(?:명|건)?/i]),
+    newMembers: firstNumber(membership, [/(?:신규\s*(?:등록|회원)|신규)\s*[:：]?\s*([\d,]+)\s*(?:명|건)?/i]),
+    renewals: firstNumber(membership, [/(?:재등록|갱신|연장)\s*[:：]?\s*([\d,]+)\s*(?:명|건)?/i]),
+    expiring: firstNumber(members, [/(?:만료\s*예정|만료\s*회원|만료\s*대상)\s*[:：]?\s*([\d,]+)\s*(?:명|건)?/i]),
+    ptBookings: firstNumber(attendance, [/(?:PT|피티)\s*(?:예약|수업)\s*[:：]?\s*([\d,]+)\s*(?:명|건|회)?/i]),
+    noShows: firstNumber(attendance, [/(?:노쇼|미출석|예약\s*취소)\s*[:：]?\s*([\d,]+)\s*(?:명|건)?/i]),
+    lockerExpiring: firstNumber(members, [/(?:락커|사물함)\s*만료\s*[:：]?\s*([\d,]+)\s*(?:명|건)?/i]),
+    sales: captures.sales?.metricHints?.sales ?? firstNumber(sales, [/(?:총\s*)?(?:매출|결제)(?:액|금액)?\s*[:：]?\s*(?:₩|원)?\s*([\d,]+)\s*원?/i]),
   };
   return Object.fromEntries(Object.entries(metrics).filter(([, value]) => value !== null));
 }
@@ -141,6 +229,7 @@ async function upload(payload) {
       ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
     },
     body: JSON.stringify(payload),
+    signal: AbortSignal.timeout(20000),
   });
   const text = await result.text();
   if (!result.ok) throw new Error(`앱 서버 업로드 실패 (${result.status}): ${text.slice(0, 500)}`);
@@ -154,24 +243,37 @@ async function main() {
   if (!context) throw new Error("다짐 전용 브라우저 컨텍스트를 찾지 못했습니다.");
   const page = context.pages()[0] || await context.newPage();
   const attendanceStart = process.env.DAGYM_ATTENDANCE_URL || `${baseUrl}/dashboard/attendance?gymId={gymId}`;
-  await page.goto(withDailyRange(attendanceStart), { waitUntil: "domcontentloaded", timeout: 60000 });
+  await page.goto(withCaptureRange(attendanceStart, "daily"), { waitUntil: "domcontentloaded", timeout: 60000 });
   await waitForReady(page);
   const discovered = await discoverLinks(page);
   const urls = {
     attendance: process.env.DAGYM_ATTENDANCE_URL || discovered.attendance || attendanceStart,
-    sales: process.env.DAGYM_SALES_URL || discovered.sales,
-    members: process.env.DAGYM_MEMBERS_URL || discovered.members,
+    sales: process.env.DAGYM_SALES_URL || discovered.sales || `${baseUrl}/sales/list?gymId={gymId}`,
+    members: process.env.DAGYM_MEMBERS_URL || discovered.members || `${baseUrl}/member/list?gymId={gymId}`,
   };
   const captures = {};
-  for (const key of ["attendance", "sales", "members"]) captures[key] = await captureDomain(page, key, urls[key]);
+  for (const key of ["attendance", "sales"]) captures[key] = await captureDomain(page, key, urls[key]);
+  captures.members = urls.members
+    ? await captureDomain(page, "members", urls.members)
+    : await captureMembersViaMenu(page, attendanceStart);
+  if (!captures.members.ok) captures.members = await captureMembersViaMenu(page, attendanceStart);
   const metrics = collectMetrics(captures);
-  const domains = Object.fromEntries(Object.entries(captures).map(([key, capture]) => [key, { ok: capture.ok, rows: capture.rows, source: capture.source, error: capture.error }]));
-  domains.schedule = { ok: true, rows: 0, source: "dagym_pt_schedule_events", error: "" };
+  const domains = Object.fromEntries(Object.entries(captures).map(([key, capture]) => [key, {
+    ok: capture.ok,
+    rows: capture.rows,
+    source: capture.source,
+    error: capture.error,
+    period: capture.period,
+    capturedAt: capture.capturedAt,
+  }]));
+  domains.schedule = { ok: true, rows: 0, source: "dagym_pt_schedule_events", error: "", period: "month-schedule", capturedAt: new Date().toISOString() };
   const warnings = Object.entries(domains).filter(([, domain]) => !domain.ok).map(([key, domain]) => `${key}: ${domain.error}`);
-  const uploaded = await upload({ dateKey: targetDate, startedAt, metrics, domains, warnings });
   const safeDir = path.join(root, "work", "dagym-daily-sync");
   fs.mkdirSync(safeDir, { recursive: true });
-  fs.writeFileSync(path.join(safeDir, "latest.json"), `${JSON.stringify({ dateKey: targetDate, capturedAt: new Date().toISOString(), metrics, domains, uploaded }, null, 2)}\n`);
+  const auditPath = path.join(safeDir, "latest.json");
+  fs.writeFileSync(auditPath, `${JSON.stringify({ dateKey: targetDate, capturedAt: new Date().toISOString(), metrics, domains, warnings, uploaded: null }, null, 2)}\n`);
+  const uploaded = await upload({ dateKey: targetDate, startedAt, metrics, domains, warnings });
+  fs.writeFileSync(auditPath, `${JSON.stringify({ dateKey: targetDate, capturedAt: new Date().toISOString(), metrics, domains, warnings, uploaded }, null, 2)}\n`);
   console.log(JSON.stringify({ ok: true, dateKey: targetDate, metrics, domains, uploaded }, null, 2));
 }
 
