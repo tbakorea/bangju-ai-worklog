@@ -3867,6 +3867,25 @@ async function checkFitnessCenterReportConfirmation(browser) {
         "2026-07-23": { ...createDagymDailyRecord("2026-07-23"), status: "closed", visits: "110", newMembers: "4", renewals: "8", expiring: "9", ptBookings: "8", noShows: "1", sales: "1500000", closedAt: "2026-07-23T14:00:00.000Z" },
         "2026-07-24": { ...createDagymDailyRecord("2026-07-24"), status: "closed", visits: "95", newMembers: "2", renewals: "3", expiring: "12", ptBookings: "9", noShows: "3", sales: "900000", closedAt: "2026-07-24T14:00:00.000Z" }
       };
+      state.fitnessDailyGuidance = {
+        ...(state.fitnessDailyGuidance || {}),
+        "2026-07-24": [{
+          id: "qa-manager-mission",
+          dateKey: "2026-07-24",
+          sourceDateKey: "2026-07-23",
+          dueTime: "11:00",
+          title: "만료회원 후속 2건",
+          detail: "전일 만료회원 후속 결과를 확인합니다.",
+          resultPrompt: "상담 결과와 다음 연락일 기록",
+          targetEmployeeId: "beyond-fitness-manager",
+          targetName: "박주홍",
+          targetRole: "센터장",
+          status: "completed",
+          resultNote: "재등록 1건 · 재연락 1건",
+          completedAt: "2026-07-24T08:10:00.000Z",
+          updatedAt: "2026-07-24T08:10:00.000Z"
+        }]
+      };
       state.siteWeatherAddresses = { ...(state.siteWeatherAddresses || {}), "비욘드 피트니스": "울산광역시 남구" };
       state.weatherCache = {
         ...(state.weatherCache || {}),
@@ -4040,6 +4059,23 @@ async function checkFitnessCenterReportConfirmation(browser) {
     || !before.managerClassStats.html.includes("2/5")
     || !before.managerClassStats.html.includes("0/1")) {
     fail("personal fitness report should show every performance count as today/month totals", JSON.stringify(before.managerClassStats));
+  }
+  [
+    "전일 다짐 브리프 · 오늘 미션",
+    "전일 매출",
+    "방문·신규",
+    "PT 예약",
+    "만료·재등록",
+    "해당 회원 후속 2건",
+    "재등록 1건 · 재연락 1건",
+    "개인정보 비표시",
+  ].forEach((label) => {
+    if (!before.managerClassStats.html.includes(label)) {
+      fail("personal fitness report should preserve the prior-day DaGym brief and employee mission audit", `${label} missing`);
+    }
+  });
+  if (before.managerClassStats.html.includes("data-fitness-report-guidance-open")) {
+    fail("historical fitness report must keep mission evidence read-only", "live mission action leaked into historical report");
   }
   ["pjhong1", "pjhong9"].forEach((retiredEmailPrefix) => {
     if (before.centerRows.some((row) => row.includes(retiredEmailPrefix))) {

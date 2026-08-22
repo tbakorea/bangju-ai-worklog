@@ -14556,6 +14556,10 @@ body.physical-phone-device #view-fitness-log .fitness-log-schedule-panel .fitnes
     display: none !important;
   }
 
+  body.is-printing-fitness-report .fitness-paper-live-action {
+    display: none !important;
+  }
+
   body.is-printing-fitness-report .fitness-report-sheet {
     position: static;
     display: block;
@@ -15737,6 +15741,117 @@ body[data-layout-mode="phone"] .fitness-log-schedule-panel .appointment-merge-bu
   color: var(--ink);
   font-size: 15px;
   font-weight: 950;
+}
+
+.fitness-paper-operating-brief {
+  display: grid;
+  grid-template-rows: auto auto minmax(0, 1fr) auto;
+  min-width: 0;
+  border: 1px solid rgba(18, 59, 45, 0.22);
+  border-radius: 8px;
+  overflow: hidden;
+  background: rgba(255, 254, 250, 0.94);
+}
+
+.fitness-paper-operating-brief > header {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  gap: 6px;
+  align-items: center;
+  border-bottom: 1px solid rgba(18, 59, 45, 0.14);
+  background: rgba(237, 244, 224, 0.72);
+  padding: 4px 6px;
+}
+
+.fitness-paper-operating-brief > header small,
+.fitness-paper-operating-brief > header h3,
+.fitness-paper-operating-brief > header span {
+  display: block;
+  margin: 0;
+  color: #123b2d;
+  font-weight: 950;
+}
+
+.fitness-paper-operating-brief > header small { font-size: 5.8px; letter-spacing: 0.11em; }
+.fitness-paper-operating-brief > header h3 { margin-top: 1px; font-size: 9px; }
+.fitness-paper-operating-brief > header > span { font-size: 7.2px; white-space: nowrap; }
+
+.fitness-paper-live-action {
+  min-height: 24px;
+  border: 1px solid #174c3a;
+  border-radius: 999px;
+  background: #174c3a;
+  color: #fffefa;
+  padding: 3px 7px;
+  font-size: 7px;
+  font-weight: 950;
+  white-space: nowrap;
+}
+
+.fitness-paper-brief-kpis { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.fitness-paper-brief-kpis > div {
+  min-width: 0;
+  border-right: 1px solid rgba(18, 59, 45, 0.12);
+  border-bottom: 1px solid rgba(18, 59, 45, 0.12);
+  padding: 4px 6px;
+}
+.fitness-paper-brief-kpis > div:nth-child(2n) { border-right: 0; }
+.fitness-paper-brief-kpis span,
+.fitness-paper-brief-kpis strong,
+.fitness-paper-brief-kpis small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.fitness-paper-brief-kpis span,
+.fitness-paper-brief-kpis small { color: rgba(17, 20, 17, 0.62); font-size: 6.8px; font-weight: 850; }
+.fitness-paper-brief-kpis strong { margin: 1px 0; color: #123b2d; font-size: 10.5px; font-weight: 950; }
+.fitness-paper-brief-kpis .tone-attention strong { color: #9c4b22; }
+
+.fitness-paper-mission-summary,
+.fitness-paper-mission-audit > p {
+  display: grid;
+  grid-template-columns: 48px minmax(0, 1fr) auto;
+  align-items: center;
+  min-width: 0;
+  min-height: 25px;
+  margin: 0;
+  border-bottom: 1px solid rgba(18, 59, 45, 0.1);
+  font-size: 7.2px;
+  line-height: 1.16;
+}
+.fitness-paper-mission-summary { grid-template-columns: 48px minmax(0, 1fr); background: rgba(250, 250, 245, 0.76); }
+.fitness-paper-mission-summary b,
+.fitness-paper-mission-summary span,
+.fitness-paper-mission-audit > p > time,
+.fitness-paper-mission-audit > p > span,
+.fitness-paper-mission-audit > p > em { min-width: 0; padding: 4px 5px; }
+.fitness-paper-mission-summary b,
+.fitness-paper-mission-audit > p > time {
+  border-right: 1px solid rgba(18, 59, 45, 0.1);
+  color: #174c3a;
+  font-weight: 950;
+  text-align: center;
+}
+.fitness-paper-mission-summary span { color: rgba(17, 20, 17, 0.68); font-weight: 850; }
+.fitness-paper-mission-audit > p > span b,
+.fitness-paper-mission-audit > p > span small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.fitness-paper-mission-audit > p > span b { font-size: 7.5px; font-weight: 950; }
+.fitness-paper-mission-audit > p > span small { margin-top: 1px; color: rgba(17, 20, 17, 0.6); font-size: 6.5px; font-weight: 800; }
+.fitness-paper-mission-audit > p > em {
+  min-width: 34px;
+  border-left: 1px solid rgba(18, 59, 45, 0.1);
+  color: #174c3a;
+  font-style: normal;
+  font-weight: 950;
+  text-align: center;
+}
+.fitness-paper-mission-audit > p.status-completed > em,
+.fitness-paper-mission-audit > p.status-other > em { background: rgba(222, 241, 226, 0.9); color: #12603f; }
+.fitness-paper-mission-audit > p.status-postponed > em,
+.fitness-paper-mission-audit > p.status-cancelled > em { background: rgba(255, 239, 220, 0.9); color: #9c4b22; }
+.fitness-paper-operating-brief > footer {
+  color: rgba(17, 20, 17, 0.54);
+  padding: 3px 6px;
+  font-size: 6.3px;
+  font-weight: 800;
+  text-align: right;
 }
 
 .fitness-paper-wide-table,

@@ -223,6 +223,20 @@ check(
     && !js.includes('["칭찬", model.aiCoaching.praise]')
 );
 check(
+  "personal fitness report connects the prior-day DaGym brief to auditable employee missions",
+  js.includes("function buildFitnessReportOperatingBrief")
+    && js.includes('data-report-operating-brief')
+    && ["전일 매출", "방문·신규", "PT 예약", "만료·재등록"].every((label) => js.includes(`"${label}"`))
+    && js.includes("state.fitnessDailyGuidance?.[dateKey]")
+    && js.includes("개인정보 비표시 · 집계와 처리 이력만 보고서에 보존")
+    && js.includes("function openFitnessReportGuidancePanel")
+    && js.includes("data-fitness-report-guidance-open")
+    && css.includes(".fitness-paper-operating-brief")
+    && css.includes(".fitness-paper-live-action")
+    && js.includes(".fitness-paper-live-action { display: none !important; }"),
+  "the report must show only aggregate DaGym evidence, preserve mission outcomes, and keep live actions out of exports"
+);
+check(
   "non-fitness daily report places priorities and schedules side by side",
   js.includes('class="worklog-report-main-grid"')
     && js.includes("1. 오늘의 우선업무")

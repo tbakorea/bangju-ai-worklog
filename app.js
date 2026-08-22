@@ -21009,6 +21009,16 @@ function buildFitnessReportLines() {
     "",
     "[운영 KPI]",
     ...model.kpis.map(([label, value]) => `- ${label}: ${value}`),
+    ...(!model.isCenter && model.operatingBrief ? [
+      "",
+      `[전일 다짐 운영 브리프 · ${model.operatingBrief.sourceDateKey}]`,
+      ...model.operatingBrief.kpis.map((item) => `- ${item.label}: ${item.value} (${item.meta})`),
+      "",
+      "[오늘 배정 미션]",
+      ...(model.operatingBrief.missions.length
+        ? model.operatingBrief.missions.map((item) => `- ${item.dueTime} ${item.title} · ${item.statusLabel}${item.resultNote ? ` · ${item.resultNote}` : ""}`)
+        : ["- 배정된 미션 없음"]),
+    ] : []),
     ...(model.isCenter ? [
       "",
       "[직원별 통계 · 당일/월누계]",
@@ -22701,6 +22711,7 @@ function buildFitnessReportModel(options = {}) {
     tomorrowTasks,
     weatherText,
   }) : null;
+  const operatingBrief = buildFitnessReportOperatingBrief(dateKey, employee, isCenter);
   const model = {
     title,
     dateKey,
@@ -22727,6 +22738,7 @@ function buildFitnessReportModel(options = {}) {
     tomorrowTasks,
     snsReviews,
     centerCommand,
+    operatingBrief,
     schedule: entries.map((entry) => ({
       time: entry.time,
       text: getScheduleEntryText(entry),
@@ -22818,6 +22830,89 @@ function renderFitnessSnsReportHtml(model = {}) {
           <small>${escapeHtml(review.headline)} ${escapeHtml(review.channelCoach)}</small>
         </article>
       `).join("")}
+    </section>
+  `;
+}
+
+function buildFitnessReportOperatingBrief(dateKey = getActiveDateKey(), employee = {}, isCenter = false) {
+  const yesterday = buildFitnessYesterdayBrief(dateKey);
+  const employeeMissionIds = new Set([
+    ...getEmployeeWorklogAliases(employee),
+    ...getFitnessEmployeeLogCandidateIds(employee),
+  ]);
+  const allMissions = (state.fitnessDailyGuidance?.[dateKey] || []).map((item) => {
+    const status = normalizeFitnessGuidanceStatus(item.status, Boolean(item.targetEmployeeId));
+    return {
+      id: item.id,
+      targetEmployeeId: item.targetEmployeeId || "",
+      dueTime: item.dueTime || "오늘",
+      title: sanitizeFitnessCoachText(item.title || "오늘 미션"),
+      assignee: sanitizeFitnessCoachText(item.targetName || "출근 대기"),
+      status,
+      statusLabel: getFitnessGuidanceStatusLabel(status),
+      resultNote: sanitizeFitnessCoachText(item.resultNote || ""),
+    };
+  });
+  const missions = (isCenter
+    ? allMissions
+    : allMissions.filter((item) => employeeMissionIds.has(item.targetEmployeeId)))
+    .sort((left, right) => String(left.dueTime).localeCompare(String(right.dueTime), "ko"));
+  const statusCounts = missions.reduce((counts, item) => {
+    if (["completed", "delegated", "postponed", "cancelled", "other"].includes(item.status)) counts.finished += 1;
+    else if (item.status === "in_progress") counts.progress += 1;
+    else if (item.status === "unassigned") counts.waiting += 1;
+    else counts.assigned += 1;
+    return counts;
+  }, { assigned: 0, progress: 0, finished: 0, waiting: 0 });
+  const reportKpiLabels = new Set(["전일 매출", "방문·신규", "PT 예약", "만료·재등록"]);
+  const kpis = yesterday.kpis.filter((item) => reportKpiLabels.has(item.label)).map((item) => ({
+    label: item.label,
+    value: sanitizeFitnessCoachText(item.value),
+    meta: sanitizeFitnessCoachText(item.meta),
+    tone: item.tone === "attention" ? "attention" : "normal",
+  }));
+  const ownId = getProfileMappedEmployeeId() || "profile-user";
+  return {
+    sourceDateKey: yesterday.sourceDateKey,
+    quality: yesterday.quality,
+    qualityLabel: yesterday.qualityLabel,
+    kpis,
+    missions,
+    statusCounts,
+    canOpenMissions: !isCenter && missions.length > 0 && !isHistoricalWorklogDate(dateKey),
+    actionLabel: employeeMissionIds.has(ownId) && canEditEmployeeSlot(ownId) ? "미션 결과 입력" : "미션 현황 열기",
+  };
+}
+
+function renderFitnessReportOperatingBriefHtml(model = {}) {
+  if (model.isCenter || !model.operatingBrief) return "";
+  const brief = model.operatingBrief;
+  const missionRows = brief.missions.slice(0, 3);
+  return `
+    <section class="fitness-paper-operating-brief" data-report-operating-brief>
+      <header>
+        <div><small>PREVIOUS DAY → TODAY</small><h3>전일 다짐 브리프 · 오늘 미션</h3></div>
+        <span>${escapeHtml(formatShortDate(brief.sourceDateKey))} · ${escapeHtml(brief.qualityLabel)}</span>
+        ${brief.canOpenMissions ? `<button type="button" class="fitness-paper-live-action" data-fitness-report-guidance-open>${escapeHtml(brief.actionLabel)}</button>` : ""}
+      </header>
+      <div class="fitness-paper-brief-kpis">
+        ${brief.kpis.map((item) => `
+          <div class="tone-${escapeAttr(item.tone)}"><span>${escapeHtml(item.label)}</span><strong>${escapeHtml(item.value)}</strong><small>${escapeHtml(item.meta)}</small></div>
+        `).join("")}
+      </div>
+      <div class="fitness-paper-mission-audit">
+        <div class="fitness-paper-mission-summary">
+          <b>오늘 실행</b><span>배정 ${brief.statusCounts.assigned} · 진행 ${brief.statusCounts.progress} · 결과 ${brief.statusCounts.finished}</span>
+        </div>
+        ${missionRows.length ? missionRows.map((item) => `
+          <p class="status-${escapeAttr(item.status)}">
+            <time>${escapeHtml(item.dueTime)}</time>
+            <span><b>${escapeHtml(item.title)}</b><small>${escapeHtml(item.resultNote || `${item.assignee} · 결과 대기`)}</small></span>
+            <em>${escapeHtml(item.statusLabel)}</em>
+          </p>
+        `).join("") : `<p class="is-empty"><span><b>배정된 미션 없음</b><small>업무를 시작하면 역할에 맞는 전일 다짐 미션이 연결됩니다.</small></span><em>대기</em></p>`}
+      </div>
+      <footer>개인정보 비표시 · 집계와 처리 이력만 보고서에 보존</footer>
     </section>
   `;
 }
@@ -22956,6 +23051,7 @@ function renderFitnessReportTemplate(model = buildFitnessReportModel()) {
             <header><h3>개인 실적</h3><span>당일/월누계</span></header>
             ${model.kpis.map(([label, value]) => `<div><span>${escapeHtml(label)}</span><strong>${escapeHtml(value)}</strong></div>`).join("")}
           </div>
+          ${renderFitnessReportOperatingBriefHtml(model)}
         </section>
       ` : ""}
 
@@ -23143,6 +23239,17 @@ function closeFitnessReportSheet() {
     if (backdrop) backdrop.hidden = true;
     if (sheet) sheet.hidden = true;
   }, 160);
+}
+
+function openFitnessReportGuidancePanel() {
+  const reportModel = buildFitnessReportModel();
+  const hasMission = Boolean(reportModel.operatingBrief?.missions?.length);
+  closeFitnessReportSheet();
+  window.setTimeout(() => {
+    const panel = document.getElementById("fitnessDailyGuidancePanel");
+    panel?.scrollIntoView({ behavior: "smooth", block: "start" });
+    if (!hasMission) showAppToast("배정된 오늘 미션이 없습니다");
+  }, 180);
 }
 
 async function printFitnessReport() {
@@ -23551,6 +23658,72 @@ function getFitnessReportExportCss(reportHeight = 1754) {
       font-size: 28px;
       font-weight: 950;
     }
+    .fitness-paper-operating-brief {
+      display: grid;
+      grid-template-rows: auto auto minmax(0, 1fr) auto;
+      min-width: 0;
+      border: 2px solid rgba(18, 59, 45, 0.22);
+      border-radius: 14px;
+      overflow: hidden;
+      background: rgba(255, 254, 250, 0.95);
+    }
+    .fitness-paper-operating-brief > header {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: 12px;
+      align-items: center;
+      border-bottom: 2px solid rgba(18, 59, 45, 0.14);
+      background: rgba(237, 244, 224, 0.8);
+      padding: 8px 12px;
+    }
+    .fitness-paper-operating-brief > header small,
+    .fitness-paper-operating-brief > header h3,
+    .fitness-paper-operating-brief > header span { display: block; margin: 0; color: #123b2d; font-weight: 950; }
+    .fitness-paper-operating-brief > header small { font-size: 10px; letter-spacing: 0.11em; }
+    .fitness-paper-operating-brief > header h3 { margin-top: 2px; font-size: 17px; }
+    .fitness-paper-operating-brief > header > span { font-size: 12px; white-space: nowrap; }
+    .fitness-paper-live-action { display: none !important; }
+    .fitness-paper-brief-kpis { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .fitness-paper-brief-kpis > div { min-width: 0; border-right: 2px solid rgba(18, 59, 45, 0.12); border-bottom: 2px solid rgba(18, 59, 45, 0.12); padding: 7px 10px; }
+    .fitness-paper-brief-kpis > div:nth-child(2n) { border-right: 0; }
+    .fitness-paper-brief-kpis span,
+    .fitness-paper-brief-kpis strong,
+    .fitness-paper-brief-kpis small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .fitness-paper-brief-kpis span,
+    .fitness-paper-brief-kpis small { color: rgba(17, 20, 17, 0.62); font-size: 11px; font-weight: 850; }
+    .fitness-paper-brief-kpis strong { margin: 2px 0; color: #123b2d; font-size: 19px; font-weight: 950; }
+    .fitness-paper-brief-kpis .tone-attention strong { color: #9c4b22; }
+    .fitness-paper-mission-summary,
+    .fitness-paper-mission-audit > p {
+      display: grid;
+      grid-template-columns: 76px minmax(0, 1fr) auto;
+      align-items: center;
+      min-width: 0;
+      min-height: 42px;
+      margin: 0;
+      border-bottom: 2px solid rgba(18, 59, 45, 0.1);
+      font-size: 12px;
+      line-height: 1.16;
+    }
+    .fitness-paper-mission-summary { grid-template-columns: 76px minmax(0, 1fr); background: rgba(250, 250, 245, 0.76); }
+    .fitness-paper-mission-summary b,
+    .fitness-paper-mission-summary span,
+    .fitness-paper-mission-audit > p > time,
+    .fitness-paper-mission-audit > p > span,
+    .fitness-paper-mission-audit > p > em { min-width: 0; padding: 6px 8px; }
+    .fitness-paper-mission-summary b,
+    .fitness-paper-mission-audit > p > time { border-right: 2px solid rgba(18, 59, 45, 0.1); color: #174c3a; font-weight: 950; text-align: center; }
+    .fitness-paper-mission-summary span { color: rgba(17, 20, 17, 0.68); font-weight: 850; }
+    .fitness-paper-mission-audit > p > span b,
+    .fitness-paper-mission-audit > p > span small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .fitness-paper-mission-audit > p > span b { font-size: 13px; font-weight: 950; }
+    .fitness-paper-mission-audit > p > span small { margin-top: 2px; color: rgba(17, 20, 17, 0.6); font-size: 10px; font-weight: 800; }
+    .fitness-paper-mission-audit > p > em { min-width: 58px; border-left: 2px solid rgba(18, 59, 45, 0.1); color: #174c3a; font-style: normal; font-weight: 950; text-align: center; }
+    .fitness-paper-mission-audit > p.status-completed > em,
+    .fitness-paper-mission-audit > p.status-other > em { background: #def1e2; color: #12603f; }
+    .fitness-paper-mission-audit > p.status-postponed > em,
+    .fitness-paper-mission-audit > p.status-cancelled > em { background: #ffefdc; color: #9c4b22; }
+    .fitness-paper-operating-brief > footer { color: rgba(17, 20, 17, 0.54); padding: 5px 10px; font-size: 10px; font-weight: 800; text-align: right; }
     .fitness-paper-attendance-table,
     .fitness-paper-center-ops-table,
     .fitness-paper-contract-table,
@@ -24817,6 +24990,9 @@ document.getElementById("fitnessReportShareButton")?.addEventListener("click", (
   shareFitnessReport().catch((error) => {
     if (error?.name !== "AbortError") alert("공유 기능을 사용할 수 없어 보고서 미리보기를 확인해주세요.");
   });
+});
+document.getElementById("fitnessReportPreview")?.addEventListener("click", (event) => {
+  if (event.target.closest("[data-fitness-report-guidance-open]")) openFitnessReportGuidancePanel();
 });
 ["worklog", "fitness"].forEach((scope) => {
   const host = document.getElementById(scope === "fitness" ? "fitnessCoachingFollowup" : "worklogCoachingFollowup");
