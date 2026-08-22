@@ -11087,7 +11087,8 @@ function renderFitnessCenterDaily() {
   renderDagymSyncHealth(dateKey);
   if (canManageDagymOperations() && !authState.dagymSyncHealthCache.has(dateKey)) void loadRemoteDagymSyncHealth(dateKey);
   renderFitnessCenterConfirmPanel();
-  renderFitnessCenterCoaching(total.daily, rows.map((row) => ({ ...row, ops: row.dailyOps })));
+  const yesterdayBrief = renderFitnessYesterdayBrief(dateKey);
+  renderFitnessCenterCoaching(total.daily, rows.map((row) => ({ ...row, ops: row.dailyOps })), yesterdayBrief);
   renderFitnessDailyGuidance(getCurrentFitnessLogPage(), true);
 }
 
@@ -11736,6 +11737,7 @@ async function loadMemberOutreachCandidates({ force = false } = {}) {
   } finally {
     memberOutreachState.loading = false;
     renderMemberOutreachList();
+    if (memberOutreachState.loaded && activeView === "fitness-log" && getCurrentFitnessLogPage()?.type === "center") renderFitnessCenterDaily();
   }
 }
 
@@ -12131,7 +12133,197 @@ function resetFitnessGuidanceFromTask(task = {}) {
   });
 }
 
-function renderFitnessCenterCoaching(total, rows) {
+function formatFitnessBriefMoney(value = 0) {
+  const amount = Math.max(0, numberValue(value));
+  if (amount >= 10000) {
+    const tenThousands = amount / 10000;
+    return `${tenThousands.toLocaleString("ko-KR", { maximumFractionDigits: tenThousands < 100 ? 1 : 0 })}만원`;
+  }
+  return `${amount.toLocaleString("ko-KR")}원`;
+}
+
+function buildFitnessYesterdayBrief(dateKey = getActiveDateKey()) {
+  const sourceDateKey = getPreviousCalendarDateKey(dateKey);
+  const analysis = getDagymDailyAnalysis(dateKey);
+  const analysisMatches = analysis?.sourceDateKey === sourceDateKey;
+  const sourceRecord = getDagymOpsForDate(sourceDateKey, { create: false });
+  const metricKeys = Object.keys(createDagymOps()).filter((key) => key !== "importText");
+  const metrics = Object.fromEntries(metricKeys.map((key) => {
+    const localValue = sourceRecord && String(sourceRecord[key] ?? "").trim() !== "" ? sourceRecord[key] : undefined;
+    const analysisValue = analysisMatches ? analysis?.metrics?.[key] : undefined;
+    return [key, numberValue(localValue ?? analysisValue)];
+  }));
+  const hasSourceRecord = hasDagymDailyActivity(sourceRecord);
+  const hasData = hasSourceRecord || Boolean(analysisMatches && analysis?.quality !== "missing");
+  const quality = hasData ? (analysisMatches ? analysis.quality : sourceRecord?.quality || "partial") : "missing";
+  const salesPeriod = String(sourceRecord?.domains?.sales?.period || (analysisMatches ? analysis?.ratios?.salesPeriod : "") || "");
+  const priorDateKey = getPreviousCalendarDateKey(sourceDateKey);
+  const priorRecord = getDagymOpsForDate(priorDateKey, { create: false });
+  const priorSalesKnown = Boolean(priorRecord && String(priorRecord.sales ?? "").trim() !== "" && priorDateKey.slice(0, 7) === sourceDateKey.slice(0, 7));
+  const revenue = buildFitnessRevenueGrowthPlan(sourceDateKey);
+  const sourceSalesKnown = hasData && (
+    String(sourceRecord?.sales ?? "").trim() !== ""
+    || Boolean(analysisMatches && Object.hasOwn(analysis?.metrics || {}, "sales") && (salesPeriod || analysis?.quality === "complete"))
+  );
+  const isDailySales = salesPeriod === "daily";
+  const isMonthToDateSales = salesPeriod === "month-to-date" || revenue.basis === "inferred-month-to-date";
+  let dailySales = null;
+  let dailySalesBasis = "전일 단일 매출자료";
+  if (sourceSalesKnown && isDailySales) {
+    dailySales = metrics.sales;
+    dailySalesBasis = "다짐 당일 매출";
+  } else if (sourceSalesKnown && isMonthToDateSales && priorSalesKnown) {
+    dailySales = Math.max(0, metrics.sales - numberValue(priorRecord.sales));
+    dailySalesBasis = "전일·전전일 월누계 차감";
+  } else if (revenue.latestSourceDate === sourceDateKey && revenue.sourceDays >= 2 && ["month-to-date", "inferred-month-to-date"].includes(revenue.basis)) {
+    dailySales = revenue.dailySales;
+    dailySalesBasis = "저장된 월누계 스냅샷 차감";
+  }
+  const monthSales = sourceSalesKnown && isMonthToDateSales
+    ? metrics.sales
+    : revenue.latestSourceDate === sourceDateKey
+      ? revenue.sales
+      : sourceSalesKnown
+        ? metrics.sales
+        : 0;
+  const noShowRate = metrics.ptBookings ? Math.round((metrics.noShows / metrics.ptBookings) * 1000) / 10 : 0;
+  const renewalCoverage = metrics.expiring ? Math.round((metrics.renewals / metrics.expiring) * 1000) / 10 : 0;
+  const staff = getFitnessDayOpsTotal(sourceDateKey);
+  const consentMembers = (memberOutreachState.members || []).filter((member) => member.status === "active" && member.marketingConsent);
+  const renewalCandidates = consentMembers.filter((member) => member.candidate?.days !== null && member.candidate?.days <= 30);
+  const urgentCandidates = renewalCandidates.filter((member) => member.candidate?.days !== null && member.candidate.days <= 7);
+  const renewalGap = Math.max(0, metrics.expiring - metrics.renewals);
+  const conversionCount = metrics.newMembers + metrics.renewals;
+  const conversionTarget = metrics.visits ? Math.max(2, Math.round(metrics.visits * 0.03)) : 0;
+  const salesGap = Math.max(0, revenue.paceTarget - monthSales);
+  const monthPaceRate = revenue.paceTarget ? Math.round((monthSales / revenue.paceTarget) * 100) : 0;
+  const qualityLabel = { complete: "수집 완료", partial: "일부 확인", missing: "자료 대기" }[quality] || "일부 확인";
+  const sourceUpdatedAt = String(analysisMatches ? analysis?.sourceUpdatedAt : sourceRecord?.updatedAt || sourceRecord?.importedAt || "");
+  const memberCandidateText = memberOutreachState.loaded ? `${renewalCandidates.length}명` : "불러오는 중";
+  const kpis = [
+    { label: "전일 매출", value: dailySales === null ? "산출 대기" : formatFitnessBriefMoney(dailySales), meta: dailySales === null && isMonthToDateSales ? "전전일 월누계가 필요합니다" : dailySalesBasis, tone: dailySales === null ? "attention" : "normal" },
+    { label: "월 매출", value: hasData && sourceSalesKnown ? formatFitnessBriefMoney(monthSales) : "—", meta: `${formatFitnessBriefMoney(revenue.floorTarget)} 목표 · 페이스 ${monthSales ? monthPaceRate : 0}%`, tone: salesGap ? "attention" : "normal" },
+    { label: "방문·신규", value: hasData ? `${metrics.visits}명 · ${metrics.newMembers}명` : "—", meta: `신규+재등록 ${conversionCount}건`, tone: hasData && conversionTarget > conversionCount ? "attention" : "normal" },
+    { label: "PT 예약", value: hasData ? `${metrics.ptBookings}건` : "—", meta: `노쇼·취소 ${metrics.noShows}건 · ${noShowRate}%`, tone: metrics.noShows ? "attention" : "normal" },
+    { label: "만료·재등록", value: hasData ? `${metrics.renewals}/${metrics.expiring}` : "—", meta: `대응률 ${renewalCoverage}%`, tone: renewalGap ? "attention" : "normal" },
+    { label: "동의 후속후보", value: memberCandidateText, meta: memberOutreachState.loaded ? `D-7 긴급 ${urgentCandidates.length}명` : "개인정보 동의 명부 확인", tone: urgentCandidates.length ? "attention" : "normal" },
+  ];
+  const actions = hasData ? [
+    {
+      key: "member",
+      eyebrow: "11:00 · 인포",
+      title: "만료회원 후속 분류",
+      detail: renewalGap
+        ? `만료 ${metrics.expiring}명 중 미대응 ${renewalGap}명을 재가입·보류·재연락으로 분류하세요. 광고 수신 동의 후보는 ${memberCandidateText}이며, 동의 철회자는 자동 제외됩니다.`
+        : `재등록 대응률 ${renewalCoverage}%입니다. 완료 회원의 상담결과와 다음 연락일을 남겨 같은 회원에게 중복 연락하지 않도록 하세요.`,
+      target: "member",
+      actionLabel: "동의 후보 보기",
+      tone: renewalGap ? "attention" : "stable",
+    },
+    {
+      key: "marketing",
+      eyebrow: "14:00 · 인포+트레이너",
+      title: "방문을 상담으로 전환",
+      detail: conversionTarget > conversionCount
+        ? `전날 방문 ${metrics.visits}명, 신규·재등록 ${conversionCount}건입니다. 오늘 최소 ${conversionTarget - conversionCount}건의 체험·만료회원 상담을 담당자와 시간까지 배정하세요.`
+        : `전날 방문 ${metrics.visits}명에서 신규·재등록 ${conversionCount}건을 만들었습니다. 유입경로와 성공 상담 문구를 오늘 팀 코칭에 재사용하세요.`,
+      target: "guidance",
+      actionLabel: "오늘 지침 보기",
+      tone: conversionTarget > conversionCount ? "attention" : "stable",
+    },
+    {
+      key: "content",
+      eyebrow: "17:00 · 마케팅",
+      title: "블로그 성과를 SNS로 확장",
+      detail: staff.snsPromotion
+        ? `전날 SNS·블로그 ${staff.snsPromotion}건의 링크, 문의 수, 상담 전환을 확인하고 성과가 좋은 내용을 인스타그램 요약 1건으로 재가공하세요.`
+        : "전날 홍보 링크 기록이 없습니다. 오늘 블로그 1건을 작성하고 핵심 문장·사진을 인스타그램 1건으로 재가공한 뒤 링크와 문의 결과를 남기세요.",
+      target: "guidance",
+      actionLabel: "실행지침 보기",
+      tone: staff.snsPromotion ? "stable" : "attention",
+    },
+    {
+      key: "revenue",
+      eyebrow: "마감 · 센터장",
+      title: "매출 목표를 행동으로 환산",
+      detail: salesGap
+        ? `월 ${formatFitnessBriefMoney(revenue.floorTarget)} 페이스보다 ${formatFitnessBriefMoney(salesGap)} 부족합니다. 남은 기간 하루 ${formatFitnessBriefMoney(revenue.dailyNeeded)}를 상담→체험→등록→재등록 담당자별 목표로 나누세요.`
+        : `월 매출 목표 페이스를 충족하고 있습니다. 노쇼 ${metrics.noShows}건의 재예약과 PT 다음 예약을 지켜 매출 흐름을 유지하세요.`,
+      target: "guidance",
+      actionLabel: "오늘 지침 보기",
+      tone: salesGap ? "attention" : "stable",
+    },
+  ] : [{
+    key: "data",
+    eyebrow: "09:30 · 센터장",
+    title: "전날 다짐자료 확인",
+    detail: `${formatShortDate(sourceDateKey)} 매출·출석·회원·PT 자료가 없어 마케팅과 회원관리 판단을 확정할 수 없습니다. 자동수집 상태를 확인한 뒤 보완하세요.`,
+    target: "guidance",
+    actionLabel: "오늘 지침 보기",
+    tone: "attention",
+  }];
+  const coachingMessages = hasData ? [
+    ["전일 매출", dailySales === null ? `매출은 ${formatFitnessBriefMoney(monthSales)} 월누계만 확인되었습니다. 전전일 스냅샷 확보 후 당일 매출을 분리하세요.` : `${formatShortDate(sourceDateKey)} 매출은 ${formatFitnessBriefMoney(dailySales)}, 월누계는 ${formatFitnessBriefMoney(monthSales)}입니다.`],
+    ["회원관리", actions.find((item) => item.key === "member")?.detail || "만료·재등록 후속 결과를 확인하세요."],
+    ["마케팅", actions.find((item) => item.key === "content")?.detail || "홍보 링크와 상담 전환을 함께 기록하세요."],
+    ["전환", actions.find((item) => item.key === "marketing")?.detail || "방문을 상담과 등록으로 연결하세요."],
+    ["매출실행", actions.find((item) => item.key === "revenue")?.detail || "매출 목표를 담당자별 행동으로 나누세요."],
+  ] : [["자료 확인", actions[0].detail]];
+  return { dateKey, sourceDateKey, metrics, hasData, quality, qualityLabel, sourceUpdatedAt, dailySales, monthSales, monthPaceRate, noShowRate, renewalCoverage, staff, revenue, kpis, actions, coachingMessages };
+}
+
+function renderFitnessYesterdayBrief(dateKey = getActiveDateKey()) {
+  const panel = document.getElementById("fitnessYesterdayBrief");
+  if (!panel) return buildFitnessYesterdayBrief(dateKey);
+  const model = buildFitnessYesterdayBrief(dateKey);
+  const title = document.getElementById("fitnessYesterdayBriefTitle");
+  const subtitle = document.getElementById("fitnessYesterdayBriefSubtitle");
+  const quality = document.getElementById("fitnessYesterdayBriefQuality");
+  const kpis = document.getElementById("fitnessYesterdayKpis");
+  const actions = document.getElementById("fitnessYesterdayActions");
+  if (title) title.textContent = `${formatShortDate(model.sourceDateKey)} 전날 운영 핵심`;
+  if (subtitle) subtitle.textContent = model.sourceUpdatedAt
+    ? `매출·출석·회원·PT · ${formatDagymSyncHealthTime(model.sourceUpdatedAt)} 기준`
+    : "매출·출석·회원·PT 자료를 오늘 실행으로 연결합니다.";
+  if (quality) quality.textContent = model.qualityLabel;
+  panel.dataset.quality = model.quality;
+  if (kpis) kpis.innerHTML = model.kpis.map((item) => `
+    <article class="tone-${escapeAttr(item.tone)}">
+      <span>${escapeHtml(item.label)}</span>
+      <strong>${escapeHtml(item.value)}</strong>
+      <small>${escapeHtml(item.meta)}</small>
+    </article>
+  `).join("");
+  if (actions) actions.innerHTML = model.actions.map((item) => `
+    <article class="tone-${escapeAttr(item.tone)}">
+      <div>
+        <span>${escapeHtml(item.eyebrow)}</span>
+        <strong>${escapeHtml(item.title)}</strong>
+        <p>${escapeHtml(item.detail)}</p>
+      </div>
+      ${item.target ? `<button type="button" data-fitness-yesterday-target="${escapeAttr(item.target)}">${escapeHtml(item.actionLabel)}</button>` : ""}
+    </article>
+  `).join("");
+  return model;
+}
+
+function handleFitnessYesterdayBriefAction(event) {
+  const button = event.target.closest("[data-fitness-yesterday-target]");
+  if (!button) return;
+  const target = button.dataset.fitnessYesterdayTarget;
+  if (target === "member") {
+    if (!canViewFitnessMemberCare()) {
+      showAppToast("회원관리 권한이 필요합니다");
+      return;
+    }
+    void loadMemberOutreachCandidates();
+    document.getElementById("memberOutreachPanel")?.scrollIntoView({ behavior: "smooth", block: "start" });
+    return;
+  }
+  document.getElementById("fitnessDailyGuidancePanel")?.scrollIntoView({ behavior: "smooth", block: "start" });
+}
+
+function renderFitnessCenterCoaching(total, rows, yesterdayBrief = null) {
   const node = document.getElementById("fitnessCenterCoachingList");
   if (!node) return;
   const dagym = getDagymOpsForDate(getActiveDateKey());
@@ -12145,10 +12337,10 @@ function renderFitnessCenterCoaching(total, rows) {
   const staffPt = total.pt;
   const staffSalesActions = total.new + total.renewal + total.consultation + total.outbound;
   const notes = rows.flatMap((row) => [row.ops.shiftNote, row.ops.specialReport].filter(Boolean));
-  const messages = [];
+  const messages = [...(yesterdayBrief?.coachingMessages || [])];
   const nightlyAnalysis = getDagymDailyAnalysis(getActiveDateKey());
 
-  if (nightlyAnalysis?.coaching?.headline) {
+  if (!yesterdayBrief?.hasData && nightlyAnalysis?.coaching?.headline) {
     messages.push(["전일 경영신호", nightlyAnalysis.coaching.headline]);
     messages.push(["오늘 운영방향", nightlyAnalysis.coaching.todayAction]);
   }
@@ -12178,7 +12370,7 @@ function renderFitnessCenterCoaching(total, rows) {
   if (notes.length) {
     messages.push(["운영", `특이사항 ${notes.length}건이 있습니다. 시설/고객/안전 이슈는 담당자와 처리기한을 지정하세요.`]);
   }
-  node.innerHTML = messages.slice(0, 6).map(([title, text]) => `<article><b>${escapeHtml(title)}</b><span>${escapeHtml(text)}</span></article>`).join("");
+  node.innerHTML = messages.slice(0, 8).map(([title, text]) => `<article><b>${escapeHtml(title)}</b><span>${escapeHtml(text)}</span></article>`).join("");
 }
 
 function getFitnessCoachingMessages(context = {}) {
@@ -24500,6 +24692,7 @@ document.getElementById("dagymCloseButton")?.addEventListener("click", toggleDag
 document.getElementById("memberConsentForm")?.addEventListener("submit", submitMemberConsent);
 document.getElementById("memberOutreachRefreshButton")?.addEventListener("click", () => loadMemberOutreachCandidates({ force: true }));
 document.getElementById("memberOutreachList")?.addEventListener("click", handleMemberOutreachAction);
+document.getElementById("fitnessYesterdayBrief")?.addEventListener("click", handleFitnessYesterdayBriefAction);
 document.getElementById("fitnessOperatingGrowthLoop")?.addEventListener("click", (event) => {
   const button = event.target.closest("[data-fitness-growth-destination]");
   if (!button) return;

@@ -634,6 +634,23 @@ check(
 );
 
 check(
+  "fitness center turns previous-day business data into member and marketing actions",
+  html.includes('id="fitnessYesterdayBrief"')
+    && html.includes('id="fitnessYesterdayKpis"')
+    && html.includes('id="fitnessYesterdayActions"')
+    && js.includes("function buildFitnessYesterdayBrief")
+    && js.includes("function renderFitnessYesterdayBrief")
+    && js.includes("전일·전전일 월누계 차감")
+    && js.includes("만료회원 후속 분류")
+    && js.includes("블로그 성과를 SNS로 확장")
+    && js.includes("동의 철회자는 자동 제외됩니다")
+    && js.includes("renderFitnessCenterCoaching(total.daily")
+    && css.includes(".fitness-yesterday-kpis")
+    && css.includes('body[data-layout-mode="phone"] .fitness-yesterday-actions'),
+  "the center page must distinguish daily sales from month-to-date snapshots and convert consent-safe member, marketing, PT, and revenue signals into concrete actions"
+);
+
+check(
   "fitness cumulative totals stop at the selected date and count one lesson per schedule item",
   /function getFitnessMonthRollupDateKeys\(monthPrefix, throughDateKey = getActiveDateKey\(\)\)[\s\S]{0,520}dateKey <= through/.test(js)
     && /function buildFitnessCenterEmployeeMonthRow\(employee, monthPrefix, throughDateKey = getActiveDateKey\(\), options = \{\}\)[\s\S]{0,1800}getFitnessMonthRollupDateKeys\(monthPrefix, throughDateKey\)/.test(js)

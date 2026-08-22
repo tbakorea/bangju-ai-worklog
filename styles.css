@@ -10639,6 +10639,186 @@ body.physical-phone-device .representative-analysis-body {
   padding: 10px;
 }
 
+.fitness-yesterday-brief {
+  display: grid;
+  gap: 9px;
+  border: 1px solid rgba(15, 77, 58, 0.24);
+  border-radius: 16px;
+  background: linear-gradient(135deg, rgba(238, 246, 231, 0.96), rgba(255, 252, 242, 0.98));
+  padding: 11px;
+}
+
+.fitness-yesterday-brief > header {
+  display: flex;
+  align-items: start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.fitness-yesterday-brief > header > div {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.fitness-yesterday-brief > header span {
+  color: rgba(15, 59, 46, 0.58);
+  font-size: 9px;
+  font-weight: 950;
+  letter-spacing: 0.13em;
+}
+
+.fitness-yesterday-brief > header strong {
+  color: var(--fitness-green);
+  font-size: 18px;
+  font-weight: 950;
+}
+
+.fitness-yesterday-brief > header p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 800;
+}
+
+.fitness-yesterday-brief > header em {
+  flex: 0 0 auto;
+  border: 1px solid rgba(25, 109, 75, 0.25);
+  border-radius: 999px;
+  background: rgba(225, 244, 232, 0.8);
+  color: #196d4b;
+  padding: 5px 8px;
+  font-size: 10px;
+  font-style: normal;
+  font-weight: 950;
+  white-space: nowrap;
+}
+
+.fitness-yesterday-brief[data-quality="partial"] > header em {
+  border-color: rgba(192, 130, 33, 0.3);
+  background: rgba(255, 248, 224, 0.82);
+  color: #8a5b15;
+}
+
+.fitness-yesterday-brief[data-quality="missing"] > header em {
+  border-color: rgba(154, 51, 43, 0.25);
+  background: rgba(255, 239, 232, 0.82);
+  color: #9a332b;
+}
+
+.fitness-yesterday-kpis {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.fitness-yesterday-kpis article {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+  border: 1px solid rgba(15, 77, 58, 0.13);
+  border-radius: 11px;
+  background: rgba(255, 255, 255, 0.72);
+  padding: 7px 8px;
+}
+
+.fitness-yesterday-kpis article.tone-attention {
+  border-color: rgba(192, 130, 33, 0.3);
+  background: rgba(255, 248, 224, 0.74);
+}
+
+.fitness-yesterday-kpis span,
+.fitness-yesterday-kpis strong,
+.fitness-yesterday-kpis small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.fitness-yesterday-kpis span {
+  color: var(--muted);
+  font-size: 9px;
+  font-weight: 900;
+}
+
+.fitness-yesterday-kpis strong {
+  color: var(--fitness-green);
+  font-size: 17px;
+  font-weight: 950;
+}
+
+.fitness-yesterday-kpis small {
+  color: rgba(20, 48, 39, 0.68);
+  font-size: 9px;
+  font-weight: 800;
+}
+
+.fitness-yesterday-actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.fitness-yesterday-actions article {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: center;
+  min-width: 0;
+  border: 1px solid rgba(15, 77, 58, 0.14);
+  border-radius: 11px;
+  background: rgba(255, 255, 255, 0.62);
+  padding: 8px 9px;
+}
+
+.fitness-yesterday-actions article.tone-attention {
+  border-left: 4px solid #c27d1f;
+  background: rgba(255, 248, 224, 0.74);
+}
+
+.fitness-yesterday-actions article.tone-stable {
+  border-left: 4px solid #297c5a;
+}
+
+.fitness-yesterday-actions article > div {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.fitness-yesterday-actions span {
+  color: rgba(15, 59, 46, 0.58);
+  font-size: 9px;
+  font-weight: 950;
+  letter-spacing: 0.06em;
+}
+
+.fitness-yesterday-actions strong {
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 950;
+}
+
+.fitness-yesterday-actions p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 800;
+  line-height: 1.35;
+}
+
+.fitness-yesterday-actions button {
+  min-height: 32px;
+  border: 1px solid rgba(15, 77, 58, 0.2);
+  border-radius: 9px;
+  background: var(--fitness-green);
+  color: #fff;
+  padding: 6px 9px;
+  font-size: 10px;
+  font-weight: 950;
+  white-space: nowrap;
+}
+
 .member-outreach-panel {
   display: grid;
   gap: 10px;
@@ -11906,6 +12086,53 @@ body[data-layout-mode="phone"] .dagym-ops-panel,
 body[data-layout-mode="phone"] .fitness-ai-briefing {
   gap: 6px;
   padding: 7px;
+}
+
+body[data-layout-mode="phone"] .fitness-yesterday-brief {
+  gap: 7px;
+  border-radius: 14px;
+  padding: 8px;
+}
+
+body[data-layout-mode="phone"] .fitness-yesterday-brief > header strong {
+  font-size: 16px;
+}
+
+body[data-layout-mode="phone"] .fitness-yesterday-brief > header p {
+  font-size: 9px;
+}
+
+body[data-layout-mode="phone"] .fitness-yesterday-kpis {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 5px;
+}
+
+body[data-layout-mode="phone"] .fitness-yesterday-kpis article {
+  padding: 6px 7px;
+}
+
+body[data-layout-mode="phone"] .fitness-yesterday-kpis strong {
+  font-size: 15px;
+}
+
+body[data-layout-mode="phone"] .fitness-yesterday-actions {
+  grid-template-columns: minmax(0, 1fr);
+  gap: 5px;
+}
+
+body[data-layout-mode="phone"] .fitness-yesterday-actions article {
+  gap: 7px;
+  padding: 7px;
+}
+
+body[data-layout-mode="phone"] .fitness-yesterday-actions p {
+  font-size: 9px;
+}
+
+body[data-layout-mode="phone"] .fitness-yesterday-actions button {
+  min-height: 30px;
+  padding-inline: 7px;
+  font-size: 9px;
 }
 
 body[data-layout-mode="phone"] .dagym-ops-panel header strong,

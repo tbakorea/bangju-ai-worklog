@@ -2586,16 +2586,36 @@ async function checkFitnessManagerCanEditOwnWorklog(browser) {
     || rollupRules.closedLast !== "2026-07-31" || rollupRules.futureCount !== 0) {
     fail("fitness class and month rollup rules should count one schedule item and stop at the selected date", fitnessRollupRules);
   }
-  await page.evaluate(() => window.eval("setFitnessLogPage(0); setFitnessCenterMonth('2026-07')"));
+  await page.evaluate(() => window.eval(`
+    state.dagymDaily["2026-07-22"] = { ...createDagymDailyRecord("2026-07-22"), status: "closed", visits: "90", newMembers: "1", renewals: "2", expiring: "8", ptBookings: "7", noShows: "1", sales: "1000000", domains: { sales: { period: "month-to-date" } } };
+    state.dagymDaily["2026-07-23"] = { ...createDagymDailyRecord("2026-07-23"), status: "closed", visits: "110", newMembers: "4", renewals: "3", expiring: "9", ptBookings: "8", noShows: "1", sales: "1500000", domains: { sales: { period: "month-to-date" } } };
+    setFitnessLogPage(0);
+    setFitnessCenterMonth("2026-07");
+    renderFitnessYesterdayBrief("2026-07-24");
+  `));
   await page.waitForTimeout(220);
   const centerMonth = await page.evaluate(() => ({
     title: document.querySelector("#fitnessCenterMonthTitle")?.textContent?.trim() || "",
     rows: document.querySelector("#fitnessCenterDailyBody")?.textContent?.replace(/\s+/g, " ").trim() || "",
     foot: document.querySelector("#fitnessCenterDailyFoot")?.textContent?.replace(/\s+/g, " ").trim() || "",
+    yesterdayTitle: document.querySelector("#fitnessYesterdayBriefTitle")?.textContent?.replace(/\s+/g, " ").trim() || "",
+    yesterdayKpis: document.querySelector("#fitnessYesterdayKpis")?.textContent?.replace(/\s+/g, " ").trim() || "",
+    yesterdayActions: document.querySelector("#fitnessYesterdayActions")?.textContent?.replace(/\s+/g, " ").trim() || "",
+    yesterdayActionCount: document.querySelectorAll("#fitnessYesterdayActions article").length,
+    yesterdayFitsViewport: (() => {
+      const panel = document.querySelector("#fitnessYesterdayBrief");
+      return Boolean(panel && panel.scrollWidth <= panel.clientWidth + 1);
+    })(),
   }));
   if (!centerMonth.title.includes("2026.07") || !centerMonth.rows.includes("박주홍") || !centerMonth.rows.includes("홍현규")
     || !centerMonth.foot.includes("12") || !centerMonth.foot.includes("1")) {
     fail("fitness center month view must accumulate every employee into the monthly status and total", JSON.stringify(centerMonth));
+  }
+  if (!centerMonth.yesterdayTitle.includes("07.23") || !centerMonth.yesterdayKpis.includes("50만원")
+    || !centerMonth.yesterdayKpis.includes("월 매출")
+    || !centerMonth.yesterdayActions.includes("만료회원 후속 분류") || !centerMonth.yesterdayActions.includes("블로그 성과를 SNS로 확장")
+    || centerMonth.yesterdayActionCount < 4 || !centerMonth.yesterdayFitsViewport) {
+    fail("fitness center previous-day business brief should expose responsive sales, member, and marketing actions", JSON.stringify(centerMonth));
   }
   if (errors.length) fail("Park fitness manager regression page errors", errors.join(" | "));
   await page.close();
