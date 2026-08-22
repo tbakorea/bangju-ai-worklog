@@ -5182,6 +5182,12 @@ async function checkDagymPreviousDayGuidanceFlow(browser) {
       state.fitnessLogPage = 0;
       state.fitnessLogPageId = "fitness-center";
       state.fitnessDailyGuidance = {};
+      state.employeeLogs["2026-08-05"] = {
+        ...(state.employeeLogs["2026-08-05"] || {}),
+        "beyond-fitness-manager": { ...createEmployeeLog("06:00-24:00"), employeeId: "beyond-fitness-manager", clockIn: "06:00", attendanceStatus: "출근" },
+        "fitness-trainer-1": { ...createEmployeeLog("08:00-24:00"), employeeId: "fitness-trainer-1", clockIn: "08:00", attendanceStatus: "출근" },
+        "fitness-weekday-info": { ...createEmployeeLog("14:00-20:00"), employeeId: "fitness-weekday-info", clockIn: "14:00", attendanceStatus: "출근" }
+      };
       state.dagymDaily = {
         "2026-08-04": {
           ...createDagymDailyRecord("2026-08-04"),
@@ -5199,6 +5205,7 @@ async function checkDagymPreviousDayGuidanceFlow(browser) {
         }
       };
       normalizeState();
+      generateTodayFitnessGuidance({ silent: true });
       switchView("fitness-log");
     `);
   });
@@ -5210,6 +5217,8 @@ async function checkDagymPreviousDayGuidanceFlow(browser) {
       source: document.querySelector("#fitnessDailyGuidanceSubtitle")?.textContent?.trim() || "",
       count: panel?.querySelectorAll(".fitness-guidance-item").length || 0,
       accepts: panel?.querySelectorAll("[data-accept-fitness-guidance]").length || 0,
+      unassigned: panel?.querySelectorAll(".status-unassigned").length || 0,
+      summary: panel?.querySelector(".fitness-guidance-summary")?.textContent?.replace(/\s+/g, " ").trim() || "",
       fits: !panel || panel.scrollWidth <= panel.clientWidth + 2,
       stored: JSON.parse(localStorage.getItem("beyond-worklog-state-v1") || "{}").fitnessDailyGuidance?.["2026-08-05"]?.length || 0,
     };
@@ -5217,8 +5226,8 @@ async function checkDagymPreviousDayGuidanceFlow(browser) {
   if (representative.hidden || representative.count < 4 || representative.stored !== representative.count) {
     fail("closed previous-day DaGym facts should generate today's guidance", JSON.stringify(representative));
   }
-  if (!representative.source.includes("08.04") || representative.accepts || !representative.fits) {
-    fail("representative guidance must show source, remain read-only, and fit phone width", JSON.stringify(representative));
+  if (!representative.source.includes("08.04") || representative.accepts || representative.unassigned || !representative.summary.includes("배정") || !representative.fits) {
+    fail("representative guidance must assign only active staff, show progress, remain read-only, and fit phone width", JSON.stringify(representative));
   }
 
   await page.evaluate(() => {
@@ -5243,13 +5252,20 @@ async function checkDagymPreviousDayGuidanceFlow(browser) {
       normalizeState();
       const trainerPage = getFitnessLogPages().findIndex((entry) => entry.id === "fitness-trainer-1");
       state.fitnessLogPage = trainerPage;
+      ensureOwnAssignedFitnessGuidanceTasks("2026-08-05");
       renderAll();
     `);
   });
   await page.waitForTimeout(180);
-  const acceptButton = page.locator("[data-accept-fitness-guidance]").first();
-  if (await acceptButton.count() !== 1) fail("assigned trainer should see one-click guidance acceptance");
-  await acceptButton.click();
+  const outcomeSelect = page.locator("[data-fitness-guidance-status]").first();
+  const outcomeNote = page.locator("[data-fitness-guidance-note]").first();
+  const saveButton = page.locator("[data-save-fitness-guidance]").first();
+  if (await outcomeSelect.count() !== 1 || await outcomeNote.count() !== 1 || await saveButton.count() !== 1) {
+    fail("assigned trainer should see mission outcome controls");
+  }
+  await outcomeSelect.selectOption("other");
+  await outcomeNote.fill("회원 일정 확인 후 보강수업으로 재예약");
+  await saveButton.click();
   await page.waitForTimeout(150);
   const employee = await page.evaluate(() => {
     const stored = JSON.parse(localStorage.getItem("beyond-worklog-state-v1") || "{}");
@@ -5257,12 +5273,37 @@ async function checkDagymPreviousDayGuidanceFlow(browser) {
     const guidance = stored.fitnessDailyGuidance?.["2026-08-05"] || [];
     return {
       linkedTask: tasks.find((task) => task.guidanceId) || null,
-      accepted: guidance.find((item) => item.targetEmployeeId === "fitness-trainer-1")?.status || "",
+      outcome: guidance.find((item) => item.targetEmployeeId === "fitness-trainer-1")?.status || "",
+      resultNote: guidance.find((item) => item.targetEmployeeId === "fitness-trainer-1")?.resultNote || "",
       panelFits: document.querySelector("#fitnessDailyGuidancePanel")?.scrollWidth <= document.querySelector("#fitnessDailyGuidancePanel")?.clientWidth + 2,
     };
   });
-  if (!employee.linkedTask?.text?.startsWith("[전일 다짐]") || employee.accepted !== "accepted" || !employee.panelFits) {
-    fail("accepted guidance should become the employee's linked priority task", JSON.stringify(employee));
+  if (!employee.linkedTask?.text?.startsWith("[전일 다짐 미션]") || employee.outcome !== "other" || !employee.resultNote.includes("재예약") || !employee.panelFits) {
+    fail("assigned guidance should become a linked task and preserve direct outcome notes", JSON.stringify(employee));
+  }
+  await page.evaluate(() => {
+    window.eval(`
+      authState.user = { id: "owner-guidance-qa", email: "j3010@ymail.com" };
+      state.profile = {
+        ...state.profile,
+        authUserId: "owner-guidance-qa",
+        email: "j3010@ymail.com",
+        name: "정찬훈",
+        org: "(주)방주",
+        workplace: "본사",
+        role: "대표",
+        approvalStatus: "approved",
+        accessPreset: "owner",
+        permissions: { controlTower: true, worklogAll: true }
+      };
+      state.fitnessLogPage = 0;
+      state.fitnessLogPageId = "fitness-center";
+      renderAll();
+    `);
+  });
+  const centerResult = await page.locator("#fitnessDailyGuidancePanel .fitness-guidance-result").allTextContents();
+  if (!centerResult.some((text) => text.includes("재예약"))) {
+    fail("employee mission outcome should be visible on the center operations view", JSON.stringify(centerResult));
   }
   if (errors.length) fail("DaGym guidance page errors", errors.join(" | "));
   await page.close();

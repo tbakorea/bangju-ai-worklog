@@ -10304,13 +10304,12 @@ function mergeSharedFitnessOperations(remoteState = {}) {
   state.fitnessDailyGuidance ||= {};
   Object.entries(remoteState.fitnessDailyGuidance || {}).forEach(([dateKey, remoteItems]) => {
     if (!Array.isArray(remoteItems)) return;
-    const mergedById = new Map((state.fitnessDailyGuidance[dateKey] || []).map((item) => [item.id, item]));
+    const mergedById = new Map((state.fitnessDailyGuidance[dateKey] || []).map((item) => [getFitnessGuidanceIdentity(item), item]));
     remoteItems.forEach((remoteItem) => {
       if (!remoteItem?.id) return;
-      const localItem = mergedById.get(remoteItem.id);
-      if (!localItem || String(remoteItem.updatedAt || remoteItem.generatedAt || "") >= String(localItem.updatedAt || localItem.generatedAt || "")) {
-        mergedById.set(remoteItem.id, remoteItem);
-      }
+      const identity = getFitnessGuidanceIdentity(remoteItem);
+      const localItem = mergedById.get(identity);
+      mergedById.set(identity, mergeFitnessGuidanceItem(localItem, remoteItem));
     });
     state.fitnessDailyGuidance[dateKey] = [...mergedById.values()].slice(-40);
   });
@@ -10734,9 +10733,12 @@ function renderFitnessWorklog(log = getSelectedLog()) {
   renderFitnessLogPager();
   renderFitnessWorkModeControl(log, page);
   renderFitnessDesktopCoworkers(page);
+  const todayDateKey = formatDateKey(new Date());
   const hasGuidance = Boolean((state.fitnessDailyGuidance?.[getActiveDateKey()] || []).length);
-  if (isCenter && canManageDagymOperations() && !hasGuidance && getPreviousDagymOperatingDate()) {
-    generateTodayFitnessGuidance({ silent: true });
+  const previousDagymRecord = getDagymOpsForDate(getPreviousCalendarDateKey(getActiveDateKey()), { create: false });
+  if (getActiveDateKey() === todayDateKey && hasDagymDailyActivity(previousDagymRecord)) {
+    if (isCenter && canManageDagymOperations() && !hasGuidance) generateTodayFitnessGuidance({ silent: true });
+    else if (page?.type === "employee" && isFitnessEmployeeRecord(getProfileEmployee())) scheduleFitnessGuidanceReconciliation(80);
   }
   renderFitnessCenterDaily();
   renderFitnessCoaching();
@@ -11945,21 +11947,93 @@ function getFitnessDayOpsTotal(dateKey) {
   }, { pt: 0, consultation: 0, renewal: 0, snsPromotion: 0, outbound: 0 });
 }
 
-function getFitnessGuidanceRoster(dateKey = getActiveDateKey()) {
-  const scheduled = getFitnessCenterEmployees().filter((employee) => {
-    const log = getFitnessEmployeeLogForDate(employee, dateKey) || {};
-    return !isOffWorkHours(getOverviewScheduledWorkHours(employee, dateKey, log));
-  });
-  const pick = (pattern) => scheduled.find((employee) => pattern.test(`${employee.role || ""} ${employee.name || ""} ${employee.nickname || ""}`));
-  const manager = pick(/센터장|박주홍|운영총괄/) || scheduled[0];
-  const trainer = pick(/트레이너|홍현규/) || manager;
-  const info = pick(/인포|데스크|신세민|이다빈|김영채/) || manager;
-  return { scheduled, manager, trainer, info };
+function hasFitnessGuidanceWorkStarted(employee, dateKey = getActiveDateKey()) {
+  const log = getFitnessEmployeeLogForDate(employee, dateKey) || {};
+  const hasManualTask = (log.tasks || []).some((task) => String(task?.text || "").trim() && !task.guidanceId);
+  const hasManualSchedule = (log.schedule || []).some((entry) => (
+    (String(entry?.text || "").trim() && entry.source !== "dagym-monthly-pt")
+    || (entry.items || []).some((item) => String(item?.text || "").trim() && item.source !== "dagym-monthly-pt")
+  ));
+  const manualOps = { ...(log.fitnessOpsManual || {}) };
+  return Boolean(
+    String(log.clockIn || "").trim()
+    || String(log.report || log.record || log.memo || "").trim()
+    || hasManualTask
+    || hasManualSchedule
+    || Object.values(manualOps).some(Boolean)
+  );
 }
 
-function createFitnessGuidanceRule({ dateKey, sourceDateKey, type, target, title, detail, dueTime, sourceValue }) {
-  const targetEmployeeId = getEmployeeWorklogId(target || {}) || "beyond-fitness-manager";
-  const id = `dagym-guidance:${dateKey}:${sourceDateKey}:${type}:${targetEmployeeId}`;
+function getFitnessGuidanceEmployeeRole(employee = {}) {
+  const identity = `${employee.role || ""} ${employee.name || ""} ${employee.nickname || ""}`;
+  if (/센터장|박주홍|운영총괄/.test(identity)) return "manager";
+  if (/트레이너|홍현규/.test(identity)) return "trainer";
+  if (/인포|데스크|신세민|이다빈|김영채/.test(identity)) return "info";
+  return "staff";
+}
+
+function getFitnessGuidanceRoster(dateKey = getActiveDateKey()) {
+  const employees = getFitnessCenterEmployees();
+  const active = employees.filter((employee) => hasFitnessGuidanceWorkStarted(employee, dateKey));
+  const byRole = { manager: [], trainer: [], info: [], staff: [] };
+  active.forEach((employee) => byRole[getFitnessGuidanceEmployeeRole(employee)].push(employee));
+  return { employees, active, byRole };
+}
+
+function createFitnessGuidanceAssigneePicker(roster = {}) {
+  const cursor = { manager: 0, trainer: 0, info: 0, staff: 0 };
+  const fallbacks = {
+    manager: ["manager", "info", "trainer", "staff"],
+    trainer: ["trainer", "manager", "staff"],
+    info: ["info", "manager", "staff", "trainer"],
+    marketing: ["info", "manager", "trainer", "staff"],
+  };
+  return (role = "staff") => {
+    const roleOrder = fallbacks[role] || [role, "staff", "manager", "info", "trainer"];
+    const availableRole = roleOrder.find((candidateRole) => roster.byRole?.[candidateRole]?.length);
+    if (!availableRole) return null;
+    const candidates = roster.byRole[availableRole];
+    const target = candidates[cursor[availableRole] % candidates.length];
+    cursor[availableRole] += 1;
+    return target;
+  };
+}
+
+function getFitnessGuidanceIdentity(item = {}) {
+  return `${item.dateKey || ""}:${item.sourceDateKey || ""}:${item.type || item.id || ""}`;
+}
+
+function normalizeFitnessGuidanceStatus(status = "", hasTarget = false) {
+  if (status === "generated") return hasTarget ? "assigned" : "unassigned";
+  if (status === "accepted") return "in_progress";
+  return ["unassigned", "assigned", "in_progress", "completed", "delegated", "postponed", "cancelled", "other"].includes(status)
+    ? status
+    : hasTarget ? "assigned" : "unassigned";
+}
+
+function getFitnessGuidanceStatusRank(item = {}) {
+  const status = normalizeFitnessGuidanceStatus(item.status, Boolean(item.targetEmployeeId));
+  if (["completed", "delegated", "postponed", "cancelled", "other"].includes(status)) return 3;
+  if (status === "in_progress") return 2;
+  if (status === "assigned") return 1;
+  return 0;
+}
+
+function mergeFitnessGuidanceItem(localItem, remoteItem) {
+  if (!localItem) return remoteItem;
+  if (!remoteItem) return localItem;
+  const localRank = getFitnessGuidanceStatusRank(localItem);
+  const remoteRank = getFitnessGuidanceStatusRank(remoteItem);
+  if (localRank !== remoteRank) return localRank > remoteRank ? localItem : remoteItem;
+  const localUpdatedAt = String(localItem.updatedAt || localItem.generatedAt || "");
+  const remoteUpdatedAt = String(remoteItem.updatedAt || remoteItem.generatedAt || "");
+  if (remoteUpdatedAt === localUpdatedAt && localItem.targetEmployeeId && !remoteItem.targetEmployeeId) return localItem;
+  return remoteUpdatedAt >= localUpdatedAt ? remoteItem : localItem;
+}
+
+function createFitnessGuidanceRule({ dateKey, sourceDateKey, type, target, targetRole, title, detail, resultPrompt, dueTime, sourceValue }) {
+  const targetEmployeeId = getEmployeeWorklogId(target || {}) || "";
+  const id = `dagym-guidance:${dateKey}:${sourceDateKey}:${type}`;
   const now = new Date().toISOString();
   return {
     id,
@@ -11969,15 +12043,18 @@ function createFitnessGuidanceRule({ dateKey, sourceDateKey, type, target, title
     type,
     title,
     detail,
+    resultPrompt: resultPrompt || "실행 결과와 다음 조치를 기록하세요.",
     dueTime,
     sourceValue: Number(sourceValue || 0),
     targetEmployeeId,
-    targetName: getEmployeeAdminLabel(target || {}) || "센터장",
-    status: "generated",
+    targetName: target ? getEmployeeAdminLabel(target) : `${targetRole || "담당"} 출근 대기`,
+    targetRole: targetRole || "staff",
+    status: targetEmployeeId ? "assigned" : "unassigned",
     generatedAt: now,
     updatedAt: now,
     acceptedAt: "",
     completedAt: "",
+    resultNote: "",
   };
 }
 
@@ -11988,27 +12065,118 @@ function buildTodayFitnessGuidance(dateKey = getActiveDateKey()) {
   const dagym = getDagymOpsForDate(sourceDateKey, { create: false });
   const staff = getFitnessDayOpsTotal(sourceDateKey);
   const roster = getFitnessGuidanceRoster(dateKey);
+  const pickAssignee = createFitnessGuidanceAssigneePicker(roster);
   const items = [];
-  const add = (rule) => items.push(createFitnessGuidanceRule({ dateKey, sourceDateKey, ...rule }));
+  const add = (rule) => items.push(createFitnessGuidanceRule({
+    dateKey,
+    sourceDateKey,
+    ...rule,
+    target: pickAssignee(rule.targetRole),
+  }));
   const noShows = numberValue(dagym.noShows);
   const expiringGap = Math.max(0, numberValue(dagym.expiring) - numberValue(dagym.renewals));
   const ptGap = Math.max(0, numberValue(dagym.ptBookings) - staff.pt);
   const lockerExpiring = numberValue(dagym.lockerExpiring);
   const expectedSalesActions = numberValue(dagym.visits) ? Math.max(2, Math.round(numberValue(dagym.visits) * 0.03)) : 0;
   const salesActionGap = Math.max(0, expectedSalesActions - staff.consultation - staff.renewal - staff.outbound);
-  if (noShows) add({ type: "no-show", target: roster.info, title: `노쇼·취소 ${noShows}건 재예약 확인`, detail: "미회복 회원에게 연락하고 재예약·보류·연락불가 결과를 남깁니다.", dueTime: "10:30", sourceValue: noShows });
-  if (expiringGap) add({ type: "expiry", target: roster.info, title: `만료 예정 미처리 ${expiringGap}건 상담`, detail: "만료 예정 대상의 안내 여부를 확인하고 재등록 상담 결과를 기록합니다.", dueTime: "11:00", sourceValue: expiringGap });
-  if (ptGap) add({ type: "pt-gap", target: roster.trainer, title: `PT 예약·완료 차이 ${ptGap}건 확인`, detail: "수업 완료, 노쇼, 일정 변경 중 하나로 대조 결과를 확정합니다.", dueTime: "12:00", sourceValue: ptGap });
-  if (lockerExpiring) add({ type: "locker", target: roster.info, title: `락커 만료 ${lockerExpiring}건 안내`, detail: "만료 안내와 연장·정리 여부를 확인합니다.", dueTime: "15:00", sourceValue: lockerExpiring });
-  if (salesActionGap) add({ type: "sales-action", target: roster.manager, title: `출석 대비 상담행동 ${salesActionGap}건 보강`, detail: "오늘 근무자에게 재등록·체험·휴면회원 후속조치를 배정합니다.", dueTime: "14:00", sourceValue: salesActionGap });
+  if (noShows) add({ type: "no-show", targetRole: "info", title: `노쇼·취소 ${noShows}건 재예약 확인`, detail: "미회복 회원에게 연락하고 재예약·보류·연락불가로 분류합니다.", resultPrompt: "재예약 / 보류 / 연락불가 건수와 재연락일을 기록", dueTime: "10:30", sourceValue: noShows });
+  if (expiringGap) add({ type: "expiry", targetRole: "info", title: `만료 예정 미처리 ${expiringGap}건 상담`, detail: "만료 예정 대상에게 안내하고 재등록 가능성을 확인합니다.", resultPrompt: "재등록 / 보류 / 재연락 결과를 기록", dueTime: "11:00", sourceValue: expiringGap });
+  if (ptGap) add({ type: "pt-gap", targetRole: "trainer", title: `PT 예약·완료 차이 ${ptGap}건 확인`, detail: "다짐 일정과 수업기록을 완료·노쇼·취소·연기로 대조합니다.", resultPrompt: "확정한 수업 결과와 불일치 원인을 기록", dueTime: "12:00", sourceValue: ptGap });
+  if (lockerExpiring) add({ type: "locker", targetRole: "info", title: `락커 만료 ${lockerExpiring}건 안내`, detail: "만료 전에 연장 의사를 확인하고 미연장 락커를 정리합니다.", resultPrompt: "연장 / 정리 / 재연락 결과를 기록", dueTime: "15:00", sourceValue: lockerExpiring });
+  if (salesActionGap) add({ type: "sales-action", targetRole: "manager", title: `상담행동 ${salesActionGap}건 보강`, detail: "출석 회원 중 재등록·체험·휴면 후속 대상에게 구체적인 상담을 실행합니다.", resultPrompt: "상담 / 등록 / 재연락 예약 건수를 기록", dueTime: "14:00", sourceValue: salesActionGap });
+  if (!noShows && !expiringGap && numberValue(dagym.visits)) {
+    const followupTarget = Math.max(1, Math.min(3, Math.round(numberValue(dagym.visits) * 0.03)));
+    add({ type: "member-followup", targetRole: "info", title: `전일 방문회원 후속 ${followupTarget}건`, detail: "전일 방문 흐름에서 상담·재가입 가능성이 높은 대상을 골라 후속 연락합니다.", resultPrompt: "상담완료 / 재연락 / 등록전환 결과를 기록", dueTime: "13:00", sourceValue: followupTarget });
+  }
+  if (!staff.snsPromotion) {
+    add({ type: "content-action", targetRole: "marketing", title: "블로그 1건 · 인스타 재가공 1건", detail: "회원이 자주 묻는 질문을 블로그로 작성하고 인스타용 짧은 콘텐츠로 재가공합니다.", resultPrompt: "게시 링크와 문의·예약 반응을 기록", dueTime: "16:00", sourceValue: 2 });
+  } else {
+    add({ type: "content-review", targetRole: "marketing", title: `전일 홍보 ${staff.snsPromotion}건 성과 점검`, detail: "게시물의 조회·문의·예약 연결을 확인하고 오늘 개선할 제목과 행동문구를 정합니다.", resultPrompt: "검토 링크와 개선한 문구를 기록", dueTime: "16:00", sourceValue: staff.snsPromotion });
+  }
   if (numberValue(dagym.sales) && !staff.renewal && !numberValue(dagym.newMembers)) {
-    add({ type: "sales-review", target: roster.manager, title: "전일 매출 발생 원인 확인", detail: "결제와 연결된 상담·PT·재등록 행동을 센터 보고에 남깁니다.", dueTime: "17:00", sourceValue: dagym.sales });
+    add({ type: "sales-review", targetRole: "manager", title: "전일 매출 발생 원인 확인", detail: "결제와 연결된 상담·PT·재등록 행동을 센터 보고에 남깁니다.", resultPrompt: "매출유형과 결정적 행동, 재현할 다음 행동을 기록", dueTime: "17:00", sourceValue: dagym.sales });
   }
   return { sourceDateKey, items };
 }
 
-function generateTodayFitnessGuidance({ silent = false } = {}) {
-  if (!canManageDagymOperations()) {
+function mergeGeneratedFitnessGuidance(existingItems = [], generatedItems = []) {
+  const existingByIdentity = new Map(existingItems.map((item) => [getFitnessGuidanceIdentity(item), item]));
+  return generatedItems.map((generated) => {
+    const existing = existingByIdentity.get(getFitnessGuidanceIdentity(generated));
+    if (!existing) return generated;
+    const existingRank = getFitnessGuidanceStatusRank(existing);
+    const contentChanged = ["title", "detail", "resultPrompt", "dueTime", "sourceValue", "targetRole"]
+      .some((key) => String(existing[key] ?? "") !== String(generated[key] ?? ""));
+    if (existingRank >= 2) {
+      return {
+        ...generated,
+        ...existing,
+        id: generated.id,
+        title: generated.title,
+        detail: generated.detail,
+        resultPrompt: generated.resultPrompt,
+        sourceValue: generated.sourceValue,
+        updatedAt: contentChanged ? generated.updatedAt : existing.updatedAt || generated.updatedAt,
+      };
+    }
+    const existingTarget = existing.targetEmployeeId
+      ? getFitnessCenterEmployees().find((employee) => getEmployeeWorklogId(employee) === existing.targetEmployeeId)
+      : null;
+    if (existingRank === 1 && existingTarget && hasFitnessGuidanceWorkStarted(existingTarget, generated.dateKey)) {
+      return {
+        ...generated,
+        targetEmployeeId: existing.targetEmployeeId,
+        targetName: existing.targetName,
+        targetRole: existing.targetRole || generated.targetRole,
+        status: "assigned",
+        generatedAt: existing.generatedAt || generated.generatedAt,
+        updatedAt: contentChanged ? generated.updatedAt : existing.updatedAt || generated.updatedAt,
+        resultNote: existing.resultNote || "",
+      };
+    }
+    return {
+      ...existing,
+      ...generated,
+      generatedAt: existing.generatedAt || generated.generatedAt,
+      updatedAt: existing.targetEmployeeId === generated.targetEmployeeId && !contentChanged
+        ? existing.updatedAt || generated.updatedAt
+        : generated.updatedAt,
+      resultNote: existing.resultNote || "",
+    };
+  });
+}
+
+function ensureOwnAssignedFitnessGuidanceTasks(dateKey = getActiveDateKey()) {
+  if (isRepresentativeProfile()) return false;
+  const ownEmployee = getProfileEmployee();
+  const ownId = getProfileMappedEmployeeId() || "profile-user";
+  if (!isFitnessEmployeeRecord(ownEmployee) || !canEditEmployeeSlot(ownId) || !hasFitnessGuidanceWorkStarted(ownEmployee, dateKey)) return false;
+  const log = getEmployeeLogForDate(ownId, dateKey);
+  let changed = false;
+  (state.fitnessDailyGuidance?.[dateKey] || []).forEach((item) => {
+    const status = normalizeFitnessGuidanceStatus(item.status, Boolean(item.targetEmployeeId));
+    if (item.targetEmployeeId !== ownId || ["completed", "delegated", "postponed", "cancelled", "other"].includes(status)) return;
+    if ((log.tasks || []).some((task) => task.guidanceId === item.id)) return;
+    const task = (log.tasks || []).find((candidate) => !isActiveTask(candidate)) || createWorklogTask("A");
+    if (!log.tasks.includes(task)) log.tasks.push(task);
+    Object.assign(task, {
+      priority: "A",
+      text: `[전일 다짐 미션] ${item.title}`,
+      status: "미완료",
+      done: false,
+      guidanceId: item.id,
+      guidanceSourceDateKey: item.sourceDateKey,
+      scheduledSlot: item.dueTime || "",
+    });
+    changed = true;
+  });
+  return changed;
+}
+
+function generateTodayFitnessGuidance({ silent = false, automatic = false } = {}) {
+  const profileEmployee = getProfileEmployee();
+  const canAutoGenerate = automatic && isFitnessEmployeeRecord(profileEmployee);
+  if (!canManageDagymOperations() && !canAutoGenerate) {
     if (!silent) showAppToast("센터장 또는 대표만 오늘 지침을 생성할 수 있습니다");
     return false;
   }
@@ -12018,20 +12186,49 @@ function generateTodayFitnessGuidance({ silent = false } = {}) {
     if (!silent) showAppToast("직전 영업일의 다짐 마감자료가 없습니다");
     return false;
   }
-  const existingById = new Map((state.fitnessDailyGuidance?.[dateKey] || []).map((item) => [item.id, item]));
   state.fitnessDailyGuidance ||= {};
-  state.fitnessDailyGuidance[dateKey] = items.map((item) => {
-    const existing = existingById.get(item.id);
-    return existing ? { ...item, ...existing, detail: item.detail, title: item.title, sourceValue: item.sourceValue } : item;
-  });
-  saveState();
-  renderFitnessDailyGuidance();
-  if (!silent) showAppToast(items.length ? `전일 자료로 오늘 지침 ${items.length}건을 만들었습니다` : "전일 미처리 신호가 없습니다");
+  const previousItems = state.fitnessDailyGuidance[dateKey] || [];
+  const mergedItems = mergeGeneratedFitnessGuidance(previousItems, items);
+  const guidanceChanged = JSON.stringify(previousItems) !== JSON.stringify(mergedItems);
+  state.fitnessDailyGuidance[dateKey] = mergedItems;
+  const taskAdded = ensureOwnAssignedFitnessGuidanceTasks(dateKey);
+  if (automatic) {
+    if (guidanceChanged || taskAdded) {
+      writeStateToLocalStorage();
+      scheduleRemoteSave(250, dateKey);
+    }
+    renderFitnessDailyGuidance(getCurrentFitnessLogPage(), getCurrentFitnessLogPage()?.type === "center");
+    if (taskAdded && activeView === "fitness-log") renderFitnessTaskBoard(getSelectedLog());
+  } else {
+    saveState();
+    renderFitnessDailyGuidance();
+  }
+  if (!silent) {
+    const assigned = items.filter((item) => item.targetEmployeeId).length;
+    showAppToast(items.length ? `오늘 미션 ${items.length}건 · 출근자 배정 ${assigned}건` : "전일 미처리 신호가 없습니다");
+  }
   return true;
 }
 
-function getFitnessGuidanceStatusLabel(status = "generated") {
-  return { generated: "배정", accepted: "수락", completed: "완료", delegated: "위임", postponed: "연기", cancelled: "취소" }[status] || "배정";
+let fitnessGuidanceReconcileTimer = 0;
+function scheduleFitnessGuidanceReconciliation(delay = 120) {
+  window.clearTimeout(fitnessGuidanceReconcileTimer);
+  fitnessGuidanceReconcileTimer = window.setTimeout(() => generateTodayFitnessGuidance({ silent: true, automatic: true }), delay);
+}
+
+function getFitnessGuidanceStatusLabel(status = "assigned") {
+  return {
+    generated: "배정",
+    accepted: "진행중",
+    unassigned: "출근 대기",
+    assigned: "배정",
+    in_progress: "진행중",
+    completed: "완료",
+    delegated: "위임",
+    postponed: "연기",
+    cancelled: "취소",
+    other: "기타",
+  }[status] || "배정";
 }
 
 function renderFitnessDailyGuidance(page = getCurrentFitnessLogPage(), isCenter = page?.type === "center") {
@@ -12054,22 +12251,46 @@ function renderFitnessDailyGuidance(page = getCurrentFitnessLogPage(), isCenter 
     generateButton.hidden = !isCenter;
     generateButton.disabled = !canManageDagymOperations();
   }
-  list.innerHTML = items.length ? items.map((item) => {
+  const statusCounts = items.reduce((counts, item) => {
+    const status = normalizeFitnessGuidanceStatus(item.status, Boolean(item.targetEmployeeId));
+    if (status === "unassigned") counts.waiting += 1;
+    else if (["completed", "delegated", "postponed", "cancelled", "other"].includes(status)) counts.finished += 1;
+    else if (status === "in_progress") counts.progress += 1;
+    else counts.assigned += 1;
+    return counts;
+  }, { assigned: 0, progress: 0, finished: 0, waiting: 0 });
+  const summary = isCenter && items.length ? `
+    <div class="fitness-guidance-summary" aria-label="미션 진행 요약">
+      <span>배정 <b>${statusCounts.assigned}</b></span><span>진행 <b>${statusCounts.progress}</b></span><span>결과 <b>${statusCounts.finished}</b></span><span>출근대기 <b>${statusCounts.waiting}</b></span>
+    </div>` : "";
+  list.innerHTML = summary + (items.length ? items.map((item) => {
     const ownId = getProfileMappedEmployeeId() || "profile-user";
-    const canAccept = !isRepresentativeProfile() && page?.type === "employee" && page.id === ownId && item.targetEmployeeId === ownId && item.status === "generated";
+    const status = normalizeFitnessGuidanceStatus(item.status, Boolean(item.targetEmployeeId));
+    const canUpdate = !isRepresentativeProfile() && page?.type === "employee" && page.id === ownId && item.targetEmployeeId === ownId && canEditEmployeeSlot(ownId);
     return `
-      <article class="fitness-guidance-item status-${escapeAttr(item.status)}">
+      <article class="fitness-guidance-item status-${escapeAttr(status)}">
         <div class="fitness-guidance-meta">
           <span>${escapeHtml(item.dueTime || "오늘")}</span>
           <b>${escapeHtml(item.targetName || "담당자")}</b>
-          <em>${escapeHtml(getFitnessGuidanceStatusLabel(item.status))}</em>
+          <em>${escapeHtml(getFitnessGuidanceStatusLabel(status))}</em>
         </div>
         <strong>${escapeHtml(item.title)}</strong>
         <p>${escapeHtml(item.detail)}</p>
-        ${canAccept ? `<button type="button" data-accept-fitness-guidance="${escapeAttr(item.id)}">우선업무로 수락</button>` : ""}
+        <small class="fitness-guidance-result-prompt">결과기준 · ${escapeHtml(item.resultPrompt || "실행 결과를 기록")}</small>
+        ${canUpdate ? `
+          <div class="fitness-guidance-outcome">
+            <select data-fitness-guidance-status="${escapeAttr(item.id)}" aria-label="미션 결과">
+              ${[
+                ["assigned", "배정됨"], ["in_progress", "진행중"], ["completed", "완료"], ["postponed", "연기"],
+                ["delegated", "위임"], ["cancelled", "취소"], ["other", "기타(직접기록)"],
+              ].map(([value, label]) => `<option value="${value}" ${status === value ? "selected" : ""}>${label}</option>`).join("")}
+            </select>
+            <input data-fitness-guidance-note="${escapeAttr(item.id)}" value="${escapeAttr(item.resultNote || "")}" placeholder="결과·사유·다음 조치 직접 기록" aria-label="미션 결과 기록" />
+            <button type="button" data-save-fitness-guidance="${escapeAttr(item.id)}">결과 저장</button>
+          </div>` : item.resultNote ? `<p class="fitness-guidance-result"><b>결과</b> ${escapeHtml(item.resultNote)}</p>` : ""}
       </article>
     `;
-  }).join("") : `<p class="fitness-guidance-empty">전날 다짐자료를 입력하면 새벽 1시 분석과 오늘 AI 코칭에 자동 반영됩니다.</p>`;
+  }).join("") : `<p class="fitness-guidance-empty">전날 다짐자료를 입력하면 새벽 1시 분석 후, 실제 출근자가 업무를 시작할 때 역할에 맞춰 자동 배정됩니다.</p>`);
 }
 
 function acceptFitnessDailyGuidance(guidanceId) {
@@ -12096,12 +12317,55 @@ function acceptFitnessDailyGuidance(guidanceId) {
     });
   }
   const now = new Date().toISOString();
-  item.status = "accepted";
+  item.status = "in_progress";
   item.acceptedAt ||= now;
   item.updatedAt = now;
   saveState();
   renderEntries();
   showAppToast("오늘의 우선업무에 추가했습니다");
+}
+
+function updateFitnessGuidanceOutcome(guidanceId) {
+  const dateKey = getActiveDateKey();
+  const item = (state.fitnessDailyGuidance?.[dateKey] || []).find((entry) => entry.id === guidanceId);
+  const ownId = getProfileMappedEmployeeId() || "profile-user";
+  if (!item || isRepresentativeProfile() || item.targetEmployeeId !== ownId || !canEditEmployeeSlot(ownId)) {
+    showAppToast("본인에게 배정된 미션 결과만 기록할 수 있습니다");
+    return false;
+  }
+  const panel = document.getElementById("fitnessDailyGuidancePanel");
+  const status = panel?.querySelector(`[data-fitness-guidance-status="${CSS.escape(guidanceId)}"]`)?.value || "assigned";
+  const resultNote = panel?.querySelector(`[data-fitness-guidance-note="${CSS.escape(guidanceId)}"]`)?.value.trim() || "";
+  if (status === "other" && !resultNote) {
+    showAppToast("기타 결과는 처리 내용이나 사유를 직접 기록해주세요");
+    return false;
+  }
+  const now = new Date().toISOString();
+  item.status = status;
+  item.resultNote = resultNote;
+  item.updatedAt = now;
+  item.completedAt = ["completed", "postponed", "delegated", "cancelled", "other"].includes(status) ? now : "";
+  item.acceptedAt ||= now;
+  const log = getEmployeeLogForDate(ownId, dateKey);
+  const task = (log.tasks || []).find((candidate) => candidate.guidanceId === item.id);
+  if (task) {
+    task.guidanceResultNote = resultNote;
+    task.guidanceOutcome = status;
+    task.done = status === "completed" || status === "other";
+    task.status = {
+      assigned: "미완료",
+      in_progress: "진행중",
+      completed: "완료",
+      postponed: "연기",
+      delegated: "위임",
+      cancelled: "취소",
+      other: "완료",
+    }[status] || "미완료";
+  }
+  saveState({ fastSave: true });
+  renderEntries();
+  showAppToast(`미션 결과를 ${getFitnessGuidanceStatusLabel(status)}로 저장했습니다`);
+  return true;
 }
 
 function syncFitnessGuidanceFromTask(task = {}) {
@@ -12110,13 +12374,19 @@ function syncFitnessGuidanceFromTask(task = {}) {
     const item = (items || []).find((entry) => entry.id === task.guidanceId);
     if (!item) return;
     const now = new Date().toISOString();
-    if (task.done || task.status === "완료") {
+    if (task.guidanceOutcome === "other" && (task.done || task.status === "완료")) {
+      item.status = "other";
+      item.completedAt = now;
+    } else if (task.done || task.status === "완료") {
       item.status = "completed";
       item.completedAt = now;
     } else if (task.status === "취소") item.status = "cancelled";
     else if (task.status === "위임") item.status = "delegated";
     else if (task.status === "연기") item.status = "postponed";
-    else item.status = "accepted";
+    else if (task.status === "진행중") item.status = "in_progress";
+    else item.status = "assigned";
+    if (task.guidanceOutcome === "other" && item.status !== "other") task.guidanceOutcome = "";
+    if (task.guidanceResultNote) item.resultNote = task.guidanceResultNote;
     item.updatedAt = now;
   });
 }
@@ -12126,7 +12396,7 @@ function resetFitnessGuidanceFromTask(task = {}) {
   Object.values(state.fitnessDailyGuidance || {}).forEach((items) => {
     const item = (items || []).find((entry) => entry.id === task.guidanceId);
     if (!item) return;
-    item.status = "generated";
+    item.status = item.targetEmployeeId ? "assigned" : "unassigned";
     item.acceptedAt = "";
     item.completedAt = "";
     item.updatedAt = new Date().toISOString();
@@ -13923,6 +14193,7 @@ function renderWorklogTaskRow(ref, currentLog, options = {}) {
     updateTaskPriorityWarningState(row, row.__editableTask || task, { announce: true, log: currentLog });
     if (row.closest("#fitnessTaskBoard")) {
       scheduleInputRender("fitness-task-rows", () => ensureFitnessTaskRowsVisible(currentLog), 80);
+      if (getActiveDateKey() === formatDateKey(new Date())) scheduleFitnessGuidanceReconciliation(40);
     }
   });
   row.querySelector(".task-delete").onclick = () => {
@@ -15207,6 +15478,9 @@ function applyAttendancePopoverSelection() {
   }
   normalizeEmployeeLogRows(log, getActiveDateKey());
   syncAttendanceRecordFromLog(employee, log);
+  if (attendancePopoverAction === "출근" && getActiveDateKey() === formatDateKey(new Date())) {
+    generateTodayFitnessGuidance({ silent: true, automatic: true });
+  }
   saveState();
   renderAll();
   closeAttendancePopover();
@@ -15244,6 +15518,9 @@ function applyAttendanceCycle() {
   }
   normalizeEmployeeLogRows(log, getActiveDateKey());
   syncAttendanceRecordFromLog(getSelectedEmployee(), log);
+  if (action === "출근" && getActiveDateKey() === formatDateKey(new Date())) {
+    generateTodayFitnessGuidance({ silent: true, automatic: true });
+  }
   saveState();
   renderClockPanel();
   renderTodayContext();
@@ -24603,6 +24880,9 @@ document.getElementById("clockInTime")?.addEventListener("input", (event) => {
   log.attendanceStatus = event.target.value ? "출근" : "";
   normalizeEmployeeLogRows(log, getActiveDateKey());
   syncAttendanceRecordFromLog(getSelectedEmployee(), log);
+  if (event.target.value && getActiveDateKey() === formatDateKey(new Date())) {
+    generateTodayFitnessGuidance({ silent: true, automatic: true });
+  }
   saveState();
   renderClockPanel();
   renderTodayContext();
@@ -24637,6 +24917,13 @@ document.getElementById("employeeMemo").oninput = (event) => {
   saveState({ input: true });
   scheduleInputRender("worklog-report", renderReport, 1600);
 };
+["employeeReport", "employeeMemo"].forEach((fieldId) => {
+  document.getElementById(fieldId)?.addEventListener("blur", () => {
+    if (activeView === "fitness-log" && getActiveDateKey() === formatDateKey(new Date())) {
+      scheduleFitnessGuidanceReconciliation(40);
+    }
+  });
+});
 document.querySelectorAll("[data-fitness-field]").forEach((field) => {
   field.oninput = (event) => {
     if (!canEditCurrentWorklog("fitness-log")) {
@@ -24659,6 +24946,9 @@ document.querySelectorAll("[data-fitness-field]").forEach((field) => {
     });
     scheduleInputRender("worklog-report", renderReport, 1600);
   };
+  field.addEventListener("blur", () => {
+    if (getActiveDateKey() === formatDateKey(new Date())) scheduleFitnessGuidanceReconciliation(40);
+  });
 });
 document.querySelectorAll("[data-dagym-field]").forEach((field) => {
   field.oninput = (event) => {
@@ -24710,8 +25000,10 @@ document.getElementById("fitnessOperatingGrowthLoop")?.addEventListener("click",
 });
 document.getElementById("fitnessGuidanceGenerateButton")?.addEventListener("click", () => generateTodayFitnessGuidance());
 document.getElementById("fitnessDailyGuidancePanel")?.addEventListener("click", (event) => {
-  const button = event.target.closest("[data-accept-fitness-guidance]");
-  if (button) acceptFitnessDailyGuidance(button.dataset.acceptFitnessGuidance);
+  const saveButton = event.target.closest("[data-save-fitness-guidance]");
+  const acceptButton = event.target.closest("[data-accept-fitness-guidance]");
+  if (saveButton) updateFitnessGuidanceOutcome(saveButton.dataset.saveFitnessGuidance);
+  else if (acceptButton) acceptFitnessDailyGuidance(acceptButton.dataset.acceptFitnessGuidance);
 });
 document.querySelectorAll("[data-fitness-goal]").forEach((field) => {
   field.oninput = (event) => {

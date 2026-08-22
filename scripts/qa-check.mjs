@@ -505,6 +505,25 @@ check(
 );
 
 check(
+  "DaGym missions assign only after actual work start",
+  /function hasFitnessGuidanceWorkStarted[\s\S]{0,900}item\.source !== "dagym-monthly-pt"[\s\S]{0,500}log\.clockIn/.test(js)
+    && /function getFitnessGuidanceRoster[\s\S]{0,500}hasFitnessGuidanceWorkStarted/.test(js)
+    && /status: targetEmployeeId \? "assigned" : "unassigned"/.test(js)
+    && /function ensureOwnAssignedFitnessGuidanceTasks[\s\S]{0,1200}\[전일 다짐 미션\][\s\S]{0,500}guidanceId: item\.id/.test(js),
+  "missions must wait for clock-in or real work evidence, then appear in the assigned employee's priority work"
+);
+
+check(
+  "fitness mission outcomes sync between employee and center views",
+  /function updateFitnessGuidanceOutcome\(guidanceId\)[\s\S]{0,1600}\["completed", "postponed", "delegated", "cancelled", "other"\]/.test(js)
+    && js.includes('data-fitness-guidance-note=')
+    && js.includes('data-save-fitness-guidance=')
+    && js.includes("fitness-guidance-summary")
+    && /function mergeFitnessGuidanceItem[\s\S]{0,700}getFitnessGuidanceStatusRank/.test(js),
+  "employees need complete, postpone, delegate, cancel, and direct-result recording with conflict-safe center visibility"
+);
+
+check(
   "fixed employee worklogs require authenticated owner",
   /function canEditEmployeeSlot\(employeeId = ""\)[\s\S]{0,180}if \(!authState\.user\) return false;[\s\S]{0,200}const ownEmployeeId = getProfileMappedEmployeeId\(\) \|\| "profile-user";[\s\S]{0,80}employeeId === ownEmployeeId/.test(js),
   "logged-out or mismatched viewers must not operate another employee's attendance/worklog"
