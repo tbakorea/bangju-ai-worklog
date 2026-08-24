@@ -268,6 +268,10 @@ const fitnessManagerWeeklyWorkHours = Object.freeze({
   fri: "06:00-24:00",
   sat: "06:00-24:00",
 });
+// 주말 전담 인포는 기본 근무시간을 모든 요일에 적용하지 않습니다.
+// 빈 승인 프로필도 이 기준을 상속해 휴무일을 결근·미기록으로 오인하지 않게 합니다.
+const fitnessSaturdayInfoWeeklyWorkHours = Object.freeze({ sat: "16:00-20:00" });
+const fitnessSundayInfoWeeklyWorkHours = Object.freeze({ sun: "10:00-18:00" });
 const laborLeaveTypes = Object.freeze([
   ["annual", "연차", "full"],
   ["morning-half", "오전 반차", "morning"],
@@ -624,8 +628,8 @@ const employees = [
   { id: "beyond-fitness-manager", name: "박주홍", nickname: "센터장", org: "(주)방주 / 비욘드 피트니스 지사", role: "센터장", workHours: "06:00-24:00", weeklyWorkHours: fitnessManagerWeeklyWorkHours, primaryWork: "운영총괄, PT 수업" },
   { id: "fitness-trainer-1", name: "홍현규", nickname: "홍트", email: "gusrd1005@gmail.com", org: "(주)방주 / 비욘드 피트니스 지사", role: "트레이너", workHours: "06:00-24:00", primaryWork: "PT 수업", employmentType: "프리랜서" },
   { id: "fitness-weekday-info", name: "주중 인포", nickname: "주중인포", org: "(주)방주 / 비욘드 피트니스 지사", role: "인포데스크", workHours: "16:00-20:00", primaryWork: "고객응대, 센터관리" },
-  { id: "fitness-weekday-info-idabin", name: "이다빈", nickname: "이다빈", org: "(주)방주 / 비욘드 피트니스 지사", role: "인포데스크", workHours: "16:00-20:00", primaryWork: "고객응대, 센터관리" },
-  { id: "fitness-info-kimyoungchae", name: "김영채", nickname: "김영채", email: "yckim1558@naver.com", org: "(주)방주 / 비욘드 피트니스 지사", role: "인포데스크", workHours: "10:00-18:00", primaryWork: "고객응대, 센터관리" },
+  { id: "fitness-weekday-info-idabin", name: "이다빈", nickname: "이다빈", org: "(주)방주 / 비욘드 피트니스 지사", role: "인포데스크", workHours: "16:00-20:00", weeklyWorkHours: fitnessSaturdayInfoWeeklyWorkHours, primaryWork: "토요일 고객응대, 센터관리" },
+  { id: "fitness-info-kimyoungchae", name: "김영채", nickname: "김영채", email: "yckim1558@naver.com", org: "(주)방주 / 비욘드 피트니스 지사", role: "인포데스크", workHours: "10:00-18:00", weeklyWorkHours: fitnessSundayInfoWeeklyWorkHours, primaryWork: "일요일 고객응대, 센터관리" },
   { id: "fitness-info-shinsemin", name: "신세민", nickname: "신세민", email: "tpals2990@naver.com", org: "(주)방주 / 비욘드 피트니스 지사", role: "인포데스크", workHours: "10:00-18:00", primaryWork: "고객응대, 센터관리" },
   { id: "fitness-saturday-info", name: "토요 인포", nickname: "토요인포", org: "(주)방주 / 비욘드 피트니스 지사", role: "토요 인포", workHours: "10:00-18:00", primaryWork: "토요일 고객응대, 센터관리" },
   { id: "fitness-sunday-info", name: "일요 인포", nickname: "일요인포", org: "(주)방주 / 비욘드 피트니스 지사", role: "일요 인포", workHours: "10:00-18:00", primaryWork: "일요일 고객응대, 센터관리" },
@@ -638,6 +642,34 @@ const fitnessEmployeeIds = ["beyond-fitness-manager", "fitness-trainer-1", "fitn
 const fitnessPlaceholderEmployeeIds = new Set(["fitness-weekday-info", "fitness-saturday-info", "fitness-sunday-info", "fitness-spare-1"]);
 const bangjuWorklogEmployeeIds = ["bangju-finance-manager", "bangju-finance-assistant", "construction-finance-assistant", "bangju-spare-1"];
 const beyondWorklogEmployeeIds = ["beyond-company-leader", "beyond-shared-manager", "beyond-spare-1"];
+
+function hasConfiguredWeeklyWorkHours(value = {}) {
+  return Boolean(
+    value
+    && typeof value === "object"
+    && !Array.isArray(value)
+    && weeklyWorkDayOptions.some(([dayKey]) => Object.prototype.hasOwnProperty.call(value, dayKey))
+  );
+}
+
+function getDirectWeeklyWorkHours(employee = {}) {
+  return [employee?.weeklyWorkHours, employee?.weekly_work_hours]
+    .find((candidate) => hasConfiguredWeeklyWorkHours(candidate)) || {};
+}
+
+function getEffectiveWeeklyWorkHours(employee = {}) {
+  const direct = getDirectWeeklyWorkHours(employee);
+  if (hasConfiguredWeeklyWorkHours(direct)) return { ...direct };
+  const canonicalId = String(
+    employee?.mappedEmployeeId
+    || employee?.id
+    || getProfileMappedEmployeeId(employee)
+    || ""
+  ).trim();
+  const canonical = canonicalId ? employees.find((item) => item.id === canonicalId) : null;
+  const inherited = getDirectWeeklyWorkHours(canonical || {});
+  return hasConfiguredWeeklyWorkHours(inherited) ? { ...inherited } : {};
+}
 
 function isAssignedWorklogEmployee(employee) {
   if (!employee) return false;
@@ -1315,8 +1347,10 @@ function normalizeState() {
 }
 
 function normalizeEmployeeLogRows(log, dateKey = getActiveDateKey()) {
-  log.tasks ||= [];
-  log.schedule ||= [];
+  // 오래된 저장본·동기화 병합본에 빈 배열 항목이 섞여도, 한 건의 잘못된
+  // 행 때문에 해당 직원의 업무일지 전체가 열리지 않게 방어합니다.
+  log.tasks = Array.isArray(log.tasks) ? log.tasks.filter((task) => task && typeof task === "object") : [];
+  log.schedule = Array.isArray(log.schedule) ? log.schedule.filter((entry) => entry && typeof entry === "object") : [];
   log.workHoursOverride = normalizeWorkHoursText(log.workHoursOverride || "");
   log.workHoursBeforeOff = normalizeWorkHoursText(log.workHoursBeforeOff || "");
   log.manualScheduleSlots = Array.isArray(log.manualScheduleSlots)
@@ -1574,7 +1608,7 @@ function getProfileEmployee() {
     joinDate: profile.joinDate || "",
     payDay: profile.payDay || "",
     workHours: profile.workHours || defaultProfile.workHours,
-    weeklyWorkHours: { ...(profile.weeklyWorkHours || {}) },
+    weeklyWorkHours: getEffectiveWeeklyWorkHours(profile),
     mappedEmployeeId: getProfileMappedEmployeeId(profile),
     assignedMission: profile.assignedMission || "",
     assignedMissionVisible: profile.assignedMissionVisible !== false,
@@ -1625,7 +1659,7 @@ function getEmployeeWorkHoursOverride(employeeId = state?.selectedEmployeeId, da
 
 function getProfileWorkHoursForDate(profile = state?.profile, dateKey = getActiveDateKey()) {
   const dayKey = getWorkdayKey(dateKey);
-  const weeklyHours = profile?.weeklyWorkHours || {};
+  const weeklyHours = getEffectiveWeeklyWorkHours(profile || {});
   if (Object.keys(weeklyHours).length && !Object.prototype.hasOwnProperty.call(weeklyHours, dayKey)) return "휴무";
   return normalizeWorkHoursText(weeklyHours[dayKey] || profile?.workHours || defaultProfile.workHours);
 }
@@ -1646,7 +1680,7 @@ function getEmployeeSubstituteWorkHours(employeeId = state?.selectedEmployeeId, 
   const employee = id === "profile-user" || isEmployeeLinkedToProfile(id)
     ? profile
     : findEmployeeRecordById(id);
-  const weeklyHours = employee?.weeklyWorkHours || employee?.weekly_work_hours || {};
+  const weeklyHours = getEffectiveWeeklyWorkHours(employee || {});
   const candidates = [employee?.workHours, employee?.work_hours, ...Object.values(weeklyHours || {}), defaultProfile.workHours];
   return candidates
     .map(normalizeWorkHoursText)
@@ -2538,7 +2572,7 @@ function normalizeFitnessEmployeeForWorklog(employee = {}) {
     primaryWork: employee.primaryWork || base.primaryWork || "",
     workplace: employee.workplace || base.workplace || "비욘드 피트니스",
     workHours: employee.workHours || base.workHours || defaultProfile.workHours,
-    weeklyWorkHours: { ...(employee.weeklyWorkHours || employee.weekly_work_hours || base.weeklyWorkHours || {}) },
+    weeklyWorkHours: getEffectiveWeeklyWorkHours({ ...employee, mappedEmployeeId: employee.mappedEmployeeId || canonicalId }),
   };
 }
 
@@ -3929,7 +3963,7 @@ function getOverviewScheduledWorkHours(employee = {}, dateKey = getActiveDateKey
   const override = normalizeWorkHoursText(dayLog?.workHoursOverride || "");
   const employeeId = getEmployeeWorklogId(employee) || employee.id || "";
   if (override) return applyApprovedLeaveToWorkHours(override, employeeId, dateKey);
-  const weeklyHours = employee.weeklyWorkHours || employee.weekly_work_hours || {};
+  const weeklyHours = getEffectiveWeeklyWorkHours(employee);
   const dayKey = getWorkdayKey(dateKey);
   const hasWeeklySettings = weeklyHours && typeof weeklyHours === "object" && Object.keys(weeklyHours).length > 0;
   const recentPattern = hasWeeklySettings ? null : getRecentEmployeeWorkPattern(employee, dateKey);
@@ -3942,7 +3976,7 @@ function getOverviewScheduledWorkHours(employee = {}, dateKey = getActiveDateKey
 }
 
 function getRecentEmployeeWorkPattern(employee = {}, dateKey = getActiveDateKey(), lookbackDays = 56) {
-  const weeklyHours = employee.weeklyWorkHours || employee.weekly_work_hours || {};
+  const weeklyHours = getEffectiveWeeklyWorkHours(employee);
   if (weeklyHours && typeof weeklyHours === "object" && Object.keys(weeklyHours).length) {
     return { source: "settings", likelyOff: false, samples: 0, targetWorked: 0 };
   }
@@ -4078,7 +4112,7 @@ function getOverviewWorkStatus(employee = {}, dayLog = {}, dateKey = getActiveDa
   const approvedLeave = getApprovedLeaveForDate(getEmployeeWorklogId(employee) || employee.id || "", dateKey);
   const approvedLeaveType = approvedLeave ? getLaborLeaveType(approvedLeave.leaveType) : null;
   const hours = getOverviewScheduledWorkHours(employee, dateKey, dayLog);
-  const weeklyHours = employee.weeklyWorkHours || employee.weekly_work_hours || {};
+  const weeklyHours = getEffectiveWeeklyWorkHours(employee);
   const recentPattern = weeklyHours && typeof weeklyHours === "object" && Object.keys(weeklyHours).length
     ? null
     : getRecentEmployeeWorkPattern(employee, dateKey);
@@ -10175,7 +10209,7 @@ function createRemoteCoworkerEmployee(row = {}) {
     primaryWork: String(profile.primaryWork || "").trim(),
     email: normalizeEmailValue(profile.email || ""),
     workHours: profile.workHours || defaultProfile.workHours,
-    weeklyWorkHours: { ...(profile.weeklyWorkHours || {}) },
+    weeklyWorkHours: getEffectiveWeeklyWorkHours({ ...profile, mappedEmployeeId }),
     approvalStatus: "approved",
   };
 }
@@ -14513,7 +14547,12 @@ function getScheduleEntryReportType(entry = {}, employee = getSelectedEmployee()
 }
 
 function normalizeScheduleEntryItems(entry) {
-  entry.items = Array.isArray(entry.items) ? entry.items : null;
+  // 부분 저장·원격 병합 중 남은 빈 일정 항목은 읽기만 건너뜁니다.
+  // 그래야 한 행의 손상으로 업무일지·센터현황 렌더링 전체가 중단되지 않습니다.
+  if (!entry || typeof entry !== "object") return [];
+  entry.items = Array.isArray(entry.items)
+    ? entry.items.filter((item) => item && typeof item === "object")
+    : null;
   if (!entry.items) {
     const text = String(entry.text || "").trim();
     entry.items = text ? [{ type: inferScheduleType(text), text }] : [{ type: "업무", text: "" }];
@@ -14537,12 +14576,14 @@ function getScheduleEntryText(entry) {
 }
 
 function syncScheduleEntryText(entry) {
-  const items = Array.isArray(entry.items) ? entry.items : [];
+  if (!entry || typeof entry !== "object") return "";
+  const items = Array.isArray(entry.items) ? entry.items.filter((item) => item && typeof item === "object") : [];
   const text = items
     .filter((item) => String(item.text || "").trim())
     .map((item) => formatScheduleItemWithType(item))
     .join(" / ");
   entry.text = formatScheduleTextSmartly(text);
+  return entry.text;
 }
 
 function createScheduleItem(text = "", type = "") {
@@ -16528,7 +16569,8 @@ function buildLaborLedgerEmployeeRow(labor, employee, dayNumbers) {
 function getLaborProfileForEmployee(employee) {
   if (!employee) return { ...defaultProfile };
   if (employee.id === "profile-user" || isEmployeeLinkedToProfile(employee.id)) {
-    return { ...defaultProfile, ...(state.profile || {}) };
+    const profile = { ...defaultProfile, ...(state.profile || {}) };
+    return { ...profile, weeklyWorkHours: getEffectiveWeeklyWorkHours(profile) };
   }
   return {
     ...defaultProfile,
@@ -16546,7 +16588,7 @@ function getLaborProfileForEmployee(employee) {
     dailyWage: employee.dailyWage || "",
     employmentType: employee.employmentType || "직원",
     workHours: employee.workHours || defaultProfile.workHours,
-    weeklyWorkHours: { ...(employee.weeklyWorkHours || employee.weekly_work_hours || {}) },
+    weeklyWorkHours: getEffectiveWeeklyWorkHours(employee),
   };
 }
 
@@ -18523,7 +18565,7 @@ function approvalRowToStaffEmployee(row = {}) {
     joinDate: profile.joinDate || "",
     payDay: profile.payDay || "",
     workHours: profile.workHours || base?.workHours || defaultProfile.workHours,
-    weeklyWorkHours: profile.weeklyWorkHours || base?.weeklyWorkHours || {},
+    weeklyWorkHours: getEffectiveWeeklyWorkHours({ ...profile, mappedEmployeeId: mappedId }),
     approvalStatus: profile.approvalStatus || row.approval_status || "approved",
     assignedMission: row.assigned_mission || profile.assignedMission || "",
     assignedMissionVisible: row.assigned_mission_visible !== false,
@@ -19319,7 +19361,7 @@ function profileRowToEmployeeOverride(row = {}) {
     primaryWork: profile.primaryWork || "",
     secondaryWork: profile.secondaryWork || "",
     workHours: profile.workHours || defaultProfile.workHours,
-    weeklyWorkHours: profile.weeklyWorkHours || row.weekly_work_hours || {},
+    weeklyWorkHours: getEffectiveWeeklyWorkHours({ ...profile, mappedEmployeeId: getProfileMappedEmployeeId(profile) }),
     employmentType: profile.employmentType || "직원",
     joinDate: profile.joinDate || "",
     payDay: profile.payDay || "",

@@ -564,6 +564,17 @@ check(
 );
 
 check(
+  "weekend fitness information-desk schedules inherit through approved profiles",
+  js.includes('const fitnessSaturdayInfoWeeklyWorkHours = Object.freeze({ sat: "16:00-20:00" });')
+    && js.includes('const fitnessSundayInfoWeeklyWorkHours = Object.freeze({ sun: "10:00-18:00" });')
+    && /id: "fitness-weekday-info-idabin"[^\n]+weeklyWorkHours: fitnessSaturdayInfoWeeklyWorkHours/.test(js)
+    && /id: "fitness-info-kimyoungchae"[^\n]+weeklyWorkHours: fitnessSundayInfoWeeklyWorkHours/.test(js)
+    && js.includes("function getEffectiveWeeklyWorkHours")
+    && js.includes("weeklyWorkHours: getEffectiveWeeklyWorkHours({ ...profile, mappedEmployeeId: mappedId })"),
+  "Idabin must work only Saturday and Kim Youngchae only Sunday even when an approved profile has an empty weekly schedule"
+);
+
+check(
   "Hong Hyeon-gyu account is pinned to the trainer worklog",
   /"gusrd1005@gmail\.com": \{[\s\S]{0,700}role: "트레이너"[\s\S]{0,500}mappedEmployeeId: "fitness-trainer-1"/.test(js)
     && /id: "fitness-trainer-1"[^\n]+email: "gusrd1005@gmail\.com"/.test(js)
