@@ -200,8 +200,44 @@ async function checkTabletRepresentativeWorklogChrome(browser) {
         permissions: {}
       };
       state.selectedEmployeeId = "bangju-finance-manager";
+      const financeManager = employees.find((employee) => employee.id === "bangju-finance-manager");
+      if (financeManager) {
+        financeManager.name = "최희진";
+        financeManager.role = "재무과장";
+      }
       normalizeState();
       switchView("bangju-log");
+      const remoteProfile = {
+        email: "finance-manager-qa@example.com",
+        name: "최희진",
+        org: "(주)방주",
+        workplace: "본사",
+        role: "재무과장",
+        approvalStatus: "approved"
+      };
+      const staleLog = createEmployeeLog(financeManager, remoteProfile, todayKey);
+      staleLog.tasks[0] = { ...createWorklogTask("A"), text: "대표 화면 잔존 금지 QA", status: "미완료", done: false };
+      mergeVisibleStaffWorklogStates([{
+        user_id: "finance-manager-qa",
+        updated_at: "2026-08-24T00:00:00.000Z",
+        state: { profile: remoteProfile, ownerEmployeeId: "bangju-finance-manager", ownerWorklog: staleLog }
+      }], todayKey);
+      const clearedLog = createEmployeeLog(financeManager, remoteProfile, todayKey);
+      mergeVisibleStaffWorklogStates([{
+        user_id: "finance-manager-qa",
+        updated_at: "2026-08-24T00:01:00.000Z",
+        state: { profile: remoteProfile, ownerEmployeeId: "bangju-finance-manager", ownerWorklog: clearedLog }
+      }], todayKey);
+      window.__qaRepresentativeStaleTaskCleared = !getEmployeeLogForDate("bangju-finance-manager", todayKey).tasks
+        .some((task) => task.text === "대표 화면 잔존 금지 QA");
+      const financeLog = getEmployeeLogForDate("bangju-finance-manager", todayKey);
+      financeLog.tasks = Array.from({ length: 20 }, (_, index) => ({
+        ...createWorklogTask(index < 8 ? "A" : "B"),
+        text: "최희진 대표 열람 QA 업무 " + (index + 1),
+        status: "미완료",
+        done: false
+      }));
+      renderEntries();
       document.body.classList.remove("physical-phone-device");
       const exitButton = document.getElementById("returnToWorklogOverviewButton");
       if (exitButton) exitButton.hidden = false;
@@ -249,6 +285,9 @@ async function checkTabletRepresentativeWorklogChrome(browser) {
       weatherWidth: weather?.width || 0,
       weatherIconSize: icon ? Number.parseFloat(getComputedStyle(icon).fontSize) : 0,
       weatherRangeSize: range ? Number.parseFloat(getComputedStyle(range).fontSize) : 0,
+      identityText: document.getElementById("worklogIdentityBadge")?.textContent?.replace(/\s+/g, " ").trim() || "",
+      dailyTabText: document.getElementById("selectedWorklogTab")?.textContent?.replace(/\s+/g, " ").trim() || "",
+      staleTaskCleared: Boolean(window.__qaRepresentativeStaleTaskCleared),
       horizontalOverflow: document.documentElement.scrollWidth - window.innerWidth,
     };
   });
@@ -262,7 +301,37 @@ async function checkTabletRepresentativeWorklogChrome(browser) {
   if (metrics.weatherWidth < 120 || metrics.weatherIconSize < 27 || metrics.weatherRangeSize < 14) {
     fail("tablet current-day weather should use the available date-row space", JSON.stringify(metrics));
   }
+  if (!metrics.identityText.includes("최희진") || !metrics.identityText.includes("업무일지")
+    || metrics.dailyTabText !== "최희진 업무일지") {
+    fail("representative detail should identify the selected employee in both the context badge and daily tab", JSON.stringify(metrics));
+  }
+  if (!metrics.staleTaskCleared) {
+    fail("representative detail should accept an authoritative empty employee snapshot and clear stale tasks", JSON.stringify(metrics));
+  }
   if (metrics.horizontalOverflow > 2) fail("tablet employee worklog has horizontal overflow", JSON.stringify(metrics));
+  await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
+  await page.waitForTimeout(120);
+  const stickyContext = await page.evaluate(() => {
+    const context = document.getElementById("worklogStickyContext");
+    const box = context?.getBoundingClientRect();
+    const common = document.querySelector('[data-worklog-page-choice="common"]')?.getBoundingClientRect();
+    const coworker = document.querySelector('[data-worklog-page-choice="coworker"]')?.getBoundingClientRect();
+    return {
+      top: box?.top ?? -999,
+      bottom: box?.bottom ?? -999,
+      position: context ? getComputedStyle(context).position : "",
+      identity: document.getElementById("worklogIdentityBadge")?.textContent?.replace(/\s+/g, " ").trim() || "",
+      commonVisible: Boolean(common && common.top >= 0 && common.bottom <= window.innerHeight),
+      coworkerVisible: Boolean(coworker && coworker.top >= 0 && coworker.bottom <= window.innerHeight),
+      horizontalOverflow: document.documentElement.scrollWidth - window.innerWidth,
+    };
+  });
+  if (stickyContext.position !== "sticky" || stickyContext.top < -2 || stickyContext.top > 30
+    || !stickyContext.identity.includes("최희진") || !stickyContext.commonVisible || !stickyContext.coworkerVisible
+    || stickyContext.horizontalOverflow > 2) {
+    fail("selected employee identity and common/coworker navigation should remain visible after scrolling", JSON.stringify(stickyContext));
+  }
+  await page.evaluate(() => window.scrollTo(0, 0));
   await page.evaluate(() => switchView("worklog-overview"));
   await page.waitForTimeout(160);
   const ceoOverview = await page.evaluate(() => {

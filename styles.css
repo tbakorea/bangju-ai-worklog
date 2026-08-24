@@ -29209,3 +29209,95 @@ body.is-command-open {
     grid-template-columns: minmax(0, 1fr) !important;
   }
 }
+
+/* Representative/peer worklog context stays visible while the ledger scrolls.
+   The identity and page shortcuts move as one compact surface so the viewer
+   never loses the employee name or access to common/coworker pages. */
+#view-today .worklog-sticky-context {
+  position: sticky;
+  top: max(4px, env(safe-area-inset-top));
+  z-index: 105;
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 5px 8px;
+  min-width: 0;
+  padding: 5px;
+  border: 1px solid rgba(15, 59, 46, 0.12);
+  border-radius: 16px;
+  background: rgba(249, 250, 246, 0.95);
+  box-shadow: 0 10px 26px rgba(15, 59, 46, 0.1);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+}
+
+#view-today .worklog-sticky-context .worklog-person-chip {
+  justify-self: stretch;
+  width: 100%;
+}
+
+#view-today .worklog-sticky-context .representative-worklog-toolbar {
+  justify-content: flex-end;
+  min-height: 0;
+  margin: 0;
+  padding: 0;
+}
+
+#view-today .worklog-sticky-context .worklog-access-toolbar {
+  position: static;
+  grid-column: 1 / -1;
+  border-color: rgba(15, 59, 46, 0.08);
+  background: rgba(255, 254, 250, 0.78);
+  box-shadow: none;
+}
+
+@media (min-width: 1200px) {
+  #view-today .worklog-sticky-context {
+    grid-template-columns: minmax(230px, 0.8fr) auto minmax(520px, 1.55fr);
+    padding-right: 130px;
+  }
+
+  #view-today .worklog-sticky-context .worklog-access-toolbar {
+    grid-column: 3;
+  }
+}
+
+@media (min-width: 760px) and (max-width: 1199px) {
+  #view-today .worklog-sticky-context {
+    padding-right: 128px;
+  }
+}
+
+@media (max-width: 759px) {
+  #view-today .worklog-sticky-context {
+    top: max(2px, env(safe-area-inset-top));
+    grid-template-columns: minmax(0, 1fr);
+    gap: 4px;
+    padding: 4px;
+    border-radius: 14px;
+  }
+
+  #view-today .worklog-sticky-context .representative-worklog-toolbar,
+  #view-today .worklog-sticky-context .worklog-access-toolbar {
+    grid-column: 1;
+    width: 100%;
+  }
+
+  #view-today .worklog-sticky-context .representative-worklog-toolbar:has(.worklog-overview-exit-button[hidden]) {
+    display: none;
+  }
+
+  #view-today .worklog-sticky-context .worklog-person-chip {
+    min-height: 34px !important;
+    padding-block: 4px !important;
+  }
+
+  #view-today .worklog-sticky-context .worklog-access-toolbar {
+    padding: 3px;
+  }
+
+  #view-today .worklog-sticky-context .worklog-page-tabs button {
+    min-height: 34px;
+  }
+}

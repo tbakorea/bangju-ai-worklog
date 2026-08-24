@@ -344,22 +344,24 @@
           </div>
         </div>
         <div class="worklog-context-grid" id="todayContext" hidden></div>
-        <div class="worklog-person-chip" id="worklogIdentityBadge" aria-live="polite"></div>
-        <div class="representative-worklog-toolbar">
-          <button class="worklog-overview-exit-button" id="returnToWorklogOverviewButton" type="button" hidden>‹ 전체 업무일지로 돌아가기</button>
-        </div>
-        <div class="worklog-access-toolbar" aria-label="업무일지 보기 설정">
-          <nav class="worklog-page-tabs" aria-label="업무일지 페이지">
-            <button type="button" data-worklog-page-choice="common">공통 일정</button>
-            <button type="button" data-worklog-page-choice="daily" id="selectedWorklogTab">나의 업무일지</button>
-            <button type="button" data-worklog-page-choice="coworker">
-              동료 업무일지 <span id="coworkerWorklogCount">0</span>
-            </button>
-          </nav>
-          <div class="worklog-layout-selector" role="group" aria-label="업무일지 화면 배치">
-            <span>화면 배치</span>
-            <button type="button" data-worklog-layout-choice="portrait">세로 보기</button>
-            <button type="button" data-worklog-layout-choice="expanded">펼쳐 보기</button>
+        <div class="worklog-sticky-context" id="worklogStickyContext">
+          <div class="worklog-person-chip" id="worklogIdentityBadge" aria-live="polite"></div>
+          <div class="representative-worklog-toolbar">
+            <button class="worklog-overview-exit-button" id="returnToWorklogOverviewButton" type="button" hidden>‹ 전체 업무일지로 돌아가기</button>
+          </div>
+          <div class="worklog-access-toolbar" aria-label="업무일지 보기 설정">
+            <nav class="worklog-page-tabs" aria-label="업무일지 페이지">
+              <button type="button" data-worklog-page-choice="common">공통 일정</button>
+              <button type="button" data-worklog-page-choice="daily" id="selectedWorklogTab">나의 업무일지</button>
+              <button type="button" data-worklog-page-choice="coworker">
+                동료 업무일지 <span id="coworkerWorklogCount">0</span>
+              </button>
+            </nav>
+            <div class="worklog-layout-selector" role="group" aria-label="업무일지 화면 배치">
+              <span>화면 배치</span>
+              <button type="button" data-worklog-layout-choice="portrait">세로 보기</button>
+              <button type="button" data-worklog-layout-choice="expanded">펼쳐 보기</button>
+            </div>
           </div>
         </div>
         <section class="worklog-today">

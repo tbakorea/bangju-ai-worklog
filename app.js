@@ -6967,16 +6967,20 @@ function renderWorklogIdentityBadges() {
       || getEmployeeWorklogId(employee) === ownId
       || isEmployeeLinkedToProfile(employee?.id)
     );
-    const accessLabel = isOwn ? "나의 업무일지" : (isRepresentativeProfile() ? "직원 업무일지" : "동료 업무일지");
+    const accessLabel = isOwn ? "나의 업무일지" : (isRepresentativeProfile() ? "대표 열람 중" : "동료 업무일지");
     const permissionLabel = isOwn ? "편집 가능" : "열람 전용";
+    const employeeLabel = getEmployeeOwnLabel(employee) || employee?.name || employee?.role || "직원";
+    const identityText = `${getWorklogIdentityText(employee)} 업무일지`;
     generalBadge.dataset.ownership = isOwn ? "mine" : "coworker";
+    generalBadge.dataset.employeeId = getEmployeeWorklogId(employee) || employee?.id || "";
+    generalBadge.title = `${identityText} · ${permissionLabel}`;
     generalBadge.innerHTML = `
       <span class="worklog-identity-kind">${escapeHtml(accessLabel)}</span>
-      <strong>${escapeHtml(getWorklogIdentityText(employee))}</strong>
+      <strong>${escapeHtml(identityText)}</strong>
       <em>${escapeHtml(permissionLabel)}</em>
     `;
     const selectedTab = document.getElementById("selectedWorklogTab");
-    if (selectedTab) selectedTab.textContent = accessLabel;
+    if (selectedTab) selectedTab.textContent = isOwn ? "나의 업무일지" : `${employeeLabel} 업무일지`;
   }
   const fitnessBadge = document.getElementById("fitnessIdentityBadge");
   if (fitnessBadge) {
@@ -10191,11 +10195,15 @@ async function refreshVisibleStaffWorklogsForActiveDate(options = {}) {
     if (activeView === "worklog-overview") await loadRepresentativeCoachingFollowups(dateKey);
     normalizeState();
     localStorage.setItem(storageKey, JSON.stringify(state));
-    if (activeView === "fitness-log") renderEntries();
+    if (activeView === "fitness-log" || isGeneralEmployeeWorklogView(activeView)) renderEntries();
     else renderWorklogOverview();
   } finally {
     authState.visibleWorklogsLoading = false;
   }
+}
+
+function isGeneralEmployeeWorklogView(view = activeView) {
+  return ["bangju-log", "beyond-log"].includes(view);
 }
 
 function startVisibleWorklogPolling() {
@@ -10203,7 +10211,9 @@ function startVisibleWorklogPolling() {
   authState.visibleWorklogsTimer = null;
   if (!authState.user || !canAccessAllWorklogs()) return;
   authState.visibleWorklogsTimer = setInterval(() => {
-    if (document.visibilityState !== "visible" || !["worklog-overview", "fitness-log"].includes(activeView)) return;
+    const isVisibleWorklog = ["worklog-overview", "fitness-log"].includes(activeView)
+      || isGeneralEmployeeWorklogView(activeView);
+    if (document.visibilityState !== "visible" || !isVisibleWorklog) return;
     refreshVisibleStaffWorklogsForActiveDate();
   }, 15000);
 }
@@ -10254,10 +10264,18 @@ function mergeVisibleStaffWorklogStates(rows = [], dateKey = getActiveDateKey())
       row?.user_id ? `profile-${row.user_id}` : "",
       "profile-user",
     ].filter(Boolean))];
-    const candidateLogs = candidateIds.map((id) => logs[id]).filter(Boolean);
-    const employeeLog = hasSubmittableWorklogContent(remoteState.ownerWorklog)
+    const candidateLogs = candidateIds.map((id) => logs[id]).filter((log) => log && typeof log === "object");
+    // ownerWorklog is the employee's latest authoritative snapshot. An empty
+    // snapshot is meaningful: it clears tasks that a representative may still
+    // have in a previous local copy, so do not fall back to stale content.
+    const hasOwnerWorklogSnapshot = Boolean(
+      remoteState.ownerWorklog
+      && typeof remoteState.ownerWorklog === "object"
+      && !Array.isArray(remoteState.ownerWorklog)
+    );
+    const employeeLog = hasOwnerWorklogSnapshot
       ? remoteState.ownerWorklog
-      : candidateLogs.find(hasSubmittableWorklogContent);
+      : candidateLogs.find(hasSubmittableWorklogContent) || candidateLogs[0];
     if (!employeeLog) return;
     const directOwner = remoteState.ownerEmployeeId === employeeId;
     const candidate = { row, employeeId, employeeLog, directOwner };
@@ -24158,6 +24176,9 @@ function switchView(view) {
     if (canAccessAllWorklogs()) refreshVisibleStaffWorklogsForActiveDate();
     else refreshCoworkerWorklogsForActiveDate();
   }
+  if (isGeneralEmployeeWorklogView(view) && authState.session && canAccessAllWorklogs()) {
+    refreshVisibleStaffWorklogsForActiveDate();
+  }
 }
 
 function getActiveViewPanel(panelView = worklogViewAliases[activeView] || activeView) {
@@ -25347,6 +25368,7 @@ document.addEventListener("visibilitychange", () => {
   }
   restoreTodayAfterAppResume();
   if (activeView === "worklog-overview" && canAccessAllWorklogs()) refreshVisibleStaffWorklogsForActiveDate();
+  if (isGeneralEmployeeWorklogView(activeView) && canAccessAllWorklogs()) refreshVisibleStaffWorklogsForActiveDate();
   if (activeView === "fitness-log") {
     if (canAccessAllWorklogs()) refreshVisibleStaffWorklogsForActiveDate({ forceDagym: true });
     else refreshCoworkerWorklogsForActiveDate();

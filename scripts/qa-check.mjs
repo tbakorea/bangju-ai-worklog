@@ -708,10 +708,22 @@ check(
 check(
   "fitness center refreshes today's staff PT and recent DaGym class status",
   /if \(view === "fitness-log" && authState\.session\) \{[\s\S]{0,220}canAccessAllWorklogs\(\)[\s\S]{0,180}refreshVisibleStaffWorklogsForActiveDate\(\{ forceDagym: true \}\)/.test(js)
-    && /async function refreshVisibleStaffWorklogsForActiveDate\(options = \{\}\)[\s\S]{0,900}loadVisibleStaffWorklogsForDate\(dateKey\)[\s\S]{0,420}loadDagymMonthlyPtSchedules\(dateKey, \{ force: Boolean\(options\.forceDagym\) \}\)[\s\S]{0,260}renderEntries\(\)/.test(js)
-    && /\["worklog-overview", "fitness-log"\]\.includes\(activeView\)/.test(js)
+    && /async function refreshVisibleStaffWorklogsForActiveDate\(options = \{\}\)[\s\S]{0,1200}loadVisibleStaffWorklogsForDate\(dateKey\)[\s\S]{0,800}loadDagymMonthlyPtSchedules\(dateKey, \{ force: Boolean\(options\.forceDagym\) \}\)[\s\S]{0,800}renderEntries\(\)/.test(js)
+    && /const isVisibleWorklog = \["worklog-overview", "fitness-log"\]\.includes\(activeView\)[\s\S]{0,120}isGeneralEmployeeWorklogView\(activeView\)/.test(js)
     && /const cacheTtlMs = Math\.max\(5 \* 1000, Number\(options\.cacheTtlMs \|\| 30 \* 1000\)/.test(js),
   "representative center pages must reload employee ledgers and refresh class outcomes instead of keeping stale PT counts"
+);
+
+check(
+  "representative employee worklogs keep identity navigation sticky and accept authoritative empty snapshots",
+  html.includes('id="worklogStickyContext"')
+    && html.includes('id="worklogIdentityBadge"')
+    && css.includes("#view-today .worklog-sticky-context")
+    && /#view-today \.worklog-sticky-context \{[\s\S]{0,120}position: sticky/.test(css)
+    && /const hasOwnerWorklogSnapshot = Boolean\([\s\S]{0,260}remoteState\.ownerWorklog[\s\S]{0,180}const employeeLog = hasOwnerWorklogSnapshot/.test(js)
+    && /activeView === "fitness-log" \|\| isGeneralEmployeeWorklogView\(activeView\)\) renderEntries\(\)/.test(js)
+    && /isGeneralEmployeeWorklogView\(view\) && authState\.session && canAccessAllWorklogs\(\)/.test(js),
+  "representative detail views must show the selected employee after scrolling and clear stale tasks when the employee publishes an empty latest ledger"
 );
 
 check(
