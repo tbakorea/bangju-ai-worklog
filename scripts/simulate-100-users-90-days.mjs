@@ -160,6 +160,11 @@ function canReadWorklog(actor, owner) {
   if (!actor || !owner) return false;
   if (actor.id === owner.id) return true;
   if (actor.permissions?.includes("all_worklogs_read")) return true;
+  if (
+    actor.permissions?.includes("beyond_fitness_worklogs_read")
+    && /비욘드\s*컴퍼니/i.test(`${actor.org || ""} ${actor.workplace || ""}`)
+    && /피트니스|fitness/i.test(`${owner.org || ""} ${owner.workplace || ""}`)
+  ) return true;
   if (actor.permissions?.includes("workplace_worklogs_read") && actor.workplace === owner.workplace) return true;
   return false;
 }
@@ -169,17 +174,17 @@ function buildEmployees() {
     { id: "ceo-j3010", name: "정찬훈", nickname: "Benny", email: "j3010@ymail.com", org: "(주)방주", workplace: "본사", role: "대표", employmentType: "대표", workHours: "08:00-18:00", workDays: [1, 2, 3, 4, 5], permissions: ["all_worklogs_read", "all_labor_read", "employee_manage", "approval_manage"], status: "approved" },
     { id: "bangju-finance-assistant", name: "이소미", nickname: "이소미", email: "thal1440@naver.com", org: "(주)방주", workplace: "재무", role: "재무 대리", employmentType: "직원", workHours: "08:00-18:00", workDays: [1, 2, 3, 4, 5], permissions: ["own_worklog", "own_labor"], status: "approved" },
     { id: "bangju-finance-manager", name: "최희진", nickname: "최희진", email: "yangpa1062@naver.com", org: "(주)방주", workplace: "재무", role: "재무과장", employmentType: "직원", workHours: "08:00-18:00", workDays: [1, 2, 3, 4, 5], permissions: ["workplace_worklogs_read", "own_labor"], status: "approved" },
-    { id: "beyond-company-leader", name: "김성민", nickname: "김성민", email: "tbakorea@gmail.com", org: "(주)비욘드컴퍼니", workplace: "TBA studio", role: "실장", employmentType: "직원", workHours: "09:00-18:00", workDays: [1, 2, 3, 4, 5], permissions: ["own_worklog", "own_labor"], status: "approved" },
+    { id: "beyond-company-leader", name: "김성민", nickname: "김성민", email: "tbakorea@gmail.com", org: "(주)비욘드컴퍼니", workplace: "TBA studio", role: "실장", employmentType: "직원", workHours: "09:00-18:00", workDays: [1, 2, 3, 4, 5], permissions: ["own_worklog", "own_labor", "beyond_fitness_worklogs_read"], status: "approved" },
     { id: "beyond-shared-manager", name: "추소영", nickname: "추소영", email: "l9900820@naver.com", org: "(주)비욘드컴퍼니", workplace: "공유사업부", role: "매니저", employmentType: "직원", workHours: "09:00-18:00", workDays: [1, 2, 3, 4, 5], permissions: ["own_worklog", "own_labor"], status: "approved" },
-    { id: "fitness-manager", name: "박주홍", nickname: "박주홍", email: activeFitnessManagerEmail, org: "비욘드 피트니스", workplace: "비욘드 피트니스", role: "센터장", employmentType: "직원", workHours: "06:00-24:00", workDays: [0, 1, 2, 3, 4, 5, 6], permissions: ["workplace_worklogs_read", "own_labor"], status: "approved" },
-    { id: "fitness-trainer-hong", name: "홍현규", nickname: "홍현규", email: "gusrd1005@gmail.com", org: "비욘드 피트니스", workplace: "비욘드 피트니스", role: "트레이너", employmentType: "프리랜서", workHours: "06:00-24:00", workDays: [0, 1, 2, 3, 4, 5, 6], permissions: ["own_worklog", "own_labor"], status: "approved" },
-    { id: "fitness-info-honggildong", name: "홍길동", nickname: "홍길동", email: "projch@naver.com", org: "비욘드 피트니스", workplace: "비욘드 피트니스", role: "인포데스크", employmentType: "직원", workHours: "16:00-20:00", workDays: [1, 2, 3, 4, 5], permissions: ["own_worklog", "own_labor"], status: "approved" },
-    { id: "fitness-info-idabin", name: "이다빈", nickname: "이다빈", email: "dlekqls89@naver.com", org: "비욘드 피트니스", workplace: "비욘드 피트니스", role: "인포데스크", employmentType: "직원", workHours: "10:00-18:00", workDays: [1, 2, 3, 4, 5], permissions: ["own_worklog", "own_labor"], status: "approved" },
-    { id: "fitness-info-kimyoungchae", name: "김영채", nickname: "김영채", email: "yckim1558@naver.com", org: "비욘드 피트니스", workplace: "비욘드 피트니스", role: "인포", employmentType: "직원", workHours: "10:00-18:00", workDays: [1, 2, 3, 4, 5], permissions: ["own_worklog", "own_labor"], status: "approved" },
-    { id: "fitness-info-shinsemin", name: "신세민", nickname: "신세민", email: "tpals2990@naver.com", org: "비욘드 피트니스", workplace: "비욘드 피트니스", role: "인포", employmentType: "직원", workHours: "10:00-18:00", workDays: [1, 2, 3, 4, 5], permissions: ["own_worklog", "own_labor"], status: "approved" },
-    { id: "retired-park-1", name: "박주홍", email: "pjhong1@naver.com", org: "비욘드 피트니스", workplace: "비욘드 피트니스", role: "센터장", status: "retired" },
-    { id: "retired-park-9", name: "박주홍", email: "pjhong9@naver.com", org: "비욘드 피트니스", workplace: "비욘드 피트니스", role: "직원", status: "retired" },
-    { id: "template-fitness-spare", name: "직원", email: "", org: "비욘드 피트니스", workplace: "비욘드 피트니스", role: "직원", status: "template" },
+    { id: "fitness-manager", name: "박주홍", nickname: "박주홍", email: activeFitnessManagerEmail, org: "(주)비욘드컴퍼니 / 비욘드 피트니스", workplace: "비욘드 피트니스", role: "센터장", employmentType: "직원", workHours: "06:00-24:00", workDays: [0, 1, 2, 3, 4, 5, 6], permissions: ["workplace_worklogs_read", "own_labor"], status: "approved" },
+    { id: "fitness-trainer-hong", name: "홍현규", nickname: "홍현규", email: "gusrd1005@gmail.com", org: "(주)비욘드컴퍼니 / 비욘드 피트니스", workplace: "비욘드 피트니스", role: "트레이너", employmentType: "프리랜서", workHours: "06:00-24:00", workDays: [0, 1, 2, 3, 4, 5, 6], permissions: ["own_worklog", "own_labor"], status: "approved" },
+    { id: "fitness-info-honggildong", name: "홍길동", nickname: "홍길동", email: "projch@naver.com", org: "(주)비욘드컴퍼니 / 비욘드 피트니스", workplace: "비욘드 피트니스", role: "인포데스크", employmentType: "직원", workHours: "16:00-20:00", workDays: [1, 2, 3, 4, 5], permissions: ["own_worklog", "own_labor"], status: "approved" },
+    { id: "fitness-info-idabin", name: "이다빈", nickname: "이다빈", email: "dlekqls89@naver.com", org: "(주)비욘드컴퍼니 / 비욘드 피트니스", workplace: "비욘드 피트니스", role: "인포데스크", employmentType: "직원", workHours: "10:00-18:00", workDays: [1, 2, 3, 4, 5], permissions: ["own_worklog", "own_labor"], status: "approved" },
+    { id: "fitness-info-kimyoungchae", name: "김영채", nickname: "김영채", email: "yckim1558@naver.com", org: "(주)비욘드컴퍼니 / 비욘드 피트니스", workplace: "비욘드 피트니스", role: "인포", employmentType: "직원", workHours: "10:00-18:00", workDays: [1, 2, 3, 4, 5], permissions: ["own_worklog", "own_labor"], status: "approved" },
+    { id: "fitness-info-shinsemin", name: "신세민", nickname: "신세민", email: "tpals2990@naver.com", org: "(주)비욘드컴퍼니 / 비욘드 피트니스", workplace: "비욘드 피트니스", role: "인포", employmentType: "직원", workHours: "10:00-18:00", workDays: [1, 2, 3, 4, 5], permissions: ["own_worklog", "own_labor"], status: "approved" },
+    { id: "retired-park-1", name: "박주홍", email: "pjhong1@naver.com", org: "(주)비욘드컴퍼니 / 비욘드 피트니스", workplace: "비욘드 피트니스", role: "센터장", status: "retired" },
+    { id: "retired-park-9", name: "박주홍", email: "pjhong9@naver.com", org: "(주)비욘드컴퍼니 / 비욘드 피트니스", workplace: "비욘드 피트니스", role: "직원", status: "retired" },
+    { id: "template-fitness-spare", name: "직원", email: "", org: "(주)비욘드컴퍼니 / 비욘드 피트니스", workplace: "비욘드 피트니스", role: "직원", status: "template" },
   ];
 
   const orgs = [
@@ -187,7 +192,7 @@ function buildEmployees() {
     ["(주)비욘드컴퍼니", "공유사업부", ["매니저", "직원"]],
     ["(주)비욘드컴퍼니", "TBA studio", ["실장", "직원"]],
     ["(주)비제이종합건설", "옥동 더헤이븐빌 신축현장", ["소장", "과장", "직원"]],
-    ["비욘드 피트니스", "비욘드 피트니스", ["트레이너", "인포데스크", "인포"]],
+    ["(주)비욘드컴퍼니 / 비욘드 피트니스", "비욘드 피트니스", ["트레이너", "인포데스크", "인포"]],
   ];
   let serial = 1;
   while (fixtures.filter(isActiveOperationalEmployee).length < 100) {
@@ -218,6 +223,7 @@ const ceo = activeEmployees.find((employee) => normalizeEmail(employee.email) ==
 const hongGildong = activeEmployees.find((employee) => normalizeEmail(employee.email) === "projch@naver.com");
 const kimSungmin = activeEmployees.find((employee) => normalizeEmail(employee.email) === "tbakorea@gmail.com");
 const parkJuhong = activeEmployees.find((employee) => normalizeEmail(employee.email) === activeFitnessManagerEmail);
+const bangjuFinanceManager = activeEmployees.find((employee) => employee.id === "bangju-finance-manager");
 const dates = Array.from({ length: DAY_COUNT }, (_, index) => addDays(TODAY, index - DAY_COUNT + 1));
 const logs = new Map();
 
@@ -302,6 +308,7 @@ assert(Boolean(ceo), "CEO account j3010@ymail.com must exist in simulation");
 assert(Boolean(hongGildong), "홍길동 profile must exist");
 assert(Boolean(kimSungmin), "김성민 profile must exist");
 assert(Boolean(parkJuhong), "박주홍 active profile must be pjhong0@naver.com");
+assert(Boolean(bangjuFinanceManager), "방주 재무과장 profile must exist");
 assert(!activeEmployees.some((employee) => retiredFitnessManagerEmails.has(normalizeEmail(employee.email))), "retired Park manager accounts must not be active");
 assert(fitnessEmails.has("yckim1558@naver.com"), "피트니스 직원 김영채 must be included in canonical roster");
 assert(fitnessEmails.has("tpals2990@naver.com"), "피트니스 직원 신세민 must be included in canonical roster");
@@ -315,6 +322,8 @@ const deviceBProfile = { ...hongGildong, workplace: "(주)방주", updatedAt: 0 
 const canonicalHong = collapseByEmail([deviceBProfile, deviceAProfile]).find((employee) => normalizeEmail(employee.email) === "projch@naver.com");
 assert(canonicalHong.workplace === "비욘드 피트니스", "same-email profile should not diverge by device; newest canonical profile wins");
 assert(canReadWorklog(ceo, hongGildong), "CEO should read every employee worklog");
+assert(canReadWorklog(kimSungmin, parkJuhong), "Beyond Company manager should read Beyond Fitness worklogs");
+assert(!canReadWorklog(kimSungmin, bangjuFinanceManager), "Beyond Company manager should not read Bangju worklogs");
 assert(!canEditWorklog(ceo, hongGildong, TODAY), "CEO viewing an employee worklog must not edit the employee's own fields");
 assert(canEditWorklog(hongGildong, hongGildong, TODAY), "employee should edit today's own worklog");
 assert(!canEditWorklog(hongGildong, parkJuhong, TODAY), "employee must not edit another employee's worklog");

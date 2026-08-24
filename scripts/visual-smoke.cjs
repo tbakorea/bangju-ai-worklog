@@ -1997,7 +1997,7 @@ async function checkDelegatedPermissionMenus(browser) {
   await page.close();
 }
 
-async function checkKimSungminAccountIsEmployeeOnly(browser) {
+async function checkKimSungminBeyondFitnessReadScope(browser) {
   const page = await browser.newPage({ viewport: { width: 390, height: 844 } });
   const errors = [];
   page.on("pageerror", (error) => errors.push(error.message));
@@ -2051,10 +2051,16 @@ async function checkKimSungminAccountIsEmployeeOnly(browser) {
     staffManage: hasProfilePermission("staffManage"),
     worklogAll: hasProfilePermission("worklogAll"),
     laborAll: hasProfilePermission("laborAll"),
+    fitnessStaffRead: hasProfilePermission("fitnessStaffRead"),
     accessPreset: state.profile.accessPreset,
     permissionKeys: Object.keys(state.profile.permissions || {}).filter((key) => state.profile.permissions[key]),
     selectedEmployeeId: state.selectedEmployeeId,
-    ownEditableEmployeeId: getOwnEditableEmployeeIdForView(activeView),
+    ownEditableEmployeeId: getOwnEditableEmployeeIdForView("beyond-log"),
+    overviewGroups: getWorklogOverviewGroups().map((group) => group.id),
+    accessibleGroups: getAccessibleWorklogSiteGroupIds(),
+    coworkerIds: getCoworkerEmployeesForWorklog(findEmployeeRecordById("beyond-company-leader"), "beyond-log")
+      .map(getEmployeeWorklogId),
+    canEditFitnessEmployee: canEditEmployeeSlot("beyond-fitness-manager"),
     title: document.querySelector("#globalHeaderTitle")?.textContent?.trim() || "",
     badge: document.querySelector("#worklogIdentityBadge")?.textContent?.trim()
       || document.querySelector("#fitnessIdentityBadge")?.textContent?.trim()
@@ -2064,15 +2070,25 @@ async function checkKimSungminAccountIsEmployeeOnly(browser) {
       .map((button) => button.textContent.trim().replace(/\\s+/g, " "))
   })`));
   const parsed = JSON.parse(metrics);
-  if (parsed.representative || parsed.approvalAuthority || parsed.worklogOverview || parsed.staffManage || parsed.worklogAll || parsed.laborAll) {
-    fail("Kim Sungmin account should be employee-only", metrics);
+  if (parsed.representative || parsed.approvalAuthority || parsed.staffManage || parsed.worklogAll || parsed.laborAll) {
+    fail("Kim Sungmin account must not gain representative or global staff authority", metrics);
   }
-  if (parsed.accessPreset !== "employee" || parsed.permissionKeys.length) {
-    fail("Kim Sungmin account should not retain stale representative permissions", metrics);
+  if (parsed.accessPreset !== "employee" || !parsed.worklogOverview || !parsed.fitnessStaffRead
+    || !parsed.permissionKeys.includes("worklogSite") || !parsed.permissionKeys.includes("fitnessStaffRead")) {
+    fail("Kim Sungmin account should receive only the Beyond Fitness worklog read scope", metrics);
   }
-  if (parsed.activeView !== "beyond-log") fail("Kim Sungmin account should land on Beyond employee worklog", metrics);
+  if (parsed.activeView !== "worklog-overview") fail("Kim Sungmin account should land on the permitted company worklog overview", metrics);
   if (parsed.selectedEmployeeId !== "beyond-company-leader" || parsed.ownEditableEmployeeId !== "beyond-company-leader") {
     fail("Kim Sungmin account should be mapped to the Beyond company leader sheet", metrics);
+  }
+  if (!parsed.accessibleGroups.includes("beyond") || !parsed.accessibleGroups.includes("fitness")
+    || parsed.accessibleGroups.includes("bangju")
+    || !parsed.overviewGroups.includes("beyond") || !parsed.overviewGroups.includes("fitness") || parsed.overviewGroups.includes("bangju")) {
+    fail("Kim Sungmin should only see Beyond Company and Beyond Fitness worklog groups", metrics);
+  }
+  if (!parsed.coworkerIds.includes("beyond-fitness-manager") || !parsed.coworkerIds.includes("fitness-trainer-1")
+    || parsed.coworkerIds.includes("bangju-finance-manager") || parsed.canEditFitnessEmployee) {
+    fail("Kim Sungmin should read fitness coworkers without editing their worklogs", metrics);
   }
   if (!/김성민|TBA|비욘드/.test(`${parsed.title} ${parsed.badge}`)) {
     fail("Kim Sungmin employee identity should be visible on the worklog", metrics);
@@ -2080,7 +2096,7 @@ async function checkKimSungminAccountIsEmployeeOnly(browser) {
   if (parsed.visibleMenuItems.some((label) => /가입승인|통합관제|대표경영|직원명부/.test(label))) {
     fail("Kim Sungmin employee menu should not show representative-only items", metrics);
   }
-  if (errors.length) fail("Kim Sungmin employee-only regression page errors", errors.join(" | "));
+  if (errors.length) fail("Kim Sungmin Beyond Fitness read-scope regression page errors", errors.join(" | "));
   await page.close();
 }
 
@@ -5994,7 +6010,7 @@ async function checkFitnessPaidPtCanonicalLedger(browser) {
     await checkRepresentativeProfileSeparation(browser);
     await checkNonControlRoleTextDoesNotBecomeRepresentative(browser);
     await checkDelegatedPermissionMenus(browser);
-    await checkKimSungminAccountIsEmployeeOnly(browser);
+    await checkKimSungminBeyondFitnessReadScope(browser);
     await checkUnmappedEmployeeDoesNotInheritFitnessManager(browser);
     await checkUnclassifiedFitnessEmployeeCanEditOwnProfileWorklog(browser);
     await checkFitnessTrainerCanEditOwnWorklog(browser);

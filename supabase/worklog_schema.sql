@@ -284,7 +284,7 @@ where lower(coalesce(email, '')) in ('j3010@ymail.com', 'tbakorea@gmail.com')
 ;
 
 update public.profiles
-set org = '(주)방주 / 비욘드 피트니스 지사',
+set org = '(주)비욘드컴퍼니 / 비욘드 피트니스',
     role = '센터장',
     name = '박주홍',
     workplace = '비욘드 피트니스',
@@ -313,7 +313,7 @@ insert into public.profiles (
   employment_type, work_hours, approval_status, approval_note, approved_at, updated_at
 )
 select
-  id, email, '(주)방주 / 비욘드 피트니스 지사', '트레이너', '홍현규', '비욘드 피트니스',
+  id, email, '(주)비욘드컴퍼니 / 비욘드 피트니스', '트레이너', '홍현규', '비욘드 피트니스',
   'PT 수업', '회원관리, 센터 운영 지원', '프리랜서', '06:00-24:00', 'approved', '', now(), now()
 from auth.users
 where lower(coalesce(email, '')) = 'gusrd1005@gmail.com'
@@ -457,14 +457,43 @@ as $$
     where p.id = auth.uid()
       and coalesce(p.approval_status, 'approved') = 'approved'
       and (
-        lower(coalesce(p.email, '')) in ('j3010@ymail.com', 'tbakorea@gmail.com')
+        lower(coalesce(p.email, '')) = 'j3010@ymail.com'
         or coalesce((p.permissions ->> 'staffApproval')::boolean, false)
         or coalesce((p.permissions ->> 'staffManage')::boolean, false)
-        or coalesce(p.role, '') ~* '대표|관리자|센터장|총괄|임원|admin|owner|manager'
-        or coalesce(p.primary_work, '') ~* '대표|관리자|센터장|총괄|임원|admin|owner|manager'
+        or (
+          lower(coalesce(p.email, '')) <> 'tbakorea@gmail.com'
+          and (
+            coalesce(p.role, '') ~* '대표|관리자|센터장|총괄|임원|admin|owner|manager'
+            or coalesce(p.primary_work, '') ~* '대표|관리자|센터장|총괄|임원|admin|owner|manager'
+          )
+        )
       )
   );
 $$;
+
+-- A Beyond Company manager can be granted a narrowly-scoped view of the
+-- Beyond Fitness worklogs. This intentionally does not grant profile, labor,
+-- attendance, task-editing, or report-confirmation authority.
+create or replace function public.can_view_beyond_company_fitness_worklogs()
+returns boolean
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select exists (
+    select 1
+    from public.profiles p
+    where p.id = auth.uid()
+      and coalesce(p.approval_status, 'pending') = 'approved'
+      and coalesce((p.permissions ->> 'fitnessStaffRead')::boolean, false)
+      and concat_ws(' ', p.org, p.workplace, p.primary_work, p.role) ~* '비욘드\s*컴퍼니|beyond\s*company'
+      and concat_ws(' ', p.org, p.workplace) !~* '피트니스|fitness'
+  );
+$$;
+
+revoke all on function public.can_view_beyond_company_fitness_worklogs() from public, anon;
+grant execute on function public.can_view_beyond_company_fitness_worklogs() to authenticated;
 
 -- AI coaching is useful only when it becomes a visible action loop. Employees
 -- own their response records; representatives and explicitly delegated
@@ -482,12 +511,17 @@ as $$
     where p.id = auth.uid()
       and coalesce(p.approval_status, 'approved') = 'approved'
       and (
-        lower(coalesce(p.email, '')) in ('j3010@ymail.com', 'tbakorea@gmail.com')
+        lower(coalesce(p.email, '')) = 'j3010@ymail.com'
         or coalesce((p.permissions ->> 'worklogAll')::boolean, false)
         or coalesce((p.permissions ->> 'controlTower')::boolean, false)
         or coalesce((p.permissions ->> 'staffManage')::boolean, false)
-        or coalesce(p.role, '') ~* '대표|총괄|임원|admin|owner'
-        or coalesce(p.primary_work, '') ~* '대표|총괄|임원|admin|owner'
+        or (
+          lower(coalesce(p.email, '')) <> 'tbakorea@gmail.com'
+          and (
+            coalesce(p.role, '') ~* '대표|총괄|임원|admin|owner'
+            or coalesce(p.primary_work, '') ~* '대표|총괄|임원|admin|owner'
+          )
+        )
       )
   );
 $$;
@@ -1064,13 +1098,16 @@ set search_path = public
 as $$
 declare
   viewer_site text;
+  can_view_fitness boolean := false;
 begin
-  select case
-    when concat_ws(' ', p.org, p.workplace) ~* '피트니스|fitness' then 'fitness'
-    when concat_ws(' ', p.org, p.workplace, p.primary_work) ~* '비욘드\s*컴퍼니|공유|TBA|티비에이|워크베이스|워크박스|beyond' then 'beyond'
-    else 'bangju'
-  end
-  into viewer_site
+  select
+    case
+      when concat_ws(' ', p.org, p.workplace) ~* '피트니스|fitness' then 'fitness'
+      when concat_ws(' ', p.org, p.workplace, p.primary_work) ~* '비욘드\s*컴퍼니|공유|TBA|티비에이|워크베이스|워크박스|beyond' then 'beyond'
+      else 'bangju'
+    end,
+    public.can_view_beyond_company_fitness_worklogs()
+  into viewer_site, can_view_fitness
   from public.profiles p
   where p.id = auth.uid()
     and coalesce(p.approval_status, 'pending') = 'approved';
@@ -1086,11 +1123,21 @@ begin
   where w.log_date = target_date
     and w.user_id <> auth.uid()
     and coalesce(colleague.approval_status, 'pending') = 'approved'
-    and case
-      when concat_ws(' ', colleague.org, colleague.workplace) ~* '피트니스|fitness' then 'fitness'
-      when concat_ws(' ', colleague.org, colleague.workplace, colleague.primary_work) ~* '비욘드\s*컴퍼니|공유|TBA|티비에이|워크베이스|워크박스|beyond' then 'beyond'
-      else 'bangju'
-    end = viewer_site
+    and (
+      case
+        when concat_ws(' ', colleague.org, colleague.workplace) ~* '피트니스|fitness' then 'fitness'
+        when concat_ws(' ', colleague.org, colleague.workplace, colleague.primary_work) ~* '비욘드\s*컴퍼니|공유|TBA|티비에이|워크베이스|워크박스|beyond' then 'beyond'
+        else 'bangju'
+      end = viewer_site
+      or (
+        can_view_fitness
+        and case
+          when concat_ws(' ', colleague.org, colleague.workplace) ~* '피트니스|fitness' then 'fitness'
+          when concat_ws(' ', colleague.org, colleague.workplace, colleague.primary_work) ~* '비욘드\s*컴퍼니|공유|TBA|티비에이|워크베이스|워크박스|beyond' then 'beyond'
+          else 'bangju'
+        end = 'fitness'
+      )
+    )
   order by w.updated_at desc;
 end;
 $$;
@@ -1694,7 +1741,7 @@ declare
   manager_org text;
   record_payload jsonb;
 begin
-  select p.id, coalesce(nullif(p.org, ''), '(주)방주 / 비욘드 피트니스 지사')
+  select p.id, coalesce(nullif(p.org, ''), '(주)비욘드컴퍼니 / 비욘드 피트니스')
   into manager_id, manager_org
   from public.profiles p
   where coalesce(p.approval_status, 'approved') = 'approved'
@@ -1951,7 +1998,7 @@ begin
     message_length = excluded.message_length
   returning id into inserted_id;
 
-  select p.id, coalesce(nullif(p.org, ''), '(주)방주 / 비욘드 피트니스 지사')
+  select p.id, coalesce(nullif(p.org, ''), '(주)비욘드컴퍼니 / 비욘드 피트니스')
   into manager_id, manager_org
   from public.profiles p
   where lower(coalesce(p.email, '')) = 'pjhong0@naver.com'

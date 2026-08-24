@@ -30,7 +30,6 @@ const bangjuOrganization = [
     category: "부동산 개발 · 시행 법인",
     staff: 2,
     units: [
-      { name: "비욘드 피트니스 지사", category: "피트니스센터", staff: 5, roles: ["센터장 1", "트레이너 1", "인포데스크 3"] },
       { name: "워크베이스", category: "공유오피스", staff: 1, roles: ["매니저 1"] },
       { name: "워크박스", category: "공유창고", staff: 0, roles: ["워크베이스 겸임"] },
       { name: "홍보관", category: "분양 · 임대", staff: 2, roles: ["분양/임대 2"] },
@@ -54,8 +53,10 @@ const bangjuOrganization = [
   {
     name: "(주)비욘드컴퍼니",
     category: "총괄관리",
-    staff: 1,
+    staff: 7,
     units: [
+      { name: "비욘드 피트니스", category: "피트니스센터", staff: 6, roles: ["센터장 1", "트레이너 1", "인포데스크 4"] },
+      { name: "공유사업부", category: "워크베이스 · 워크박스 운영", staff: 1, roles: ["매니저 1"] },
       { name: "tba studio", category: "쇼룸 운영 · 벽매립욕실 시스템 · 인테리어 견적", staff: 0, roles: ["쇼룸 운영"] },
       { name: "인월시스템 욕실 개발·시공", category: "욕실 개발 및 시공", staff: 0, roles: ["개발", "시공", "수주"] },
       { name: "자체공사 인테리어 시행", category: "인테리어 시행", staff: 0, roles: ["자체공사"] },
@@ -96,6 +97,7 @@ const permissionKeys = [
   ["siteControl", "소속 사업장"],
   ["worklogAll", "전직원 업무일지"],
   ["worklogSite", "소속 업무일지"],
+  ["fitnessStaffRead", "비욘드 피트니스 업무일지 열람"],
   ["laborAll", "전직원 노무"],
   ["laborSite", "소속 노무"],
   ["staffApproval", "가입승인"],
@@ -348,7 +350,7 @@ const defaultProfile = {
 
 const profilePlacementOverrides = {
   "gusrd1005@gmail.com": {
-    org: "(주)방주 / 비욘드 피트니스 지사",
+    org: "(주)비욘드컴퍼니 / 비욘드 피트니스",
     workplace: "비욘드 피트니스",
     role: "트레이너",
     name: "홍현규",
@@ -362,7 +364,7 @@ const profilePlacementOverrides = {
     mappedEmployeeId: "fitness-trainer-1",
   },
   [activeFitnessManagerEmail]: {
-    org: "(주)방주 / 비욘드 피트니스 지사",
+    org: "(주)비욘드컴퍼니 / 비욘드 피트니스",
     workplace: "비욘드 피트니스",
     role: "센터장",
     name: "박주홍",
@@ -377,7 +379,7 @@ const profilePlacementOverrides = {
     mappedEmployeeId: "beyond-fitness-manager",
   },
   "projch@naver.com": {
-    org: "(주)방주 / 비욘드 피트니스 지사",
+    org: "(주)비욘드컴퍼니 / 비욘드 피트니스",
     workplace: "비욘드 피트니스",
     role: "인포데스크",
     name: "홍길동",
@@ -397,11 +399,13 @@ const profilePlacementOverrides = {
     name: "김성민",
     nickname: "김성민",
     primaryWork: "TBA studio 운영, 인월바스 시스템 시공, 인테리어 시행",
-    secondaryWork: "제품·시공·현장 운영 지원",
+    secondaryWork: "제품·시공·현장 운영 지원, 산하 센터 업무일지 열람",
     employmentType: "직원",
     workHours: "08:00-18:00",
     accessPreset: "employee",
-    permissions: {},
+    // 비욘드컴퍼니 실장은 산하 피트니스 직원의 일지만 확인합니다.
+    // 수정·출결·보고서 확정 권한은 본인 업무일지에만 남습니다.
+    permissions: { worklogSite: true, fitnessStaffRead: true },
     mappedEmployeeId: "beyond-company-leader",
   },
 };
@@ -625,16 +629,16 @@ const employees = [
   { id: "bangju-finance-assistant", name: "이소미", org: "(주)방주", role: "재무 대리", primaryWork: "지출, 정산, 문서" },
   { id: "construction-finance-assistant", name: "비제이 재무 예비", org: "(주)비제이종합건설", role: "예비", primaryWork: "건설현장 지출, 정산, 노무자료" },
   { id: "bangju-spare-1", name: "방주 예비", org: "(주)방주", role: "예비", primaryWork: "공통 지원" },
-  { id: "beyond-fitness-manager", name: "박주홍", nickname: "센터장", org: "(주)방주 / 비욘드 피트니스 지사", role: "센터장", workHours: "06:00-24:00", weeklyWorkHours: fitnessManagerWeeklyWorkHours, primaryWork: "운영총괄, PT 수업" },
-  { id: "fitness-trainer-1", name: "홍현규", nickname: "홍트", email: "gusrd1005@gmail.com", org: "(주)방주 / 비욘드 피트니스 지사", role: "트레이너", workHours: "06:00-24:00", primaryWork: "PT 수업", employmentType: "프리랜서" },
-  { id: "fitness-weekday-info", name: "주중 인포", nickname: "주중인포", org: "(주)방주 / 비욘드 피트니스 지사", role: "인포데스크", workHours: "16:00-20:00", primaryWork: "고객응대, 센터관리" },
-  { id: "fitness-weekday-info-idabin", name: "이다빈", nickname: "이다빈", org: "(주)방주 / 비욘드 피트니스 지사", role: "인포데스크", workHours: "16:00-20:00", weeklyWorkHours: fitnessSaturdayInfoWeeklyWorkHours, primaryWork: "토요일 고객응대, 센터관리" },
-  { id: "fitness-info-kimyoungchae", name: "김영채", nickname: "김영채", email: "yckim1558@naver.com", org: "(주)방주 / 비욘드 피트니스 지사", role: "인포데스크", workHours: "10:00-18:00", weeklyWorkHours: fitnessSundayInfoWeeklyWorkHours, primaryWork: "일요일 고객응대, 센터관리" },
-  { id: "fitness-info-shinsemin", name: "신세민", nickname: "신세민", email: "tpals2990@naver.com", org: "(주)방주 / 비욘드 피트니스 지사", role: "인포데스크", workHours: "10:00-18:00", primaryWork: "고객응대, 센터관리" },
-  { id: "fitness-saturday-info", name: "토요 인포", nickname: "토요인포", org: "(주)방주 / 비욘드 피트니스 지사", role: "토요 인포", workHours: "10:00-18:00", primaryWork: "토요일 고객응대, 센터관리" },
-  { id: "fitness-sunday-info", name: "일요 인포", nickname: "일요인포", org: "(주)방주 / 비욘드 피트니스 지사", role: "일요 인포", workHours: "10:00-18:00", primaryWork: "일요일 고객응대, 센터관리" },
-  { id: "fitness-spare-1", name: "피트니스 예비", nickname: "예비", org: "(주)방주 / 비욘드 피트니스 지사", role: "예비", workHours: "10:00-18:00", primaryWork: "운영 지원" },
-  { id: "beyond-company-leader", name: "김성민", org: "(주)비욘드컴퍼니", role: "실장", primaryWork: "TBA studio 운영, 인월바스 시스템 시공, 인테리어 시행" },
+  { id: "beyond-fitness-manager", name: "박주홍", nickname: "센터장", org: "(주)비욘드컴퍼니 / 비욘드 피트니스", role: "센터장", workHours: "06:00-24:00", weeklyWorkHours: fitnessManagerWeeklyWorkHours, primaryWork: "운영총괄, PT 수업" },
+  { id: "fitness-trainer-1", name: "홍현규", nickname: "홍트", email: "gusrd1005@gmail.com", org: "(주)비욘드컴퍼니 / 비욘드 피트니스", role: "트레이너", workHours: "06:00-24:00", primaryWork: "PT 수업", employmentType: "프리랜서" },
+  { id: "fitness-weekday-info", name: "주중 인포", nickname: "주중인포", org: "(주)비욘드컴퍼니 / 비욘드 피트니스", role: "인포데스크", workHours: "16:00-20:00", primaryWork: "고객응대, 센터관리" },
+  { id: "fitness-weekday-info-idabin", name: "이다빈", nickname: "이다빈", org: "(주)비욘드컴퍼니 / 비욘드 피트니스", role: "인포데스크", workHours: "16:00-20:00", weeklyWorkHours: fitnessSaturdayInfoWeeklyWorkHours, primaryWork: "토요일 고객응대, 센터관리" },
+  { id: "fitness-info-kimyoungchae", name: "김영채", nickname: "김영채", email: "yckim1558@naver.com", org: "(주)비욘드컴퍼니 / 비욘드 피트니스", role: "인포데스크", workHours: "10:00-18:00", weeklyWorkHours: fitnessSundayInfoWeeklyWorkHours, primaryWork: "일요일 고객응대, 센터관리" },
+  { id: "fitness-info-shinsemin", name: "신세민", nickname: "신세민", email: "tpals2990@naver.com", org: "(주)비욘드컴퍼니 / 비욘드 피트니스", role: "인포데스크", workHours: "10:00-18:00", primaryWork: "고객응대, 센터관리" },
+  { id: "fitness-saturday-info", name: "토요 인포", nickname: "토요인포", org: "(주)비욘드컴퍼니 / 비욘드 피트니스", role: "토요 인포", workHours: "10:00-18:00", primaryWork: "토요일 고객응대, 센터관리" },
+  { id: "fitness-sunday-info", name: "일요 인포", nickname: "일요인포", org: "(주)비욘드컴퍼니 / 비욘드 피트니스", role: "일요 인포", workHours: "10:00-18:00", primaryWork: "일요일 고객응대, 센터관리" },
+  { id: "fitness-spare-1", name: "피트니스 예비", nickname: "예비", org: "(주)비욘드컴퍼니 / 비욘드 피트니스", role: "예비", workHours: "10:00-18:00", primaryWork: "운영 지원" },
+  { id: "beyond-company-leader", name: "김성민", org: "(주)비욘드컴퍼니", role: "실장", primaryWork: "TBA studio 운영, 인월바스 시스템 시공, 인테리어 시행", secondaryWork: "산하 센터 업무일지 열람" },
   { id: "beyond-shared-manager", name: "공유사업부 매니저", org: "(주)비욘드컴퍼니 / 공유사업부", role: "공유사업부 매니저", primaryWork: "공유오피스, 공유창고, 고객관리" },
   { id: "beyond-spare-1", name: "비욘드 예비", org: "(주)비욘드컴퍼니", role: "예비", primaryWork: "공통 지원" },
 ];
@@ -1096,7 +1100,7 @@ function createState() {
     },
     attendance: {
       [todayKey]: [
-        { employeeId: "beyond-fitness-manager", org: "비욘드 피트니스 지사", role: "센터장", name: "박주홍", status: "정상", note: "" },
+        { employeeId: "beyond-fitness-manager", org: "(주)비욘드컴퍼니 / 비욘드 피트니스", role: "센터장", name: "박주홍", status: "정상", note: "" },
         { employeeId: "bangju-finance-manager", org: "(주)방주", role: "재무과장", name: "재무과장", status: "정상", note: "" },
         { employeeId: "beyond-company-leader", org: "(주)비욘드컴퍼니", role: "실장", name: "비욘드 실장", status: "정상", note: "" },
       ],
@@ -3840,7 +3844,10 @@ function canAccessAllWorklogs() {
 
 function canAccessWorklogOverview() {
   if (isExplicitlySignedOut()) return false;
-  return canAccessAllWorklogs() || hasProfilePermission("worklogSite") || hasProfilePermission("siteControl");
+  return canAccessAllWorklogs()
+    || hasProfilePermission("worklogSite")
+    || hasProfilePermission("siteControl")
+    || hasProfilePermission("fitnessStaffRead");
 }
 
 function canAccessAllLabor() {
@@ -3886,12 +3893,34 @@ function getWorklogSiteGroups() {
   ];
 }
 
+function canViewBeyondCompanyFitnessWorklogs(profile = state.profile || {}) {
+  if (isExplicitlySignedOut() || !hasProfilePermission("fitnessStaffRead", profile)) return false;
+  const employeeId = getProfileMappedEmployeeId(profile);
+  const source = `${profile.org || ""} ${profile.workplace || ""} ${profile.role || ""} ${profile.primaryWork || ""}`.toLowerCase();
+  return employeeId === "beyond-company-leader"
+    || (/비욘드\s*컴퍼니|beyond\s*company/.test(source) && !/피트니스|fitness/.test(source));
+}
+
+function getAccessibleWorklogSiteGroupIds(profile = state.profile || {}) {
+  const allIds = getWorklogSiteGroups().map((group) => group.id);
+  if (canAccessAllWorklogs()) return allIds;
+  const ownGroupId = getStaffSiteGroupForEmployee(getProfileEmployee())?.id || "bangju";
+  const accessible = new Set([ownGroupId]);
+  if (canViewBeyondCompanyFitnessWorklogs(profile)) {
+    accessible.add("beyond");
+    accessible.add("fitness");
+  }
+  return allIds.filter((groupId) => accessible.has(groupId));
+}
+
 function getWorklogOverviewGroups() {
-  return [
+  const groups = [
     { id: "bangju", label: "방주", title: "(주)방주", view: "bangju-log", employeeIds: getAssignedWorklogEmployeeIds(bangjuWorklogEmployeeIds) },
     { id: "beyond", label: "비욘드 컴퍼니", title: "(주)비욘드컴퍼니", view: "beyond-log", employeeIds: getAssignedWorklogEmployeeIds(beyondWorklogEmployeeIds) },
     { id: "fitness", label: "피트니스", title: "비욘드 피트니스", view: "fitness-log", employeeIds: getFitnessOverviewEmployeeIds() },
   ];
+  const accessibleGroupIds = new Set(getAccessibleWorklogSiteGroupIds());
+  return canAccessAllWorklogs() ? groups : groups.filter((group) => accessibleGroupIds.has(group.id));
 }
 
 function getFitnessOverviewEmployeeIds() {
@@ -4240,7 +4269,9 @@ function getActiveWorklogOverviewScope() {
   const scope = state.worklogOverviewScope || "all";
   const normalized = ["all", "bangju", "beyond", "fitness"].includes(scope) ? scope : "all";
   if (canAccessAllWorklogs()) return normalized;
-  return getStaffSiteGroupForEmployee(getProfileEmployee())?.id || "bangju";
+  const accessibleGroupIds = getAccessibleWorklogSiteGroupIds();
+  if (normalized === "all" && accessibleGroupIds.length > 1) return "all";
+  return accessibleGroupIds.includes(normalized) ? normalized : accessibleGroupIds[0] || "bangju";
 }
 
 function getFilteredWorklogOverviewGroups() {
@@ -4251,12 +4282,17 @@ function getFilteredWorklogOverviewGroups() {
 
 function updateWorklogOverviewModebar() {
   const scope = getActiveWorklogOverviewScope();
+  const accessibleGroupIds = new Set(getAccessibleWorklogSiteGroupIds());
+  const canOpenCombinedScope = canAccessAllWorklogs() || accessibleGroupIds.size > 1;
   document.querySelectorAll("[data-overview-scope]").forEach((button) => {
-    const allowed = canAccessAllWorklogs() || button.dataset.overviewScope === scope;
+    const requestedScope = button.dataset.overviewScope;
+    const allowed = requestedScope === "all"
+      ? canOpenCombinedScope
+      : canAccessAllWorklogs() || accessibleGroupIds.has(requestedScope);
     button.hidden = !allowed;
     button.disabled = !allowed;
-    button.classList.toggle("is-active", button.dataset.overviewScope === scope);
-    button.setAttribute("aria-pressed", String(button.dataset.overviewScope === scope));
+    button.classList.toggle("is-active", requestedScope === scope);
+    button.setAttribute("aria-pressed", String(requestedScope === scope));
   });
 }
 
@@ -7181,7 +7217,13 @@ function getWorklogEmployeeIdsForView(view) {
   const includeOwnProfile = !isRepresentativeProfile() && (!authState.user || !getProfileMappedEmployeeId());
   const withOwnProfile = (ids) => (includeOwnProfile ? ["profile-user", ...ids] : ids);
   if (view === "fitness-log") return withOwnProfile(getAssignedWorklogEmployeeIds(fitnessEmployeeIds));
-  if (view === "beyond-log") return withOwnProfile(getAssignedWorklogEmployeeIds(beyondWorklogEmployeeIds));
+  if (view === "beyond-log") {
+    const ids = [
+      ...getAssignedWorklogEmployeeIds(beyondWorklogEmployeeIds),
+      ...(canViewBeyondCompanyFitnessWorklogs() ? getAssignedWorklogEmployeeIds(fitnessEmployeeIds) : []),
+    ];
+    return withOwnProfile([...new Set(ids)]);
+  }
   if (view === "bangju-log" || view === "today") return withOwnProfile(getAssignedWorklogEmployeeIds(bangjuWorklogEmployeeIds));
   return [];
 }
@@ -7193,8 +7235,14 @@ function getWorklogGroupIdForView(view = activeView, employee = getSelectedEmplo
   return getStaffSiteGroupForEmployee(employee)?.id || "";
 }
 
+function getWorklogGroupIdsForView(view = activeView, employee = getSelectedEmployee()) {
+  if (view === "beyond-log" && canViewBeyondCompanyFitnessWorklogs()) return ["beyond", "fitness"];
+  const groupId = getWorklogGroupIdForView(view, employee);
+  return groupId ? [groupId] : [];
+}
+
 function getCoworkerEmployeesForWorklog(selectedEmployee = getSelectedEmployee(), view = activeView) {
-  const groupId = getWorklogGroupIdForView(view, selectedEmployee);
+  const groupIds = new Set(getWorklogGroupIdsForView(view, selectedEmployee));
   const preferredIds = getWorklogEmployeeIdsForView(view);
   const preferredOrder = new Map(preferredIds.map((employeeId, index) => [employeeId, index]));
   const selectedKeys = new Set(getEmployeeIdentityKeys(selectedEmployee));
@@ -7203,7 +7251,7 @@ function getCoworkerEmployeesForWorklog(selectedEmployee = getSelectedEmployee()
     .filter(isAssignedWorklogEmployee)
     .filter((employee) => !isRepresentativeWorklogEmployee(employee))
     .filter((employee) => !getEmployeeIdentityKeys(employee).some((key) => selectedKeys.has(key)))
-    .filter((employee) => !groupId || getStaffSiteGroupForEmployee(employee)?.id === groupId)
+    .filter((employee) => !groupIds.size || groupIds.has(getStaffSiteGroupForEmployee(employee)?.id))
     .forEach((employee) => {
       const employeeId = getEmployeeWorklogId(employee);
       if (!employeeId || byEmployeeId.has(employeeId)) return;

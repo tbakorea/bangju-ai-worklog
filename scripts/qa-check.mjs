@@ -621,17 +621,19 @@ check(
 );
 
 check(
-  "coworker worklogs stay inside the active business group",
+  "coworker worklogs stay inside the permitted business scope",
   js.includes("function getCoworkerEmployeesForWorklog")
-    && js.includes("getStaffSiteGroupForEmployee(employee)?.id === groupId")
+    && js.includes("const groupIds = new Set(getWorklogGroupIdsForView(view, selectedEmployee));")
+    && js.includes("function canViewBeyondCompanyFitnessWorklogs")
+    && js.includes("fitnessStaffRead")
     && js.includes("function createRemoteCoworkerEmployee")
     && js.includes("authState.coworkerEmployees")
-    && schema.includes("when concat_ws(' ', p.org, p.workplace, p.primary_work)")
+    && schema.includes("public.can_view_beyond_company_fitness_worklogs()")
     && schema.includes("else 'bangju'")
     && js.includes("data-coworker-worklog-open")
     && html.includes("전체 업무일지로 돌아가기")
     && /function updateWorklogOverviewExitButton[\s\S]{0,420}canAccessWorklogOverview\(\)/.test(js),
-  "Bangju, Beyond, and Fitness coworker navigation must not leak employees across business groups"
+  "Bangju, Beyond, and Fitness worklogs must remain isolated except for explicitly delegated Beyond-to-Fitness read access"
 );
 
 check(
