@@ -495,10 +495,9 @@ check(
 
 check(
   "DaGym daily facts and generated guidance sync remotely",
-  js.includes("dagymDaily: state.dagymDaily || {}")
-    && js.includes("fitnessDailyGuidance: state.fitnessDailyGuidance || {}")
+  /function buildRemoteSnapshot[\s\S]{0,2200}dagymDaily: getDateScopedRemoteRecords\(state\.dagymDaily, key\)[\s\S]{0,900}fitnessDailyGuidance: getDateScopedRemoteRecords\(state\.fitnessDailyGuidance, key\)/.test(js)
     && /function mergeSharedFitnessOperations\(remoteState = \{\}\)[\s\S]{0,2200}remoteState\.dagymDaily[\s\S]{0,1800}remoteState\.fitnessDailyGuidance/.test(js),
-  "date-scoped DaGym facts and guidance must follow the existing remote worklog snapshot flow"
+  "date-scoped DaGym facts and guidance must follow the remote worklog snapshot flow without re-uploading historical records"
 );
 
 check(
@@ -719,12 +718,13 @@ check(
 );
 
 check(
-  "fitness center refreshes today's staff PT and recent DaGym class status",
-  /if \(view === "fitness-log" && authState\.session\) \{[\s\S]{0,220}canAccessAllWorklogs\(\)[\s\S]{0,180}refreshVisibleStaffWorklogsForActiveDate\(\{ forceDagym: true \}\)/.test(js)
-    && /async function refreshVisibleStaffWorklogsForActiveDate\(options = \{\}\)[\s\S]{0,1200}loadVisibleStaffWorklogsForDate\(dateKey\)[\s\S]{0,800}loadDagymMonthlyPtSchedules\(dateKey, \{ force: Boolean\(options\.forceDagym\) \}\)[\s\S]{0,800}renderEntries\(\)/.test(js)
+  "fitness center refreshes changed staff PT and DaGym class status without interrupting input",
+  /if \(!options\.skipRemoteRefresh && view === "fitness-log" && authState\.session\)/.test(js)
+    && /async function refreshVisibleStaffWorklogsForActiveDate\(options = \{\}\)[\s\S]{0,1600}isEditingDailyField\(\)[\s\S]{0,700}const worklogsChanged = await loadVisibleStaffWorklogsForDate\(dateKey\)[\s\S]{0,900}if \(refreshedSchedule\) await loadDagymMonthlyPtSchedules\(dateKey, \{ force: Boolean\(options\.forceDagym\) \}\)[\s\S]{0,700}if \(!worklogsChanged && !refreshedSchedule\) return[\s\S]{0,500}renderEntries\(\)/.test(js)
     && /const isVisibleWorklog = \["worklog-overview", "fitness-log"\]\.includes\(activeView\)[\s\S]{0,120}isGeneralEmployeeWorklogView\(activeView\)/.test(js)
-    && /const cacheTtlMs = Math\.max\(5 \* 1000, Number\(options\.cacheTtlMs \|\| 30 \* 1000\)/.test(js),
-  "representative center pages must reload employee ledgers and refresh class outcomes instead of keeping stale PT counts"
+    && /setInterval\([\s\S]{0,360}60 \* 1000\)/.test(js)
+    && /const cacheTtlMs = Math\.max\(30 \* 1000, Number\(options\.cacheTtlMs \|\| 5 \* 60 \* 1000\)/.test(js),
+  "representative center pages must refresh changed employee ledgers and class outcomes without repeated full renders while an employee types"
 );
 
 check(

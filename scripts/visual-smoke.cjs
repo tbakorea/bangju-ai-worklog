@@ -896,7 +896,9 @@ async function checkWorklogInputResponsiveness(browser) {
     || immediate.reportValue !== "지연 없는 업무보고 24") {
     fail("rapid worklog typing should remain responsive and defer heavy persistence", JSON.stringify(immediate));
   }
-  await page.waitForTimeout(260);
+  // Input writes wait for a short debounce and then run in idle time so typing
+  // remains smooth even when the worklog has a large local history.
+  await page.waitForTimeout(1400);
   const persisted = await page.evaluate(() => {
     const stored = JSON.parse(localStorage.getItem(storageKey) || "{}");
     const employeeId = getProfileMappedEmployeeId() || "profile-user";

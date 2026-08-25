@@ -21,7 +21,7 @@ const attendanceEnabledViews = new Set(["worklog", "fitness-log", "bangju-log", 
 const controlTowerEmails = new Set(["j3010@ymail.com"]);
 const activeFitnessManagerEmail = "pjhong0@naver.com";
 const retiredFitnessManagerEmails = new Set(["pjhong1@naver.com", "pjhong9@naver.com"]);
-let activeView = "fitness-log";
+let activeView = "auth";
 let attendancePromptLastAt = 0;
 let todayPageMode = "daily";
 const bangjuOrganization = [
@@ -884,6 +884,8 @@ const authState = {
   applyingRemote: false,
   saveTimer: null,
   saveTimers: new Map(),
+  remoteSnapshotInFlight: new Map(),
+  remoteSnapshotQueued: new Set(),
   pendingApprovalCount: 0,
   pendingPasswordResetCount: 0,
   approvalRows: [],
@@ -891,6 +893,7 @@ const authState = {
   coworkerEmployees: [],
   visibleWorklogsLoading: false,
   visibleWorklogsTimer: null,
+  visibleWorklogFingerprints: new Map(),
   dagymPtScheduleMonthCache: new Map(),
   dagymSyncHealthCache: new Map(),
   dagymSyncHealthLoading: new Set(),
@@ -1400,6 +1403,7 @@ function normalizeEmployeeLogRows(log, dateKey = getActiveDateKey()) {
 }
 
 let deferredStateSaveTimer = null;
+let deferredStateSaveIdleTimer = null;
 const deferredInputRenderJobs = new Map();
 const deferredInputRenderTimers = new Map();
 
@@ -1411,18 +1415,38 @@ function writeStateToLocalStorage() {
 }
 
 function flushDeferredStateSave({ write = true } = {}) {
-  if (!deferredStateSaveTimer) return false;
-  window.clearTimeout(deferredStateSaveTimer);
+  const hasPendingSave = Boolean(deferredStateSaveTimer || deferredStateSaveIdleTimer);
+  if (!hasPendingSave) return false;
+  if (deferredStateSaveTimer) window.clearTimeout(deferredStateSaveTimer);
+  if (deferredStateSaveIdleTimer) {
+    if (typeof window.cancelIdleCallback === "function") window.cancelIdleCallback(deferredStateSaveIdleTimer);
+    else window.clearTimeout(deferredStateSaveIdleTimer);
+  }
   deferredStateSaveTimer = null;
+  deferredStateSaveIdleTimer = null;
   if (write) writeStateToLocalStorage();
   return true;
 }
 
-function scheduleDeferredStateSave(delay = 180) {
+function scheduleDeferredStateSave(delay = 650) {
   window.clearTimeout(deferredStateSaveTimer);
+  if (deferredStateSaveIdleTimer) {
+    if (typeof window.cancelIdleCallback === "function") window.cancelIdleCallback(deferredStateSaveIdleTimer);
+    else window.clearTimeout(deferredStateSaveIdleTimer);
+    deferredStateSaveIdleTimer = null;
+  }
   deferredStateSaveTimer = window.setTimeout(() => {
     deferredStateSaveTimer = null;
-    writeStateToLocalStorage();
+    const persist = () => {
+      deferredStateSaveIdleTimer = null;
+      writeStateToLocalStorage();
+    };
+    // A full worklog snapshot can be large. Serialize it after typing has
+    // settled and only when the browser has a short idle window so mobile
+    // keyboards keep their frame budget.
+    deferredStateSaveIdleTimer = typeof window.requestIdleCallback === "function"
+      ? window.requestIdleCallback(persist, { timeout: 1200 })
+      : window.setTimeout(persist, 0);
   }, delay);
 }
 
@@ -1448,8 +1472,8 @@ function scheduleInputRender(key, callback, delay = 700) {
 function saveState(options = {}) {
   if (options.input) {
     markOwnedWorklogUpdated();
-    scheduleDeferredStateSave(options.localDelay || 180);
-    scheduleRemoteSave(options.remoteDelay || 1600);
+    scheduleDeferredStateSave(options.localDelay || 650);
+    scheduleRemoteSave(options.remoteDelay || 2500);
     return;
   }
   flushDeferredStateSave({ write: false });
@@ -3778,7 +3802,12 @@ function calculateOperatingScore() {
   return Math.max(0, Math.min(100, Math.round((active / rows.length) * 78 + (pending ? 8 : 14) - closed * 3)));
 }
 
+function isActiveRenderView(...views) {
+  return views.includes(activeView);
+}
+
 function renderOsDashboard() {
+  if (!isActiveRenderView("os")) return;
   const rows = getAssetRows();
   const brands = new Set(rows.map((row) => row.brand)).size;
   const rooms = rows.reduce((sum, row) => sum + row.rooms.length, 0);
@@ -5369,6 +5398,7 @@ function setupWorklogOverviewInteractions(grid, dateKey) {
 }
 
 function renderWorklogOverview() {
+  if (!isActiveRenderView("worklog-overview")) return;
   const grid = document.getElementById("worklogOverviewGrid");
   if (!grid) return;
   updateWorklogOverviewModebar();
@@ -5431,6 +5461,7 @@ function renderWorklogOverview() {
 }
 
 function renderControlTower() {
+  if (!isActiveRenderView("control")) return;
   const accessCard = document.getElementById("controlAccessCard");
   const body = document.getElementById("controlTowerBody");
   const accessLabel = document.getElementById("controlTowerAccessLabel");
@@ -5518,6 +5549,7 @@ function renderControlTower() {
 }
 
 function renderExecutiveManagement() {
+  if (!isActiveRenderView("executive")) return;
   const accessCard = document.getElementById("executiveAccessCard");
   const body = document.getElementById("executiveBody");
   const accessLabel = document.getElementById("executiveAccessLabel");
@@ -6432,6 +6464,7 @@ function renderMissionProposalCards(proposals, options = {}) {
 }
 
 function renderAiCoach() {
+  if (!isActiveRenderView("ai")) return;
   const node = document.getElementById("aiCoachGrid");
   if (!node) return;
   const isAdminMode = canAccessManualCoachingAdmin();
@@ -6648,6 +6681,7 @@ function buildPremiumOperatingModel() {
 }
 
 function renderPremiumOperatingSystem() {
+  if (!isActiveRenderView("premium")) return;
   const node = document.getElementById("premiumOperatingGrid");
   if (!node) return;
   const model = buildPremiumOperatingModel();
@@ -7359,6 +7393,10 @@ function formatAttendanceSummary(log = getSelectedLog()) {
 }
 
 function renderProfileForm() {
+  // Settings/registration contains several large management forms. Rebuilding
+  // them while an employee is typing in a worklog wastes the main thread and
+  // is unnecessary until that section is actually opened.
+  if (!isActiveRenderView("auth", "settings")) return;
   if (isExplicitlySignedOut() && !isAuthRegistrationVisible()) {
     clearSignupProfileFields();
     renderSettingsForm();
@@ -9233,8 +9271,11 @@ function clearAuthRuntimeState() {
   authState.visibleWorklogsLoading = false;
   authState.saveTimers?.forEach((timer) => clearTimeout(timer));
   authState.saveTimers = new Map();
+  authState.remoteSnapshotInFlight = new Map();
+  authState.remoteSnapshotQueued = new Set();
   clearInterval(authState.visibleWorklogsTimer);
   authState.visibleWorklogsTimer = null;
+  authState.visibleWorklogFingerprints = new Map();
   authState.dagymPtScheduleMonthCache = new Map();
   authState.dagymSyncHealthCache = new Map();
   authState.dagymSyncHealthLoading = new Set();
@@ -9533,6 +9574,13 @@ async function applySession(session) {
     return;
   }
   resetStartupDateToToday();
+  // Show the cached/local worklog immediately. Remote datasets continue to
+  // hydrate in the background instead of leaving the employee on a blank
+  // screen for the full sequence of profile, weather, labor and schedule
+  // requests.
+  const initialLandingView = getInitialLandingView();
+  switchView(initialLandingView, { skipRemoteRefresh: true });
+  renderAuthStatus("업무기록을 최신 상태로 불러오는 중입니다.");
   await loadRemoteWorklogForActiveDate();
   await saveRemoteProfile();
   scheduleRemoteSave(0);
@@ -9540,7 +9588,8 @@ async function applySession(session) {
   startVisibleWorklogPolling();
   renderAll();
   renderAuthStatus();
-  switchView(getInitialLandingView());
+  const resolvedLandingView = getInitialLandingView();
+  if (resolvedLandingView !== initialLandingView) switchView(resolvedLandingView);
 }
 
 function scheduleRemoteSave(delay = 700, dateKey = getActiveDateKey()) {
@@ -9557,13 +9606,33 @@ function scheduleRemoteSave(delay = 700, dateKey = getActiveDateKey()) {
 }
 
 async function flushPendingRemoteSaves() {
-  if (!authState.user || !authState.saveTimers?.size) return;
-  const dateKeys = [...authState.saveTimers.keys()];
+  if (!authState.user) return;
+  const dateKeys = [...(authState.saveTimers?.keys() || [])];
+  const inFlight = [...(authState.remoteSnapshotInFlight?.values() || [])];
+  if (!dateKeys.length && !inFlight.length) return;
   dateKeys.forEach((dateKey) => {
     clearTimeout(authState.saveTimers.get(dateKey));
     authState.saveTimers.delete(dateKey);
   });
-  await Promise.allSettled(dateKeys.map((dateKey) => saveRemoteSnapshot(dateKey)));
+  await Promise.allSettled([
+    ...dateKeys.map((dateKey) => saveRemoteSnapshot(dateKey)),
+    ...inFlight,
+  ]);
+}
+
+function getDateScopedRemoteRecords(records = {}, dateKey = getActiveDateKey()) {
+  if (!records || !Object.prototype.hasOwnProperty.call(records, dateKey)) return {};
+  return { [dateKey]: records[dateKey] };
+}
+
+function getDateScopedRemoteReportSubmissions(records = {}, dateKey = getActiveDateKey()) {
+  const prefix = `${dateKey}:`;
+  return Object.fromEntries(Object.entries(records || {}).filter(([key]) => String(key).startsWith(prefix)));
+}
+
+function getDateScopedRemoteWeatherCache(records = {}, dateKey = getActiveDateKey()) {
+  const prefix = `${dateKey}::`;
+  return Object.fromEntries(Object.entries(records || {}).filter(([key]) => String(key).startsWith(prefix)));
 }
 
 function buildRemoteSnapshot(dateKey = getActiveDateKey()) {
@@ -9584,14 +9653,18 @@ function buildRemoteSnapshot(dateKey = getActiveDateKey()) {
     employeeLogs: { [key]: ownerWorklog ? { [ownerEmployeeId]: cloneWorklogLogForAudit(ownerWorklog) } : {} },
     attendance: { [key]: state.attendance?.[key] || [] },
     companyCommonWeeks: state.companyCommonWeeks || {},
-    dagymDaily: state.dagymDaily || {},
-    dagymDailyAnalyses: state.dagymDailyAnalyses || {},
-    fitnessDailyGuidance: state.fitnessDailyGuidance || {},
-    fitnessCenterReports: state.fitnessCenterReports || {},
-    worklogReportSubmissions: state.worklogReportSubmissions || {},
+    // Each worklog_states row already has a date key. Re-sending every past
+    // report, guidance item and daily analysis on each keystroke made the
+    // request grow over time and delayed employee input. Keep the same data
+    // model, but only persist the records owned by this row's date.
+    dagymDaily: getDateScopedRemoteRecords(state.dagymDaily, key),
+    dagymDailyAnalyses: getDateScopedRemoteRecords(state.dagymDailyAnalyses, key),
+    fitnessDailyGuidance: getDateScopedRemoteRecords(state.fitnessDailyGuidance, key),
+    fitnessCenterReports: getDateScopedRemoteRecords(state.fitnessCenterReports, key),
+    worklogReportSubmissions: getDateScopedRemoteReportSubmissions(state.worklogReportSubmissions, key),
     reportTone: state.reportTone,
     siteWeatherAddresses: state.siteWeatherAddresses || {},
-    weatherCache: state.weatherCache || {},
+    weatherCache: getDateScopedRemoteWeatherCache(state.weatherCache, key),
     weatherLocationCache: state.weatherLocationCache || {},
   };
 }
@@ -9599,18 +9672,40 @@ function buildRemoteSnapshot(dateKey = getActiveDateKey()) {
 async function saveRemoteSnapshot(dateKey = getActiveDateKey()) {
   if (!supabaseClient || !authState.user) return;
   const key = dateKey || getActiveDateKey();
-  const { error } = await supabaseClient.from("worklog_states").upsert({
-    user_id: authState.user.id,
-    log_date: key,
-    organization: state.profile?.org || "(주)방주",
-    state: buildRemoteSnapshot(key),
-    updated_at: new Date().toISOString(),
-  }, { onConflict: "user_id,organization,log_date" });
-  if (error) {
-    renderAuthStatus(`원격 저장 대기: ${error.message}`);
-    return;
+  authState.remoteSnapshotInFlight ||= new Map();
+  authState.remoteSnapshotQueued ||= new Set();
+  const inFlight = authState.remoteSnapshotInFlight.get(key);
+  if (inFlight) {
+    // Do not open parallel uploads for the same worklog. The active request
+    // completes first, then writes exactly one newest snapshot.
+    authState.remoteSnapshotQueued.add(key);
+    return inFlight;
   }
-  renderAuthStatus();
+  const task = (async () => {
+    do {
+      authState.remoteSnapshotQueued.delete(key);
+      const { error } = await supabaseClient.from("worklog_states").upsert({
+        user_id: authState.user.id,
+        log_date: key,
+        organization: state.profile?.org || "(주)방주",
+        state: buildRemoteSnapshot(key),
+        updated_at: new Date().toISOString(),
+      }, { onConflict: "user_id,organization,log_date" });
+      if (error) {
+        authState.remoteSnapshotQueued.delete(key);
+        renderAuthStatus(`원격 저장 대기: ${error.message}`);
+        return false;
+      }
+    } while (authState.remoteSnapshotQueued.has(key));
+    renderAuthStatus();
+    return true;
+  })();
+  authState.remoteSnapshotInFlight.set(key, task);
+  try {
+    return await task;
+  } finally {
+    authState.remoteSnapshotInFlight.delete(key);
+  }
 }
 
 function mapLaborLeaveRequestToRemote(request = {}) {
@@ -9680,40 +9775,48 @@ async function loadRemoteWorklogForActiveDate() {
     return;
   }
   authState.applyingRemote = true;
-  if (data?.state) {
-    state.backupSettings = { ...(state.backupSettings || {}), ...(data.state.backupSettings || {}) };
-    state.selectedEmployeeId = data.state.selectedEmployeeId || state.selectedEmployeeId;
-    state.profile = { ...state.profile, ...(data.state.profile || {}) };
-    state.profile = applyProfilePlacementOverride(state.profile);
-    normalizeProfilePlacementForAuth();
-    enforceAuthProfileBoundary();
-    mergeOwnRemoteEmployeeLogs(data.state.employeeLogs || {});
-    state.attendance = { ...(state.attendance || {}), ...(data.state.attendance || {}) };
-    state.companyCommonWeeks = { ...(state.companyCommonWeeks || {}), ...(data.state.companyCommonWeeks || {}) };
-    mergeSharedFitnessOperations(data.state);
-    state.fitnessCenterReports = { ...(state.fitnessCenterReports || {}), ...(data.state.fitnessCenterReports || {}) };
-    state.worklogReportSubmissions = { ...(state.worklogReportSubmissions || {}), ...(data.state.worklogReportSubmissions || {}) };
-    state.reportTone = data.state.reportTone || state.reportTone;
-    state.siteWeatherAddresses = { ...(state.siteWeatherAddresses || {}), ...(data.state.siteWeatherAddresses || {}) };
-    state.weatherCache = { ...(state.weatherCache || {}), ...(data.state.weatherCache || {}) };
-    state.weatherLocationCache = { ...(state.weatherLocationCache || {}), ...(data.state.weatherLocationCache || {}) };
+  try {
+    if (data?.state) {
+      state.backupSettings = { ...(state.backupSettings || {}), ...(data.state.backupSettings || {}) };
+      state.selectedEmployeeId = data.state.selectedEmployeeId || state.selectedEmployeeId;
+      state.profile = { ...state.profile, ...(data.state.profile || {}) };
+      state.profile = applyProfilePlacementOverride(state.profile);
+      normalizeProfilePlacementForAuth();
+      enforceAuthProfileBoundary();
+      mergeOwnRemoteEmployeeLogs(data.state.employeeLogs || {});
+      state.attendance = { ...(state.attendance || {}), ...(data.state.attendance || {}) };
+      state.companyCommonWeeks = { ...(state.companyCommonWeeks || {}), ...(data.state.companyCommonWeeks || {}) };
+      mergeSharedFitnessOperations(data.state);
+      state.fitnessCenterReports = { ...(state.fitnessCenterReports || {}), ...(data.state.fitnessCenterReports || {}) };
+      state.worklogReportSubmissions = { ...(state.worklogReportSubmissions || {}), ...(data.state.worklogReportSubmissions || {}) };
+      state.reportTone = data.state.reportTone || state.reportTone;
+      state.siteWeatherAddresses = { ...(state.siteWeatherAddresses || {}), ...(data.state.siteWeatherAddresses || {}) };
+      state.weatherCache = { ...(state.weatherCache || {}), ...(data.state.weatherCache || {}) };
+      state.weatherLocationCache = { ...(state.weatherLocationCache || {}), ...(data.state.weatherLocationCache || {}) };
+    }
+    // These datasets do not depend on one another. Loading them together
+    // removes the old login waterfall while keeping the staff worklog merge
+    // ordered before DaGym schedule projection below.
+    const [, sharedWeatherRows] = await Promise.all([
+      loadLatestRemoteSiteWeatherSettings(),
+      loadSharedSiteWeatherSettings(),
+      loadRemoteDagymDailyAnalysis(key),
+      loadRemoteDagymSyncHealth(key),
+      loadRemoteLaborPayrollDrafts(),
+      loadRemoteLeaveRequests(),
+    ]);
+    if (Array.isArray(sharedWeatherRows)) await publishRepresentativeSiteWeatherSettings(sharedWeatherRows);
+    if (canAccessAllWorklogs()) await loadVisibleStaffWorklogsForDate(key);
+    else await loadCoworkerWorklogsForDate(key);
+    await loadDagymMonthlyPtSchedules(key);
+    normalizeState();
+    localStorage.setItem(storageKey, JSON.stringify(state));
+    ensureTodayDagymDailyAnalysis({ silent: true });
+    renderAll();
+    renderAuthStatus();
+  } finally {
+    authState.applyingRemote = false;
   }
-  await loadLatestRemoteSiteWeatherSettings();
-  const sharedWeatherRows = await loadSharedSiteWeatherSettings();
-  if (Array.isArray(sharedWeatherRows)) await publishRepresentativeSiteWeatherSettings(sharedWeatherRows);
-  await loadRemoteDagymDailyAnalysis(key);
-  await loadRemoteDagymSyncHealth(key);
-  await loadRemoteLaborPayrollDrafts();
-  await loadRemoteLeaveRequests();
-  if (canAccessAllWorklogs()) await loadVisibleStaffWorklogsForDate(key);
-  else await loadCoworkerWorklogsForDate(key);
-  await loadDagymMonthlyPtSchedules(key);
-  normalizeState();
-  localStorage.setItem(storageKey, JSON.stringify(state));
-  authState.applyingRemote = false;
-  ensureTodayDagymDailyAnalysis({ silent: true });
-  renderAll();
-  renderAuthStatus();
 }
 
 function getDagymScheduleKstParts(value = "") {
@@ -9937,9 +10040,10 @@ async function loadDagymMonthlyPtSchedules(dateKey = getActiveDateKey(), options
   if (!supabaseClient || !authState.user || !/^\d{4}-\d{2}-\d{2}$/.test(String(dateKey || ""))) return [];
   const monthKey = dateKey.slice(0, 7);
   const cached = authState.dagymPtScheduleMonthCache.get(monthKey);
-  // 센터운영현황은 직원이 방금 확정한 출석·노쇼 상태까지 빠르게 반영해야 합니다.
-  // 월간 원장을 매 렌더마다 다시 읽지는 않되, 기존 5분 캐시보다 짧게 유지합니다.
-  const cacheTtlMs = Math.max(5 * 1000, Number(options.cacheTtlMs || 30 * 1000) || 30 * 1000);
+  // 수업 시간표 원본은 일일 자동수집으로 갱신됩니다. 화면 진입·1분 폴링마다
+  // 다시 읽지 말고, 짧은 화면 체류 중에는 캐시를 사용합니다. 출석/노쇼 같은
+  // 직원 확정값은 앱의 업무일지 상태에서 즉시 집계되므로 이 캐시와 분리됩니다.
+  const cacheTtlMs = Math.max(30 * 1000, Number(options.cacheTtlMs || 5 * 60 * 1000) || 5 * 60 * 1000);
   let rows = !options.force && cached && Date.now() - Number(cached.loadedAt || 0) < cacheTtlMs ? cached.rows : null;
   if (!rows) {
     const accessToken = authState.session?.access_token || "";
@@ -10193,19 +10297,19 @@ async function loadVisibleStaffWorklogsForDate(dateKey = getActiveDateKey()) {
   }
   if (error) {
     renderAuthStatus(`직원 업무일지 불러오기 대기: ${error.message}`);
-    return;
+    return false;
   }
-  mergeVisibleStaffWorklogStates(data || [], dateKey);
+  return mergeVisibleStaffWorklogStates(data || [], dateKey);
 }
 
 async function loadCoworkerWorklogsForDate(dateKey = getActiveDateKey()) {
-  if (!supabaseClient || !authState.user || !isProfileApproved()) return;
+  if (!supabaseClient || !authState.user || !isProfileApproved()) return false;
   const { data, error } = await supabaseClient.rpc("get_coworker_worklog_states", { target_date: dateKey });
   if (error) {
     renderAuthStatus(`동료 업무일지 불러오기 대기: ${error.message}`);
-    return;
+    return false;
   }
-  mergeVisibleStaffWorklogStates(data || [], dateKey);
+  return mergeVisibleStaffWorklogStates(data || [], dateKey);
 }
 
 async function ensureWorklogDirectoryRows() {
@@ -10263,20 +10367,25 @@ function createRemoteCoworkerEmployee(row = {}) {
 }
 
 async function refreshVisibleStaffWorklogsForActiveDate(options = {}) {
-  if (!supabaseClient || !authState.user || !canAccessAllWorklogs() || authState.visibleWorklogsLoading) return;
+  if (!supabaseClient || !authState.user || !canAccessAllWorklogs() || authState.visibleWorklogsLoading || isEditingDailyField()) return;
   authState.visibleWorklogsLoading = true;
   try {
     const dateKey = getActiveDateKey();
-    await loadVisibleStaffWorklogsForDate(dateKey);
+    const worklogsChanged = await loadVisibleStaffWorklogsForDate(dateKey);
     if (dateKey !== getActiveDateKey()) return;
+    let refreshedSchedule = false;
     if (activeView === "fitness-log") {
-      // 직원 원장을 새로 합친 뒤 다짐 수업을 다시 투사해야 센터현황의
-      // 유료/무료 PT가 최신 업무일지와 동일한 원천에서 계산됩니다.
-      await loadDagymMonthlyPtSchedules(dateKey, { force: Boolean(options.forceDagym) });
+      const monthKey = dateKey.slice(0, 7);
+      const cached = authState.dagymPtScheduleMonthCache.get(monthKey);
+      const cacheExpired = !cached || Date.now() - Number(cached.loadedAt || 0) >= 5 * 60 * 1000;
+      // 직원 원장 변경이나 월간 시간표 캐시 만료 때만 다시 투사합니다.
+      refreshedSchedule = Boolean(worklogsChanged || options.forceDagym || cacheExpired);
+      if (refreshedSchedule) await loadDagymMonthlyPtSchedules(dateKey, { force: Boolean(options.forceDagym) });
     }
-    if (activeView === "worklog-overview") await loadRepresentativeCoachingFollowups(dateKey);
+    if (activeView === "worklog-overview" && worklogsChanged) await loadRepresentativeCoachingFollowups(dateKey);
+    if (!worklogsChanged && !refreshedSchedule) return;
     normalizeState();
-    localStorage.setItem(storageKey, JSON.stringify(state));
+    scheduleDeferredStateSave(180);
     if (activeView === "fitness-log" || isGeneralEmployeeWorklogView(activeView)) renderEntries();
     else renderWorklogOverview();
   } finally {
@@ -10297,26 +10406,45 @@ function startVisibleWorklogPolling() {
       || isGeneralEmployeeWorklogView(activeView);
     if (document.visibilityState !== "visible" || !isVisibleWorklog) return;
     refreshVisibleStaffWorklogsForActiveDate();
-  }, 15000);
+  }, 60 * 1000);
 }
 
 async function refreshCoworkerWorklogsForActiveDate() {
-  if (!supabaseClient || !authState.user || canAccessAllWorklogs() || !isProfileApproved() || authState.visibleWorklogsLoading) return;
+  if (!supabaseClient || !authState.user || canAccessAllWorklogs() || !isProfileApproved() || authState.visibleWorklogsLoading || isEditingDailyField()) return;
   authState.visibleWorklogsLoading = true;
   try {
     const dateKey = getActiveDateKey();
-    await loadCoworkerWorklogsForDate(dateKey);
+    const worklogsChanged = await loadCoworkerWorklogsForDate(dateKey);
     if (dateKey !== getActiveDateKey()) return;
-    if (activeView === "fitness-log") await loadDagymMonthlyPtSchedules(dateKey);
+    let refreshedSchedule = false;
+    if (activeView === "fitness-log") {
+      const cached = authState.dagymPtScheduleMonthCache.get(dateKey.slice(0, 7));
+      refreshedSchedule = Boolean(worklogsChanged || !cached || Date.now() - Number(cached.loadedAt || 0) >= 5 * 60 * 1000);
+      if (refreshedSchedule) await loadDagymMonthlyPtSchedules(dateKey);
+    }
+    if (!worklogsChanged && !refreshedSchedule) return;
     normalizeState();
-    localStorage.setItem(storageKey, JSON.stringify(state));
+    scheduleDeferredStateSave(180);
     renderEntries();
   } finally {
     authState.visibleWorklogsLoading = false;
   }
 }
 
+function getVisibleWorklogRowsFingerprint(rows = [], dateKey = getActiveDateKey()) {
+  return `${dateKey}|${(rows || []).map((row) => [
+    row?.user_id || "",
+    row?.updated_at || "",
+    row?.state?.ownerEmployeeId || "",
+    row?.state?.ownerWorklog?.updatedAt || "",
+  ].join(":"))
+    .sort()
+    .join("|")}`;
+}
+
 function mergeVisibleStaffWorklogStates(rows = [], dateKey = getActiveDateKey()) {
+  const fingerprint = getVisibleWorklogRowsFingerprint(rows, dateKey);
+  if (authState.visibleWorklogFingerprints?.get(dateKey) === fingerprint) return false;
   state.employeeLogs ||= {};
   state.employeeLogs[dateKey] ||= {};
   const candidatesByEmployee = new Map();
@@ -10374,6 +10502,9 @@ function mergeVisibleStaffWorklogStates(rows = [], dateKey = getActiveDateKey())
     };
   });
   authState.coworkerEmployees = [...coworkerDirectory.values()];
+  authState.visibleWorklogFingerprints ||= new Map();
+  authState.visibleWorklogFingerprints.set(dateKey, fingerprint);
+  return true;
 }
 
 function mergeSharedFitnessOperations(remoteState = {}) {
@@ -10787,6 +10918,7 @@ function renderEmployeeSelect() {
 }
 
 function renderEntries() {
+  if (!isActiveRenderView("bangju-log", "beyond-log", "fitness-log")) return;
   const log = getSelectedLog();
   normalizeEmployeeLogRows(log);
   renderWorklogToday(log);
@@ -15709,6 +15841,7 @@ function renderTodayContext() {
 }
 
 function renderAttendance() {
+  if (!isActiveRenderView("attendance")) return;
   const list = document.getElementById("attendanceList");
   const addButton = document.getElementById("addAttendanceButton");
   if (addButton) addButton.hidden = true;
@@ -19190,6 +19323,7 @@ function renderStaffMasterActivePanel(rows = []) {
 }
 
 function renderStaffMaster() {
+  if (!isActiveRenderView("staff")) return;
   const grid = document.getElementById("staffMasterGrid");
   const approvalButton = document.getElementById("staffOpenApprovalButton");
   if (!grid) return;
@@ -19829,6 +19963,7 @@ function renderFitnessOperatingGrowthLoop(revenue) {
 }
 
 function renderFitnessDashboard() {
+  if (!isActiveRenderView("fitness")) return;
   const summary = getFitnessOpsSummary();
   const goals = { ...createFitnessGoals(), ...(state.fitnessGoals || {}) };
   const ptTotal = summary.ptRegular + summary.ptFree + summary.ptOther;
@@ -19886,6 +20021,7 @@ function renderFitnessDashboard() {
 }
 
 function renderOrganization() {
+  if (!isActiveRenderView("organization")) return;
   const node = document.getElementById("organizationTree");
   const companyHtml = bangjuOrganization.map((company) => `
     <article class="organization-company">
@@ -20153,6 +20289,7 @@ function renderActivitySmartInbox() {
 }
 
 function renderReport() {
+  if (!isActiveRenderView("bangju-log", "beyond-log", "fitness-log", "report")) return;
   const employee = getSelectedEmployee();
   const log = getSelectedLog();
   const tasks = (log.tasks || []).filter((task) => task.text.trim());
@@ -24196,9 +24333,9 @@ async function shareFitnessReport() {
   });
 }
 
-function switchView(view) {
+function switchView(view, options = {}) {
   if (!state) {
-    window.setTimeout(() => switchView(view), 0);
+    window.setTimeout(() => switchView(view, options), 0);
     return;
   }
   const requestedView = view;
@@ -24258,15 +24395,15 @@ function switchView(view) {
   dockGlobalHeaderActions(panelView);
   applyCurrentWorklogPermissionState(view);
   if (view === "fitness-log") window.setTimeout(() => showFitnessPageToast(), 80);
-  if (view === "fitness-log" && authState.session) {
-    if (canAccessAllWorklogs()) refreshVisibleStaffWorklogsForActiveDate({ forceDagym: true });
-    else refreshCoworkerWorklogsForActiveDate();
-  }
-  if (view === "worklog-overview") {
+  if (!options.skipRemoteRefresh && view === "fitness-log" && authState.session) {
     if (canAccessAllWorklogs()) refreshVisibleStaffWorklogsForActiveDate();
     else refreshCoworkerWorklogsForActiveDate();
   }
-  if (isGeneralEmployeeWorklogView(view) && authState.session && canAccessAllWorklogs()) {
+  if (!options.skipRemoteRefresh && view === "worklog-overview") {
+    if (canAccessAllWorklogs()) refreshVisibleStaffWorklogsForActiveDate();
+    else refreshCoworkerWorklogsForActiveDate();
+  }
+  if (!options.skipRemoteRefresh && isGeneralEmployeeWorklogView(view) && authState.session && canAccessAllWorklogs()) {
     refreshVisibleStaffWorklogsForActiveDate();
   }
 }
@@ -25460,7 +25597,7 @@ document.addEventListener("visibilitychange", () => {
   if (activeView === "worklog-overview" && canAccessAllWorklogs()) refreshVisibleStaffWorklogsForActiveDate();
   if (isGeneralEmployeeWorklogView(activeView) && canAccessAllWorklogs()) refreshVisibleStaffWorklogsForActiveDate();
   if (activeView === "fitness-log") {
-    if (canAccessAllWorklogs()) refreshVisibleStaffWorklogsForActiveDate({ forceDagym: true });
+    if (canAccessAllWorklogs()) refreshVisibleStaffWorklogsForActiveDate();
     else refreshCoworkerWorklogsForActiveDate();
   }
 });
