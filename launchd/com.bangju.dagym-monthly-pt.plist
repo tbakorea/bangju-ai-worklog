@@ -4,13 +4,18 @@
 <dict>
   <key>Label</key>
   <string>com.bangju.dagym-monthly-pt</string>
-  <key>ProgramArguments</key>
-  <array>
-    <string>/bin/zsh</string>
-    <string>/Users/bangju/Documents/Bangju AI Worklog/scripts/dagym-monthly-pt-sync.sh</string>
-  </array>
+    <key>ProgramArguments</key>
+    <array>
+      <string>/bin/bash</string>
+      <string>/Users/bangju/Library/Application Support/BangjuWorklog/dagym-sync/scripts/dagym-monthly-pt-sync.sh</string>
+    </array>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>DAGYM_USER_DATA_DIR</key>
+    <string>/Users/bangju/Library/Application Support/BangjuWorklog/dagym-sync/browser-profile</string>
+  </dict>
   <key>WorkingDirectory</key>
-  <string>/Users/bangju/Documents/Bangju AI Worklog</string>
+  <string>/Users/bangju/Library/Application Support/BangjuWorklog/dagym-sync</string>
   <key>StartCalendarInterval</key>
   <dict>
     <key>Hour</key>
@@ -25,8 +30,8 @@
   <key>ProcessType</key>
   <string>Background</string>
   <key>StandardOutPath</key>
-  <string>/Users/bangju/Documents/Bangju AI Worklog/work/dagym-sync.log</string>
+  <string>/Users/bangju/Library/Application Support/BangjuWorklog/dagym-sync/work/dagym-sync.log</string>
   <key>StandardErrorPath</key>
-  <string>/Users/bangju/Documents/Bangju AI Worklog/work/dagym-sync.err.log</string>
+  <string>/Users/bangju/Library/Application Support/BangjuWorklog/dagym-sync/work/dagym-sync.err.log</string>
 </dict>
 </plist>
