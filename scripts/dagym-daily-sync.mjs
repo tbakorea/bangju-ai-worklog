@@ -271,9 +271,9 @@ async function main() {
   const safeDir = path.join(root, "work", "dagym-daily-sync");
   fs.mkdirSync(safeDir, { recursive: true });
   const auditPath = path.join(safeDir, "latest.json");
-  fs.writeFileSync(auditPath, `${JSON.stringify({ dateKey: targetDate, capturedAt: new Date().toISOString(), metrics, domains, warnings, uploaded: null }, null, 2)}\n`);
+  fs.writeFileSync(auditPath, `${JSON.stringify({ dateKey: targetDate, startedAt, capturedAt: new Date().toISOString(), metrics, domains, warnings, uploaded: null }, null, 2)}\n`);
   const uploaded = await upload({ dateKey: targetDate, startedAt, metrics, domains, warnings });
-  fs.writeFileSync(auditPath, `${JSON.stringify({ dateKey: targetDate, capturedAt: new Date().toISOString(), metrics, domains, warnings, uploaded }, null, 2)}\n`);
+  fs.writeFileSync(auditPath, `${JSON.stringify({ dateKey: targetDate, startedAt, capturedAt: new Date().toISOString(), metrics, domains, warnings, uploaded }, null, 2)}\n`);
   console.log(JSON.stringify({ ok: true, dateKey: targetDate, metrics, domains, uploaded }, null, 2));
 }
 

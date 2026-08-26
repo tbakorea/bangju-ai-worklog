@@ -1,9 +1,21 @@
 const crypto = require("crypto");
 
 const SUPABASE_URL = String(process.env.SUPABASE_URL || "https://zllpfaijahyfppivkxzu.supabase.co").replace(/\/$/, "");
-const SERVICE_ROLE_KEY = String(process.env.SUPABASE_SERVICE_ROLE_KEY || "");
+const DEFAULT_SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InpsbHBmYWlqYWh5ZnBwaXZreHp1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODMzMzQxNTUsImV4cCI6MjA5ODkxMDE1NX0.C4omaj-e_9PM-iF3-5GUUVX47Wo06UsNTOYMlMMVcZU";
+
+function isSafeHeaderSecret(value = "") {
+  return /^[\x20-\x7E]+$/.test(String(value || "")) && !/[•●*]{3,}/.test(String(value || ""));
+}
+
+function isJwtLike(value = "") {
+  return isSafeHeaderSecret(value) && /^eyJ[^.]*\.[^.]+\.[^.]+$/.test(String(value || ""));
+}
+
+const configuredServiceRoleKey = String(process.env.SUPABASE_SERVICE_ROLE_KEY || "").trim();
+const SERVICE_ROLE_KEY = isJwtLike(configuredServiceRoleKey) ? configuredServiceRoleKey : "";
 const SYNC_SECRET = String(process.env.DAGYM_BROWSER_SYNC_SECRET || "");
-const SUPABASE_ANON_KEY = String(process.env.SUPABASE_ANON_KEY || "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InpsbHBmYWlqYWh5ZnBwaXZreHp1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODMzMzQxNTUsImV4cCI6MjA5ODkxMDE1NX0.C4omaj-e_9PM-iF3-5GUUVX47Wo06UsNTOYMlMMVcZU");
+const configuredAnonKey = String(process.env.SUPABASE_ANON_KEY || "").trim();
+const SUPABASE_ANON_KEY = isJwtLike(configuredAnonKey) ? configuredAnonKey : DEFAULT_SUPABASE_ANON_KEY;
 const CENTER_KEY = "beyond-fitness";
 const METRIC_KEYS = ["visits", "newMembers", "renewals", "expiring", "ptBookings", "noShows", "lockerExpiring", "sales"];
 
@@ -16,17 +28,23 @@ function secureEqual(left = "", right = "") {
 async function verifySyncUser(request) {
   const authorization = String(request.headers.authorization || "");
   if (!authorization.startsWith("Bearer ")) return null;
-  const userResponse = await fetch(`${SUPABASE_URL}/auth/v1/user`, {
-    headers: { apikey: SUPABASE_ANON_KEY, Authorization: authorization },
-  });
+  const userResponse = await fetch(`${SUPABASE_URL}/auth/v1/user`, { headers: { apikey: SUPABASE_ANON_KEY, Authorization: authorization } });
   if (!userResponse.ok) return null;
   const user = await userResponse.json().catch(() => null);
   if (!user?.id) return null;
-  const profileResponse = await fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${encodeURIComponent(user.id)}&select=role,workplace,access_preset,permissions,approval_status&limit=1`, {
-    headers: { apikey: SUPABASE_ANON_KEY, Authorization: authorization },
-  });
-  if (!profileResponse.ok) return null;
-  const [profile] = await profileResponse.json().catch(() => []);
+  const profileBaseUrl = `${SUPABASE_URL}/rest/v1/profiles?id=eq.${encodeURIComponent(user.id)}&limit=1&select=`;
+  const selectCandidates = [
+    "id,role,workplace,access_preset,permissions,approval_status",
+    "id,role,workplace,approval_status",
+    "id,role,workplace",
+  ];
+  let profile = null;
+  for (const fields of selectCandidates) {
+    const profileResponse = await fetch(`${profileBaseUrl}${fields}`, { headers: { apikey: SUPABASE_ANON_KEY, Authorization: authorization } });
+    if (!profileResponse.ok) continue;
+    [profile] = await profileResponse.json().catch(() => []);
+    break;
+  }
   if (!profile || profile.approval_status !== "approved") return null;
   const permissions = profile.permissions && typeof profile.permissions === "object" ? profile.permissions : {};
   const roleText = `${profile.role || ""} ${profile.workplace || ""}`;
@@ -110,12 +128,16 @@ module.exports = async function handler(request, response) {
   response.setHeader("Cache-Control", "no-store");
   if (request.method !== "POST") return response.status(405).json({ ok: false, error: "POST only" });
   if (!SERVICE_ROLE_KEY) {
-    const missing = [
-      !SERVICE_ROLE_KEY && "SUPABASE_SERVICE_ROLE_KEY",
-    ].filter(Boolean);
+    const missing = [!SERVICE_ROLE_KEY && (configuredServiceRoleKey ? "SUPABASE_SERVICE_ROLE_KEY(실제 키로 다시 저장 필요)" : "SUPABASE_SERVICE_ROLE_KEY")].filter(Boolean);
     return response.status(501).json({ ok: false, error: "다짐 자동수집 환경설정이 필요합니다.", missing });
   }
-  if (!(await authorizeSyncRequest(request))) return response.status(401).json({ ok: false, error: "동기화 인증에 실패했습니다." });
+  let authorized = false;
+  try {
+    authorized = await authorizeSyncRequest(request);
+  } catch (error) {
+    return response.status(502).json({ ok: false, error: "동기화 권한 확인에 실패했습니다. 잠시 후 다시 시도해주세요." });
+  }
+  if (!authorized) return response.status(401).json({ ok: false, error: "동기화 인증에 실패했습니다." });
 
   const dateKey = String(request.body?.dateKey || "").trim();
   if (!isDateKey(dateKey)) return response.status(400).json({ ok: false, error: "수집 날짜가 올바르지 않습니다." });

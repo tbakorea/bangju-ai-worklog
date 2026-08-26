@@ -18,6 +18,8 @@
     <key>Minute</key>
     <integer>5</integer>
   </dict>
+  <key>StartInterval</key>
+  <integer>3600</integer>
   <key>RunAtLoad</key>
   <true/>
   <key>ProcessType</key>
