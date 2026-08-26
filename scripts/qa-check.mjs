@@ -731,7 +731,8 @@ check(
 
 check(
   "fitness center refreshes changed staff PT and DaGym class status without interrupting input",
-  /if \(!options\.skipRemoteRefresh && view === "fitness-log" && authState\.session\)/.test(js)
+  js.includes("function scheduleActiveWorklogRefresh()")
+    && /if \(!options\.skipRemoteRefresh\) scheduleActiveWorklogRefresh\(\);/.test(js)
     && /async function refreshVisibleStaffWorklogsForActiveDate\(options = \{\}\)[\s\S]{0,1600}isEditingDailyField\(\)[\s\S]{0,700}const worklogsChanged = await loadVisibleStaffWorklogsForDate\(dateKey\)[\s\S]{0,900}if \(refreshedSchedule\) await loadDagymMonthlyPtSchedules\(dateKey, \{ force: Boolean\(options\.forceDagym\) \}\)[\s\S]{0,700}if \(!worklogsChanged && !refreshedSchedule\) return[\s\S]{0,500}renderEntries\(\)/.test(js)
     && /const isVisibleWorklog = \["worklog-overview", "fitness-log"\]\.includes\(activeView\)[\s\S]{0,120}isGeneralEmployeeWorklogView\(activeView\)/.test(js)
     && /setInterval\([\s\S]{0,360}60 \* 1000\)/.test(js)
@@ -750,7 +751,7 @@ check(
     && js.includes("function hydrateReadonlyWorklogOnDemand")
     && js.includes("await hydrateReadonlyWorklogOnDemand(employeeId, activeView)")
     && /activeView === "fitness-log" \|\| isGeneralEmployeeWorklogView\(activeView\)\) renderEntries\(\)/.test(js)
-    && /isGeneralEmployeeWorklogView\(view\) && authState\.session && canAccessAllWorklogs\(\)/.test(js),
+    && /isGeneralEmployeeWorklogView\(view\) && canAccessAllWorklogs\(\)/.test(js),
   "read-only detail views must show the selected employee after scrolling, preserve legacy saved data, and clear only a versioned current empty ledger"
 );
 

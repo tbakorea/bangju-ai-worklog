@@ -893,6 +893,8 @@ const authState = {
   coworkerEmployees: [],
   visibleWorklogsLoading: false,
   visibleWorklogsTimer: null,
+  visibleWorklogRefreshTimer: null,
+  visibleWorklogLastCheckedAt: new Map(),
   visibleWorklogFingerprints: new Map(),
   dagymPtScheduleMonthCache: new Map(),
   dagymSyncHealthCache: new Map(),
@@ -1919,13 +1921,23 @@ function getActiveWeatherEmployee(scope = activeView) {
   return getSelectedEmployee();
 }
 
-function renderWeatherWidgets() {
-  renderWeatherWidget("worklog", getSelectedEmployee());
-  renderWeatherWidget("fitness", getActiveWeatherEmployee("fitness-log"));
-  ensureWeatherRecordsForConfiguredSites(getActiveDateKey());
-  renderRepresentativeSiteWeatherBoards();
-  renderWeatherDateButtons();
-  renderHistoricalWeatherBanners();
+function renderWeatherWidgets(scope = activeView) {
+  const dateKey = getActiveDateKey();
+  // 업무일지를 열 때 숨겨진 다른 사업장까지 모두 조회하면 메뉴 전환마다
+  // 여러 날씨 요청이 동시에 시작됩니다. 현재 화면에 필요한 날씨만 갱신하고,
+  // 전 사업장 날씨는 대표 현황 화면에서만 한 번에 갱신합니다.
+  if (scope === "fitness-log") {
+    renderWeatherWidget("fitness", getActiveWeatherEmployee("fitness-log"));
+  } else if (isGeneralEmployeeWorklogView(scope)) {
+    renderWeatherWidget("worklog", getSelectedEmployee());
+  } else if (["worklog-overview", "control", "executive"].includes(scope)) {
+    ensureWeatherRecordsForConfiguredSites(dateKey);
+    renderRepresentativeSiteWeatherBoards(dateKey);
+  } else {
+    return;
+  }
+  renderWeatherDateButtons(dateKey);
+  renderHistoricalWeatherBanners(dateKey);
 }
 
 function renderWeatherDateButton(button, employee, dateKey = getActiveDateKey()) {
@@ -9407,12 +9419,15 @@ function clearAuthRuntimeState() {
   authState.passwordRecoveryMode = false;
   authState.applyingRemote = false;
   authState.visibleWorklogsLoading = false;
+  clearTimeout(authState.visibleWorklogRefreshTimer);
+  authState.visibleWorklogRefreshTimer = null;
   authState.saveTimers?.forEach((timer) => clearTimeout(timer));
   authState.saveTimers = new Map();
   authState.remoteSnapshotInFlight = new Map();
   authState.remoteSnapshotQueued = new Set();
   clearInterval(authState.visibleWorklogsTimer);
   authState.visibleWorklogsTimer = null;
+  authState.visibleWorklogLastCheckedAt = new Map();
   authState.visibleWorklogFingerprints = new Map();
   authState.dagymPtScheduleMonthCache = new Map();
   authState.dagymSyncHealthCache = new Map();
@@ -10535,9 +10550,10 @@ function createRemoteCoworkerEmployee(row = {}) {
 
 async function refreshVisibleStaffWorklogsForActiveDate(options = {}) {
   if (!supabaseClient || !authState.user || !canAccessAllWorklogs() || authState.visibleWorklogsLoading || isEditingDailyField()) return;
+  const dateKey = getActiveDateKey();
+  if (isVisibleWorklogRefreshFresh(dateKey, options)) return;
   authState.visibleWorklogsLoading = true;
   try {
-    const dateKey = getActiveDateKey();
     const worklogsChanged = await loadVisibleStaffWorklogsForDate(dateKey);
     if (dateKey !== getActiveDateKey()) return;
     let refreshedSchedule = false;
@@ -10557,11 +10573,45 @@ async function refreshVisibleStaffWorklogsForActiveDate(options = {}) {
     else renderWorklogOverview();
   } finally {
     authState.visibleWorklogsLoading = false;
+    markVisibleWorklogRefreshChecked(dateKey);
   }
 }
 
 function isGeneralEmployeeWorklogView(view = activeView) {
   return ["bangju-log", "beyond-log"].includes(view);
+}
+
+function isVisibleWorklogRefreshFresh(dateKey = getActiveDateKey(), options = {}) {
+  if (options.force || options.forceDagym) return false;
+  const checkedAt = Number(authState.visibleWorklogLastCheckedAt?.get(dateKey) || 0);
+  // 메뉴를 연달아 이동할 때 동일 날짜·동일 권한 범위의 원격 원장을 다시
+  // 가져오지 않습니다. 입력 저장과 60초 폴링은 이 짧은 창과 독립적으로 유지됩니다.
+  return checkedAt > 0 && Date.now() - checkedAt < 12 * 1000;
+}
+
+function markVisibleWorklogRefreshChecked(dateKey = getActiveDateKey()) {
+  authState.visibleWorklogLastCheckedAt ||= new Map();
+  authState.visibleWorklogLastCheckedAt.set(dateKey, Date.now());
+}
+
+function scheduleActiveWorklogRefresh() {
+  const view = activeView;
+  const dateKey = getActiveDateKey();
+  const canRefreshView = view === "fitness-log"
+    || view === "worklog-overview"
+    || (isGeneralEmployeeWorklogView(view) && canAccessAllWorklogs());
+  if (!authState.session || !canRefreshView) return;
+  clearTimeout(authState.visibleWorklogRefreshTimer);
+  // 화면을 먼저 전환한 후 짧게 양보해, 원격 조회 시작이 메뉴 클릭의 첫
+  // 페인트를 막지 않도록 합니다. 빠른 연속 이동은 마지막 화면 하나만 갱신합니다.
+  authState.visibleWorklogRefreshTimer = window.setTimeout(() => {
+    authState.visibleWorklogRefreshTimer = null;
+    if (activeView !== view || getActiveDateKey() !== dateKey || document.visibilityState !== "visible") return;
+    const refresh = canAccessAllWorklogs()
+      ? refreshVisibleStaffWorklogsForActiveDate()
+      : refreshCoworkerWorklogsForActiveDate();
+    Promise.resolve(refresh).catch(() => {});
+  }, 80);
 }
 
 function startVisibleWorklogPolling() {
@@ -10576,11 +10626,12 @@ function startVisibleWorklogPolling() {
   }, 60 * 1000);
 }
 
-async function refreshCoworkerWorklogsForActiveDate() {
+async function refreshCoworkerWorklogsForActiveDate(options = {}) {
   if (!supabaseClient || !authState.user || canAccessAllWorklogs() || !isProfileApproved() || authState.visibleWorklogsLoading || isEditingDailyField()) return;
+  const dateKey = getActiveDateKey();
+  if (isVisibleWorklogRefreshFresh(dateKey, options)) return;
   authState.visibleWorklogsLoading = true;
   try {
-    const dateKey = getActiveDateKey();
     const worklogsChanged = await loadCoworkerWorklogsForDate(dateKey);
     if (dateKey !== getActiveDateKey()) return;
     let refreshedSchedule = false;
@@ -10595,6 +10646,7 @@ async function refreshCoworkerWorklogsForActiveDate() {
     renderEntries();
   } finally {
     authState.visibleWorklogsLoading = false;
+    markVisibleWorklogRefreshChecked(dateKey);
   }
 }
 
@@ -11100,16 +11152,24 @@ function renderEmployeeSelect() {
 
 function renderEntries() {
   if (!isActiveRenderView("bangju-log", "beyond-log", "fitness-log")) return;
+  // 일반 업무일지와 피트니스 센터는 각각 월간 집계·공통보드의 비용이 큽니다.
+  // 이전에는 한 화면을 열 때 상대 화면까지 함께 전체 렌더링하여 메뉴 전환이
+  // 늦어졌습니다. 현재 활성 화면의 DOM과 계산만 갱신합니다.
+  if (activeView === "fitness-log") {
+    renderFitnessWorklog();
+    refreshCurrentTimeIndicators();
+    return;
+  }
+
   const log = getSelectedLog();
   normalizeEmployeeLogRows(log);
   renderWorklogToday(log);
   renderSharedWorklogPanels(log);
-  renderFitnessWorklog(log);
   renderEmployeeDetailFields();
   renderClockPanel();
   renderEmployeeTitle();
   renderWorklogIdentityBadges();
-  renderWeatherWidgets();
+  renderWeatherWidgets(activeView);
   renderDateNav();
   renderTodayContext();
   renderRepresentativeEmployeeAnalysis(activeView);
@@ -20474,6 +20534,12 @@ function renderActivitySmartInbox() {
 
 function renderReport() {
   if (!isActiveRenderView("bangju-log", "beyond-log", "fitness-log", "report")) return;
+  // 보고서 탭과 미리보기는 무거운 아카이브·백업·전달 보드를 생성합니다.
+  // 업무일지 입력/메뉴 이동 때 숨겨진 보고서 DOM까지 다시 만들지 않고,
+  // 실제 보고서 화면 또는 열린 미리보기에서만 최신화합니다.
+  const worklogReportSheet = document.getElementById("worklogReportSheet");
+  const reportSurfaceOpen = activeView === "report" || Boolean(worklogReportSheet && !worklogReportSheet.hidden);
+  if (!reportSurfaceOpen) return;
   const employee = getSelectedEmployee();
   const log = getSelectedLog();
   const tasks = (log.tasks || []).filter((task) => task.text.trim());
@@ -24579,17 +24645,7 @@ function switchView(view, options = {}) {
   dockGlobalHeaderActions(panelView);
   applyCurrentWorklogPermissionState(view);
   if (view === "fitness-log") window.setTimeout(() => showFitnessPageToast(), 80);
-  if (!options.skipRemoteRefresh && view === "fitness-log" && authState.session) {
-    if (canAccessAllWorklogs()) refreshVisibleStaffWorklogsForActiveDate();
-    else refreshCoworkerWorklogsForActiveDate();
-  }
-  if (!options.skipRemoteRefresh && view === "worklog-overview") {
-    if (canAccessAllWorklogs()) refreshVisibleStaffWorklogsForActiveDate();
-    else refreshCoworkerWorklogsForActiveDate();
-  }
-  if (!options.skipRemoteRefresh && isGeneralEmployeeWorklogView(view) && authState.session && canAccessAllWorklogs()) {
-    refreshVisibleStaffWorklogsForActiveDate();
-  }
+  if (!options.skipRemoteRefresh) scheduleActiveWorklogRefresh();
 }
 
 function getActiveViewPanel(panelView = worklogViewAliases[activeView] || activeView) {
