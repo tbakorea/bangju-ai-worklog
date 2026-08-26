@@ -1975,7 +1975,31 @@ async function checkDelegatedPermissionMenus(browser) {
     state.profile.accessPreset = "employee";
     normalizeState();
     switchView("staff");
-    return JSON.stringify({ worklogAll, staffOnly, laborApproval, pinnedAccount, guardedView: document.body.dataset.activeView });
+    const guardedView = document.body.dataset.activeView;
+    authState.user = { id: "executive-delegate-user", email: "delegate@example.com" };
+    state.profile = {
+      ...defaultProfile,
+      name: "대표대행 직원",
+      role: "대표 대행",
+      org: "(주)방주",
+      workplace: "본사",
+      email: "delegate@example.com",
+      approvalStatus: "approved",
+      accessPreset: "executive_delegate",
+      permissions: {}
+    };
+    normalizeState();
+    switchView(getInitialLandingView());
+    const executiveDelegate = {
+      activeView: document.body.dataset.activeView,
+      representative: isRepresentativeProfile(),
+      delegate: isRepresentativeDelegateProfile(),
+      overview: canAccessWorklogOverview(),
+      canIssue: canIssueWorklogActionToEmployee("bangju-finance-manager"),
+      canEditOwn: canEditEmployeeSlot("profile-user"),
+      canEditOther: canEditEmployeeSlot("fitness-trainer-1")
+    };
+    return JSON.stringify({ worklogAll, staffOnly, laborApproval, pinnedAccount, guardedView, executiveDelegate });
   })()`));
   const parsed = JSON.parse(matrix);
   if (!parsed.worklogAll.some((label) => label.startsWith("업무") && label.includes("전 직원 업무일지"))
@@ -1993,6 +2017,15 @@ async function checkDelegatedPermissionMenus(browser) {
   }
   if (!parsed.pinnedAccount.some((label) => label.startsWith("업무") && label.includes("전 직원 업무일지"))) {
     fail("fixed fitness account placement must preserve remotely delegated menu permissions", matrix);
+  }
+  if (parsed.executiveDelegate.representative
+    || !parsed.executiveDelegate.delegate
+    || !parsed.executiveDelegate.overview
+    || !parsed.executiveDelegate.canIssue
+    || !parsed.executiveDelegate.canEditOwn
+    || parsed.executiveDelegate.canEditOther
+    || parsed.executiveDelegate.activeView === "worklog-overview") {
+    fail("executive delegates must start in their own editor while retaining scoped overview and action authority", matrix);
   }
   if (parsed.guardedView === "staff") fail("hidden staff route should remain guarded", matrix);
   if (errors.length) fail("delegated permission menu page errors", errors.join(" | "));

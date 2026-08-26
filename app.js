@@ -684,7 +684,7 @@ function isAssignedWorklogEmployee(employee) {
 function isRepresentativeWorklogEmployee(employee = {}) {
   const email = normalizeEmailValue(employee.email || "");
   const role = String(employee.role || "").trim().toLowerCase();
-  return controlTowerEmails.has(email) || /대표|ceo|owner/.test(role);
+  return controlTowerEmails.has(email) || /^(대표|ceo|owner)$/.test(role);
 }
 
 function getAssignedWorklogEmployeeIds(employeeIds = []) {
@@ -2909,9 +2909,11 @@ function getProfileMappedEmployeeId(profile = state.profile || {}) {
   const email = profileEmail || normalizeEmailValue(authState.user?.email || "");
   if (isRetiredFitnessManagerEmail(email)) return "";
   const source = `${profile.org || ""} ${profile.workplace || ""} ${profile.role || ""} ${profile.name || ""} ${profile.nickname || ""} ${profile.primaryWork || ""}`.toLowerCase();
+  const role = String(profile.role || "").trim().toLowerCase();
   const overrideMappedEmployeeId = getProfilePlacementOverride(email)?.mappedEmployeeId;
   if (overrideMappedEmployeeId) return overrideMappedEmployeeId;
-  if (controlTowerEmails.has(email) || /대표|owner|ceo/.test(source)) return "";
+  // 대표 대행은 직원 계정입니다. 실제 대표만 개인 업무일지 슬롯에서 제외합니다.
+  if (controlTowerEmails.has(email) || /^(대표|owner|ceo)$/.test(role)) return "";
   if (/이소미/.test(source) || (!/비제이|종합건설|건설|bj|construction/.test(source) && /재무\s*대리|finance\s*assistant/.test(source))) return "bangju-finance-assistant";
   if (/재무\s*과장|finance\s*manager/.test(source)) return "bangju-finance-manager";
   if (isActiveFitnessManagerEmail(email) || (!email && (/박주홍/.test(source) || /센터장|피트니스.*총괄|fitness.*manager/.test(source)))) return "beyond-fitness-manager";
@@ -3942,6 +3944,38 @@ function getAccessibleWorklogSiteGroupIds(profile = state.profile || {}) {
   return allIds.filter((groupId) => accessible.has(groupId));
 }
 
+function getWorklogSiteGroupIdForEmployee(employeeId = "") {
+  const employee = findEmployeeRecordById(employeeId) || { id: employeeId };
+  const canonicalId = getEmployeeWorklogId(employee) || String(employeeId || "").trim();
+  return getWorklogSiteGroups().find((group) => group.employeeIds.includes(canonicalId))?.id
+    || getStaffSiteGroupForEmployee(employee)?.id
+    || "";
+}
+
+function canIssueWorklogActions() {
+  // 열람만 받은 직원과, 업무지시·미션을 부여할 수 있는 관리자 권한을
+  // 분리합니다. 후자는 승인 권한을 가진 대표 대행/사업장 관리자여야 합니다.
+  return Boolean(
+    authState.user
+    && canAccessWorklogOverview()
+    && hasApprovalAuthority()
+  );
+}
+
+function canIssueWorklogActionToEmployee(employeeId = "") {
+  if (!canIssueWorklogActions()) return false;
+  const groupId = getWorklogSiteGroupIdForEmployee(employeeId);
+  if (!groupId) return false;
+  if (canAccessAllWorklogs()) return true;
+  return getAccessibleWorklogSiteGroupIds().includes(groupId);
+}
+
+function getWorklogActionAuthorityLabel() {
+  if (isRepresentativeProfile()) return "대표 업무지시";
+  if (isRepresentativeDelegateProfile()) return "대표 대행 지시";
+  return "관리자 업무지시";
+}
+
 function getWorklogOverviewGroups() {
   const groups = [
     { id: "bangju", label: "방주", title: "(주)방주", view: "bangju-log", employeeIds: getAssignedWorklogEmployeeIds(bangjuWorklogEmployeeIds) },
@@ -4369,26 +4403,36 @@ function buildOverviewDirectiveSuggestion(employee, log, context = {}) {
 
 function renderOverviewDirectivePanel(employee, log, employeeId, context = {}) {
   if (!canAccessWorklogOverview()) return "";
+  const canIssue = canIssueWorklogActionToEmployee(employeeId);
   const directives = Array.isArray(log.directives) ? log.directives.slice(-3) : [];
+  const assignedMission = getAssignedMissionForEmployee(employee);
   const suggestion = buildOverviewDirectiveSuggestion(employee, log, context);
+  const title = getWorklogActionAuthorityLabel();
+  const visibleItems = [
+    ...(assignedMission.text ? [{ status: "활성 미션", text: assignedMission.text }] : []),
+    ...directives,
+  ].slice(-3);
   return `
-    <section class="overview-directive-panel" aria-label="대표 업무지시">
+    <section class="overview-directive-panel" aria-label="${escapeAttr(title)}">
       <header>
-        <span>대표 업무지시</span>
-        <button type="button" data-overview-directive-suggest="${escapeAttr(employeeId)}">AI 제안</button>
+        <span>${escapeHtml(title)}</span>
+        ${canIssue ? `<button type="button" data-overview-directive-suggest="${escapeAttr(employeeId)}">AI 제안</button>` : `<em>열람 전용</em>`}
       </header>
       <div class="overview-directive-list">
-        ${directives.length ? directives.map((item) => `
+        ${visibleItems.length ? visibleItems.map((item) => `
           <article data-directive-status="${escapeAttr(item.status || "지시")}">
             <b>${escapeHtml(item.status || "지시")}</b>
             <p>${escapeHtml(item.text || "")}</p>
           </article>
         `).join("") : `<p class="overview-directive-empty">${escapeHtml(suggestion)}</p>`}
       </div>
-      <div class="overview-directive-compose">
-        <input type="text" data-overview-directive-input="${escapeAttr(employeeId)}" placeholder="직접 업무지시 입력" />
-        <button type="button" data-overview-directive-add="${escapeAttr(employeeId)}">지시</button>
-      </div>
+      ${canIssue ? `
+        <div class="overview-directive-compose has-mission-action">
+          <input type="text" data-overview-directive-input="${escapeAttr(employeeId)}" placeholder="업무지시 또는 미션 입력" />
+          <button type="button" data-overview-directive-add="${escapeAttr(employeeId)}">지시</button>
+          <button type="button" data-overview-mission-add="${escapeAttr(employeeId)}">미션</button>
+        </div>
+      ` : `<p class="overview-directive-empty">열람 권한입니다. 업무지시와 미션 생성은 승인 권한이 있는 관리자만 할 수 있습니다.</p>`}
     </section>
   `;
 }
@@ -5370,29 +5414,37 @@ function setupWorklogOverviewInteractions(grid, dateKey) {
     });
   });
   grid.querySelectorAll("[data-overview-directive-add]").forEach((button) => {
-    button.addEventListener("click", () => {
+    button.addEventListener("click", async () => {
       const employeeId = button.dataset.overviewDirectiveAdd;
       const input = button.closest(".overview-directive-panel")?.querySelector("[data-overview-directive-input]");
       const text = String(input?.value || "").trim();
       if (!text) return;
-      const log = getEmployeeLogForDate(employeeId, dateKey);
-      log.directives = Array.isArray(log.directives) ? log.directives : [];
-      log.directives.push({ id: `directive-${Date.now()}`, text, status: "지시", by: state.profile?.nickname || state.profile?.name || "대표", createdAt: new Date().toISOString() });
-      saveState();
-      renderWorklogOverview();
+      button.disabled = true;
+      await issueManagedWorklogAction(employeeId, text, "directive");
+      button.disabled = false;
+    });
+  });
+  grid.querySelectorAll("[data-overview-mission-add]").forEach((button) => {
+    button.addEventListener("click", async () => {
+      const employeeId = button.dataset.overviewMissionAdd;
+      const input = button.closest(".overview-directive-panel")?.querySelector("[data-overview-directive-input]");
+      const text = String(input?.value || "").trim();
+      if (!text) return;
+      button.disabled = true;
+      await issueManagedWorklogAction(employeeId, text, "mission");
+      button.disabled = false;
     });
   });
   grid.querySelectorAll("[data-overview-directive-suggest]").forEach((button) => {
-    button.addEventListener("click", () => {
+    button.addEventListener("click", async () => {
       const employeeId = button.dataset.overviewDirectiveSuggest;
       const employee = findEmployeeRecordById(employeeId);
       if (!employee) return;
       const log = getEmployeeLogForDate(employeeId, dateKey);
       const context = getOverviewEmployeeSummaryModel({ id: "" }, employeeId, employee, dateKey);
-      log.directives = Array.isArray(log.directives) ? log.directives : [];
-      log.directives.push({ id: `directive-${Date.now()}`, text: buildOverviewDirectiveSuggestion(employee, log, context), status: "AI 제안", by: "AI 업무지시 에이전트", createdAt: new Date().toISOString() });
-      saveState();
-      renderWorklogOverview();
+      button.disabled = true;
+      await issueManagedWorklogAction(employeeId, buildOverviewDirectiveSuggestion(employee, log, context), "mission");
+      button.disabled = false;
     });
   });
 }
@@ -7123,7 +7175,7 @@ function getRecommendedPermissionPresetForProfile(profile = {}) {
   if (controlTowerEmails.has(email)) return "owner";
   const overridePreset = getProfilePlacementOverride(email)?.accessPreset;
   if (overridePreset) return normalizePermissionPresetKey(overridePreset);
-  if (/임원|총괄/i.test(roleText)) return "executive_delegate";
+  if (/대표\s*대행|대표대리|대행|임원|총괄/i.test(roleText)) return "executive_delegate";
   if (/실장|관리자|센터장|manager/i.test(roleText)) return "site_manager";
   if (/프리랜서|트레이너/i.test(`${roleText} ${profile.employmentType || ""}`)) return "freelance";
   return "employee";
@@ -7189,7 +7241,11 @@ function isRepresentativeProfile() {
   if (isExplicitlySignedOut()) return false;
   const profile = state.profile || {};
   const email = String(authState.user?.email || profile.email || "").trim().toLowerCase();
-  if (controlTowerEmails.has(email)) return true;
+  return controlTowerEmails.has(email);
+}
+
+function isRepresentativeDelegateProfile(profile = state.profile || {}) {
+  if (isExplicitlySignedOut() || isRepresentativeProfile()) return false;
   if (authState.user && (profile.approvalStatus || "pending") !== "approved") return false;
   const set = getProfilePermissionSet(profile);
   return set.presetKey === "executive_delegate" && set.permissions.executiveRoom === true;
@@ -7234,13 +7290,30 @@ function setOwnApprovalPending() {
   }
 }
 
-function getUserWorklogView() {
-  if (canAccessWorklogOverview()) return "worklog-overview";
-  const profile = state.profile || {};
+function getOwnWorklogView(profile = state.profile || {}) {
   const source = `${profile.org || ""} ${profile.workplace || ""} ${profile.primaryWork || ""} ${profile.role || ""}`.toLowerCase();
   if (/피트니스|fitness|센터장|트레이너|인포/.test(source)) return "fitness-log";
   if (/비욘드|beyond|공유|워크베이스|workbase|workbox/.test(source)) return "beyond-log";
   return "bangju-log";
+}
+
+function getUserWorklogView() {
+  // 대표만 통합 현황으로 시작합니다. 권한을 위임받은 직원은 항상 본인
+  // 업무일지 작성 화면에서 하루를 시작하고, 열람은 별도 메뉴로 이동합니다.
+  if (isRepresentativeProfile() && canAccessWorklogOverview()) return "worklog-overview";
+  return getOwnWorklogView();
+}
+
+function resetWorklogLaunchToOwnProfile() {
+  if (!authState.user || isRepresentativeProfile()) return;
+  const ownEmployeeId = getMappedProfileEmployeeId() || "profile-user";
+  state.selectedEmployeeId = ownEmployeeId;
+  todayPageMode = "daily";
+  if (fitnessEmployeeIds.includes(ownEmployeeId)) {
+    state.fitnessWritableEmployeeId = ownEmployeeId;
+    state.fitnessLogPage = 1;
+    state.fitnessLogPageId = ownEmployeeId;
+  }
 }
 
 function getInitialLandingView() {
@@ -7825,9 +7898,11 @@ function normalizeAssignedMissionRecord(value, visible = true) {
 
 function getEmployeeSourceProfileRow(employee = {}) {
   const email = String(employee.email || "").trim().toLowerCase();
+  const employeeId = getEmployeeWorklogId(employee) || String(employee.id || "").trim();
   return (authState.approvalRows || []).find((row) => {
     if (employee.sourceProfileId && row.id === employee.sourceProfileId) return true;
     if (email && String(row.email || "").trim().toLowerCase() === email) return true;
+    if (employeeId && getProfileMappedEmployeeId(remoteRowToProfile(row)) === employeeId) return true;
     return false;
   }) || null;
 }
@@ -7873,6 +7948,68 @@ function getAssignedMissionForEmployee(employee = {}) {
   }
   const localMission = state.profile?.manualSettings?.missionsByEmployee?.[employee.id];
   return normalizeAssignedMissionRecord(localMission);
+}
+
+function buildManagedWorklogActionText(currentText = "", actionText = "", type = "directive") {
+  const cleanAction = String(actionText || "").replace(/\s+/g, " ").trim();
+  if (!cleanAction) return String(currentText || "").trim();
+  const actionLabel = type === "mission" ? "AI 미션" : "업무지시";
+  const line = `[${actionLabel} · ${formatShortDate(getActiveDateKey())}] ${cleanAction}`;
+  const existing = String(currentText || "")
+    .split(/\n+/)
+    .map((item) => item.trim())
+    .filter(Boolean)
+    .filter((item) => item !== line);
+  return [line, ...existing].slice(0, 5).join("\n");
+}
+
+async function issueManagedWorklogAction(employeeId = "", text = "", type = "directive") {
+  const actionText = String(text || "").trim();
+  if (!actionText) {
+    showAppToast("업무지시 또는 미션 내용을 입력해주세요");
+    return false;
+  }
+  if (!canIssueWorklogActionToEmployee(employeeId)) {
+    showAppToast("이 직원에게 업무지시를 보낼 권한이 없습니다");
+    return false;
+  }
+  const employee = findEmployeeRecordById(employeeId);
+  const sourceRow = employee ? getEmployeeSourceProfileRow(employee) : null;
+  if (!employee || !sourceRow?.id || !supabaseClient) {
+    showAppToast("직원 계정 연동 정보를 확인한 뒤 다시 시도해주세요");
+    return false;
+  }
+  const current = getAssignedMissionForEmployee(employee);
+  const nextText = buildManagedWorklogActionText(current.text, actionText, type);
+  const now = new Date().toISOString();
+  const payload = {
+    assigned_mission: nextText,
+    assigned_mission_visible: true,
+    assigned_mission_updated_by: authState.user?.id || null,
+    assigned_mission_updated_at: now,
+    updated_at: now,
+  };
+  const { error, payload: savedPayload } = await updateProfileRowWithSchemaFallback(sourceRow.id, payload);
+  if (error) {
+    showAppToast(`업무지시 저장 실패: ${error.message}`);
+    return false;
+  }
+  const nextRow = { ...sourceRow, ...savedPayload };
+  authState.approvalRows = (authState.approvalRows || []).map((row) => row.id === sourceRow.id ? nextRow : row);
+  applyApprovedProfileRowLocally(nextRow, getEmployeeWorklogId(employee));
+  const log = getEmployeeLogForDate(employeeId, getActiveDateKey());
+  log.directives = Array.isArray(log.directives) ? log.directives : [];
+  log.directives.push({
+    id: `directive-${Date.now()}`,
+    text: actionText,
+    status: type === "mission" ? "AI 미션" : "지시",
+    by: getWorklogActionAuthorityLabel(),
+    createdAt: now,
+  });
+  saveState();
+  renderWorklogOverview();
+  showAppToast(type === "mission" ? "직원 AI 미션을 배정했습니다" : "직원 업무지시를 전달했습니다");
+  return true;
 }
 
 function renderManualSettings() {
@@ -9574,6 +9711,7 @@ async function applySession(session) {
     return;
   }
   resetStartupDateToToday();
+  resetWorklogLaunchToOwnProfile();
   // Show the cached/local worklog immediately. Remote datasets continue to
   // hydrate in the background instead of leaving the employee on a blank
   // screen for the full sequence of profile, weather, labor and schedule
@@ -9586,6 +9724,7 @@ async function applySession(session) {
   scheduleRemoteSave(0);
   startApprovalNotificationPolling();
   startVisibleWorklogPolling();
+  resetWorklogLaunchToOwnProfile();
   renderAll();
   renderAuthStatus();
   const resolvedLandingView = getInitialLandingView();
@@ -18785,8 +18924,10 @@ function getEmployeePermissionProfile(employee, group) {
 }
 
 function getRecommendedPermissionPresetForEmployee(employee, group) {
+  const role = String(employee.role || "").trim().toLowerCase();
   const roleText = `${employee.role || ""} ${employee.primaryWork || ""}`;
-  if (/대표/.test(roleText)) return "owner";
+  if (/^(대표|ceo|owner)$/.test(role)) return "owner";
+  if (/대표\s*대행|대표대리|대행|임원|총괄/.test(roleText)) return "executive_delegate";
   if (/총괄|실장/.test(roleText)) return "operations_admin";
   if (/센터장|manager|관리자/i.test(roleText)) return "site_manager";
   if (/트레이너|프리랜서/.test(roleText) || employee.employmentType === "프리랜서") return "freelance";

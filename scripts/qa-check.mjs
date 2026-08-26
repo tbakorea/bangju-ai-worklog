@@ -349,6 +349,18 @@ check(
 );
 
 check(
+  "representative delegates retain their own worklog editor and scoped action authority",
+  /function isRepresentativeProfile\(\)[\s\S]{0,240}return controlTowerEmails\.has\(email\);/.test(js)
+    && /function isRepresentativeDelegateProfile[\s\S]{0,420}presetKey === "executive_delegate"/.test(js)
+    && /function getUserWorklogView\(\)[\s\S]{0,360}isRepresentativeProfile\(\) && canAccessWorklogOverview\(\)[\s\S]{0,160}return getOwnWorklogView\(\);/.test(js)
+    && js.includes("function resetWorklogLaunchToOwnProfile")
+    && /function canIssueWorklogActionToEmployee[\s\S]{0,360}getAccessibleWorklogSiteGroupIds\(\)\.includes\(groupId\)/.test(js)
+    && js.includes("data-overview-mission-add")
+    && js.includes("issueManagedWorklogAction"),
+  "delegates must start with their own editable log, then act only inside their worklog viewing scope"
+);
+
+check(
   "delegated permissions persist in protected profile fields",
   /accessPreset: row\.access_preset \|\| "employee"/.test(js)
     && /async function persistEmployeePermissionOverride[\s\S]{0,1200}access_preset:[\s\S]{0,120}permissions/.test(js)
