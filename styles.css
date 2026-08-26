@@ -9804,6 +9804,135 @@ textarea:focus-visible {
   font-weight: 950;
 }
 
+.fitness-revenue-benchmark {
+  display: grid;
+  gap: 10px;
+  border: 1px solid rgba(15, 59, 46, 0.17);
+  background:
+    linear-gradient(135deg, rgba(237, 244, 224, 0.86), rgba(252, 252, 247, 0.96) 56%),
+    var(--nordic-sheet);
+  margin: 0 0 14px;
+  padding: 12px;
+}
+
+.fitness-revenue-benchmark > header {
+  display: flex;
+  align-items: start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.fitness-revenue-benchmark > header > div {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.fitness-revenue-benchmark > header span {
+  color: rgba(15, 59, 46, 0.66);
+  font-size: 10px;
+  font-weight: 950;
+  letter-spacing: 0.1em;
+}
+
+.fitness-revenue-benchmark > header strong {
+  color: var(--ink);
+  font-size: 18px;
+  font-weight: 950;
+}
+
+.fitness-revenue-benchmark > header p {
+  overflow: hidden;
+  margin: 0;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 780;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.fitness-revenue-benchmark > header em {
+  flex: 0 0 auto;
+  border: 1px solid rgba(15, 59, 46, 0.17);
+  border-radius: 999px;
+  background: rgba(255, 254, 250, 0.8);
+  color: var(--fitness-green);
+  padding: 5px 8px;
+  font-size: 10px;
+  font-style: normal;
+  font-weight: 950;
+  white-space: nowrap;
+}
+
+.fitness-revenue-benchmark-kpis {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  border: 1px solid rgba(15, 59, 46, 0.13);
+}
+
+.fitness-revenue-benchmark-kpis article {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+  border-right: 1px solid rgba(15, 59, 46, 0.13);
+  background: rgba(255, 254, 250, 0.74);
+  padding: 8px;
+}
+
+.fitness-revenue-benchmark-kpis article:last-child {
+  border-right: 0;
+}
+
+.fitness-revenue-benchmark-kpis article.is-attention {
+  background: rgba(255, 243, 229, 0.86);
+}
+
+.fitness-revenue-benchmark-kpis span,
+.fitness-revenue-benchmark-kpis small {
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 820;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.fitness-revenue-benchmark-kpis strong {
+  overflow: hidden;
+  color: var(--fitness-green);
+  font-size: clamp(16px, 1.8vw, 21px);
+  font-weight: 950;
+  letter-spacing: -0.04em;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.fitness-revenue-benchmark-actions {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.fitness-revenue-benchmark-actions article {
+  border-left: 4px solid var(--fitness-green);
+  background: rgba(255, 254, 250, 0.62);
+  padding: 7px 9px;
+}
+
+.fitness-revenue-benchmark-actions b {
+  color: var(--ink);
+  font-size: 12px;
+  font-weight: 950;
+}
+
+.fitness-revenue-benchmark-actions p {
+  margin: 4px 0 0;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 760;
+  line-height: 1.4;
+}
+
 .fitness-os-layout {
   display: grid;
   grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr);
@@ -9928,6 +10057,54 @@ textarea:focus-visible {
 
   .fitness-growth-loop article {
     padding: 9px;
+  }
+
+  .fitness-revenue-benchmark {
+    gap: 8px;
+    margin-bottom: 9px;
+    padding: 9px;
+  }
+
+  .fitness-revenue-benchmark > header {
+    gap: 8px;
+  }
+
+  .fitness-revenue-benchmark > header strong {
+    font-size: 16px;
+  }
+
+  .fitness-revenue-benchmark > header p {
+    white-space: normal;
+  }
+
+  .fitness-revenue-benchmark-kpis {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .fitness-revenue-benchmark-kpis article {
+    border-bottom: 1px solid rgba(15, 59, 46, 0.13);
+  }
+
+  .fitness-revenue-benchmark-kpis article:nth-child(2n) {
+    border-right: 0;
+  }
+
+  .fitness-revenue-benchmark-kpis article:last-child {
+    grid-column: 1 / -1;
+    border-bottom: 0;
+  }
+
+  .fitness-revenue-benchmark-kpis strong {
+    font-size: 17px;
+  }
+
+  .fitness-revenue-benchmark-actions {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 6px;
+  }
+
+  .fitness-revenue-benchmark-actions p {
+    font-size: 10px;
   }
 
   .fitness-os-layout {

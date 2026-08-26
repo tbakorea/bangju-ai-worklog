@@ -21,6 +21,23 @@ const attendanceEnabledViews = new Set(["worklog", "fitness-log", "bangju-log", 
 const controlTowerEmails = new Set(["j3010@ymail.com"]);
 const activeFitnessManagerEmail = "pjhong0@naver.com";
 const retiredFitnessManagerEmails = new Set(["pjhong1@naver.com", "pjhong9@naver.com"]);
+// 제공받은 비욘드피트니스 매출 원장(2025년, 2026년)을 운영 기준선으로만 사용합니다.
+// 다짐의 실시간/일별 수집 데이터와 섞지 않아, 최신 매출로 오인하거나 이중 집계하지 않습니다.
+const fitnessRevenueLedgerReference = Object.freeze({
+  sourceLabel: "비욘드피트니스 매출현황 원장",
+  sourcePeriod: "2025년 · 2026년 1~7월",
+  throughMonth: 7,
+  year2025: Object.freeze({
+    monthlySales: Object.freeze([33265000, 19979000, 20544000, 25969000, 19579000, 22925000, 22679000, 28727000, 24290000, 22018000, 28251000, 21997000]),
+    categories: Object.freeze({ pt: 59785000, membership: 93024000, dayPass: 1649000 }),
+  }),
+  year2026: Object.freeze({
+    monthlySales: Object.freeze([42144000, 24369000, 23587000, 18111000, 33212000, 23660000, 24697000]),
+    categories: Object.freeze({ pt: 99246000, membership: 77448600, dayPass: 953500 }),
+    newRevenue: 74521300,
+    renewalRevenue: 115258600,
+  }),
+});
 let activeView = "auth";
 let attendancePromptLastAt = 0;
 let todayPageMode = "daily";
@@ -20023,6 +20040,90 @@ function numberValue(value) {
   return Number.isFinite(number) ? number : 0;
 }
 
+function getFitnessRevenueLedgerAnalysis(monthlyTarget = 30000000) {
+  const reference = fitnessRevenueLedgerReference;
+  const previousYtd = reference.year2025.monthlySales
+    .slice(0, reference.throughMonth)
+    .reduce((sum, value) => sum + numberValue(value), 0);
+  const currentYtd = reference.year2026.monthlySales
+    .reduce((sum, value) => sum + numberValue(value), 0);
+  const changeRate = (current, previous) => previous
+    ? Math.round(((current - previous) / previous) * 1000) / 10
+    : 0;
+  const categories = [
+    { key: "pt", label: "유료 PT", current: reference.year2026.categories.pt, previous: reference.year2025.categories.pt },
+    { key: "membership", label: "일반회원권", current: reference.year2026.categories.membership, previous: reference.year2025.categories.membership },
+    { key: "dayPass", label: "일일권", current: reference.year2026.categories.dayPass, previous: reference.year2025.categories.dayPass },
+  ].map((item) => ({ ...item, changeRate: changeRate(item.current, item.previous) }));
+  const newRevenue = numberValue(reference.year2026.newRevenue);
+  const renewalRevenue = numberValue(reference.year2026.renewalRevenue);
+  const monthlyAverage = Math.round(currentYtd / reference.throughMonth);
+  const resolvedTarget = Math.max(0, numberValue(monthlyTarget));
+  const targetGap = Math.max(0, resolvedTarget - monthlyAverage);
+  return {
+    sourceLabel: reference.sourceLabel,
+    sourcePeriod: reference.sourcePeriod,
+    throughMonth: reference.throughMonth,
+    currentYtd,
+    previousYtd,
+    yoyRate: changeRate(currentYtd, previousYtd),
+    monthlyAverage,
+    target: resolvedTarget,
+    targetGap,
+    categories,
+    newRevenue,
+    renewalRevenue,
+    newShare: currentYtd ? Math.round((newRevenue / currentYtd) * 1000) / 10 : 0,
+    renewalShare: currentYtd ? Math.round((renewalRevenue / currentYtd) * 1000) / 10 : 0,
+  };
+}
+
+function formatFitnessChangeRate(value = 0) {
+  const rate = numberValue(value);
+  return `${rate > 0 ? "+" : ""}${rate.toLocaleString("ko-KR", { maximumFractionDigits: 1 })}%`;
+}
+
+function renderFitnessRevenueBenchmark(revenue) {
+  const node = document.getElementById("fitnessRevenueBenchmark");
+  if (!node) return;
+  const analysis = getFitnessRevenueLedgerAnalysis(revenue?.floorTarget);
+  const category = Object.fromEntries(analysis.categories.map((item) => [item.key, item]));
+  const ytdTargetHint = analysis.targetGap
+    ? `월 평균 기준 ${formatFitnessBriefMoney(analysis.targetGap)} 추가 필요`
+    : "월 목표 기준선 충족";
+  node.innerHTML = `
+    <header>
+      <div>
+        <span>REVENUE LEDGER BASELINE</span>
+        <strong>매출 구조 기준선</strong>
+        <p>${escapeHtml(analysis.sourceLabel)} · ${escapeHtml(analysis.sourcePeriod)} · 실시간 다짐 매출과 별도 표시</p>
+      </div>
+      <em>기준월 2026.07</em>
+    </header>
+    <div class="fitness-revenue-benchmark-kpis">
+      <article><span>2026 누계</span><strong>${escapeHtml(formatFitnessBriefMoney(analysis.currentYtd))}</strong><small>1~${analysis.throughMonth}월</small></article>
+      <article><span>전년 동기</span><strong>${escapeHtml(formatFitnessChangeRate(analysis.yoyRate))}</strong><small>${escapeHtml(formatFitnessBriefMoney(analysis.previousYtd))} → 누계 성장</small></article>
+      <article><span>유료 PT</span><strong>${escapeHtml(formatFitnessChangeRate(category.pt?.changeRate))}</strong><small>${escapeHtml(formatFitnessBriefMoney(category.pt?.current))} · 성장 동력</small></article>
+      <article class="is-attention"><span>회원권 · 일일권</span><strong>${escapeHtml(formatFitnessChangeRate(category.membership?.changeRate))} · ${escapeHtml(formatFitnessChangeRate(category.dayPass?.changeRate))}</strong><small>신규 유입·체험 전환 보강</small></article>
+      <article><span>신규 · 재등록</span><strong>${analysis.newShare}% · ${analysis.renewalShare}%</strong><small>매출 구성 비중</small></article>
+    </div>
+    <div class="fitness-revenue-benchmark-actions">
+      <article>
+        <b>01 · 유입 회복</b>
+        <p>일일권 감소를 체험 신청·당일 상담·일반회원권 전환으로 연결하고, 유입 경로와 상담 결과를 같은 날 기록합니다.</p>
+      </article>
+      <article>
+        <b>02 · PT 성장 유지</b>
+        <p>PT 후 다음 예약과 재등록 안내를 바로 남겨, 유료 PT 성장분이 노쇼·이탈로 사라지지 않도록 관리합니다.</p>
+      </article>
+      <article>
+        <b>03 · 월 목표 실행</b>
+        <p>${escapeHtml(ytdTargetHint)}. 목표 차액은 담당자별 상담·체험·재등록 행동으로 분해해 오늘 지침에서 결과까지 확인합니다.</p>
+      </article>
+    </div>
+  `;
+}
+
 function getFitnessOpsSummary() {
   const logs = Object.values(state.employeeLogs?.[getActiveDateKey()] || {});
   return logs.reduce((summary, log) => {
@@ -20155,6 +20256,8 @@ function buildFitnessOperatingGrowthLoop(revenue, dateKey = getActiveDateKey()) 
   const noShowRate = numberValue(analysis?.ratios?.noShowRate);
   const renewalCoverage = numberValue(analysis?.ratios?.renewalCoverage);
   const dataQuality = analysis?.quality === "complete" ? "완전" : analysis?.quality === "partial" ? "일부" : "대기";
+  const ledger = getFitnessRevenueLedgerAnalysis(revenue?.floorTarget);
+  const ledgerMembership = ledger.categories.find((item) => item.key === "membership");
   return [
     {
       key: "member",
@@ -20181,10 +20284,10 @@ function buildFitnessOperatingGrowthLoop(revenue, dateKey = getActiveDateKey()) 
       eyebrow: "OPERATIONS · PROFIT",
       title: "매출과 운영 수익성",
       value: `${revenue.paceRate}%`,
-      meta: `${revenue.basisLabel} · 데이터 ${dataQuality} · 노쇼 ${noShowRate}%`,
+      meta: `${revenue.basisLabel} · 원장 PT ${formatFitnessChangeRate(ledger.categories.find((item) => item.key === "pt")?.changeRate)} · 회원권 ${formatFitnessChangeRate(ledgerMembership?.changeRate)}`,
       action: revenue.gap
         ? `남은 기간 하루 ${Math.round(revenue.dailyNeeded / 10000).toLocaleString()}만원 목표를 상담·체험·재등록 행동으로 배정합니다.`
-        : "목표 페이스를 유지하면서 PT 출석률·재등록률·객단가를 함께 관리합니다.",
+        : `목표 페이스를 유지하면서 PT 출석률·재등록률·객단가를 함께 관리합니다. 다짐 데이터 상태는 ${dataQuality}, 노쇼는 ${noShowRate}%입니다.`,
       tone: revenue.gap || revenue.isStale ? "attention" : "stable",
       destination: "operations",
     },
@@ -20235,7 +20338,12 @@ function renderFitnessDashboard() {
     ["90일 목표", `${Math.round(revenue.target90 / 10000).toLocaleString()}만`, "3개월"],
   ].map(([label, value, meta]) => `<article><span>${label}</span><strong>${value}</strong><em>${meta}</em></article>`).join("");
   renderFitnessOperatingGrowthLoop(revenue);
+  renderFitnessRevenueBenchmark(revenue);
 
+  const ledger = getFitnessRevenueLedgerAnalysis(revenue.floorTarget);
+  const ledgerPt = ledger.categories.find((item) => item.key === "pt");
+  const ledgerMembership = ledger.categories.find((item) => item.key === "membership");
+  const ledgerDayPass = ledger.categories.find((item) => item.key === "dayPass");
   const coaching = [
     ["매출 페이스", revenue.isStale || revenue.coverageRate < 80
       ? `다짐 매출자료의 최근 확인일은 ${revenue.latestSourceDate || "미확인"}이며 집계 기준은 ${revenue.basisLabel}입니다. 누락일을 0원으로 간주하지 말고 자료를 갱신한 뒤 상담·체험·재등록 행동을 배정하세요.`
@@ -20246,6 +20354,7 @@ function renderFitnessDashboard() {
     ["운영", summary.shiftNotes.length ? "운영 메모가 있습니다. 마감 전 시설/청결/소모품 조치 여부를 확인하세요." : "오픈·센터관리·마감 체크가 비어 있습니다. 시간별일정에 운영 루틴을 배치하세요."],
     ["관리", summary.specialReports.length ? "특이사항 보고가 있습니다. 고객 민원, 시설, 안전 이슈는 담당자와 처리기한을 지정하세요." : "특이사항이 없더라도 시설·고객·매출 이상 여부를 한 줄로 남기면 인수인계 품질이 올라갑니다."],
     ["수익", ptTotal < ptTarget / 30 ? "PT 수행/상담 기록이 목표 대비 낮습니다. 무료 PT 후 정규 전환 스크립트를 적용하세요." : "PT 활동이 목표 흐름에 있습니다. 전환율과 객단가를 같이 기록하세요."],
+    ["구조", `매출 원장 기준(${ledger.sourcePeriod}) 유료 PT는 ${formatFitnessChangeRate(ledgerPt?.changeRate)} 성장했지만 일반회원권 ${formatFitnessChangeRate(ledgerMembership?.changeRate)}, 일일권 ${formatFitnessChangeRate(ledgerDayPass?.changeRate)}입니다. 체험→상담→회원권 전환과 PT 다음 예약을 같은 흐름으로 관리하세요.`],
   ];
   document.getElementById("fitnessCoachList").innerHTML = coaching.map(([title, text]) => `<article><b>${title}</b><span>${text}</span></article>`).join("");
 
