@@ -2186,6 +2186,126 @@ async function checkKimSungminBeyondFitnessReadScope(browser) {
   await page.close();
 }
 
+async function checkBeyondCompanyPeerWorklogSharing(browser) {
+  const cases = [
+    {
+      key: "kim",
+      userId: "qa-kim-sungmin-peer",
+      email: "tbakorea@gmail.com",
+      ownId: "beyond-company-leader",
+      peerId: "beyond-shared-manager",
+      peerEmail: "l9900820@naver.com",
+      peerName: "추소영",
+      peerWorkplace: "공유사업부",
+      peerRole: "매니저",
+      peerWork: "공유오피스, 공유창고, 고객관리",
+      marker: "추소영 공유사업부 동료 업무",
+      expectFitness: true,
+    },
+    {
+      key: "choo",
+      userId: "qa-choo-soyoung-peer",
+      email: "l9900820@naver.com",
+      ownId: "beyond-shared-manager",
+      peerId: "beyond-company-leader",
+      peerEmail: "tbakorea@gmail.com",
+      peerName: "김성민",
+      peerWorkplace: "TBA studio",
+      peerRole: "실장",
+      peerWork: "TBA studio 운영, 인월바스 시스템 시공, 인테리어 시행",
+      marker: "김성민 TBA 동료 업무",
+      expectFitness: false,
+    },
+  ];
+
+  for (const item of cases) {
+    const { page, errors } = await openPage(browser, { width: 1024, height: 768 });
+    const raw = await page.evaluate((entry) => window.eval(`(() => {
+      const dateKey = "2026-08-26";
+      const entry = ${JSON.stringify(entry)};
+      authState.user = { id: entry.userId, email: entry.email };
+      // Start from deliberately stale data so both fixed account placements
+      // must be reapplied before coworker sharing is evaluated.
+      state.profile = {
+        ...state.profile,
+        email: entry.email,
+        name: "오래된 프로필",
+        org: "미분류",
+        workplace: "본사",
+        role: "대표",
+        primaryWork: "기획",
+        approvalStatus: "approved",
+        accessPreset: "owner",
+        permissions: { worklogAll: true }
+      };
+      state.selectedDateKey = dateKey;
+      state.employeeLogs[dateKey] = {};
+      normalizeState();
+      enforceAuthProfileBoundary(authState.user);
+      normalizeProfilePlacementForAuth();
+      enforceAuthProfileBoundary(authState.user);
+
+      const ownId = getOwnEditableEmployeeIdForView("beyond-log");
+      const peerProfile = {
+        email: entry.peerEmail,
+        name: entry.peerName,
+        nickname: entry.peerName,
+        org: "(주)비욘드컴퍼니",
+        workplace: entry.peerWorkplace,
+        role: entry.peerRole,
+        primaryWork: entry.peerWork,
+        approvalStatus: "approved"
+      };
+      const peer = findEmployeeRecordById(entry.peerId);
+      const peerLog = createEmployeeLog({ ...peer, id: "profile-user" }, peerProfile, dateKey);
+      peerLog.tasks[0].text = entry.marker;
+      mergeVisibleStaffWorklogStates([{
+        user_id: "remote-" + entry.key + "-peer",
+        updated_at: "2026-08-26T09:00:00.000Z",
+        state: {
+          profile: peerProfile,
+          ownerEmployeeId: entry.peerId,
+          ownerWorklogVersion: 2,
+          ownerWorklog: peerLog,
+          employeeLogs: { [dateKey]: { "profile-user": peerLog } }
+        }
+      }], dateKey);
+
+      state.selectedEmployeeId = entry.ownId;
+      switchView("beyond-log");
+      renderEntries();
+      const coworkerIds = getCoworkerEmployeesForWorklog(findEmployeeRecordById(entry.ownId), "beyond-log")
+        .map(getEmployeeWorklogId);
+      state.selectedEmployeeId = entry.peerId;
+      renderEntries();
+      applyCurrentWorklogPermissionState("beyond-log");
+      return JSON.stringify({
+        ownId,
+        activeView: document.body.dataset.activeView,
+        accessibleGroups: getAccessibleWorklogSiteGroupIds(),
+        coworkerIds,
+        peerText: getEmployeeLogForDate(entry.peerId, dateKey).tasks?.[0]?.text || "",
+        peerReadonly: !canEditCurrentWorklog("beyond-log")
+          && Boolean(document.querySelector("#view-today .task-text-input")?.disabled),
+        ownEditable: canEditEmployeeSlot(entry.ownId),
+        canEditPeer: canEditEmployeeSlot(entry.peerId)
+      });
+    })()`), item);
+    const result = JSON.parse(raw);
+    if (result.ownId !== item.ownId || result.activeView !== "beyond-log"
+      || !result.accessibleGroups.includes("beyond")
+      || result.accessibleGroups.includes("bangju")
+      || Boolean(result.accessibleGroups.includes("fitness")) !== item.expectFitness
+      || !result.coworkerIds.includes(item.peerId)
+      || result.peerText !== item.marker
+      || !result.peerReadonly || !result.ownEditable || result.canEditPeer) {
+      fail("Beyond Company peer worklogs should be mutually visible read-only", JSON.stringify({ item, result }));
+    }
+    if (errors.length) fail("Beyond Company peer worklog page errors", errors.join(" | "));
+    await page.close();
+  }
+}
+
 async function checkUnmappedEmployeeDoesNotInheritFitnessManager(browser) {
   const page = await browser.newPage({ viewport: { width: 390, height: 844 } });
   const errors = [];
@@ -6097,6 +6217,7 @@ async function checkFitnessPaidPtCanonicalLedger(browser) {
     await checkNonControlRoleTextDoesNotBecomeRepresentative(browser);
     await checkDelegatedPermissionMenus(browser);
     await checkKimSungminBeyondFitnessReadScope(browser);
+    await checkBeyondCompanyPeerWorklogSharing(browser);
     await checkUnmappedEmployeeDoesNotInheritFitnessManager(browser);
     await checkUnclassifiedFitnessEmployeeCanEditOwnProfileWorklog(browser);
     await checkFitnessTrainerCanEditOwnWorklog(browser);

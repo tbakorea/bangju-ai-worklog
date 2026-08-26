@@ -425,6 +425,22 @@ const profilePlacementOverrides = {
     permissions: { worklogSite: true, fitnessStaffRead: true },
     mappedEmployeeId: "beyond-company-leader",
   },
+  "l9900820@naver.com": {
+    org: "(주)비욘드컴퍼니",
+    workplace: "공유사업부",
+    role: "매니저",
+    name: "추소영",
+    nickname: "추소영",
+    primaryWork: "공유오피스, 공유창고, 고객관리",
+    secondaryWork: "비욘드컴퍼니 동료 업무일지 열람",
+    employmentType: "직원",
+    workHours: "09:00-18:00",
+    accessPreset: "employee",
+    // 공유사업부 매니저는 김성민 실장과 같은 비욘드컴퍼니 업무일지를
+    // 열람할 수 있습니다. 출결·수정·보고서 확정은 본인 업무일지에만 남깁니다.
+    permissions: { worklogSite: true, fitnessStaffRead: false },
+    mappedEmployeeId: "beyond-shared-manager",
+  },
 };
 
 function normalizeEmailValue(value = "") {
@@ -2954,6 +2970,7 @@ function getProfileMappedEmployeeId(profile = state.profile || {}) {
   if (/일요|일요일/.test(source)) return "fitness-sunday-info";
   if (/인포|데스크|front|프론트|주중/.test(source)) return "fitness-weekday-info";
   if (/피트니스|fitness/.test(source)) return "";
+  if (/추소영/.test(source)) return "beyond-shared-manager";
   if (/비욘드/.test(source) && /공유|워크베이스|워크박스|창고|오피스|shared|workbase|workbox/.test(source)) return "beyond-shared-manager";
   if (/비욘드/.test(source) && /실장|tba|티비에이|인월|욕실|바스|bath/.test(source)) return "beyond-company-leader";
   return "";
