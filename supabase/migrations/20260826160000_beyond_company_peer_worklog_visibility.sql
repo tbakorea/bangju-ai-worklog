@@ -1,5 +1,13 @@
 begin;
 
+-- Older production projects can predate the delegated-permission fields.
+-- Add them first so the scope repair below remains safe and repeatable.
+alter table public.profiles
+  add column if not exists access_preset text not null default 'employee';
+
+alter table public.profiles
+  add column if not exists permissions jsonb not null default '{}'::jsonb;
+
 -- 김성민 실장과 추소영 매니저는 같은 (주)비욘드컴퍼니 운영 단위에서
 -- 서로의 업무일지를 열람합니다. 두 계정 모두 직원 권한을 유지하므로
 -- 출결·업무 수정·보고서 확정 권한은 각자 본인 기록에만 적용됩니다.
@@ -29,6 +37,50 @@ where lower(coalesce(email, '')) = 'l9900820@naver.com'
      trim(coalesce(name, '')) = '추소영'
      and concat_ws(' ', org, workplace, role, primary_work) ~* '비욘드\s*컴퍼니|공유|워크베이스|워크박스|beyond'
    );
+
+-- 김성민 실장은 비욘드컴퍼니 소속을 유지한 채 피트니스 직원 업무일지를
+-- 읽기 전용으로 관리합니다. 전사/노무/직원관리 권한은 부여하지 않습니다.
+update public.profiles
+set org = '(주)비욘드컴퍼니',
+    workplace = 'TBA studio',
+    role = '실장',
+    primary_work = 'TBA studio 운영, 인월바스 시스템 시공, 인테리어 시행',
+    secondary_work = '제품·시공·현장 운영 지원, 산하 센터 업무일지 열람',
+    permissions = (
+      coalesce(permissions, '{}'::jsonb)
+      - 'executiveRoom'
+      - 'controlTower'
+      - 'siteControl'
+      - 'worklogAll'
+      - 'laborAll'
+      - 'laborSite'
+      - 'staffApproval'
+      - 'staffManage'
+    ) || jsonb_build_object('worklogSite', true, 'fitnessStaffRead', true),
+    access_preset = 'employee',
+    updated_at = now()
+where lower(coalesce(email, '')) = 'tbakorea@gmail.com';
+
+create or replace function public.can_view_beyond_company_fitness_worklogs()
+returns boolean
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select exists (
+    select 1
+    from public.profiles p
+    where p.id = auth.uid()
+      and coalesce(p.approval_status, 'pending') = 'approved'
+      and coalesce((p.permissions ->> 'fitnessStaffRead')::boolean, false)
+      and concat_ws(' ', p.org, p.workplace, p.primary_work, p.role) ~* '비욘드.*컴퍼니|beyond.*company'
+      and concat_ws(' ', p.org, p.workplace) !~* '피트니스|fitness'
+  );
+$$;
+
+revoke all on function public.can_view_beyond_company_fitness_worklogs() from public, anon;
+grant execute on function public.can_view_beyond_company_fitness_worklogs() to authenticated;
 
 -- The security-definer RPC deliberately returns only the viewer's own site
 -- group. Recreate it here so deployed databases use the normalized Beyond
