@@ -5394,7 +5394,7 @@ function setupWorklogOverviewInteractions(grid, dateKey) {
     });
   });
   grid.querySelectorAll("[data-overview-employee]").forEach((button) => {
-    button.addEventListener("click", () => {
+    button.addEventListener("click", async () => {
       const requestedEmployeeId = button.dataset.overviewEmployee;
       const targetView = button.dataset.overviewView || "bangju-log";
       const employee = findEmployeeRecordById(requestedEmployeeId);
@@ -5411,6 +5411,7 @@ function setupWorklogOverviewInteractions(grid, dateKey) {
       saveState({ fastSave: true });
       switchView(targetView);
       window.scrollTo({ top: 0, left: 0, behavior: "auto" });
+      await hydrateReadonlyWorklogOnDemand(employeeId, targetView);
     });
   });
   grid.querySelectorAll("[data-overview-directive-add]").forEach((button) => {
@@ -9788,6 +9789,12 @@ function buildRemoteSnapshot(dateKey = getActiveDateKey()) {
     selectedDateKey: key,
     profile: snapshotProfile,
     ownerEmployeeId,
+    // A versioned owner snapshot lets a reader distinguish a deliberately
+    // cleared current worklog from old snapshots that carried an empty
+    // ownerWorklog alongside the real data in employeeLogs. Without this,
+    // delegated readers could render a blank page even though the employee
+    // still sees their recorded worklog.
+    ownerWorklogVersion: 2,
     ownerWorklog: ownerWorklog ? cloneWorklogLogForAudit(ownerWorklog) : null,
     employeeLogs: { [key]: ownerWorklog ? { [ownerEmployeeId]: cloneWorklogLogForAudit(ownerWorklog) } : {} },
     attendance: { [key]: state.attendance?.[key] || [] },
@@ -10451,6 +10458,27 @@ async function loadCoworkerWorklogsForDate(dateKey = getActiveDateKey()) {
   return mergeVisibleStaffWorklogStates(data || [], dateKey);
 }
 
+function hasLoadedWorklogContent(employeeId = "", dateKey = getActiveDateKey()) {
+  const employee = findEmployeeRecordById(employeeId) || { id: employeeId };
+  const aliases = getEmployeeWorklogAliases(employee);
+  const logs = state.employeeLogs?.[dateKey] || {};
+  return aliases.some((id) => hasSubmittableWorklogContent(logs[id] || {}));
+}
+
+async function hydrateReadonlyWorklogOnDemand(employeeId = "", view = activeView) {
+  if (!employeeId || !authState.user || hasLoadedWorklogContent(employeeId)) return false;
+  renderAuthStatus("동료 업무일지를 최신 상태로 확인 중입니다.");
+  const changed = canAccessAllWorklogs()
+    ? await loadVisibleStaffWorklogsForDate(getActiveDateKey())
+    : await loadCoworkerWorklogsForDate(getActiveDateKey());
+  if (changed) {
+    normalizeState();
+    if (view === activeView) renderEntries();
+  }
+  renderAuthStatus();
+  return changed;
+}
+
 async function ensureWorklogDirectoryRows() {
   if (authState.approvalRowsLoaded || !supabaseClient || !authState.user || !canAccessWorklogOverview()) return;
   const { data, error } = await fetchApprovalProfileRows();
@@ -10614,17 +10642,31 @@ function mergeVisibleStaffWorklogStates(rows = [], dateKey = getActiveDateKey())
       "profile-user",
     ].filter(Boolean))];
     const candidateLogs = candidateIds.map((id) => logs[id]).filter((log) => log && typeof log === "object");
-    // ownerWorklog is the employee's latest authoritative snapshot. An empty
-    // snapshot is meaningful: it clears tasks that a representative may still
-    // have in a previous local copy, so do not fall back to stale content.
-    const hasOwnerWorklogSnapshot = Boolean(
-      remoteState.ownerWorklog
-      && typeof remoteState.ownerWorklog === "object"
-      && !Array.isArray(remoteState.ownerWorklog)
+    const ownerAliases = new Set(getEmployeeWorklogAliases(employee));
+    const ownerEmployeeId = String(remoteState.ownerEmployeeId || "").trim();
+    const ownerMatchesEmployee = ownerAliases.has(ownerEmployeeId);
+    const ownerWorklog = remoteState.ownerWorklog;
+    const hasOwnerWorklogObject = Boolean(
+      ownerWorklog
+      && typeof ownerWorklog === "object"
+      && !Array.isArray(ownerWorklog)
     );
-    const employeeLog = hasOwnerWorklogSnapshot
-      ? remoteState.ownerWorklog
-      : candidateLogs.find(hasSubmittableWorklogContent) || candidateLogs[0];
+    // Version 2 is written by the current client, including an intentionally
+    // empty worklog after a user removes all entries. Older rows can contain
+    // an empty ownerWorklog while their actual recorded data remains under a
+    // legacy employeeLogs alias. Prefer that real content for viewers rather
+    // than presenting an empty delegated worklog.
+    const hasAuthoritativeOwnerWorklog = hasOwnerWorklogObject
+      && ownerMatchesEmployee
+      && (
+        Number(remoteState.ownerWorklogVersion || 0) >= 2
+        || hasSubmittableWorklogContent(ownerWorklog)
+      );
+    const employeeLog = hasAuthoritativeOwnerWorklog
+      ? ownerWorklog
+      : candidateLogs.find(hasSubmittableWorklogContent)
+        || (ownerMatchesEmployee ? ownerWorklog : null)
+        || candidateLogs[0];
     if (!employeeLog) return;
     const directOwner = remoteState.ownerEmployeeId === employeeId;
     const candidate = { row, employeeId, employeeLog, directOwner };
@@ -13920,7 +13962,7 @@ function renderSharedWorklogPanels(log = getSelectedLog()) {
     `).join("")
     : `<p class="shared-empty">같은 사업장 동료 업무일지가 아직 없습니다.</p>`;
   coworkers.querySelectorAll("[data-coworker-worklog-open]").forEach((button) => {
-    button.addEventListener("click", () => {
+    button.addEventListener("click", async () => {
       const employeeId = button.dataset.coworkerWorklogOpen || "";
       const allowedCoworkerIds = new Set(getCoworkerEmployeesForWorklog(getSelectedEmployee(), activeView).map(getEmployeeWorklogId));
       if (!allowedCoworkerIds.has(employeeId)) return;
@@ -13929,6 +13971,7 @@ function renderSharedWorklogPanels(log = getSelectedLog()) {
       setTodayPageMode("daily");
       renderEntries();
       renderGlobalEmployeeIdentity();
+      await hydrateReadonlyWorklogOnDemand(employeeId, activeView);
     });
   });
 }

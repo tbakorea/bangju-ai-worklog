@@ -226,7 +226,12 @@ async function checkTabletRepresentativeWorklogChrome(browser) {
       mergeVisibleStaffWorklogStates([{
         user_id: "finance-manager-qa",
         updated_at: "2026-08-24T00:01:00.000Z",
-        state: { profile: remoteProfile, ownerEmployeeId: "bangju-finance-manager", ownerWorklog: clearedLog }
+        state: {
+          profile: remoteProfile,
+          ownerEmployeeId: "bangju-finance-manager",
+          ownerWorklogVersion: 2,
+          ownerWorklog: clearedLog
+        }
       }], todayKey);
       window.__qaRepresentativeStaleTaskCleared = !getEmployeeLogForDate("bangju-finance-manager", todayKey).tasks
         .some((task) => task.text === "대표 화면 잔존 금지 QA");
@@ -2130,6 +2135,52 @@ async function checkKimSungminBeyondFitnessReadScope(browser) {
   }
   if (parsed.visibleMenuItems.some((label) => /가입승인|통합관제|대표경영|직원명부/.test(label))) {
     fail("Kim Sungmin employee menu should not show representative-only items", metrics);
+  }
+  const legacyContentMetrics = await page.evaluate(() => window.eval(`(() => {
+    const dateKey = "2026-08-26";
+    const employee = findEmployeeRecordById("beyond-fitness-manager");
+    const profile = {
+      email: "pjhong0@naver.com",
+      name: "박주홍",
+      org: "(주)비욘드컴퍼니 / 비욘드 피트니스",
+      workplace: "비욘드 피트니스",
+      role: "센터장",
+      approvalStatus: "approved"
+    };
+    const legacyLog = createEmployeeLog({ ...employee, id: "profile-user" }, profile, dateKey);
+    legacyLog.tasks[0].text = "김성민 열람용 기존 직원 업무";
+    state.selectedDateKey = dateKey;
+    state.employeeLogs[dateKey] = {};
+    mergeVisibleStaffWorklogStates([{
+      user_id: "park-legacy-profile",
+      updated_at: "2026-08-26T09:00:00.000Z",
+      state: {
+        profile,
+        ownerEmployeeId: "beyond-fitness-manager",
+        ownerWorklog: {},
+        employeeLogs: { [dateKey]: { "profile-user": legacyLog } }
+      }
+    }], dateKey);
+    const legacyText = getEmployeeLogForDate("beyond-fitness-manager", dateKey).tasks?.[0]?.text || "";
+
+    const intentionallyClearedLog = createEmployeeLog(employee, profile, dateKey);
+    mergeVisibleStaffWorklogStates([{
+      user_id: "park-legacy-profile",
+      updated_at: "2026-08-26T09:01:00.000Z",
+      state: {
+        profile,
+        ownerEmployeeId: "beyond-fitness-manager",
+        ownerWorklogVersion: 2,
+        ownerWorklog: intentionallyClearedLog,
+        employeeLogs: { [dateKey]: { "profile-user": legacyLog } }
+      }
+    }], dateKey);
+    const currentText = getEmployeeLogForDate("beyond-fitness-manager", dateKey).tasks?.[0]?.text || "";
+    return JSON.stringify({ legacyText, currentText });
+  })()`));
+  const legacyContent = JSON.parse(legacyContentMetrics);
+  if (legacyContent.legacyText !== "김성민 열람용 기존 직원 업무" || legacyContent.currentText) {
+    fail("Kim Sungmin should read legacy employee worklogs while a versioned current clear removes stale entries", legacyContentMetrics);
   }
   if (errors.length) fail("Kim Sungmin Beyond Fitness read-scope regression page errors", errors.join(" | "));
   await page.close();

@@ -740,15 +740,18 @@ check(
 );
 
 check(
-  "representative employee worklogs keep identity navigation sticky and accept authoritative empty snapshots",
+  "employee readers keep identity navigation sticky and reconcile legacy or current worklog snapshots",
   html.includes('id="worklogStickyContext"')
     && html.includes('id="worklogIdentityBadge"')
     && css.includes("#view-today .worklog-sticky-context")
     && /#view-today \.worklog-sticky-context \{[\s\S]{0,120}position: sticky/.test(css)
-    && /const hasOwnerWorklogSnapshot = Boolean\([\s\S]{0,260}remoteState\.ownerWorklog[\s\S]{0,180}const employeeLog = hasOwnerWorklogSnapshot/.test(js)
+    && js.includes("ownerWorklogVersion: 2")
+    && /const hasAuthoritativeOwnerWorklog = hasOwnerWorklogObject[\s\S]{0,320}candidateLogs\.find\(hasSubmittableWorklogContent\)/.test(js)
+    && js.includes("function hydrateReadonlyWorklogOnDemand")
+    && js.includes("await hydrateReadonlyWorklogOnDemand(employeeId, activeView)")
     && /activeView === "fitness-log" \|\| isGeneralEmployeeWorklogView\(activeView\)\) renderEntries\(\)/.test(js)
     && /isGeneralEmployeeWorklogView\(view\) && authState\.session && canAccessAllWorklogs\(\)/.test(js),
-  "representative detail views must show the selected employee after scrolling and clear stale tasks when the employee publishes an empty latest ledger"
+  "read-only detail views must show the selected employee after scrolling, preserve legacy saved data, and clear only a versioned current empty ledger"
 );
 
 check(
