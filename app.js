@@ -959,6 +959,7 @@ const attendanceReminderShown = new Set();
 let calendarViewDate = parseDateKey(todayKey);
 let calendarPickerMode = "worklog";
 let calendarPostponeTask = null;
+let calendarPostponeContext = null;
 let calendarTriggerButtonId = "selectedDateButton";
 let mobileDayFocusMode = "split";
 let fitnessMobileFocusMode = "split";
@@ -1545,6 +1546,7 @@ function normalizeWorklogTaskState(task = {}) {
     task.done = false;
   }
   if (legacyAction) task.priority = "?";
+  task.postponeId ||= "";
   return task;
 }
 
@@ -1580,6 +1582,68 @@ function isWorklogTaskDueForDate(task = {}, sourceDateKey = "", activeDateKey = 
   const status = normalizeWorklogTaskStatus(task.status || "미완료");
   if (status === "연기") return Boolean(task.postponeDate && task.postponeDate < activeDateKey);
   return isWorklogTaskCarryoverEligible(task);
+}
+
+function removeWorklogPostponedTaskOccurrence(postponeId, keepDateKey = "") {
+  if (!postponeId) return;
+  Object.entries(state.employeeLogs || {}).forEach(([dateKey, logsByEmployee]) => {
+    if (dateKey === keepDateKey) return;
+    Object.values(logsByEmployee || {}).forEach((log) => {
+      if (!Array.isArray(log?.tasks)) return;
+      const nextTasks = log.tasks.filter((item) => item?.postponedFrom !== postponeId);
+      if (nextTasks.length === log.tasks.length) return;
+      log.tasks = nextTasks;
+      normalizeEmployeeLogRows(log, dateKey);
+    });
+  });
+}
+
+function hasWorklogPostponedTaskOccurrence(task = {}, targetLog = {}) {
+  const postponeId = String(task.postponeId || "").trim();
+  return Boolean(postponeId && (targetLog?.tasks || []).some((item) => item?.postponedFrom === postponeId));
+}
+
+function scheduleWorklogPostponedTask(task, sourceLog, targetDateKey, sourceDateKey = getActiveDateKey()) {
+  if (!task || !sourceLog || !/^\d{4}-\d{2}-\d{2}$/.test(String(targetDateKey || ""))) return false;
+  const employeeId = String(sourceLog.employeeId || getEmployeeWorklogId(getSelectedEmployee()) || "").trim();
+  if (!employeeId) return false;
+
+  task.status = "연기";
+  task.done = false;
+  task.delegate = "";
+  task.postponeDate = targetDateKey;
+  task.postponeId ||= `postpone-${task.id || Date.now()}-${Math.random().toString(16).slice(2)}`;
+  task.carryoverDeletedFrom = targetDateKey;
+
+  const targetLog = getEmployeeLogForDate(employeeId, targetDateKey);
+  const targetPriority = ["A", "B", "C"].includes(task.priority) ? task.priority : "A";
+  removeWorklogPostponedTaskOccurrence(task.postponeId, targetDateKey);
+
+  let targetTask = targetLog.tasks.find((item) => item?.postponedFrom === task.postponeId);
+  if (!targetTask && String(task.text || "").trim()) {
+    targetTask = {
+      ...createWorklogTask(targetPriority),
+      text: task.text.trim(),
+      priority: targetPriority,
+      status: "미완료",
+      done: false,
+      postponedFrom: task.postponeId,
+      postponedSourceDate: sourceDateKey,
+    };
+    const blankIndex = targetLog.tasks.findIndex((item) => !isActiveTask(item));
+    if (blankIndex >= 0) targetLog.tasks.splice(blankIndex, 1, targetTask);
+    else targetLog.tasks.push(targetTask);
+  } else if (targetTask) {
+    targetTask.text = String(task.text || "").trim();
+    targetTask.priority = targetPriority;
+    targetTask.status = "미완료";
+    targetTask.done = false;
+    targetTask.delegate = "";
+    targetTask.postponeDate = "";
+    targetTask.postponedSourceDate = sourceDateKey;
+  }
+  normalizeEmployeeLogRows(targetLog, targetDateKey);
+  return Boolean(targetTask);
 }
 
 function getSelectedEmployee() {
@@ -6979,6 +7043,7 @@ function openWorklogCalendar() {
   calendarPickerMode = "worklog";
   calendarTriggerButtonId = "selectedDateButton";
   calendarPostponeTask = null;
+  calendarPostponeContext = null;
   openCalendarSheet(parseDateKey(getActiveDateKey()));
 }
 
@@ -6986,6 +7051,7 @@ function openOverviewCalendar() {
   calendarPickerMode = "worklog";
   calendarTriggerButtonId = "overviewDateButton";
   calendarPostponeTask = null;
+  calendarPostponeContext = null;
   openCalendarSheet(parseDateKey(getActiveDateKey()));
 }
 
@@ -6993,6 +7059,7 @@ function openDashboardCalendar(mode) {
   calendarPickerMode = mode === "executive" ? "executive" : "control";
   calendarTriggerButtonId = mode === "executive" ? "executiveDateButton" : "controlTowerDateButton";
   calendarPostponeTask = null;
+  calendarPostponeContext = null;
   openCalendarSheet(parseDateKey(getActiveDateKey()));
 }
 
@@ -7000,13 +7067,19 @@ function openFitnessCalendar() {
   calendarPickerMode = "fitness";
   calendarTriggerButtonId = "fitnessDateButton";
   calendarPostponeTask = null;
+  calendarPostponeContext = null;
   openCalendarSheet(parseDateKey(getActiveDateKey()));
 }
 
-function openPostponeCalendar(task) {
+function openPostponeCalendar(task, context = {}) {
   calendarPickerMode = "postpone";
   calendarTriggerButtonId = "selectedDateButton";
   calendarPostponeTask = task;
+  calendarPostponeContext = {
+    task,
+    log: context.log || getSelectedLog(),
+    sourceDateKey: context.sourceDateKey || getActiveDateKey(),
+  };
   openCalendarSheet(parseDateKey(task.postponeDate || getActiveDateKey()));
 }
 
@@ -7040,6 +7113,7 @@ function closeWorklogCalendar() {
     if (backdrop) backdrop.hidden = true;
     calendarPickerMode = "worklog";
     calendarPostponeTask = null;
+    calendarPostponeContext = null;
   }, 170);
 }
 
@@ -7066,7 +7140,9 @@ function renderWorklogCalendar() {
   const todayButton = document.getElementById("calendarTodaySheetButton");
   const year = calendarViewDate.getFullYear();
   const month = calendarViewDate.getMonth();
-  const selectedDateKey = calendarPickerMode === "postpone" ? calendarPostponeTask?.postponeDate : getActiveDateKey();
+  const selectedDateKey = calendarPickerMode === "postpone"
+    ? calendarPostponeTask?.postponeDate || getActiveDateKey()
+    : getActiveDateKey();
   const isDashboardCalendar = ["executive", "control"].includes(calendarPickerMode);
   monthTitle.textContent = `${year}년`;
   selectedLabel.textContent = calendarPickerMode === "postpone"
@@ -7139,7 +7215,13 @@ function renderWorklogCalendar() {
 
 function selectCalendarDate(dateKey) {
   if (calendarPickerMode === "postpone" && calendarPostponeTask) {
-    calendarPostponeTask.postponeDate = dateKey;
+    const context = calendarPostponeContext || {};
+    scheduleWorklogPostponedTask(
+      context.task || calendarPostponeTask,
+      context.log || getSelectedLog(),
+      dateKey,
+      context.sourceDateKey || getActiveDateKey(),
+    );
     saveState();
     closeWorklogCalendar();
     renderEntries();
@@ -14566,6 +14648,7 @@ function getWorklogTaskRefs(log) {
         const rolloverDate = getWorklogTaskRolloverDate(task, dateKey);
         const isPostponedHere = task.status === "연기"
           && task.postponeDate === activeDateKey
+          && !hasWorklogPostponedTaskOccurrence(task, log)
           && hasWorklogCarryoverDateArrived(activeDateKey);
         const isOpenCarryover = Boolean(
           isWorklogTaskDueForDate(task, dateKey, activeDateKey)
@@ -14714,6 +14797,7 @@ function renderWorklogTaskRow(ref, currentLog, options = {}) {
     }
     const beforeLog = cloneWorklogLogForAudit(log);
     const removedTask = { ...task };
+    removeWorklogPostponedTaskOccurrence(task.postponeId);
     removeLinkedSchedule(task, log);
     log.tasks.splice(index, 1);
     resetFitnessGuidanceFromTask(removedTask);
@@ -14752,7 +14836,7 @@ function renderTaskActionControl(task) {
     return `<input class="delegate-input task-action-control" type="text" value="${escapeAttr(task.delegate || "")}" placeholder="위임자" aria-label="위임받은 사람" />`;
   }
   if (task.status === "연기") {
-    const label = task.postponeDate ? formatShortDate(task.postponeDate) : "날짜";
+    const label = task.postponeDate ? formatShortDate(task.postponeDate) : "미정";
     return `<button class="postpone-date-button task-action-control" type="button" aria-label="연기 날짜 선택">${escapeHtml(label)}</button>`;
   }
   return "";
@@ -14776,7 +14860,10 @@ function bindTaskMetaControl(row, ref, currentLog, viewName = activeView) {
       if (!guardWorklogEdit(viewName)) return;
       const editableRef = materializeWorklogCarryover(ref, currentLog);
       saveState({ fastSave: true });
-      openPostponeCalendar(editableRef.task);
+      openPostponeCalendar(editableRef.task, {
+        log: editableRef.log,
+        sourceDateKey: editableRef.sourceDateKey || getActiveDateKey(),
+      });
     };
   }
   const prioritySelect = row.querySelector(".priority-select");
@@ -14800,7 +14887,9 @@ function getPriorityValue(task) {
 }
 
 function updateWorklogTaskPriority(task, value) {
+  const wasPostponed = task.status === "연기";
   if (["진행중", "취소", "위임", "연기"].includes(value)) {
+    if (wasPostponed && value !== "연기") removeWorklogPostponedTaskOccurrence(task.postponeId);
     task.status = value;
     task.done = false;
     if (!["?", "A", "B", "C"].includes(task.priority)) task.priority = "?";
@@ -14808,6 +14897,7 @@ function updateWorklogTaskPriority(task, value) {
     if (value !== "연기") task.postponeDate = "";
     return;
   }
+  if (wasPostponed) removeWorklogPostponedTaskOccurrence(task.postponeId);
   task.priority = value;
   if (["진행중", "취소", "위임", "연기"].includes(task.status)) task.status = "미완료";
   task.delegate = "";
@@ -14832,6 +14922,7 @@ function cycleWorklogTaskStatus(task) {
   normalizeWorklogTaskState(task);
   const current = task.done ? "완료" : task.status === "예정" ? "미완료" : task.status || "미완료";
   const next = taskStatusCycle[(taskStatusCycle.indexOf(current) + 1) % taskStatusCycle.length] || "미완료";
+  if (task.status === "연기") removeWorklogPostponedTaskOccurrence(task.postponeId);
   task.status = next;
   task.done = next === "완료";
   if (next !== "위임") task.delegate = "";
@@ -15446,6 +15537,7 @@ function updateTask(index, field, value) {
 
 function clearTask(index) {
   const task = getSelectedLog().tasks[index];
+  removeWorklogPostponedTaskOccurrence(task.postponeId);
   removeLinkedSchedule(task, getSelectedLog());
   task.text = "";
   task.status = "예정";
@@ -20918,6 +21010,7 @@ function getReportArchiveTaskRefs(employee = {}, dateKey = getActiveDateKey(), l
         const rolloverDate = getWorklogTaskRolloverDate(task, sourceDateKey);
         const isPostponedHere = task.status === "연기"
           && task.postponeDate === dateKey
+          && !hasWorklogPostponedTaskOccurrence(task, log)
           && hasWorklogCarryoverDateArrived(dateKey);
         const isOpenCarryover = Boolean(
           isWorklogTaskDueForDate(task, sourceDateKey, dateKey)
