@@ -1,4 +1,9 @@
 const storageKey = "beyond-worklog-state-v1";
+const remoteSaveOutboxStorageKey = "beyond-worklog-remote-save-outbox-v1";
+// A tiny, current-worklog draft is written immediately while the full state is
+// still saved on an idle callback. This keeps typing responsive without making
+// a refresh in the first few hundred milliseconds lose the last field edit.
+const inputDraftStorageKey = "beyond-worklog-input-draft-v1";
 const layoutModeStorageKey = "beyond-worklog-layout-mode";
 const globalViewModeStorageKey = "beyond-worklog-global-view-mode";
 const worklogLayoutStorageKey = "beyond-worklog-workspace-layout";
@@ -986,6 +991,7 @@ const weatherRetryBaseMs = 30 * 1000;
 function loadState() {
   try {
     const saved = JSON.parse(localStorage.getItem(storageKey)) || createState();
+    restoreInputDraftIntoState(saved);
     saved.selectedDateKey = todayKey;
     return saved;
   } catch {
@@ -1443,11 +1449,148 @@ let deferredStateSaveIdleTimer = null;
 const deferredInputRenderJobs = new Map();
 const deferredInputRenderTimers = new Map();
 
+function getWorklogSaveStatusNode() {
+  return document.getElementById(activeView === "fitness-log" ? "fitnessWorklogSaveStatus" : "worklogSaveStatus");
+}
+
+function setWorklogSaveStatus(status = "saved") {
+  const node = getWorklogSaveStatusNode();
+  if (!node) return;
+  const labelByStatus = {
+    saving: "저장 중",
+    local: "기기에 저장됨",
+    queued: "동기화 대기",
+    offline: "오프라인 보관됨",
+    saved: "저장됨",
+  };
+  const shouldShow = Boolean(authState.user && isWorklogEditView() && canEditCurrentWorklog());
+  node.hidden = !shouldShow;
+  if (!shouldShow) return;
+  node.textContent = labelByStatus[status] || labelByStatus.saved;
+  node.dataset.saveStatus = Object.prototype.hasOwnProperty.call(labelByStatus, status) ? status : "saved";
+}
+
+function readRemoteSaveOutbox() {
+  try {
+    const parsed = JSON.parse(localStorage.getItem(remoteSaveOutboxStorageKey) || "{}");
+    return parsed && typeof parsed === "object" ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+function readInputDraft() {
+  try {
+    const draft = JSON.parse(localStorage.getItem(inputDraftStorageKey) || "null");
+    return draft && typeof draft === "object" ? draft : null;
+  } catch {
+    return null;
+  }
+}
+
+function restoreInputDraftIntoState(targetState = {}) {
+  const draft = readInputDraft();
+  if (!draft?.dateKey || !draft?.employeeId || !draft?.log || typeof draft.log !== "object") return false;
+  const savedAt = new Date(draft.savedAt || 0).getTime();
+  // Never revive an abandoned browser draft indefinitely. A normal local save
+  // removes it; this is only the crash/refresh safety net.
+  if (!Number.isFinite(savedAt) || Date.now() - savedAt > 14 * 24 * 60 * 60 * 1000) {
+    localStorage.removeItem(inputDraftStorageKey);
+    return false;
+  }
+  targetState.employeeLogs ||= {};
+  targetState.employeeLogs[draft.dateKey] ||= {};
+  const existing = targetState.employeeLogs[draft.dateKey][draft.employeeId];
+  const existingUpdatedAt = new Date(existing?.updatedAt || 0).getTime();
+  if (existing && Number.isFinite(existingUpdatedAt) && existingUpdatedAt > savedAt) return false;
+  targetState.employeeLogs[draft.dateKey][draft.employeeId] = {
+    ...(existing || {}),
+    ...draft.log,
+    employeeId: draft.employeeId,
+    updatedAt: draft.log.updatedAt || draft.savedAt,
+  };
+  return true;
+}
+
+function persistCurrentInputDraft() {
+  if (!authState.user || !isWorklogEditView() || !canEditCurrentWorklog()) return false;
+  const dateKey = getActiveDateKey();
+  const employeeId = getCurrentWorklogEmployeeId();
+  if (!employeeId || !/^\d{4}-\d{2}-\d{2}$/.test(String(dateKey || ""))) return false;
+  const log = getEmployeeLogForDate(employeeId, dateKey);
+  if (!log) return false;
+  const savedAt = new Date().toISOString();
+  try {
+    localStorage.setItem(inputDraftStorageKey, JSON.stringify({
+      dateKey,
+      employeeId,
+      log: { ...log, employeeId, updatedAt: savedAt },
+      savedAt,
+    }));
+    return true;
+  } catch {
+    // Browser storage limits must never interrupt the current keystroke.
+    return false;
+  }
+}
+
+function clearPersistedInputDraft() {
+  const draft = readInputDraft();
+  if (!draft) return;
+  if (draft.dateKey !== getActiveDateKey() || draft.employeeId !== getCurrentWorklogEmployeeId()) return;
+  try {
+    localStorage.removeItem(inputDraftStorageKey);
+  } catch {
+    // Nothing else is required: the complete state has already been saved.
+  }
+}
+
+function writeRemoteSaveOutbox(outbox = {}) {
+  const entries = Object.entries(outbox || {})
+    .filter(([, value]) => value && typeof value === "object" && value.dateKey && value.snapshot)
+    .sort(([, left], [, right]) => String(right.savedAt || "").localeCompare(String(left.savedAt || "")))
+    .slice(0, 14);
+  try {
+    localStorage.setItem(remoteSaveOutboxStorageKey, JSON.stringify(Object.fromEntries(entries)));
+  } catch {
+    // The local worklog is already persisted separately. A full browser quota
+    // must not interrupt an employee's current input flow.
+  }
+}
+
+function getRemoteOutboxEntryKey(dateKey = getActiveDateKey(), organization = state?.profile?.org || "(주)방주") {
+  return `${String(organization || "(주)방주")}::${String(dateKey || getActiveDateKey())}`;
+}
+
+function queueRemoteSnapshotForRetry(dateKey = getActiveDateKey(), snapshot = buildRemoteSnapshot(dateKey)) {
+  const organization = snapshot?.profile?.org || state?.profile?.org || "(주)방주";
+  const key = getRemoteOutboxEntryKey(dateKey, organization);
+  const outbox = readRemoteSaveOutbox();
+  outbox[key] = {
+    dateKey,
+    organization,
+    snapshot,
+    savedAt: new Date().toISOString(),
+  };
+  writeRemoteSaveOutbox(outbox);
+  setWorklogSaveStatus(navigator.onLine === false ? "offline" : "queued");
+}
+
+function removeRemoteSnapshotFromOutbox(dateKey = getActiveDateKey(), organization = state?.profile?.org || "(주)방주") {
+  const key = getRemoteOutboxEntryKey(dateKey, organization);
+  const outbox = readRemoteSaveOutbox();
+  if (!outbox[key]) return;
+  delete outbox[key];
+  writeRemoteSaveOutbox(outbox);
+}
+
 function writeStateToLocalStorage() {
   recordActiveCorrectionAudits();
   normalizeProfilePlacementForAuth();
   markOwnedWorklogUpdated();
   localStorage.setItem(storageKey, JSON.stringify(state));
+  clearPersistedInputDraft();
+  setWorklogSaveStatus("local");
 }
 
 function flushDeferredStateSave({ write = true } = {}) {
@@ -1465,6 +1608,7 @@ function flushDeferredStateSave({ write = true } = {}) {
 }
 
 function scheduleDeferredStateSave(delay = 650) {
+  persistCurrentInputDraft();
   window.clearTimeout(deferredStateSaveTimer);
   if (deferredStateSaveIdleTimer) {
     if (typeof window.cancelIdleCallback === "function") window.cancelIdleCallback(deferredStateSaveIdleTimer);
@@ -1508,6 +1652,7 @@ function scheduleInputRender(key, callback, delay = 700) {
 function saveState(options = {}) {
   if (options.input) {
     markOwnedWorklogUpdated();
+    setWorklogSaveStatus("saving");
     scheduleDeferredStateSave(options.localDelay || 650);
     scheduleRemoteSave(options.remoteDelay || 2500);
     return;
@@ -9853,6 +9998,7 @@ async function applySession(session) {
   renderAuthStatus("업무기록을 최신 상태로 불러오는 중입니다.");
   await loadRemoteWorklogForActiveDate();
   await saveRemoteProfile();
+  await flushOfflineRemoteSaveQueue();
   scheduleRemoteSave(0);
   startApprovalNotificationPolling();
   startVisibleWorklogPolling();
@@ -9880,7 +10026,10 @@ async function flushPendingRemoteSaves() {
   if (!authState.user) return;
   const dateKeys = [...(authState.saveTimers?.keys() || [])];
   const inFlight = [...(authState.remoteSnapshotInFlight?.values() || [])];
-  if (!dateKeys.length && !inFlight.length) return;
+  if (!dateKeys.length && !inFlight.length) {
+    await flushOfflineRemoteSaveQueue();
+    return;
+  }
   dateKeys.forEach((dateKey) => {
     clearTimeout(authState.saveTimers.get(dateKey));
     authState.saveTimers.delete(dateKey);
@@ -9889,6 +10038,7 @@ async function flushPendingRemoteSaves() {
     ...dateKeys.map((dateKey) => saveRemoteSnapshot(dateKey)),
     ...inFlight,
   ]);
+  await flushOfflineRemoteSaveQueue();
 }
 
 function getDateScopedRemoteRecords(records = {}, dateKey = getActiveDateKey()) {
@@ -9946,9 +10096,57 @@ function buildRemoteSnapshot(dateKey = getActiveDateKey()) {
   };
 }
 
+async function upsertRemoteWorklogSnapshot({ dateKey, organization, snapshot }) {
+  if (!supabaseClient || !authState.user) return { ok: false, error: new Error("로그인 후 동기화할 수 있습니다.") };
+  const { error } = await supabaseClient.from("worklog_states").upsert({
+    user_id: authState.user.id,
+    log_date: dateKey,
+    organization: organization || snapshot?.profile?.org || state.profile?.org || "(주)방주",
+    state: snapshot,
+    updated_at: new Date().toISOString(),
+  }, { onConflict: "user_id,organization,log_date" });
+  return { ok: !error, error };
+}
+
+async function flushOfflineRemoteSaveQueue() {
+  if (!supabaseClient || !authState.user || navigator.onLine === false) return false;
+  const outbox = readRemoteSaveOutbox();
+  const entries = Object.entries(outbox)
+    .map(([id, entry]) => ({ id, ...entry }))
+    .filter((entry) => entry.dateKey && entry.snapshot)
+    .sort((left, right) => String(left.savedAt || "").localeCompare(String(right.savedAt || "")));
+  if (!entries.length) return true;
+  setWorklogSaveStatus("saving");
+  try {
+    for (const entry of entries) {
+      const result = await upsertRemoteWorklogSnapshot(entry);
+      if (!result.ok) {
+        setWorklogSaveStatus("queued");
+        return false;
+      }
+      delete outbox[entry.id];
+      writeRemoteSaveOutbox(outbox);
+    }
+    setWorklogSaveStatus("saved");
+    return true;
+  } catch {
+    // A network exception is handled exactly like a failed response: keep the
+    // newest local snapshot intact and retry only after the connection returns.
+    if (Object.keys(outbox).length) {
+      writeRemoteSaveOutbox(outbox);
+      setWorklogSaveStatus("queued");
+    }
+    return false;
+  }
+}
+
 async function saveRemoteSnapshot(dateKey = getActiveDateKey()) {
   if (!supabaseClient || !authState.user) return;
   const key = dateKey || getActiveDateKey();
+  if (navigator.onLine === false) {
+    queueRemoteSnapshotForRetry(key);
+    return false;
+  }
   authState.remoteSnapshotInFlight ||= new Map();
   authState.remoteSnapshotQueued ||= new Set();
   const inFlight = authState.remoteSnapshotInFlight.get(key);
@@ -9961,20 +10159,20 @@ async function saveRemoteSnapshot(dateKey = getActiveDateKey()) {
   const task = (async () => {
     do {
       authState.remoteSnapshotQueued.delete(key);
-      const { error } = await supabaseClient.from("worklog_states").upsert({
-        user_id: authState.user.id,
-        log_date: key,
-        organization: state.profile?.org || "(주)방주",
-        state: buildRemoteSnapshot(key),
-        updated_at: new Date().toISOString(),
-      }, { onConflict: "user_id,organization,log_date" });
-      if (error) {
+      const snapshot = buildRemoteSnapshot(key);
+      const organization = snapshot.profile?.org || state.profile?.org || "(주)방주";
+      setWorklogSaveStatus("saving");
+      const result = await upsertRemoteWorklogSnapshot({ dateKey: key, organization, snapshot });
+      if (!result.ok) {
         authState.remoteSnapshotQueued.delete(key);
-        renderAuthStatus(`원격 저장 대기: ${error.message}`);
+        queueRemoteSnapshotForRetry(key, snapshot);
+        renderAuthStatus(`원격 저장 대기: ${result.error?.message || "네트워크 연결을 확인하세요."}`);
         return false;
       }
+      removeRemoteSnapshotFromOutbox(key, organization);
     } while (authState.remoteSnapshotQueued.has(key));
     renderAuthStatus();
+    setWorklogSaveStatus("saved");
     return true;
   })();
   authState.remoteSnapshotInFlight.set(key, task);
@@ -10173,6 +10371,15 @@ function getDagymClassStatusLabel(status = "scheduled") {
   return dagymClassStatusOptions.find(([value]) => value === status)?.[1] || "미정";
 }
 
+function getDagymTrainerChangeStatusLabel(status = "none") {
+  return ({ requested: "강사 변경 요청", approved: "강사 변경 승인", declined: "강사 변경 반려" })[status] || "";
+}
+
+function getDagymTrainerChangeTargetLabel(employeeId = "") {
+  const employee = findEmployeeRecordById(employeeId);
+  return employee ? getEmployeeOwnLabel(employee) : "";
+}
+
 function renderDagymClassStatusControl(item = {}) {
   if (item.source !== "dagym-monthly-pt") return "";
   return `<span class="dagym-class-status" data-dagym-class-id="${escapeAttr(item.sourceId || "")}">
@@ -10250,6 +10457,10 @@ function applyDagymClassEventToItem(item, event = {}) {
     dagymClassLabel: event.class_label || item.dagymClassLabel || "PT 수업",
     dagymSourceClassLabel: event.source_class_label || item.dagymSourceClassLabel || event.class_label || "PT 수업",
     dagymSourceMemberName: event.source_member_name ?? item.dagymSourceMemberName ?? event.member_name ?? "",
+    dagymNote: event.worklog_note ?? item.dagymNote ?? "",
+    dagymTrainerChangeEmployeeId: event.trainer_change_employee_id ?? item.dagymTrainerChangeEmployeeId ?? "",
+    dagymTrainerChangeStatus: event.trainer_change_status ?? item.dagymTrainerChangeStatus ?? "none",
+    dagymTrainerChangeRequestedAt: event.trainer_change_requested_at ?? item.dagymTrainerChangeRequestedAt ?? "",
     dagymHasWorklogOverride: Boolean(event.has_worklog_override),
     importedAt: event.source_updated_at || event.updated_at || item.importedAt || "",
     type: sessionType === "free" ? "무료PT" : sessionType === "paid" ? "유료PT" : "업무",
@@ -10349,13 +10560,15 @@ function getOrCreateDagymClassEditor() {
       </div>
       <button type="button" id="dagymClassEditorClose" aria-label="닫기">×</button>
     </header>
-    <p class="dagym-class-editor-note">업무일지에만 저장됩니다. 다짐 원본 시간표에는 전송하지 않습니다.</p>
+    <p class="dagym-class-editor-note">업무일지에만 저장됩니다. 다짐 원본 시간표에는 전송하지 않습니다. 강사 변경은 요청으로 남겨 관리자가 확인합니다.</p>
     <p class="dagym-class-editor-source" id="dagymClassEditorSource"></p>
     <div class="dagym-class-editor-fields">
       <label>수강생 표시명<input id="dagymClassEditorMember" type="text" maxlength="80" autocomplete="off" /></label>
       <label>수업 시간<input id="dagymClassEditorTime" type="time" required /></label>
       <label>수업 구분<select id="dagymClassEditorSessionType"><option value="paid">유료 PT</option><option value="free">무료 PT</option><option value="other">기타 수업</option></select></label>
       <label>수업명<input id="dagymClassEditorLabel" type="text" maxlength="80" autocomplete="off" placeholder="예: 체형교정 PT" /></label>
+      <label>강사 변경 요청<select id="dagymClassEditorTrainerRequest"></select></label>
+      <label>운영 메모<textarea id="dagymClassEditorNote" maxlength="500" placeholder="예: 수강생 요청, 준비사항, 후속 연락 내용"></textarea></label>
     </div>
     <footer>
       <button type="button" id="dagymClassEditorRestore">원본으로 복원</button>
@@ -10393,6 +10606,15 @@ function openDagymClassEditor(item, log) {
   editor.querySelector("#dagymClassEditorTime").value = getDagymScheduleTimeInput(item.dagymScheduledAt) || sourceTime;
   editor.querySelector("#dagymClassEditorSessionType").value = item.dagymSessionType || "paid";
   editor.querySelector("#dagymClassEditorLabel").value = item.dagymClassLabel || "";
+  const trainerRequest = editor.querySelector("#dagymClassEditorTrainerRequest");
+  const currentTrainerId = getProfileMappedEmployeeId() || "";
+  const trainerCandidates = getFitnessCenterEmployees()
+    .map((employee) => ({ id: getEmployeeWorklogId(employee), label: getEmployeeOwnLabel(employee) }))
+    .filter(({ id }) => id && id !== currentTrainerId);
+  trainerRequest.innerHTML = `<option value="">변경 요청 없음</option>${trainerCandidates
+    .map(({ id, label }) => `<option value="${escapeAttr(id)}" ${id === item.dagymTrainerChangeEmployeeId ? "selected" : ""}>${escapeHtml(label)}에게 변경 요청</option>`)
+    .join("")}`;
+  editor.querySelector("#dagymClassEditorNote").value = item.dagymNote || "";
   editor.querySelector("#dagymClassEditorSource").textContent = `원본 · ${formatShortDate(dateKey)} ${sourceTime || "시간 미정"} · ${sourceMember || "수강생 미정"} · ${getDagymSessionTypeLabel(sourceSessionType)} · ${sourceLabel}`;
   editor.querySelector("#dagymClassEditorRestore").disabled = !item.dagymHasWorklogOverride;
   backdrop.hidden = false;
@@ -10437,6 +10659,8 @@ async function saveDagymClassEditor({ reset = false } = {}) {
           sessionType: editor.querySelector("#dagymClassEditorSessionType").value,
           classLabel: editor.querySelector("#dagymClassEditorLabel").value,
           memberName: editor.querySelector("#dagymClassEditorMember").value,
+          note: editor.querySelector("#dagymClassEditorNote").value,
+          trainerChangeEmployeeId: editor.querySelector("#dagymClassEditorTrainerRequest").value,
         },
       },
     reset ? "업무일지 수정본을 지우고 다짐 원본으로 복원했습니다." : "수업 일정을 업무일지에 저장했습니다.",
@@ -10538,6 +10762,10 @@ function applyDagymPtScheduleRows(rows = [], dateKey = getActiveDateKey()) {
           dagymClassLabel: row.class_label || "PT 수업",
           dagymSourceClassLabel: row.source_class_label || row.class_label || "PT 수업",
           dagymSourceMemberName: row.source_member_name || row.member_name || "",
+          dagymNote: row.worklog_note || "",
+          dagymTrainerChangeEmployeeId: row.trainer_change_employee_id || "",
+          dagymTrainerChangeStatus: row.trainer_change_status || "none",
+          dagymTrainerChangeRequestedAt: row.trainer_change_requested_at || "",
           dagymHasWorklogOverride: Boolean(row.has_worklog_override),
           importedAt: row.source_updated_at || row.updated_at || "",
         };
@@ -10859,6 +11087,66 @@ async function hydrateReadonlyWorklogOnDemand(employeeId = "", view = activeView
   }
   renderAuthStatus();
   return changed;
+}
+
+async function loadRemoteOwnWorklogForDate(dateKey = getActiveDateKey()) {
+  if (!supabaseClient || !authState.user || !/^\d{4}-\d{2}-\d{2}$/.test(String(dateKey || ""))) return false;
+  const { data, error } = await supabaseClient
+    .from("worklog_states")
+    .select("state,updated_at")
+    .eq("user_id", authState.user.id)
+    .eq("log_date", dateKey)
+    .order("updated_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (error || !data?.state) return false;
+  const before = JSON.stringify(state.employeeLogs?.[dateKey] || {});
+  mergeOwnRemoteEmployeeLogs(data.state.employeeLogs || {});
+  state.companyCommonWeeks = { ...(state.companyCommonWeeks || {}), ...(data.state.companyCommonWeeks || {}) };
+  return before !== JSON.stringify(state.employeeLogs?.[dateKey] || {});
+}
+
+async function hydrateWorklogWeekOnDemand({ force = false } = {}) {
+  if (!supabaseClient || !authState.user || !isProfileApproved() || todayPageMode !== "week") return false;
+  authState.weekWorklogHydration ||= new Map();
+  const selected = getSelectedEmployee();
+  const dates = getWeekDateKeys(getActiveDateKey());
+  const cacheKey = `${selected?.id || state.selectedEmployeeId || "profile-user"}:${dates[0] || ""}`;
+  const cachedAt = Number(authState.weekWorklogHydration.get(cacheKey) || 0);
+  if (!force && cachedAt && Date.now() - cachedAt < 2 * 60 * 1000) return false;
+  if (authState.weekWorklogHydrationPromise) return authState.weekWorklogHydrationPromise;
+  const board = document.getElementById("worklogWeekBoard");
+  if (board) {
+    board.dataset.loading = "true";
+    board.setAttribute("aria-busy", "true");
+  }
+  const task = (async () => {
+    let changed = false;
+    const reader = canAccessAllWorklogs() ? loadVisibleStaffWorklogsForDate : loadCoworkerWorklogsForDate;
+    await Promise.all(dates.map(async (dateKey) => {
+      const [ownChanged, colleagueChanged] = await Promise.all([
+        loadRemoteOwnWorklogForDate(dateKey),
+        reader(dateKey),
+      ]);
+      changed = changed || ownChanged || colleagueChanged;
+    }));
+    authState.weekWorklogHydration.set(cacheKey, Date.now());
+    if (changed) {
+      normalizeState();
+      localStorage.setItem(storageKey, JSON.stringify(state));
+      if (todayPageMode === "week") renderWorklogWeekBoard();
+    }
+    return changed;
+  })().catch(() => false).finally(() => {
+    authState.weekWorklogHydrationPromise = null;
+    const liveBoard = document.getElementById("worklogWeekBoard");
+    if (liveBoard) {
+      delete liveBoard.dataset.loading;
+      liveBoard.removeAttribute("aria-busy");
+    }
+  });
+  authState.weekWorklogHydrationPromise = task;
+  return task;
 }
 
 async function ensureWorklogDirectoryRows() {
@@ -11525,6 +11813,7 @@ function renderEntries() {
   if (activeView === "fitness-log") {
     renderFitnessWorklog();
     refreshCurrentTimeIndicators();
+    setWorklogSaveStatus(Object.keys(readRemoteSaveOutbox()).length ? "queued" : "saved");
     return;
   }
 
@@ -11544,6 +11833,7 @@ function renderEntries() {
   refreshCurrentTimeIndicators();
   applyMobileDayFocusMode();
   applyCurrentWorklogPermissionState();
+  setWorklogSaveStatus(Object.keys(readRemoteSaveOutbox()).length ? "queued" : "saved");
 }
 
 function renderWorklogToday(log = getSelectedLog()) {
@@ -14229,13 +14519,14 @@ function renderWorklogEditLockBanner(scope = "worklog") {
 }
 
 function setTodayPageMode(mode) {
-  todayPageMode = ["common", "daily", "coworker"].includes(mode) ? mode : "daily";
+  todayPageMode = ["common", "daily", "week", "coworker"].includes(mode) ? mode : "daily";
   resetMobileDayFocusToSplit({ blur: true });
   applyTodayPageMode();
+  if (todayPageMode === "week") void hydrateWorklogWeekOnDemand();
 }
 
 function moveTodayPage(delta) {
-  const modes = ["common", "daily", "coworker"];
+  const modes = ["common", "daily", "week", "coworker"];
   const index = modes.indexOf(todayPageMode);
   setTodayPageMode(modes[Math.max(0, Math.min(modes.length - 1, index + delta))]);
 }
@@ -14401,6 +14692,7 @@ function renderSharedWorklogPanels(log = getSelectedLog()) {
       await hydrateReadonlyWorklogOnDemand(employeeId, activeView);
     });
   });
+  renderWorklogWeekBoard();
 }
 
 function renderSharedTaskList(items, emptyText) {
@@ -14549,6 +14841,105 @@ function getWeekDateKeys(dateKey) {
     const day = new Date(start);
     day.setDate(start.getDate() + index);
     return formatDateKey(day);
+  });
+}
+
+function getStoredEmployeeLogForWeek(employee = {}, dateKey = getActiveDateKey()) {
+  const logs = state.employeeLogs?.[dateKey] || {};
+  const aliases = getEmployeeWorklogAliases(employee);
+  const canonicalId = getEmployeeWorklogId(employee);
+  return logs[canonicalId] || aliases.map((id) => logs[id]).find((log) => log && typeof log === "object") || null;
+}
+
+function getWeekShiftSummary(employee = {}, dateKey = getActiveDateKey(), log = null) {
+  const employeeId = getEmployeeWorklogId(employee) || employee.id || "";
+  const hours = normalizeWorkHoursText(log?.workHoursOverride || "")
+    || getEmployeeScheduledWorkHours(employeeId, state.profile, dateKey);
+  if (isOffWorkHours(hours)) return log?.clockIn ? "대체근무" : "휴무";
+  if (log?.clockIn && !log?.clockOut) return `근무중 · ${hours}`;
+  if (log?.clockIn && log?.clockOut) return `근무완료 · ${hours}`;
+  return `근무 · ${hours || "시간 미정"}`;
+}
+
+function getWeekScheduleSummary(log = {}) {
+  const rows = (log?.schedule || [])
+    .flatMap((entry) => {
+      const items = normalizeScheduleEntryItems(entry)
+        .filter((item) => String(item?.text || "").trim())
+        .map((item) => ({ time: entry.time, item }));
+      return items.length ? items : [];
+    })
+    .sort((left, right) => timeToMinutes(left.time) - timeToMinutes(right.time));
+  return rows.slice(0, 6);
+}
+
+function getWeekCommonItemsForWorklog(employee = getSelectedEmployee(), dateKey = getActiveDateKey()) {
+  const week = state.companyCommonWeeks?.[getCompanyCommonKey(employee)]?.[getActiveWeekKey(dateKey)] || {};
+  const sectionItems = ["departmentMonthly", "departmentWeekly"]
+    .flatMap((sectionId) => week.sections?.[sectionId] || []);
+  const dayItems = week.days?.[dateKey] || [];
+  const seen = new Set();
+  return [...sectionItems, ...dayItems]
+    .filter((item) => item?.text?.trim() && (!item.dateKey || item.dateKey === dateKey))
+    .filter((item) => {
+      const key = item.id || `${item.text}|${item.owner || ""}`;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    })
+    .slice(0, 2);
+}
+
+function renderWorklogWeekBoard() {
+  const board = document.getElementById("worklogWeekBoard");
+  if (!board) return;
+  const selected = getSelectedEmployee();
+  const selectedId = getEmployeeWorklogId(selected) || selected.id || "";
+  const colleagues = getCoworkerEmployeesForWorklog(selected);
+  const people = [selected, ...colleagues].filter((employee, index, list) => {
+    const id = getEmployeeWorklogId(employee) || employee.id || "";
+    return id && list.findIndex((current) => (getEmployeeWorklogId(current) || current.id || "") === id) === index;
+  });
+  const dates = getWeekDateKeys(getActiveDateKey());
+  board.innerHTML = dates.map((dateKey) => {
+    const isSelectedDate = dateKey === getActiveDateKey();
+    const commonItems = getWeekCommonItemsForWorklog(selected, dateKey);
+    const peopleHtml = people.map((employee) => {
+      const employeeId = getEmployeeWorklogId(employee) || employee.id || "";
+      const log = getStoredEmployeeLogForWeek(employee, dateKey);
+      const isSelectedEmployee = employeeId === selectedId;
+      const events = getWeekScheduleSummary(log || {});
+      const taskCount = (log?.tasks || []).filter((task) => String(task?.text || "").trim() && !task.done).length;
+      return `
+        <section class="worklog-week-person ${isSelectedEmployee ? "is-selected" : ""}">
+          <header>
+            <b>${escapeHtml(getEmployeeOwnLabel(employee) || employee.name || "직원")}</b>
+            <span>${escapeHtml(getWeekShiftSummary(employee, dateKey, log))}</span>
+          </header>
+          ${events.length ? `<ul>${events.map(({ time, item }) => `
+            <li class="${/PT/.test(String(item.type || "")) ? "is-pt" : ""}"><time>${escapeHtml(time || "")}</time><span>${escapeHtml(formatScheduleItemInline(item).replace(/^\([^)]+\)\s*/, ""))}</span></li>
+          `).join("")}</ul>` : `<p class="worklog-week-empty">${taskCount ? `우선업무 ${taskCount}건` : "예정 업무 없음"}</p>`}
+        </section>
+      `;
+    }).join("");
+    return `
+      <button type="button" class="worklog-week-day ${isSelectedDate ? "is-selected-date" : ""}" data-worklog-week-date="${escapeAttr(dateKey)}" aria-label="${escapeAttr(formatKoreanDate(dateKey))} 업무일지 열기">
+        <header>
+          <strong>${escapeHtml(formatWeekdayShort(dateKey))}</strong>
+          <span>${dateKey === todayKey ? "오늘" : "열기"}</span>
+        </header>
+        ${commonItems.length ? `<div class="worklog-week-common">${commonItems.map((item) => `<span>${escapeHtml(item.text)}</span>`).join("")}</div>` : ""}
+        <div class="worklog-week-people">${peopleHtml}</div>
+      </button>
+    `;
+  }).join("");
+  board.querySelectorAll("[data-worklog-week-date]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const dateKey = button.dataset.worklogWeekDate;
+      if (!dateKey) return;
+      setSelectedDateKey(dateKey);
+      setTodayPageMode("daily");
+    });
   });
 }
 
@@ -15399,7 +15790,11 @@ function formatScheduleItemInline(item) {
   const text = String(item?.text || "").trim();
   if (!text) return "";
   const base = formatScheduleTextSmartly(formatScheduleItemWithType(item));
-  return item?.source === "dagym-monthly-pt" ? `${base} · ${getDagymClassStatusLabel(item.dagymStatus)}` : base;
+  if (item?.source !== "dagym-monthly-pt") return base;
+  const requestLabel = getDagymTrainerChangeStatusLabel(item.dagymTrainerChangeStatus);
+  const requestTarget = getDagymTrainerChangeTargetLabel(item.dagymTrainerChangeEmployeeId);
+  const request = requestLabel ? ` · ${requestLabel}${requestTarget ? `(${requestTarget})` : ""}` : "";
+  return `${base} · ${getDagymClassStatusLabel(item.dagymStatus)}${request}`;
 }
 
 function formatScheduleItemWithType(item) {
@@ -23209,6 +23604,11 @@ async function saveWorklogReportImage() {
   await saveReportPhoto(await renderWorklogReportCanvas(), `${getWorklogReportFileBase(model)}.jpg`);
 }
 
+async function saveWorklogReportPng() {
+  const model = buildWorklogDailyReportModel();
+  await saveReportPng(await renderWorklogReportCanvas(), `${getWorklogReportFileBase(model)}.png`);
+}
+
 async function saveWorklogReportPdf() {
   const model = buildWorklogDailyReportModel();
   const pdf = createPdfBlobFromCanvas(await renderWorklogReportCanvas());
@@ -24877,18 +25277,26 @@ function createShareFile(blob, filename) {
   return new File([blob], filename, { type: blob.type || "application/octet-stream" });
 }
 
-async function saveReportPhoto(canvas, filename) {
-  const blob = await canvasToBlob(canvas, "image/jpeg", 0.94);
+async function saveReportImageFile(canvas, filename, type = "image/jpeg") {
+  const blob = await canvasToBlob(canvas, type, type === "image/jpeg" ? 0.94 : undefined);
   const file = createShareFile(blob, filename);
   // iOS does not consistently place a downloaded JPEG in Photos. Opening the
   // native share sheet lets the employee choose "Save Image" reliably.
   if (isIOSLikeDevice() && file && navigator.share && navigator.canShare?.({ files: [file] })) {
-    await navigator.share({ title: filename.replace(/\.jpe?g$/i, ""), files: [file] });
+    await navigator.share({ title: filename.replace(/\.(jpe?g|png)$/i, ""), files: [file] });
     showAppToast("공유창에서 ‘이미지 저장’을 선택하세요");
     return;
   }
   downloadBlob(blob, filename);
-  showAppToast("보고서 사진을 저장했습니다");
+  showAppToast(type === "image/png" ? "보고서 PNG를 저장했습니다" : "보고서 사진을 저장했습니다");
+}
+
+async function saveReportPhoto(canvas, filename) {
+  return saveReportImageFile(canvas, filename, "image/jpeg");
+}
+
+async function saveReportPng(canvas, filename) {
+  return saveReportImageFile(canvas, filename, "image/png");
 }
 
 async function shareReportArtifacts({ canvas, base, title, text }) {
@@ -25033,6 +25441,11 @@ function createPdfBlobFromCanvas(canvas) {
 async function saveFitnessReportImage() {
   const canvas = await renderFitnessReportCanvas();
   await saveReportPhoto(canvas, `${getFitnessReportFileBase()}.jpg`);
+}
+
+async function saveFitnessReportPng() {
+  const canvas = await renderFitnessReportCanvas();
+  await saveReportPng(canvas, `${getFitnessReportFileBase()}.png`);
 }
 
 async function saveFitnessReportPdf() {
@@ -25283,6 +25696,12 @@ document.addEventListener("focusout", (event) => {
 window.addEventListener("pagehide", () => {
   flushDeferredStateSave();
   flushPendingRemoteSaves();
+});
+window.addEventListener("offline", () => setWorklogSaveStatus("offline"));
+window.addEventListener("online", () => {
+  if (!authState.user) return;
+  setWorklogSaveStatus("saving");
+  flushOfflineRemoteSaveQueue().then(() => flushPendingRemoteSaves());
 });
 document.addEventListener("visibilitychange", () => {
   if (document.visibilityState !== "hidden") return;
@@ -25941,6 +26360,11 @@ document.getElementById("fitnessReportImageButton")?.addEventListener("click", (
     if (error?.name !== "AbortError") alert("보고서 사진을 만들지 못했습니다. 잠시 후 다시 시도해주세요.");
   });
 });
+document.getElementById("fitnessReportPngButton")?.addEventListener("click", () => {
+  saveFitnessReportPng().catch((error) => {
+    if (error?.name !== "AbortError") alert("보고서 PNG를 만들지 못했습니다. 잠시 후 다시 시도해주세요.");
+  });
+});
 document.getElementById("fitnessReportPdfButton")?.addEventListener("click", () => {
   saveFitnessReportPdf().catch(() => alert("PDF 파일을 만들지 못했습니다. 출력 메뉴에서 PDF 저장을 이용해주세요."));
 });
@@ -25966,6 +26390,11 @@ document.getElementById("worklogReportBackdrop")?.addEventListener("click", clos
 document.getElementById("worklogReportImageButton")?.addEventListener("click", () => {
   saveWorklogReportImage().catch((error) => {
     if (error?.name !== "AbortError") alert("보고서 사진을 만들지 못했습니다. 출력 메뉴를 이용해주세요.");
+  });
+});
+document.getElementById("worklogReportPngButton")?.addEventListener("click", () => {
+  saveWorklogReportPng().catch((error) => {
+    if (error?.name !== "AbortError") alert("보고서 PNG를 만들지 못했습니다. 출력 메뉴를 이용해주세요.");
   });
 });
 document.getElementById("worklogReportPdfButton")?.addEventListener("click", () => {

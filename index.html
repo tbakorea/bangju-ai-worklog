@@ -353,6 +353,7 @@
             <nav class="worklog-page-tabs" aria-label="업무일지 페이지">
               <button type="button" data-worklog-page-choice="common">공통 일정</button>
               <button type="button" data-worklog-page-choice="daily" id="selectedWorklogTab">나의 업무일지</button>
+              <button type="button" data-worklog-page-choice="week">주간 시간표</button>
               <button type="button" data-worklog-page-choice="coworker">
                 동료 업무일지 <span id="coworkerWorklogCount">0</span>
               </button>
@@ -375,6 +376,7 @@
             </div>
             <div class="worklog-title-actions">
               <button class="today-jump" id="todayJumpButton" type="button" hidden>오늘</button>
+              <span class="worklog-save-status" id="worklogSaveStatus" aria-live="polite" hidden>저장됨</span>
               <div class="worklog-completion">
                 <span>완료</span>
                 <strong id="worklogCompletion">0/0</strong>
@@ -398,6 +400,16 @@
             <article class="worklog-panel shared-worklog-panel worklog-common-page">
               <h3>공통 실행일정</h3>
               <div id="commonScheduleBoard"></div>
+            </article>
+            <article class="worklog-panel shared-worklog-panel worklog-week-page">
+              <header class="worklog-week-header">
+                <div>
+                  <span>My &amp; Team Week</span>
+                  <h3>주간 시간표</h3>
+                </div>
+                <small>날짜를 누르면 해당 업무일지로 이동합니다.</small>
+              </header>
+              <div id="worklogWeekBoard" class="worklog-week-board" aria-label="주간 업무와 팀 일정"></div>
             </article>
             <div class="worklog-daily-page">
               <article class="worklog-panel worklog-task-panel day-task-panel" data-mobile-focus-panel="tasks">
@@ -454,6 +466,7 @@
         <section class="coaching-followup-host" id="worklogCoachingFollowup" aria-live="polite" hidden></section>
         <footer>
           <button type="button" id="worklogReportImageButton">JPEG 저장</button>
+          <button type="button" id="worklogReportPngButton">PNG 저장</button>
           <button type="button" id="worklogReportPdfButton">PDF 저장</button>
           <button type="button" id="worklogReportShareButton" title="문자, 메일, 카카오톡 등 기기 공유창으로 보내기">보내기·공유</button>
           <button type="button" id="worklogReportArchiveButton">보고·보관함</button>
@@ -463,6 +476,7 @@
 
       <section class="worklog-view fitness-log-view" id="view-fitness-log">
         <div class="worklog-person-chip fitness-person-chip" id="fitnessIdentityBadge" aria-live="polite"></div>
+        <span class="worklog-save-status fitness-worklog-save-status" id="fitnessWorklogSaveStatus" aria-live="polite" hidden>저장됨</span>
         <div class="representative-worklog-toolbar fitness-overview-exit-toolbar">
           <button class="worklog-overview-exit-button" id="returnToFitnessWorklogOverviewButton" type="button" hidden>‹ 전체 업무일지로 돌아가기</button>
         </div>
@@ -761,6 +775,7 @@
         <footer>
           <button type="button" id="fitnessReportConfirmButton" hidden>센터 보고 확정</button>
           <button type="button" id="fitnessReportImageButton">사진 저장</button>
+          <button type="button" id="fitnessReportPngButton">PNG 저장</button>
           <button type="button" id="fitnessReportPdfButton">PDF 저장</button>
           <button type="button" id="fitnessReportShareButton" title="문자, 메일, 카카오톡 등 기기 공유창으로 보내기">보내기·공유</button>
           <button type="button" id="fitnessReportPrintButton">출력</button>

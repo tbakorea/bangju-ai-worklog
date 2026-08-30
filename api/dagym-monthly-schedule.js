@@ -102,7 +102,7 @@ function hasOwn(object, key) {
 }
 
 function isWorklogOverrideColumnError(error) {
-  return /worklog_(member_name_ciphertext|scheduled_at|ended_at|session_type|class_label|override_at)|column .*worklog|schema cache/i
+  return /worklog_(member_name_ciphertext|scheduled_at|ended_at|session_type|class_label|note_ciphertext|trainer_request_employee_id|trainer_request_status|trainer_request_at|override_at)|column .*worklog|schema cache/i
     .test(String(error?.message || error || ""));
 }
 
@@ -113,9 +113,15 @@ function serializeScheduleRow(row = {}) {
     || row.worklog_session_type
     || row.worklog_class_label
     || row.worklog_member_name_ciphertext
+    || row.worklog_note_ciphertext
+    || row.worklog_trainer_request_employee_id
+    || row.worklog_trainer_request_status === "requested"
+    || row.worklog_trainer_request_status === "approved"
+    || row.worklog_trainer_request_status === "declined"
   );
   const sourceMemberName = decrypt(row.member_name_ciphertext);
   const worklogMemberName = decrypt(row.worklog_member_name_ciphertext);
+  const worklogNote = decrypt(row.worklog_note_ciphertext);
   return {
     ...row,
     source_scheduled_at: row.scheduled_at,
@@ -128,9 +134,14 @@ function serializeScheduleRow(row = {}) {
     session_type: row.worklog_session_type || row.session_type,
     class_label: row.worklog_class_label || row.class_label,
     member_name: worklogMemberName || sourceMemberName,
+    worklog_note: worklogNote,
+    trainer_change_employee_id: row.worklog_trainer_request_employee_id || "",
+    trainer_change_status: row.worklog_trainer_request_status || "none",
+    trainer_change_requested_at: row.worklog_trainer_request_at || null,
     has_worklog_override: hasWorklogOverride,
     member_name_ciphertext: undefined,
     worklog_member_name_ciphertext: undefined,
+    worklog_note_ciphertext: undefined,
   };
 }
 
@@ -206,7 +217,7 @@ async function handleUserRequest(request, response) {
     const monthKey = String(request.query?.monthKey || "").trim();
     if (!/^\d{4}-\d{2}$/.test(monthKey)) return response.status(400).json({ ok: false, error: "기준월 형식이 올바르지 않습니다." });
     const sourceFields = "id,month_key,trainer_name,trainer_employee_id,trainer_profile_id,member_name_ciphertext,scheduled_at,ended_at,session_type,status,status_source,postponed_to,class_label,active,source_updated_at,updated_at";
-    const fields = `${sourceFields},worklog_member_name_ciphertext,worklog_scheduled_at,worklog_ended_at,worklog_session_type,worklog_class_label,worklog_override_at`;
+    const fields = `${sourceFields},worklog_member_name_ciphertext,worklog_scheduled_at,worklog_ended_at,worklog_session_type,worklog_class_label,worklog_note_ciphertext,worklog_trainer_request_employee_id,worklog_trainer_request_status,worklog_trainer_request_at,worklog_override_at`;
     const makeBasePath = (selectFields) => `/rest/v1/dagym_pt_schedule_events?center_key=eq.${CENTER_KEY}&month_key=eq.${monthKey}&active=eq.true&select=${selectFields}&order=scheduled_at.asc&limit=2500`;
     const basePath = makeBasePath(fields);
     const legacyBasePath = makeBasePath(sourceFields);
@@ -240,7 +251,7 @@ async function handleUserRequest(request, response) {
     const status = String(request.body?.status || "").trim();
     const postponedTo = String(request.body?.postponedTo || "").trim();
     const override = request.body?.override && typeof request.body.override === "object" ? request.body.override : null;
-    const hasOverride = Boolean(override && (override.reset === true || ["scheduledAt", "sessionType", "classLabel", "memberName"].some((key) => hasOwn(override, key))));
+    const hasOverride = Boolean(override && (override.reset === true || ["scheduledAt", "sessionType", "classLabel", "memberName", "note", "trainerChangeEmployeeId", "trainerChangeStatus"].some((key) => hasOwn(override, key))));
     if (!/^[0-9a-f-]{36}$/i.test(id) || (!hasStatus && !hasOverride)) {
       return response.status(400).json({ ok: false, error: "변경할 수업 정보가 올바르지 않습니다." });
     }
@@ -249,7 +260,7 @@ async function handleUserRequest(request, response) {
     }
     if (postponedTo && !isValidDateKey(postponedTo)) return response.status(400).json({ ok: false, error: "연기 날짜가 올바르지 않습니다." });
     const sourceFields = "id,trainer_profile_id,member_name_ciphertext,scheduled_at,ended_at,session_type,status,status_source,postponed_to,class_label";
-    const fields = `${sourceFields},worklog_member_name_ciphertext,worklog_scheduled_at,worklog_ended_at,worklog_session_type,worklog_class_label,worklog_override_at`;
+    const fields = `${sourceFields},worklog_member_name_ciphertext,worklog_scheduled_at,worklog_ended_at,worklog_session_type,worklog_class_label,worklog_note_ciphertext,worklog_trainer_request_employee_id,worklog_trainer_request_status,worklog_trainer_request_at,worklog_override_at`;
     let row;
     try {
       [row] = await supabaseRequest(`/rest/v1/dagym_pt_schedule_events?id=eq.${encodeURIComponent(id)}&select=${fields}&limit=1`);
@@ -275,6 +286,10 @@ async function handleUserRequest(request, response) {
           worklog_ended_at: null,
           worklog_session_type: null,
           worklog_class_label: null,
+          worklog_note_ciphertext: "",
+          worklog_trainer_request_employee_id: null,
+          worklog_trainer_request_status: "none",
+          worklog_trainer_request_at: null,
           worklog_override_at: null,
         });
       } else {
@@ -297,6 +312,27 @@ async function handleUserRequest(request, response) {
         }
         if (hasOwn(override, "classLabel")) update.worklog_class_label = normalizeWorklogLabel(override.classLabel) || null;
         if (hasOwn(override, "memberName")) update.worklog_member_name_ciphertext = encrypt(normalizeWorklogLabel(override.memberName));
+        if (hasOwn(override, "note")) update.worklog_note_ciphertext = encrypt(normalizeWorklogLabel(override.note, 500));
+        if (hasOwn(override, "trainerChangeEmployeeId")) {
+          const nextEmployeeId = String(override.trainerChangeEmployeeId || "").trim();
+          if (nextEmployeeId && !/^[A-Za-z0-9_-]{2,120}$/.test(nextEmployeeId)) {
+            return response.status(400).json({ ok: false, error: "강사 변경 요청 대상이 올바르지 않습니다." });
+          }
+          update.worklog_trainer_request_employee_id = nextEmployeeId || null;
+          update.worklog_trainer_request_status = nextEmployeeId ? "requested" : "none";
+          update.worklog_trainer_request_at = nextEmployeeId ? updatedAt : null;
+        }
+        if (hasOwn(override, "trainerChangeStatus")) {
+          const requestStatus = String(override.trainerChangeStatus || "").trim() || "none";
+          if (!["none", "requested", "approved", "declined"].includes(requestStatus)) {
+            return response.status(400).json({ ok: false, error: "강사 변경 요청 상태가 올바르지 않습니다." });
+          }
+          if (!access.canViewAll && !["none", "requested"].includes(requestStatus)) {
+            return response.status(403).json({ ok: false, error: "강사 변경 요청의 승인·반려는 관리자만 할 수 있습니다." });
+          }
+          update.worklog_trainer_request_status = requestStatus;
+          update.worklog_trainer_request_at = requestStatus === "requested" ? updatedAt : (row.worklog_trainer_request_at || null);
+        }
         update.worklog_override_at = updatedAt;
       }
     }

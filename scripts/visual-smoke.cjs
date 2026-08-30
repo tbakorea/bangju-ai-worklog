@@ -135,7 +135,7 @@ async function checkResponsiveCoworkerWorkspace(browser) {
     tabCount: document.querySelectorAll("[data-worklog-page-choice]").length,
     fits: document.documentElement.scrollWidth <= window.innerWidth + 2,
   }));
-  if (phone.layout !== "portrait" || !phone.selectorHidden || phone.identity !== "mine" || phone.tabCount !== 3 || !phone.fits) {
+  if (phone.layout !== "portrait" || !phone.selectorHidden || phone.identity !== "mine" || phone.tabCount !== 4 || !phone.fits) {
     fail("phone worklog should force a compact portrait workspace with clear own-work identity", JSON.stringify(phone));
   }
 
@@ -179,6 +179,39 @@ async function checkResponsiveCoworkerWorkspace(browser) {
   }));
   if (coworkerPage.mode !== "coworker" || !coworkerPage.active || coworkerPage.count < 1) {
     fail("coworker worklog tab should be direct, visible, and count same-site coworkers", JSON.stringify(coworkerPage));
+  }
+
+  await page.click('[data-worklog-page-choice="week"]');
+  await page.waitForTimeout(60);
+  const weeklyPhone = await page.evaluate(() => {
+    const board = document.getElementById("worklogWeekBoard");
+    const dayButtons = board?.querySelectorAll("[data-worklog-week-date]") || [];
+    return {
+      mode: document.getElementById("worklogMain")?.dataset.todayPage,
+      active: document.querySelector('[data-worklog-page-choice="week"]')?.classList.contains("is-active"),
+      days: dayButtons.length,
+      scrollable: board ? board.scrollWidth >= board.clientWidth : false,
+      fits: document.documentElement.scrollWidth <= window.innerWidth + 2,
+    };
+  });
+  if (weeklyPhone.mode !== "week" || !weeklyPhone.active || weeklyPhone.days !== 7 || !weeklyPhone.scrollable || !weeklyPhone.fits) {
+    fail("phone weekly schedule should show seven horizontally scrollable days without page overflow", JSON.stringify(weeklyPhone));
+  }
+
+  await page.setViewportSize({ width: 1180, height: 820 });
+  await page.evaluate(() => window.eval(`renderResponsiveMode(); renderEntries(); setTodayPageMode("week");`));
+  await page.waitForTimeout(60);
+  const weeklyDesktop = await page.evaluate(() => {
+    const board = document.getElementById("worklogWeekBoard");
+    return {
+      days: board?.querySelectorAll("[data-worklog-week-date]").length || 0,
+      columns: board ? getComputedStyle(board).gridTemplateColumns.split(" ").length : 0,
+      overflow: board ? board.scrollWidth - board.clientWidth : 0,
+      fits: document.documentElement.scrollWidth <= window.innerWidth + 2,
+    };
+  });
+  if (weeklyDesktop.days !== 7 || weeklyDesktop.columns !== 7 || weeklyDesktop.overflow > 2 || !weeklyDesktop.fits) {
+    fail("tablet/desktop weekly schedule should show all seven days in one compact grid", JSON.stringify(weeklyDesktop));
   }
   if (errors.length) fail("responsive coworker workspace page errors", errors.join(" | "));
   await page.close();

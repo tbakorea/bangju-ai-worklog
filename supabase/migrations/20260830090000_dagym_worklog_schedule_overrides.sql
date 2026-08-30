@@ -6,9 +6,18 @@ alter table public.dagym_pt_schedule_events add column if not exists worklog_sch
 alter table public.dagym_pt_schedule_events add column if not exists worklog_ended_at timestamptz;
 alter table public.dagym_pt_schedule_events add column if not exists worklog_session_type text;
 alter table public.dagym_pt_schedule_events add column if not exists worklog_class_label text;
+alter table public.dagym_pt_schedule_events add column if not exists worklog_note_ciphertext text not null default '';
+alter table public.dagym_pt_schedule_events add column if not exists worklog_trainer_request_employee_id text;
+alter table public.dagym_pt_schedule_events add column if not exists worklog_trainer_request_status text not null default 'none';
+alter table public.dagym_pt_schedule_events add column if not exists worklog_trainer_request_at timestamptz;
 alter table public.dagym_pt_schedule_events add column if not exists worklog_override_at timestamptz;
 
 alter table public.dagym_pt_schedule_events drop constraint if exists dagym_pt_schedule_events_worklog_session_type_check;
 alter table public.dagym_pt_schedule_events
   add constraint dagym_pt_schedule_events_worklog_session_type_check
   check (worklog_session_type is null or worklog_session_type in ('paid', 'free', 'other'));
+
+alter table public.dagym_pt_schedule_events drop constraint if exists dagym_pt_schedule_events_worklog_trainer_request_status_check;
+alter table public.dagym_pt_schedule_events
+  add constraint dagym_pt_schedule_events_worklog_trainer_request_status_check
+  check (worklog_trainer_request_status in ('none', 'requested', 'approved', 'declined'));
