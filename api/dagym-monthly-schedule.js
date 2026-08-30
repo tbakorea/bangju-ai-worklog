@@ -101,6 +101,11 @@ function hasOwn(object, key) {
   return Object.prototype.hasOwnProperty.call(object || {}, key);
 }
 
+function isWorklogOverrideColumnError(error) {
+  return /worklog_(member_name_ciphertext|scheduled_at|ended_at|session_type|class_label|override_at)|column .*worklog|schema cache/i
+    .test(String(error?.message || error || ""));
+}
+
 function serializeScheduleRow(row = {}) {
   const hasWorklogOverride = Boolean(
     row.worklog_override_at
@@ -200,16 +205,27 @@ async function handleUserRequest(request, response) {
   if (request.method === "GET") {
     const monthKey = String(request.query?.monthKey || "").trim();
     if (!/^\d{4}-\d{2}$/.test(monthKey)) return response.status(400).json({ ok: false, error: "기준월 형식이 올바르지 않습니다." });
-    const fields = "id,month_key,trainer_name,trainer_employee_id,trainer_profile_id,member_name_ciphertext,scheduled_at,ended_at,session_type,status,status_source,postponed_to,class_label,worklog_member_name_ciphertext,worklog_scheduled_at,worklog_ended_at,worklog_session_type,worklog_class_label,worklog_override_at,active,source_updated_at,updated_at";
-    const basePath = `/rest/v1/dagym_pt_schedule_events?center_key=eq.${CENTER_KEY}&month_key=eq.${monthKey}&active=eq.true&select=${fields}&order=scheduled_at.asc&limit=2500`;
+    const sourceFields = "id,month_key,trainer_name,trainer_employee_id,trainer_profile_id,member_name_ciphertext,scheduled_at,ended_at,session_type,status,status_source,postponed_to,class_label,active,source_updated_at,updated_at";
+    const fields = `${sourceFields},worklog_member_name_ciphertext,worklog_scheduled_at,worklog_ended_at,worklog_session_type,worklog_class_label,worklog_override_at`;
+    const makeBasePath = (selectFields) => `/rest/v1/dagym_pt_schedule_events?center_key=eq.${CENTER_KEY}&month_key=eq.${monthKey}&active=eq.true&select=${selectFields}&order=scheduled_at.asc&limit=2500`;
+    const basePath = makeBasePath(fields);
+    const legacyBasePath = makeBasePath(sourceFields);
+    const loadRows = async (filter = "") => {
+      try {
+        return await supabaseRequest(`${basePath}${filter}`);
+      } catch (error) {
+        if (!isWorklogOverrideColumnError(error)) throw error;
+        return supabaseRequest(`${legacyBasePath}${filter}`);
+      }
+    };
     const ownNames = [access.profile.name, access.profile.nickname].map(normalizeName).filter(Boolean);
     let visibleRows;
     if (access.canViewAll) {
-      visibleRows = await supabaseRequest(basePath);
+      visibleRows = await loadRows();
     } else {
       const [mappedRows, unmappedRows] = await Promise.all([
-        supabaseRequest(`${basePath}&trainer_profile_id=eq.${encodeURIComponent(user.id)}`),
-        supabaseRequest(`${basePath}&trainer_profile_id=is.null`),
+        loadRows(`&trainer_profile_id=eq.${encodeURIComponent(user.id)}`),
+        loadRows("&trainer_profile_id=is.null"),
       ]);
       visibleRows = [...new Map([
         ...mappedRows,
@@ -232,8 +248,16 @@ async function handleUserRequest(request, response) {
       return response.status(400).json({ ok: false, error: "수업 상태값이 올바르지 않습니다." });
     }
     if (postponedTo && !isValidDateKey(postponedTo)) return response.status(400).json({ ok: false, error: "연기 날짜가 올바르지 않습니다." });
-    const fields = "id,trainer_profile_id,member_name_ciphertext,scheduled_at,ended_at,session_type,status,status_source,postponed_to,class_label,worklog_member_name_ciphertext,worklog_scheduled_at,worklog_ended_at,worklog_session_type,worklog_class_label,worklog_override_at";
-    const [row] = await supabaseRequest(`/rest/v1/dagym_pt_schedule_events?id=eq.${encodeURIComponent(id)}&select=${fields}&limit=1`);
+    const sourceFields = "id,trainer_profile_id,member_name_ciphertext,scheduled_at,ended_at,session_type,status,status_source,postponed_to,class_label";
+    const fields = `${sourceFields},worklog_member_name_ciphertext,worklog_scheduled_at,worklog_ended_at,worklog_session_type,worklog_class_label,worklog_override_at`;
+    let row;
+    try {
+      [row] = await supabaseRequest(`/rest/v1/dagym_pt_schedule_events?id=eq.${encodeURIComponent(id)}&select=${fields}&limit=1`);
+    } catch (error) {
+      if (!isWorklogOverrideColumnError(error)) throw error;
+      if (hasOverride) return response.status(503).json({ ok: false, error: "수업 일정 수정 기능을 준비하고 있습니다. 잠시 후 다시 시도해주세요." });
+      [row] = await supabaseRequest(`/rest/v1/dagym_pt_schedule_events?id=eq.${encodeURIComponent(id)}&select=${sourceFields}&limit=1`);
+    }
     if (!row || (!access.canViewAll && row.trainer_profile_id !== user.id)) return response.status(403).json({ ok: false, error: "이 수업을 변경할 권한이 없습니다." });
 
     const updatedAt = new Date().toISOString();
