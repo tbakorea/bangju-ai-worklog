@@ -10153,7 +10153,11 @@ function isDagymScheduleProjectionEligible(row = {}, dateKey = getActiveDateKey(
 
 function getDagymPtScheduleItemText(row = {}) {
   const memberName = String(row.member_name || "").trim();
-  const sessionLabel = row.session_type === "free" ? "무료 PT 수업" : row.session_type === "paid" ? "PT 수업" : (row.class_label || "수업");
+  const defaultLabel = row.session_type === "free" ? "무료 PT 수업" : row.session_type === "paid" ? "PT 수업" : "수업";
+  const customLabel = String(row.class_label || "").trim();
+  const sessionLabel = customLabel && !["PT 수업", "유료 PT 수업", "무료 PT 수업"].includes(customLabel)
+    ? customLabel
+    : defaultLabel;
   return `${memberName ? `${memberName} ` : ""}${sessionLabel}`;
 }
 
@@ -10176,30 +10180,124 @@ function renderDagymClassStatusControl(item = {}) {
       ${dagymClassStatusOptions.map(([value, label]) => `<option value="${value}" ${item.dagymStatus === value ? "selected" : ""}>${label}</option>`).join("")}
     </select>
     ${item.dagymStatus === "postponed" ? `<label><span>연기일</span><input type="date" value="${escapeAttr(item.dagymPostponedTo || "")}" aria-label="연기 날짜 선택" /><em>${item.dagymPostponedTo ? formatShortDate(item.dagymPostponedTo) : "미정"}</em></label>` : ""}
+    <button type="button" class="dagym-class-edit-button" data-dagym-class-edit="${escapeAttr(item.sourceId || "")}">일정 수정</button>
   </span>`;
 }
 
-async function updateDagymClassStatus(item, log, status, postponedTo = "") {
+function getDagymSessionTypeLabel(sessionType = "paid") {
+  if (sessionType === "free") return "무료 PT";
+  if (sessionType === "other") return "기타 수업";
+  return "유료 PT";
+}
+
+function getDagymScheduleTimeInput(value = "") {
+  return getDagymScheduleKstParts(value).time || "";
+}
+
+function buildKstScheduleIso(dateKey = getActiveDateKey(), time = "") {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(String(dateKey || "")) || !/^\d{2}:\d{2}$/.test(String(time || ""))) return "";
+  const [year, month, day] = dateKey.split("-").map(Number);
+  const [hour, minute] = time.split(":").map(Number);
+  return new Date(Date.UTC(year, month - 1, day, hour - 9, minute)).toISOString();
+}
+
+function getDagymClassScheduleItem(log, sourceId = "") {
+  const targetId = String(sourceId || "");
+  if (!targetId) return null;
+  for (const entry of log?.schedule || []) {
+    const item = normalizeScheduleEntryItems(entry).find((candidate) => candidate.source === "dagym-monthly-pt" && String(candidate.sourceId || "") === targetId);
+    if (item) return { entry, item };
+  }
+  return null;
+}
+
+function relocateDagymClassItem(log, item, scheduledAt = "") {
+  const nextTime = getDagymScheduleKstParts(scheduledAt).time;
+  if (!nextTime || !log) return;
+  const current = getDagymClassScheduleItem(log, item.sourceId);
+  const currentEntry = current?.entry;
+  if (!currentEntry || currentEntry.time === nextTime) return;
+  let targetEntry = (log.schedule || []).find((entry) => entry.time === nextTime);
+  if (!targetEntry) {
+    log.manualScheduleSlots = [...new Set([...(log.manualScheduleSlots || []), nextTime])].sort((left, right) => timeToMinutes(left) - timeToMinutes(right));
+    normalizeEmployeeLogRows(log, getActiveDateKey());
+    targetEntry = (log.schedule || []).find((entry) => entry.time === nextTime);
+  }
+  if (!targetEntry) return;
+  const currentItems = normalizeScheduleEntryItems(currentEntry);
+  const targetItems = normalizeScheduleEntryItems(targetEntry);
+  const currentIndex = currentItems.indexOf(item);
+  if (currentIndex >= 0) currentItems.splice(currentIndex, 1);
+  if (!currentItems.length) currentItems.push(createScheduleItem());
+  const blankIndex = targetItems.findIndex((candidate) => !String(candidate.text || "").trim());
+  if (blankIndex >= 0) targetItems.splice(blankIndex, 1, item);
+  else targetItems.push(item);
+  syncScheduleEntryText(currentEntry);
+  syncScheduleEntryText(targetEntry);
+}
+
+function applyDagymClassEventToItem(item, event = {}) {
+  if (!item || !event) return;
+  const sessionType = event.session_type || item.dagymSessionType || "paid";
+  Object.assign(item, {
+    memberName: event.member_name ?? item.memberName ?? "",
+    dagymStatus: event.status || item.dagymStatus || "scheduled",
+    dagymPostponedTo: event.postponed_to || "",
+    dagymScheduledAt: event.scheduled_at || item.dagymScheduledAt || "",
+    dagymSourceScheduledAt: event.source_scheduled_at || item.dagymSourceScheduledAt || event.scheduled_at || "",
+    dagymSessionType: sessionType,
+    dagymSourceSessionType: event.source_session_type || item.dagymSourceSessionType || sessionType,
+    dagymClassLabel: event.class_label || item.dagymClassLabel || "PT 수업",
+    dagymSourceClassLabel: event.source_class_label || item.dagymSourceClassLabel || event.class_label || "PT 수업",
+    dagymSourceMemberName: event.source_member_name ?? item.dagymSourceMemberName ?? event.member_name ?? "",
+    dagymHasWorklogOverride: Boolean(event.has_worklog_override),
+    importedAt: event.source_updated_at || event.updated_at || item.importedAt || "",
+    type: sessionType === "free" ? "무료PT" : sessionType === "paid" ? "유료PT" : "업무",
+  });
+  item.text = getDagymPtScheduleItemText({
+    member_name: item.memberName,
+    session_type: sessionType,
+    class_label: item.dagymClassLabel,
+  });
+}
+
+async function patchDagymClass(item, log, body = {}, successMessage = "") {
   if (!item?.sourceId || !authState.session?.access_token) return;
   const response = await fetch("/api/dagym-monthly-schedule", {
     method: "PATCH",
     headers: { "Content-Type": "application/json", Authorization: `Bearer ${authState.session.access_token}` },
-    body: JSON.stringify({ id: item.sourceId, status, postponedTo }),
+    body: JSON.stringify({ id: item.sourceId, ...body }),
   });
   const payload = await response.json().catch(() => ({}));
   if (!response.ok) {
-    showAppToast(payload.error || "수업 상태를 저장하지 못했습니다.");
-    return;
+    showAppToast(payload.error || "수업 일정을 저장하지 못했습니다.");
+    return false;
   }
-  item.dagymStatus = status;
-  item.dagymPostponedTo = status === "postponed" ? postponedTo : "";
+  if (payload.event) {
+    applyDagymClassEventToItem(item, payload.event);
+    relocateDagymClassItem(log, item, payload.event.scheduled_at);
+  } else if (body.status) {
+    item.dagymStatus = body.status;
+    item.dagymPostponedTo = body.status === "postponed" ? (body.postponedTo || "") : "";
+  }
   authState.dagymPtScheduleMonthCache = new Map();
   syncFitnessOpsFromSchedule(log);
   // 수업 상태는 전용 API에 저장합니다. 대표 열람 화면에서 직원 업무일지
   // 본문 전체를 다시 저장해 원장을 덮어쓰지 않습니다.
   localStorage.setItem(storageKey, JSON.stringify(state));
   renderEntries();
-  showAppToast(`${item.memberName || "수강생"} 수업: ${getDagymClassStatusLabel(status)}`);
+  if (fitnessScheduleEditorState?.log === log) renderFitnessScheduleEditor();
+  if (successMessage) showAppToast(successMessage);
+  return true;
+}
+
+async function updateDagymClassStatus(item, log, status, postponedTo = "") {
+  return patchDagymClass(
+    item,
+    log,
+    { status, postponedTo },
+    `${item.memberName || "수강생"} 수업: ${getDagymClassStatusLabel(status)}`,
+  );
 }
 
 function bindDagymClassStatusControls(root, item, log) {
@@ -10209,8 +10307,145 @@ function bindDagymClassStatusControls(root, item, log) {
   if (!control) return;
   const select = control.querySelector("select");
   const dateInput = control.querySelector('input[type="date"]');
-  if (select) select.onchange = () => updateDagymClassStatus(item, log, select.value, select.value === "postponed" ? (dateInput?.value || "") : "");
-  if (dateInput) dateInput.onchange = () => updateDagymClassStatus(item, log, "postponed", dateInput.value || "");
+  const editButton = control.querySelector("[data-dagym-class-edit]");
+  if (select) select.onchange = () => {
+    if (!guardWorklogEdit()) return renderEntries();
+    updateDagymClassStatus(item, log, select.value, select.value === "postponed" ? (dateInput?.value || "") : "");
+  };
+  if (dateInput) dateInput.onchange = () => {
+    if (!guardWorklogEdit()) return renderEntries();
+    updateDagymClassStatus(item, log, "postponed", dateInput.value || "");
+  };
+  if (editButton) editButton.onclick = () => {
+    if (!guardWorklogEdit()) return;
+    openDagymClassEditor(item, log);
+  };
+}
+
+let dagymClassEditorState = null;
+
+function getOrCreateDagymClassEditor() {
+  let backdrop = document.getElementById("dagymClassEditorBackdrop");
+  let editor = document.getElementById("dagymClassEditor");
+  if (backdrop && editor) return { backdrop, editor };
+
+  backdrop = document.createElement("div");
+  backdrop.id = "dagymClassEditorBackdrop";
+  backdrop.className = "dagym-class-editor-backdrop";
+  backdrop.hidden = true;
+
+  editor = document.createElement("section");
+  editor.id = "dagymClassEditor";
+  editor.className = "dagym-class-editor";
+  editor.hidden = true;
+  editor.setAttribute("role", "dialog");
+  editor.setAttribute("aria-modal", "true");
+  editor.setAttribute("aria-labelledby", "dagymClassEditorTitle");
+  editor.innerHTML = `
+    <header>
+      <div>
+        <p>DA GYM · WORKLOG COPY</p>
+        <h2 id="dagymClassEditorTitle">PT 수업 일정 수정</h2>
+      </div>
+      <button type="button" id="dagymClassEditorClose" aria-label="닫기">×</button>
+    </header>
+    <p class="dagym-class-editor-note">업무일지에만 저장됩니다. 다짐 원본 시간표에는 전송하지 않습니다.</p>
+    <p class="dagym-class-editor-source" id="dagymClassEditorSource"></p>
+    <div class="dagym-class-editor-fields">
+      <label>수강생 표시명<input id="dagymClassEditorMember" type="text" maxlength="80" autocomplete="off" /></label>
+      <label>수업 시간<input id="dagymClassEditorTime" type="time" required /></label>
+      <label>수업 구분<select id="dagymClassEditorSessionType"><option value="paid">유료 PT</option><option value="free">무료 PT</option><option value="other">기타 수업</option></select></label>
+      <label>수업명<input id="dagymClassEditorLabel" type="text" maxlength="80" autocomplete="off" placeholder="예: 체형교정 PT" /></label>
+    </div>
+    <footer>
+      <button type="button" id="dagymClassEditorRestore">원본으로 복원</button>
+      <span></span>
+      <button type="button" id="dagymClassEditorCancel">취소</button>
+      <button type="button" class="is-primary" id="dagymClassEditorSave">업무일지에 저장</button>
+    </footer>
+  `;
+  document.body.append(backdrop, editor);
+  backdrop.onclick = closeDagymClassEditor;
+  editor.querySelector("#dagymClassEditorClose").onclick = closeDagymClassEditor;
+  editor.querySelector("#dagymClassEditorCancel").onclick = closeDagymClassEditor;
+  editor.querySelector("#dagymClassEditorSave").onclick = () => saveDagymClassEditor();
+  editor.querySelector("#dagymClassEditorRestore").onclick = () => saveDagymClassEditor({ reset: true });
+  editor.addEventListener("keydown", (event) => {
+    if (event.key === "Escape") closeDagymClassEditor();
+    if (event.key === "Enter" && event.target.tagName !== "TEXTAREA") {
+      event.preventDefault();
+      saveDagymClassEditor();
+    }
+  });
+  return { backdrop, editor };
+}
+
+function openDagymClassEditor(item, log) {
+  if (!item || !log) return;
+  dagymClassEditorState = { item, log };
+  const { backdrop, editor } = getOrCreateDagymClassEditor();
+  const dateKey = getDagymScheduleKstParts(item.dagymScheduledAt || item.dagymSourceScheduledAt).dateKey || getActiveDateKey();
+  const sourceTime = getDagymScheduleTimeInput(item.dagymSourceScheduledAt || item.dagymScheduledAt);
+  const sourceSessionType = item.dagymSourceSessionType || item.dagymSessionType || "paid";
+  const sourceLabel = item.dagymSourceClassLabel || item.dagymClassLabel || "PT 수업";
+  const sourceMember = item.dagymSourceMemberName || item.memberName || "";
+  editor.querySelector("#dagymClassEditorMember").value = item.memberName || "";
+  editor.querySelector("#dagymClassEditorTime").value = getDagymScheduleTimeInput(item.dagymScheduledAt) || sourceTime;
+  editor.querySelector("#dagymClassEditorSessionType").value = item.dagymSessionType || "paid";
+  editor.querySelector("#dagymClassEditorLabel").value = item.dagymClassLabel || "";
+  editor.querySelector("#dagymClassEditorSource").textContent = `원본 · ${formatShortDate(dateKey)} ${sourceTime || "시간 미정"} · ${sourceMember || "수강생 미정"} · ${getDagymSessionTypeLabel(sourceSessionType)} · ${sourceLabel}`;
+  editor.querySelector("#dagymClassEditorRestore").disabled = !item.dagymHasWorklogOverride;
+  backdrop.hidden = false;
+  editor.hidden = false;
+  requestAnimationFrame(() => editor.classList.add("is-open"));
+  window.setTimeout(() => editor.querySelector("#dagymClassEditorMember").focus(), 30);
+}
+
+function closeDagymClassEditor() {
+  const backdrop = document.getElementById("dagymClassEditorBackdrop");
+  const editor = document.getElementById("dagymClassEditor");
+  if (editor) editor.classList.remove("is-open");
+  window.setTimeout(() => {
+    if (backdrop) backdrop.hidden = true;
+    if (editor) editor.hidden = true;
+  }, 150);
+  dagymClassEditorState = null;
+}
+
+async function saveDagymClassEditor({ reset = false } = {}) {
+  const current = dagymClassEditorState;
+  if (!current) return;
+  const { item, log } = current;
+  const { editor } = getOrCreateDagymClassEditor();
+  const restore = editor.querySelector("#dagymClassEditorRestore");
+  const save = editor.querySelector("#dagymClassEditorSave");
+  if (reset && !window.confirm("업무일지에서 수정한 수업 정보를 지우고 다짐 원본 표시로 되돌릴까요?")) return;
+  const dateKey = getDagymScheduleKstParts(item.dagymScheduledAt || item.dagymSourceScheduledAt).dateKey || getActiveDateKey();
+  const time = editor.querySelector("#dagymClassEditorTime").value;
+  const scheduledAt = buildKstScheduleIso(dateKey, time);
+  if (!reset && !scheduledAt) return showAppToast("수업 시간을 확인해주세요.");
+  restore.disabled = true;
+  save.disabled = true;
+  const saved = await patchDagymClass(
+    item,
+    log,
+    reset
+      ? { override: { reset: true } }
+      : {
+        override: {
+          scheduledAt,
+          sessionType: editor.querySelector("#dagymClassEditorSessionType").value,
+          classLabel: editor.querySelector("#dagymClassEditorLabel").value,
+          memberName: editor.querySelector("#dagymClassEditorMember").value,
+        },
+      },
+    reset ? "업무일지 수정본을 지우고 다짐 원본으로 복원했습니다." : "수업 일정을 업무일지에 저장했습니다.",
+  );
+  if (saved) closeDagymClassEditor();
+  else {
+    restore.disabled = !item.dagymHasWorklogOverride;
+    save.disabled = false;
+  }
 }
 
 function applyDagymPtScheduleRows(rows = [], dateKey = getActiveDateKey()) {
@@ -10267,15 +10502,23 @@ function applyDagymPtScheduleRows(rows = [], dateKey = getActiveDateKey()) {
         log.manualScheduleSlots = [...new Set([...(log.manualScheduleSlots || []), time])].sort((a, b) => timeToMinutes(a) - timeToMinutes(b));
         normalizeEmployeeLogRows(log, dateKey);
       }
-      const entry = existingEntry || log.schedule.find((item) => item.time === time);
+      if (existingEntry && existingEntry.time !== time) {
+        const existingSourceItem = normalizeScheduleEntryItems(existingEntry)
+          .find((item) => item.source === "dagym-monthly-pt" && String(item.sourceId || "") === sourceId);
+        if (existingSourceItem) {
+          applyDagymClassEventToItem(existingSourceItem, row);
+          relocateDagymClassItem(log, existingSourceItem, row.scheduled_at);
+        }
+      }
+      const entry = log.schedule.find((item) => item.time === time) || existingEntry;
       if (!entry) return;
       normalizeScheduleEntryItems(entry);
       const type = row.session_type === "free" ? "무료PT" : row.session_type === "paid" ? "유료PT" : "업무";
       const text = getDagymPtScheduleItemText(row);
       const existing = entry.items.find((item) => item.source === "dagym-monthly-pt" && String(item.sourceId || "") === sourceId);
       if (existing) {
-        if (existing.text !== text || existing.type !== type || existing.dagymStatus !== row.status || existing.dagymPostponedTo !== row.postponed_to) {
-          Object.assign(existing, { text, type, memberName: row.member_name || "", dagymStatus: row.status, dagymPostponedTo: row.postponed_to || "", importedAt: row.source_updated_at || row.updated_at || "" });
+        if (existing.text !== text || existing.type !== type || existing.dagymStatus !== row.status || existing.dagymPostponedTo !== row.postponed_to || existing.dagymScheduledAt !== row.scheduled_at || existing.dagymSessionType !== row.session_type || existing.dagymClassLabel !== row.class_label || existing.memberName !== (row.member_name || "")) {
+          applyDagymClassEventToItem(existing, row);
           changed += 1;
         }
       } else {
@@ -10288,6 +10531,14 @@ function applyDagymPtScheduleRows(rows = [], dateKey = getActiveDateKey()) {
           memberName: row.member_name || "",
           dagymStatus: row.status,
           dagymPostponedTo: row.postponed_to || "",
+          dagymScheduledAt: row.scheduled_at || "",
+          dagymSourceScheduledAt: row.source_scheduled_at || row.scheduled_at || "",
+          dagymSessionType: row.session_type || "paid",
+          dagymSourceSessionType: row.source_session_type || row.session_type || "paid",
+          dagymClassLabel: row.class_label || "PT 수업",
+          dagymSourceClassLabel: row.source_class_label || row.class_label || "PT 수업",
+          dagymSourceMemberName: row.source_member_name || row.member_name || "",
+          dagymHasWorklogOverride: Boolean(row.has_worklog_override),
           importedAt: row.source_updated_at || row.updated_at || "",
         };
         if (blankIndex >= 0) entry.items.splice(blankIndex, 1, importedItem);

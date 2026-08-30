@@ -20,6 +20,8 @@ const SUPABASE_ANON_KEY = isJwtLike(configuredAnonKey) ? configuredAnonKey : DEF
 const CONTACT_SECRET = String(process.env.MEMBER_CONTACT_ENCRYPTION_KEY || process.env.EMBER_CONTACT_ENCRYPTION_KEY || "");
 const MAX_EVENTS = 2500;
 const CENTER_KEY = "beyond-fitness";
+const CLASS_STATUSES = ["scheduled", "completed", "cancelled", "no-show", "postponed"];
+const SESSION_TYPES = ["paid", "free", "other"];
 
 const trainerEmployeeAliases = [
   { id: "beyond-fitness-manager", names: ["박주홍", "센터장박주홍"] },
@@ -79,13 +81,61 @@ function isValidDateKey(value = "") {
   return date.getUTCFullYear() === year && date.getUTCMonth() === month - 1 && date.getUTCDate() === day;
 }
 
+function getKstDateKey(value = "") {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+  const parts = Object.fromEntries(new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Seoul",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(date).map((part) => [part.type, part.value]));
+  return `${parts.year}-${parts.month}-${parts.day}`;
+}
+
+function normalizeWorklogLabel(value = "", maxLength = 80) {
+  return String(value || "").replace(/\s+/g, " ").trim().slice(0, maxLength);
+}
+
+function hasOwn(object, key) {
+  return Object.prototype.hasOwnProperty.call(object || {}, key);
+}
+
+function serializeScheduleRow(row = {}) {
+  const hasWorklogOverride = Boolean(
+    row.worklog_override_at
+    || row.worklog_scheduled_at
+    || row.worklog_session_type
+    || row.worklog_class_label
+    || row.worklog_member_name_ciphertext
+  );
+  const sourceMemberName = decrypt(row.member_name_ciphertext);
+  const worklogMemberName = decrypt(row.worklog_member_name_ciphertext);
+  return {
+    ...row,
+    source_scheduled_at: row.scheduled_at,
+    source_ended_at: row.ended_at,
+    source_session_type: row.session_type,
+    source_class_label: row.class_label,
+    source_member_name: sourceMemberName,
+    scheduled_at: row.worklog_scheduled_at || row.scheduled_at,
+    ended_at: row.worklog_ended_at || row.ended_at,
+    session_type: row.worklog_session_type || row.session_type,
+    class_label: row.worklog_class_label || row.class_label,
+    member_name: worklogMemberName || sourceMemberName,
+    has_worklog_override: hasWorklogOverride,
+    member_name_ciphertext: undefined,
+    worklog_member_name_ciphertext: undefined,
+  };
+}
+
 function normalizeEvent(event = {}, monthKey = "") {
   const sourceKey = String(event.sourceKey || "").trim();
   const trainerName = String(event.trainerName || "").trim();
   const scheduledAt = String(event.scheduledAt || "").trim();
   const endedAt = String(event.endedAt || "").trim();
-  const sessionType = ["paid", "free", "other"].includes(event.sessionType) ? event.sessionType : "paid";
-  const status = ["scheduled", "completed", "cancelled", "no-show", "postponed"].includes(event.status) ? event.status : "scheduled";
+  const sessionType = SESSION_TYPES.includes(event.sessionType) ? event.sessionType : "paid";
+  const status = CLASS_STATUSES.includes(event.status) ? event.status : "scheduled";
   if (!/^[a-f0-9]{64}$/i.test(sourceKey) || !trainerName || !scheduledAt || getKstMonthKey(scheduledAt) !== monthKey) return null;
   if (endedAt && Number.isNaN(new Date(endedAt).getTime())) return null;
   return {
@@ -150,7 +200,7 @@ async function handleUserRequest(request, response) {
   if (request.method === "GET") {
     const monthKey = String(request.query?.monthKey || "").trim();
     if (!/^\d{4}-\d{2}$/.test(monthKey)) return response.status(400).json({ ok: false, error: "기준월 형식이 올바르지 않습니다." });
-    const fields = "id,month_key,trainer_name,trainer_employee_id,trainer_profile_id,member_name_ciphertext,scheduled_at,ended_at,session_type,status,status_source,postponed_to,class_label,active,source_updated_at,updated_at";
+    const fields = "id,month_key,trainer_name,trainer_employee_id,trainer_profile_id,member_name_ciphertext,scheduled_at,ended_at,session_type,status,status_source,postponed_to,class_label,worklog_member_name_ciphertext,worklog_scheduled_at,worklog_ended_at,worklog_session_type,worklog_class_label,worklog_override_at,active,source_updated_at,updated_at";
     const basePath = `/rest/v1/dagym_pt_schedule_events?center_key=eq.${CENTER_KEY}&month_key=eq.${monthKey}&active=eq.true&select=${fields}&order=scheduled_at.asc&limit=2500`;
     const ownNames = [access.profile.name, access.profile.nickname].map(normalizeName).filter(Boolean);
     let visibleRows;
@@ -166,24 +216,78 @@ async function handleUserRequest(request, response) {
         ...unmappedRows.filter((row) => ownNames.includes(normalizeName(row.trainer_name))),
       ].map((row) => [row.id, row])).values()];
     }
-    return response.status(200).json({ ok: true, rows: visibleRows.map((row) => ({ ...row, member_name: decrypt(row.member_name_ciphertext), member_name_ciphertext: undefined })) });
+    return response.status(200).json({ ok: true, rows: visibleRows.map(serializeScheduleRow) });
   }
   if (request.method === "PATCH") {
     const id = String(request.body?.id || "").trim();
+    const hasStatus = hasOwn(request.body, "status");
     const status = String(request.body?.status || "").trim();
     const postponedTo = String(request.body?.postponedTo || "").trim();
-    if (!/^[0-9a-f-]{36}$/i.test(id) || !["scheduled", "completed", "cancelled", "no-show", "postponed"].includes(status)) {
+    const override = request.body?.override && typeof request.body.override === "object" ? request.body.override : null;
+    const hasOverride = Boolean(override && (override.reset === true || ["scheduledAt", "sessionType", "classLabel", "memberName"].some((key) => hasOwn(override, key))));
+    if (!/^[0-9a-f-]{36}$/i.test(id) || (!hasStatus && !hasOverride)) {
+      return response.status(400).json({ ok: false, error: "변경할 수업 정보가 올바르지 않습니다." });
+    }
+    if (hasStatus && !CLASS_STATUSES.includes(status)) {
       return response.status(400).json({ ok: false, error: "수업 상태값이 올바르지 않습니다." });
     }
     if (postponedTo && !isValidDateKey(postponedTo)) return response.status(400).json({ ok: false, error: "연기 날짜가 올바르지 않습니다." });
-    const [row] = await supabaseRequest(`/rest/v1/dagym_pt_schedule_events?id=eq.${encodeURIComponent(id)}&select=id,trainer_profile_id&limit=1`);
+    const fields = "id,trainer_profile_id,member_name_ciphertext,scheduled_at,ended_at,session_type,status,status_source,postponed_to,class_label,worklog_member_name_ciphertext,worklog_scheduled_at,worklog_ended_at,worklog_session_type,worklog_class_label,worklog_override_at";
+    const [row] = await supabaseRequest(`/rest/v1/dagym_pt_schedule_events?id=eq.${encodeURIComponent(id)}&select=${fields}&limit=1`);
     if (!row || (!access.canViewAll && row.trainer_profile_id !== user.id)) return response.status(403).json({ ok: false, error: "이 수업을 변경할 권한이 없습니다." });
+
+    const updatedAt = new Date().toISOString();
+    const update = { updated_at: updatedAt };
+    if (hasStatus) {
+      update.status = status;
+      update.status_source = "worklog";
+      update.postponed_to = status === "postponed" ? (postponedTo || null) : null;
+    }
+    if (hasOverride) {
+      if (override.reset === true) {
+        Object.assign(update, {
+          worklog_member_name_ciphertext: "",
+          worklog_scheduled_at: null,
+          worklog_ended_at: null,
+          worklog_session_type: null,
+          worklog_class_label: null,
+          worklog_override_at: null,
+        });
+      } else {
+        if (hasOwn(override, "scheduledAt")) {
+          const nextStart = new Date(String(override.scheduledAt || ""));
+          const sourceStart = new Date(row.scheduled_at);
+          if (Number.isNaN(nextStart.getTime()) || Number.isNaN(sourceStart.getTime()) || getKstDateKey(nextStart) !== getKstDateKey(sourceStart)) {
+            return response.status(400).json({ ok: false, error: "수업 시간은 같은 날짜 안에서만 수정할 수 있습니다. 날짜 변경은 연기 기능을 사용해주세요." });
+          }
+          update.worklog_scheduled_at = nextStart.toISOString();
+          const sourceEnd = new Date(row.ended_at || "");
+          update.worklog_ended_at = Number.isNaN(sourceEnd.getTime())
+            ? null
+            : new Date(nextStart.getTime() + Math.max(0, sourceEnd.getTime() - sourceStart.getTime())).toISOString();
+        }
+        if (hasOwn(override, "sessionType")) {
+          const sessionType = String(override.sessionType || "").trim();
+          if (!SESSION_TYPES.includes(sessionType)) return response.status(400).json({ ok: false, error: "수업 구분이 올바르지 않습니다." });
+          update.worklog_session_type = sessionType;
+        }
+        if (hasOwn(override, "classLabel")) update.worklog_class_label = normalizeWorklogLabel(override.classLabel) || null;
+        if (hasOwn(override, "memberName")) update.worklog_member_name_ciphertext = encrypt(normalizeWorklogLabel(override.memberName));
+        update.worklog_override_at = updatedAt;
+      }
+    }
     await supabaseRequest(`/rest/v1/dagym_pt_schedule_events?id=eq.${encodeURIComponent(id)}`, {
       method: "PATCH",
       headers: { Prefer: "return=minimal" },
-      body: JSON.stringify({ status, status_source: "worklog", postponed_to: status === "postponed" ? (postponedTo || null) : null, updated_at: new Date().toISOString() }),
+      body: JSON.stringify(update),
     });
-    return response.status(200).json({ ok: true, id, status, postponedTo: status === "postponed" ? postponedTo : "" });
+    return response.status(200).json({
+      ok: true,
+      id,
+      status: hasStatus ? status : row.status,
+      postponedTo: hasStatus && status === "postponed" ? postponedTo : (row.postponed_to || ""),
+      event: serializeScheduleRow({ ...row, ...update }),
+    });
   }
   return response.status(405).json({ ok: false, error: "지원하지 않는 요청입니다." });
 }

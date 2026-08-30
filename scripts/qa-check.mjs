@@ -17,6 +17,9 @@ const dagymMonthlyScheduleApi = existsSync(join(root, "api/dagym-monthly-schedul
 const dagymMonthlyScheduleMigration = existsSync(join(root, "supabase/migrations/20260815013000_dagym_monthly_pt_schedule.sql"))
   ? read("supabase/migrations/20260815013000_dagym_monthly_pt_schedule.sql")
   : "";
+const dagymWorklogOverrideMigration = existsSync(join(root, "supabase/migrations/20260830090000_dagym_worklog_schedule_overrides.sql"))
+  ? read("supabase/migrations/20260830090000_dagym_worklog_schedule_overrides.sql")
+  : "";
 const dagymMonthlyScheduleCollector = existsSync(join(root, "scripts/dagym-monthly-pt-sync.mjs")) ? read("scripts/dagym-monthly-pt-sync.mjs") : "";
 const dagymDailyBrowserApi = existsSync(join(root, "api/dagym-browser-daily.js")) ? read("api/dagym-browser-daily.js") : "";
 const dagymDailyBrowserCollector = existsSync(join(root, "scripts/dagym-daily-sync.mjs")) ? read("scripts/dagym-daily-sync.mjs") : "";
@@ -140,19 +143,27 @@ check(
   "CEO report ingestion must store aggregate metrics only and update the existing coaching pipeline"
 );
 check(
-  "DaGym monthly PT schedule is encrypted, permission-scoped, and status-driven",
+  "DaGym monthly PT schedule is encrypted, permission-scoped, status-driven, and safely editable in the worklog",
   dagymMonthlyScheduleApi.includes("MEMBER_CONTACT_ENCRYPTION_KEY")
     && dagymMonthlyScheduleApi.includes("aes-256-gcm")
     && dagymMonthlyScheduleApi.includes("trainer_profile_id")
-    && dagymMonthlyScheduleApi.includes('status_source: "worklog"')
+    && dagymMonthlyScheduleApi.includes('update.status_source = "worklog"')
+    && dagymMonthlyScheduleApi.includes("worklog_scheduled_at")
+    && dagymMonthlyScheduleApi.includes("serializeScheduleRow")
     && dagymMonthlyScheduleMigration.includes("member_name_ciphertext")
     && dagymMonthlyScheduleMigration.includes("'postponed'")
+    && dagymWorklogOverrideMigration.includes("worklog_member_name_ciphertext")
+    && dagymWorklogOverrideMigration.includes("worklog_scheduled_at")
+    && schema.includes("worklog_override_at")
     && js.includes('["completed", "no-show"].includes(item.dagymStatus)')
     && js.includes("auditDagymClassRows")
     && js.includes("skipPt: hasDagymClass")
     && js.includes('dagymClassStatusOptions = [')
+    && js.includes("function openDagymClassEditor")
+    && js.includes("function patchDagymClass")
+    && js.includes("업무일지에만 저장됩니다. 다짐 원본 시간표에는 전송하지 않습니다.")
     && ["미정", "출석", "노쇼", "취소", "연기"].every((label) => js.includes(`\"${label}\"`)),
-  "member names must be encrypted, rows limited by trainer permission, and only attendance/no-show counted after source-ID deduplication"
+  "member names must be encrypted, rows limited by trainer permission, worklog corrections must not overwrite DaGym source data, and only attendance/no-show counted after source-ID deduplication"
 );
 check(
   "DaGym lessons project only to one exact trainer and upcoming worklog slots",

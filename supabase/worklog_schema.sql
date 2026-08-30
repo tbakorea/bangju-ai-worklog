@@ -837,6 +837,21 @@ grant select on public.dagym_pt_schedule_events to authenticated;
 alter table public.dagym_pt_schedule_events add column if not exists member_name_ciphertext text not null default '';
 alter table public.dagym_pt_schedule_events add column if not exists postponed_to date;
 alter table public.dagym_pt_schedule_events add column if not exists status_source text not null default 'dagym';
+-- DaGym is the source of the original monthly timetable.  Staff may correct
+-- the operational copy in Bangju Worklog without writing those changes back
+-- to DaGym.  Keep the overrides separate so the next import never destroys a
+-- confirmed worklog correction and the original record remains auditable.
+alter table public.dagym_pt_schedule_events add column if not exists worklog_member_name_ciphertext text not null default '';
+alter table public.dagym_pt_schedule_events add column if not exists worklog_scheduled_at timestamptz;
+alter table public.dagym_pt_schedule_events add column if not exists worklog_ended_at timestamptz;
+alter table public.dagym_pt_schedule_events add column if not exists worklog_session_type text;
+alter table public.dagym_pt_schedule_events add column if not exists worklog_class_label text;
+alter table public.dagym_pt_schedule_events add column if not exists worklog_override_at timestamptz;
+
+alter table public.dagym_pt_schedule_events drop constraint if exists dagym_pt_schedule_events_worklog_session_type_check;
+alter table public.dagym_pt_schedule_events
+  add constraint dagym_pt_schedule_events_worklog_session_type_check
+  check (worklog_session_type is null or worklog_session_type in ('paid', 'free', 'other'));
 
 alter table public.dagym_pt_schedule_events drop constraint if exists dagym_pt_schedule_events_status_check;
 alter table public.dagym_pt_schedule_events

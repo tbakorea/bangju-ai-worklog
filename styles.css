@@ -11928,6 +11928,62 @@ body.physical-phone-device .representative-analysis-body {
 
 .dagym-class-status label > span { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
 .dagym-class-status label > em { color: #65766e; font-size: 11px; font-style: normal; font-weight: 800; }
+.dagym-class-edit-button {
+  min-height: 30px;
+  border: 1px solid rgba(18, 69, 52, 0.32);
+  border-radius: 8px;
+  background: rgba(18, 69, 52, 0.08);
+  color: #143e31;
+  padding: 4px 8px;
+  font: inherit;
+  font-size: 11px;
+  font-weight: 900;
+  white-space: nowrap;
+}
+.dagym-class-editor-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 94;
+  background: rgba(10, 22, 16, 0.38);
+  backdrop-filter: blur(3px);
+}
+.dagym-class-editor {
+  position: fixed;
+  z-index: 95;
+  top: 50%;
+  left: 50%;
+  display: grid;
+  gap: 12px;
+  width: min(510px, calc(100vw - 28px));
+  max-height: min(82dvh, 660px);
+  overflow: auto;
+  border: 1px solid rgba(18, 69, 52, 0.42);
+  border-radius: 18px;
+  background: #fcfcf7;
+  box-shadow: 0 24px 70px rgba(9, 28, 19, 0.32);
+  padding: 17px;
+  transform: translate(-50%, calc(-50% + 12px));
+  opacity: 0;
+  transition: transform 160ms ease, opacity 160ms ease;
+}
+.dagym-class-editor.is-open { transform: translate(-50%, -50%); opacity: 1; }
+.dagym-class-editor header { display: flex; justify-content: space-between; align-items: start; gap: 12px; border-bottom: 1px solid var(--hairline); padding-bottom: 10px; }
+.dagym-class-editor header p { margin: 0 0 3px; color: #5d776c; font-size: 10px; font-weight: 950; letter-spacing: 0.11em; }
+.dagym-class-editor header h2 { margin: 0; color: var(--fitness-green); font-size: 21px; font-weight: 950; }
+.dagym-class-editor header button { width: 36px; min-height: 36px; border: 1px solid var(--hairline); border-radius: 50%; background: transparent; color: var(--ink); font-size: 24px; font-weight: 900; }
+.dagym-class-editor-note { margin: 0; border-left: 4px solid var(--fitness-green); background: rgba(18, 69, 52, 0.07); color: #234b3c; padding: 8px 10px; font-size: 12px; font-weight: 800; line-height: 1.45; }
+.dagym-class-editor-source { margin: 0; color: var(--muted); font-size: 11px; font-weight: 800; line-height: 1.45; }
+.dagym-class-editor-fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 9px; }
+.dagym-class-editor-fields label { display: grid; gap: 5px; color: #395748; font-size: 11px; font-weight: 900; }
+.dagym-class-editor-fields label:first-child,
+.dagym-class-editor-fields label:last-child { grid-column: 1 / -1; }
+.dagym-class-editor-fields input,
+.dagym-class-editor-fields select { width: 100%; min-height: 40px; border: 1px solid rgba(18, 69, 52, 0.22); border-radius: 9px; background: #fffefa; color: var(--ink); padding: 7px 9px; font: inherit; font-size: 14px; font-weight: 800; }
+.dagym-class-editor footer { display: grid; grid-template-columns: auto 1fr auto auto; gap: 7px; align-items: center; border-top: 1px solid var(--hairline); padding-top: 11px; }
+.dagym-class-editor footer button { min-height: 39px; border: 1px solid var(--hairline); border-radius: 9px; background: #fffefa; color: var(--ink); padding: 7px 10px; font: inherit; font-size: 12px; font-weight: 900; }
+.dagym-class-editor footer #dagymClassEditorRestore { color: #8a5732; }
+.dagym-class-editor footer .is-primary { border-color: var(--fitness-green); background: var(--fitness-green); color: #fffef8; }
+.dagym-class-editor button:disabled { cursor: default; opacity: 0.45; }
 .fitness-schedule-chip.is-dagym-class { cursor: default; }
 .fitness-paper-reconciliation { margin: 4px 0 0; color: #52675d; font-size: 9px; font-weight: 800; }
 
@@ -11935,6 +11991,12 @@ body.physical-phone-device .representative-analysis-body {
   .appointment-item.is-dagym-class { grid-template-columns: minmax(0, 1fr); }
   .dagym-class-status { flex-wrap: wrap; }
   .dagym-class-status input { max-width: 132px; }
+  .dagym-class-editor { width: calc(100vw - 20px); max-height: 88dvh; padding: 14px; }
+  .dagym-class-editor-fields { grid-template-columns: 1fr; }
+  .dagym-class-editor-fields label { grid-column: 1 / -1; }
+  .dagym-class-editor footer { grid-template-columns: 1fr 1fr; }
+  .dagym-class-editor footer span { display: none; }
+  .dagym-class-editor footer button { min-height: 42px; }
 }
 
 .multi-appointment-row.is-filled {
