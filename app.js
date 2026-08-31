@@ -4979,8 +4979,9 @@ function buildRepresentativeEmployeeAnalysis(employee = {}, endDateKey = getActi
   };
 }
 
-function getRepresentativeEmployeeReportEntries(viewName = activeView, endDateKey = getActiveDateKey()) {
-  const groups = getWorklogOverviewGroups();
+function getRepresentativeEmployeeReportEntries(viewName = activeView, endDateKey = getActiveDateKey(), groupIds = []) {
+  const requestedGroupIds = new Set((groupIds || []).filter(Boolean));
+  const groups = getWorklogOverviewGroups().filter((group) => !requestedGroupIds.size || requestedGroupIds.has(group.id));
   return groups.flatMap((group) => getOverviewGroupEmployeeEntries(group).map(({ employeeId, employee }) => ({
     group,
     employeeId,
@@ -5008,15 +5009,17 @@ function getRepresentativeEmployeeReportNote(analysis = {}) {
   return "기록 흐름이 안정적입니다. 실제 성과와 업무 난이도는 관리자 면담으로 함께 확인하세요.";
 }
 
-function renderRepresentativeEmployeePortfolioReport(viewName = activeView, selectedEmployee = null) {
+function renderRepresentativeEmployeePortfolioReport(viewName = activeView, selectedEmployee = null, options = {}) {
   if (!isRepresentativeProfile()) return "";
-  const entries = getRepresentativeEmployeeReportEntries(viewName, getActiveDateKey());
+  const groupIds = Array.isArray(options.groupIds) ? options.groupIds : [];
+  const entries = getRepresentativeEmployeeReportEntries(viewName, getActiveDateKey(), groupIds);
   if (!entries.length) return "";
   const selectedId = getEmployeeWorklogId(selectedEmployee || {}) || selectedEmployee?.id || "";
   const totalEvidenceDays = entries.reduce((sum, entry) => sum + entry.analysis.evidenceDays, 0);
   const readyCount = entries.filter((entry) => entry.analysis.evidenceDays >= 3).length;
-  const scopeLabel = canAccessAllWorklogs() ? "전 사업장 권한 범위" : "위임받은 사업장 권한 범위";
-  const grouped = getWorklogOverviewGroups().map((group) => ({
+  const scopeLabel = options.scopeLabel || (canAccessAllWorklogs() ? "전 사업장 권한 범위" : "위임받은 사업장 권한 범위");
+  const requestedGroupIds = new Set(groupIds.filter(Boolean));
+  const grouped = getWorklogOverviewGroups().filter((group) => !requestedGroupIds.size || requestedGroupIds.has(group.id)).map((group) => ({
     group,
     entries: entries.filter((entry) => entry.group.id === group.id),
   })).filter(({ entries: groupEntries }) => groupEntries.length);
@@ -5083,59 +5086,8 @@ function renderRepresentativeEmployeeAnalysis(viewName = activeView) {
   const fitnessView = viewName === "fitness-log";
   const panel = document.getElementById(fitnessView ? "fitnessRepresentativeEmployeeAnalysis" : "representativeEmployeeAnalysis");
   if (!panel) return;
-  const fitnessPage = fitnessView ? getCurrentFitnessLogPage() : null;
-  const employee = fitnessView ? fitnessPage?.employee : getSelectedEmployee();
-  const visible = Boolean(isRepresentativeProfile() && employee && (!fitnessView || fitnessPage?.type === "employee"));
-  panel.hidden = !visible;
-  if (!visible) {
-    panel.innerHTML = "";
-    return;
-  }
-  const model = buildRepresentativeEmployeeAnalysis(employee, getActiveDateKey());
-  const percent = (value) => `${Math.round(value * 100)}%`;
-  panel.innerHTML = `
-    <header class="representative-analysis-head">
-      <div>
-        <span>Employee Performance Lens</span>
-        <strong>근태·역량 분석</strong>
-        <small>${escapeHtml(model.periodLabel)} · 최근 30일 업무기록 기준</small>
-      </div>
-      <b data-confidence="${escapeAttr(model.confidenceLabel)}">${escapeHtml(model.confidenceLabel)}</b>
-    </header>
-    <div class="representative-analysis-kpis" aria-label="직원 근태 및 실행 지표">
-      <article><span>근태 기록</span><strong>${model.attendanceDays}/${model.scheduledDays}</strong><em>미기록 ${model.missingAttendanceDays}일</em></article>
-      <article><span>정시 기록</span><strong>${model.attendanceDays ? percent(model.punctualityRate) : "–"}</strong><em>지각 ${model.lateDays} · 조퇴 ${model.earlyDays}</em></article>
-      <article><span>업무일지</span><strong>${model.worklogDays}/${model.scheduledDays}</strong><em>작성률 ${percent(model.worklogRate)}</em></article>
-      <article><span>업무 실행</span><strong>${model.completedTotal}/${model.taskTotal}</strong><em>완료율 ${model.taskTotal ? percent(model.completionRate) : "–"}</em></article>
-    </div>
-    <div class="representative-analysis-body">
-      <section class="representative-competency-panel">
-        <header><strong>${escapeHtml(model.trackProfile.title)}</strong><em>종합 ${model.overallScore}</em></header>
-        <div>
-          ${model.competencyScores.map((item) => `
-            <label>
-              <span>${escapeHtml(item.name)}</span>
-              <i><b style="--analysis-score:${item.score}%"></b></i>
-              <em>${item.score}</em>
-            </label>
-          `).join("")}
-        </div>
-      </section>
-      <section class="representative-analysis-guidance">
-        <article data-tone="strength">
-          <span>관찰된 강점</span>
-          <strong>${escapeHtml(model.strongest?.name || "자료 축적 중")}</strong>
-          <p>${model.evidenceDays >= 3 ? `현재 기록에서 가장 안정적인 역량 신호는 ${escapeHtml(model.strongest?.name || "업무 실행")}입니다.` : "업무일지가 3일 이상 쌓이면 역할별 강점 흐름을 표시합니다."}</p>
-        </article>
-        <article data-tone="attention">
-          <span>대표 확인 포인트</span>
-          ${model.attention.map((item) => `<p>${escapeHtml(item)}</p>`).join("")}
-        </article>
-      </section>
-    </div>
-    <footer>업무일지와 출결 기록을 바탕으로 한 운영 참고자료입니다. ‘미기록’은 결근 판정이 아니며 실제 근태 확인 후 판단하세요.</footer>
-    ${renderRepresentativeEmployeePortfolioReport(viewName, employee)}
-  `;
+  panel.hidden = true;
+  panel.innerHTML = "";
 }
 
 function detectRepresentativeEmployeeSignals(model = {}, dateKey = getActiveDateKey()) {
@@ -20179,10 +20131,14 @@ const staffMasterTabs = [
   ["permission", "권한관리", "메뉴·사업장 접근 통제"],
   ["manual", "역할 매뉴얼", "직함별 업무 기준"],
   ["growth", "성장기록", "역량·온보딩 추적"],
+  ["employee-report", "직원 리포트", "근태·업무·성장 기록"],
 ];
 
 function getVisibleStaffMasterTabs() {
-  return staffMasterTabs.filter(([key]) => key !== "approval" || canShowApprovalMenu());
+  return staffMasterTabs.filter(([key]) => (
+    (key !== "approval" || canShowApprovalMenu())
+    && (key !== "employee-report" || isRepresentativeProfile())
+  ));
 }
 
 function normalizeStaffMasterTab(value) {
@@ -20434,12 +20390,39 @@ function renderStaffGrowthFocus(rows = []) {
   `;
 }
 
+function renderStaffEmployeeReport() {
+  if (!isRepresentativeProfile()) return "";
+  const reportGroupIds = ["bangju", "beyond", "fitness"].includes(state.staffMasterSite)
+    ? [state.staffMasterSite]
+    : state.staffMasterSite === "all" ? [] : ["__no-worklog-group__"];
+  const scopeLabel = reportGroupIds.length
+    ? `${getStaffMasterSiteLabel(state.staffMasterSite)} 직원 범위`
+    : "전 사업장 직원 범위";
+  const report = renderRepresentativeEmployeePortfolioReport("staff", null, {
+    groupIds: reportGroupIds,
+    scopeLabel,
+  });
+  if (report) return `<section class="staff-master-panel staff-employee-report-panel">${report}</section>`;
+  return `
+    <section class="staff-master-panel staff-employee-report-panel">
+      <header>
+        <div>
+          <span>Worklog Evidence Report</span>
+          <h3>직원 현황·성장 리포트</h3>
+        </div>
+      </header>
+      <div class="staff-empty-panel">선택한 사업장에는 업무일지 리포트 대상 직원이 없습니다.</div>
+    </section>
+  `;
+}
+
 function renderStaffMasterActivePanel(rows = []) {
   const tab = normalizeStaffMasterTab(state.staffMasterTab);
   if (tab === "approval") return renderStaffApprovalFocus(rows);
   if (tab === "permission") return renderStaffPermissionFocus(rows);
   if (tab === "manual") return renderStaffManualFocus(rows);
   if (tab === "growth") return renderStaffGrowthFocus(rows);
+  if (tab === "employee-report") return renderStaffEmployeeReport();
   return renderStaffMasterTable(rows);
 }
 

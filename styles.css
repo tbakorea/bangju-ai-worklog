@@ -4404,7 +4404,7 @@ body[data-device-mode="narrow"] .os-mode-switch span[data-device-mode="narrow"] 
 
 .staff-section-tabbar {
   display: grid;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
+  grid-template-columns: repeat(6, minmax(0, 1fr));
   gap: 8px;
 }
 
@@ -4617,6 +4617,19 @@ body[data-device-mode="narrow"] .os-mode-switch span[data-device-mode="narrow"] 
 .staff-growth-checks em.is-done {
   background: rgba(15, 59, 46, 0.1);
   color: var(--fitness-green);
+}
+
+.staff-employee-report-panel {
+  min-width: 0;
+}
+
+.staff-employee-report-panel .representative-portfolio-report {
+  border-top: 0;
+  padding-top: 0;
+}
+
+.staff-employee-report-panel .representative-portfolio-grid {
+  grid-template-columns: repeat(auto-fit, minmax(255px, 1fr));
 }
 
 @media (max-width: 900px) {

@@ -1548,6 +1548,14 @@ async function checkOverviewCommandBoard(browser) {
     };
     exitButton?.click();
     result.returnedView = document.body.dataset.activeView || "";
+    state.staffMasterTab = "employee-report";
+    switchView("staff");
+    renderStaffMaster();
+    result.staffReportVisible = Boolean(document.querySelector("#staffMasterGrid .staff-employee-report-panel .representative-portfolio-report"));
+    result.staffReportCards = document.querySelectorAll("#staffMasterGrid .representative-portfolio-card").length;
+    result.staffReportText = document.querySelector("#staffMasterGrid .representative-portfolio-report")?.textContent?.replace(/\s+/g, " ").trim() || "";
+    result.staffReportTabVisible = [...document.querySelectorAll("#staffMasterGrid [data-staff-tab]")]
+      .some((button) => button.textContent.replace(/\s+/g, " ").includes("직원 리포트"));
     return JSON.stringify(result);
   })()`));
   const overviewDetailMetrics = JSON.parse(overviewDetailOpen);
@@ -1557,13 +1565,15 @@ async function checkOverviewCommandBoard(browser) {
     || overviewDetailMetrics.taskRows !== 3
     || !overviewDetailMetrics.scheduleText
     || !overviewDetailMetrics.exitVisible
-    || !overviewDetailMetrics.analysisVisible
-    || overviewDetailMetrics.analysisKpis !== 4
-    || overviewDetailMetrics.analysisCompetencies !== 5
-    || !overviewDetailMetrics.analysisText.includes("결근 판정이 아니며")
-    || !overviewDetailMetrics.portfolioVisible
-    || overviewDetailMetrics.portfolioCards < 2
-    || !overviewDetailMetrics.portfolioText.includes("성격·인성·잠재력 또는 인사결정은 자동으로 판정하지 않습니다")
+    || overviewDetailMetrics.analysisVisible
+    || overviewDetailMetrics.analysisKpis !== 0
+    || overviewDetailMetrics.analysisCompetencies !== 0
+    || overviewDetailMetrics.portfolioVisible
+    || overviewDetailMetrics.portfolioCards !== 0
+    || !overviewDetailMetrics.staffReportVisible
+    || overviewDetailMetrics.staffReportCards < 2
+    || !overviewDetailMetrics.staffReportTabVisible
+    || !overviewDetailMetrics.staffReportText.includes("성격·인성·잠재력 또는 인사결정은 자동으로 판정하지 않습니다")
     || !overviewDetailMetrics.commonFirst
     || !overviewDetailMetrics.commonText.includes("전 사업장 공통 보고")
     || overviewDetailMetrics.employeeOrder[0] !== "beyond-company-leader"
@@ -1579,7 +1589,7 @@ async function checkOverviewCommandBoard(browser) {
     || overviewDetailMetrics.pastMissingStatus?.key !== "unrecorded"
     || overviewDetailMetrics.pastMissingStatus?.label !== "미기록"
     || overviewDetailMetrics.returnedView !== "worklog-overview") {
-    fail("representative employee detail should preserve the overview worklog and provide an exit", overviewDetailOpen);
+    fail("employee reports should live only in the representative staff workspace", overviewDetailOpen);
   }
   const staleProfileSync = await page.evaluate(() => window.eval(`(() => {
     authState.approvalRows = [
@@ -1902,13 +1912,12 @@ async function checkRepresentativeProfileSeparation(browser) {
   if (!metrics.exitVisible
     || metrics.exitIdentityOverlap
     || metrics.exitHitTarget !== "returnToFitnessWorklogOverviewButton"
-    || !metrics.analysisVisible
-    || metrics.analysisKpis !== 4
-    || metrics.analysisCompetencies !== 5
-    || !metrics.analysisText.includes("근태·역량 분석")
-    || !metrics.analysisText.includes("결근 판정이 아니며")
+    || metrics.analysisVisible
+    || metrics.analysisKpis !== 0
+    || metrics.analysisCompetencies !== 0
+    || metrics.analysisText
     || metrics.taskRows !== 3) {
-    fail("representative fitness detail should provide an overview exit and keep only three blank priority rows", JSON.stringify(metrics));
+    fail("representative fitness detail should keep reports in the staff workspace and preserve the worklog", JSON.stringify(metrics));
   }
   if (metrics.smartScheduleText !== "(시설청결) 웨이트존 청소기, 웨이트존 거울 닦기") {
     fail("same-time fitness facility tasks should be grouped into one smart label", metrics.smartScheduleText);
@@ -2020,6 +2029,17 @@ async function checkDelegatedPermissionMenus(browser) {
     normalizeState();
     switchView("staff");
     const guardedView = document.body.dataset.activeView;
+    state.profile.permissions = { staffManage: true };
+    state.staffMasterTab = "employee-report";
+    normalizeState();
+    switchView("staff");
+    renderStaffMaster();
+    const staffManagerReport = {
+      activeTab: state.staffMasterTab,
+      reportVisible: Boolean(document.querySelector("#staffMasterGrid .representative-portfolio-report")),
+      tabs: [...document.querySelectorAll("#staffMasterGrid [data-staff-tab]")]
+        .map((button) => button.textContent.replace(/\s+/g, " ").trim())
+    };
     authState.user = { id: "executive-delegate-user", email: "delegate@example.com" };
     state.profile = {
       ...defaultProfile,
@@ -2048,7 +2068,7 @@ async function checkDelegatedPermissionMenus(browser) {
       analysisVisible: !document.querySelector("#representativeEmployeeAnalysis")?.hidden,
       portfolioVisible: Boolean(document.querySelector("#representativeEmployeeAnalysis .representative-portfolio-report"))
     };
-    return JSON.stringify({ worklogAll, staffOnly, laborApproval, pinnedAccount, guardedView, executiveDelegate });
+    return JSON.stringify({ worklogAll, staffOnly, laborApproval, pinnedAccount, guardedView, staffManagerReport, executiveDelegate });
   })()`));
   const parsed = JSON.parse(matrix);
   if (!parsed.worklogAll.some((label) => label.startsWith("업무") && label.includes("전 직원 업무일지"))
@@ -2079,6 +2099,11 @@ async function checkDelegatedPermissionMenus(browser) {
     fail("executive delegates must start in their own editor while retaining scoped overview and action authority", matrix);
   }
   if (parsed.guardedView === "staff") fail("hidden staff route should remain guarded", matrix);
+  if (parsed.staffManagerReport.activeTab === "employee-report"
+    || parsed.staffManagerReport.reportVisible
+    || parsed.staffManagerReport.tabs.some((label) => label.includes("직원 리포트"))) {
+    fail("employee evidence reports must remain representative-only", matrix);
+  }
   if (errors.length) fail("delegated permission menu page errors", errors.join(" | "));
   await page.close();
 }
