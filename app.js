@@ -4874,6 +4874,7 @@ function buildRepresentativeEmployeeAnalysis(employee = {}, endDateKey = getActi
       reportRecorded: Boolean(reportText),
       reportLength: reportText.length,
       learningEvidence: /개선|학습|연습|훈련|피드백|매뉴얼|배운|보완/.test(combined),
+      collaborationEvidence: /협업|공유|인수인계|소통|협의|지원|고객응대|고객s*상담|팀s*미팅/.test(combined),
       roleEvidence: fitnessActions > 0 || rolePattern.test(combined),
     };
   });
@@ -4891,6 +4892,7 @@ function buildRepresentativeEmployeeAnalysis(employee = {}, endDateKey = getActi
   const taskTotal = eligibleRows.reduce((sum, row) => sum + row.tasks, 0);
   const completedTotal = eligibleRows.reduce((sum, row) => sum + row.completed, 0);
   const learningDays = eligibleRows.filter((row) => row.learningEvidence).length;
+  const collaborationDays = eligibleRows.filter((row) => row.collaborationEvidence).length;
   const roleEvidenceDays = eligibleRows.filter((row) => row.roleEvidence).length;
   const evidenceDays = eligibleRows.filter((row) => row.attendanceRecorded || row.worklogRecorded).length;
   const ratio = (value, total) => total ? value / total : 0;
@@ -4959,6 +4961,8 @@ function buildRepresentativeEmployeeAnalysis(employee = {}, endDateKey = getActi
     reportDays,
     taskTotal,
     completedTotal,
+    learningDays,
+    collaborationDays,
     attendanceRate,
     punctualityRate,
     worklogRate,
@@ -4975,13 +4979,113 @@ function buildRepresentativeEmployeeAnalysis(employee = {}, endDateKey = getActi
   };
 }
 
+function getRepresentativeEmployeeReportEntries(viewName = activeView, endDateKey = getActiveDateKey()) {
+  const groups = getWorklogOverviewGroups();
+  return groups.flatMap((group) => getOverviewGroupEmployeeEntries(group).map(({ employeeId, employee }) => ({
+    group,
+    employeeId,
+    employee,
+    analysis: buildRepresentativeEmployeeAnalysis(employee, endDateKey),
+  })));
+}
+
+function getRepresentativeEmployeeReportNote(analysis = {}) {
+  if (analysis.evidenceDays < 3) {
+    return "업무·출결 기록이 3일 미만입니다. 성과나 역량을 판단하지 않고 기록을 더 쌓아 확인합니다.";
+  }
+  if (analysis.missingAttendanceDays) {
+    return `근태 미기록 ${analysis.missingAttendanceDays}일은 실제 근무 여부를 먼저 확인해야 합니다.`;
+  }
+  if (analysis.taskTotal >= 3 && analysis.completionRate < 0.6) {
+    return "미완료 업무의 원인을 우선순위·업무량·지원 필요로 나누어 확인하세요.";
+  }
+  if (analysis.worklogRate < 0.7) {
+    return "업무일지 작성 흐름을 보완하면 업무 분석의 정확도가 높아집니다.";
+  }
+  if (analysis.learningDays === 0 && analysis.reportDays) {
+    return "보고에 개선점 또는 배운 점을 한 줄 남기면 성장 지원 대화를 구체화할 수 있습니다.";
+  }
+  return "기록 흐름이 안정적입니다. 실제 성과와 업무 난이도는 관리자 면담으로 함께 확인하세요.";
+}
+
+function renderRepresentativeEmployeePortfolioReport(viewName = activeView, selectedEmployee = null) {
+  if (!isRepresentativeProfile()) return "";
+  const entries = getRepresentativeEmployeeReportEntries(viewName, getActiveDateKey());
+  if (!entries.length) return "";
+  const selectedId = getEmployeeWorklogId(selectedEmployee || {}) || selectedEmployee?.id || "";
+  const totalEvidenceDays = entries.reduce((sum, entry) => sum + entry.analysis.evidenceDays, 0);
+  const readyCount = entries.filter((entry) => entry.analysis.evidenceDays >= 3).length;
+  const scopeLabel = canAccessAllWorklogs() ? "전 사업장 권한 범위" : "위임받은 사업장 권한 범위";
+  const grouped = getWorklogOverviewGroups().map((group) => ({
+    group,
+    entries: entries.filter((entry) => entry.group.id === group.id),
+  })).filter(({ entries: groupEntries }) => groupEntries.length);
+  const percentage = (value) => `${Math.round(value * 100)}%`;
+  return `
+    <section class="representative-portfolio-report" aria-label="전체 직원 직무·근태·성장 지원 리포트">
+      <header class="representative-portfolio-head">
+        <div>
+          <span>Worklog Evidence Report</span>
+          <strong>전체 직원 직무·근태·성장 지원 리포트</strong>
+          <small>최근 30일 업무일지·출결 기록 기준 · ${escapeHtml(scopeLabel)}</small>
+        </div>
+        <div class="representative-portfolio-summary" aria-label="리포트 데이터 범위">
+          <span>직원 <b>${entries.length}명</b></span>
+          <span>자료 확인 <b>${readyCount}명</b></span>
+          <span>기록 근거 <b>${totalEvidenceDays}일</b></span>
+        </div>
+      </header>
+      <p class="representative-portfolio-disclaimer">이 리포트는 업무기록에 보이는 사실과 성장 지원 질문을 정리합니다. 성격·인성·잠재력 또는 인사결정은 자동으로 판정하지 않습니다.</p>
+      <div class="representative-portfolio-groups">
+        ${grouped.map(({ group, entries: groupEntries }) => `
+          <section class="representative-portfolio-group" aria-label="${escapeAttr(group.title)} 직원 리포트">
+            <header>
+              <strong>${escapeHtml(group.title)}</strong>
+              <span>${groupEntries.length}명 · 역할순</span>
+            </header>
+            <div class="representative-portfolio-grid">
+              ${groupEntries.map(({ employeeId, employee, analysis }) => {
+                const employeeName = getEmployeeAdminLabel(employee) || employee.name || "직원";
+                const roleLabel = [employee.position, employee.role].filter((value, index, list) => value && list.indexOf(value) === index).join(" · ") || "직무 설정 확인";
+                const isSelected = [employeeId, getEmployeeWorklogId(employee), employee.id].filter(Boolean).includes(selectedId);
+                return `
+                  <details class="representative-portfolio-card" ${isSelected ? "open" : ""}>
+                    <summary>
+                      <span class="representative-portfolio-identity">
+                        <b>${escapeHtml(employeeName)}</b>
+                        <em>${escapeHtml(roleLabel)}</em>
+                      </span>
+                      <span class="representative-portfolio-evidence" data-confidence="${escapeAttr(analysis.confidenceLabel)}">${escapeHtml(analysis.confidenceLabel)} · 근거 ${analysis.evidenceDays}일</span>
+                    </summary>
+                    <div class="representative-portfolio-metrics" aria-label="${escapeAttr(employeeName)} 업무기록 지표">
+                      <article><span>근태 기록</span><strong>${analysis.attendanceDays}/${analysis.scheduledDays}</strong><em>미기록 ${analysis.missingAttendanceDays}일</em></article>
+                      <article><span>업무 실행</span><strong>${analysis.completedTotal}/${analysis.taskTotal}</strong><em>완료율 ${analysis.taskTotal ? percentage(analysis.completionRate) : "–"}</em></article>
+                      <article><span>보고·회고</span><strong>${analysis.reportDays}/${analysis.worklogDays}</strong><em>업무일지 ${percentage(analysis.worklogRate)}</em></article>
+                      <article><span>협업·소통 기록</span><strong>${analysis.collaborationDays}일</strong><em>성격 판단이 아닌 기록 근거</em></article>
+                      <article><span>학습·개선 기록</span><strong>${analysis.learningDays}일</strong><em>${escapeHtml(analysis.trackProfile.title)}</em></article>
+                    </div>
+                    <div class="representative-portfolio-observation">
+                      <span>관리자 확인·성장 지원</span>
+                      <p>${escapeHtml(getRepresentativeEmployeeReportNote(analysis))}</p>
+                    </div>
+                  </details>
+                `;
+              }).join("")}
+            </div>
+          </section>
+        `).join("")}
+      </div>
+    </section>
+  `;
+}
+
 function renderRepresentativeEmployeeAnalysis(viewName = activeView) {
   const fitnessView = viewName === "fitness-log";
   const panel = document.getElementById(fitnessView ? "fitnessRepresentativeEmployeeAnalysis" : "representativeEmployeeAnalysis");
   if (!panel) return;
   const fitnessPage = fitnessView ? getCurrentFitnessLogPage() : null;
   const employee = fitnessView ? fitnessPage?.employee : getSelectedEmployee();
-  const visible = Boolean(canAccessWorklogOverview() && employee && (!fitnessView || fitnessPage?.type === "employee"));
+  const visible = Boolean(isRepresentativeProfile() && employee && (!fitnessView || fitnessPage?.type === "employee"));
   panel.hidden = !visible;
   if (!visible) {
     panel.innerHTML = "";
@@ -5030,6 +5134,7 @@ function renderRepresentativeEmployeeAnalysis(viewName = activeView) {
       </section>
     </div>
     <footer>업무일지와 출결 기록을 바탕으로 한 운영 참고자료입니다. ‘미기록’은 결근 판정이 아니며 실제 근태 확인 후 판단하세요.</footer>
+    ${renderRepresentativeEmployeePortfolioReport(viewName, employee)}
   `;
 }
 

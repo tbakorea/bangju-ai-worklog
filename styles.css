@@ -10602,6 +10602,266 @@ textarea:focus-visible {
   line-height: 1.35;
 }
 
+.representative-portfolio-report {
+  display: grid;
+  gap: 9px;
+  min-width: 0;
+  border-top: 1px solid rgba(15, 59, 46, 0.13);
+  padding-top: 11px;
+}
+
+.representative-portfolio-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+  min-width: 0;
+}
+
+.representative-portfolio-head > div:first-child {
+  display: grid;
+  min-width: 0;
+}
+
+.representative-portfolio-head > div:first-child > span {
+  color: rgba(15, 83, 64, 0.64);
+  font-size: 8px;
+  font-weight: 950;
+  letter-spacing: 0.11em;
+  text-transform: uppercase;
+}
+
+.representative-portfolio-head strong {
+  color: var(--ink);
+  font-size: clamp(14px, 1.6vw, 18px);
+  font-weight: 950;
+  line-height: 1.18;
+}
+
+.representative-portfolio-head small {
+  overflow: hidden;
+  color: rgba(38, 50, 56, 0.59);
+  font-size: 9px;
+  font-weight: 760;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.representative-portfolio-summary {
+  display: flex;
+  flex: 0 0 auto;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 4px;
+  max-width: 46%;
+}
+
+.representative-portfolio-summary span,
+.representative-portfolio-evidence {
+  border: 1px solid rgba(15, 83, 64, 0.12);
+  border-radius: 999px;
+  background: rgba(238, 247, 241, 0.78);
+  color: rgba(15, 59, 46, 0.72);
+  padding: 4px 7px;
+  font-size: 8px;
+  font-weight: 850;
+  white-space: nowrap;
+}
+
+.representative-portfolio-summary b {
+  color: var(--fitness-green);
+  font-size: 10px;
+  font-weight: 950;
+}
+
+.representative-portfolio-disclaimer {
+  margin: 0;
+  border: 1px solid rgba(127, 100, 41, 0.14);
+  border-radius: 10px;
+  background: rgba(255, 249, 233, 0.82);
+  color: rgba(77, 62, 30, 0.78);
+  padding: 7px 8px;
+  font-size: 9px;
+  font-weight: 760;
+  line-height: 1.38;
+}
+
+.representative-portfolio-groups {
+  display: grid;
+  gap: 8px;
+}
+
+.representative-portfolio-group {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+
+.representative-portfolio-group > header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  color: var(--fitness-green);
+}
+
+.representative-portfolio-group > header strong {
+  font-size: 11px;
+  font-weight: 950;
+}
+
+.representative-portfolio-group > header span {
+  color: rgba(38, 50, 56, 0.55);
+  font-size: 8px;
+  font-weight: 800;
+}
+
+.representative-portfolio-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 6px;
+  min-width: 0;
+}
+
+.representative-portfolio-card {
+  min-width: 0;
+  border: 1px solid rgba(15, 59, 46, 0.1);
+  border-radius: 12px;
+  background: rgba(255, 254, 250, 0.8);
+  overflow: hidden;
+}
+
+.representative-portfolio-card > summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 7px;
+  min-width: 0;
+  cursor: pointer;
+  list-style: none;
+  padding: 8px;
+}
+
+.representative-portfolio-card > summary::-webkit-details-marker {
+  display: none;
+}
+
+.representative-portfolio-card > summary::after {
+  color: rgba(15, 83, 64, 0.75);
+  content: "⌄";
+  font-size: 12px;
+  font-weight: 950;
+}
+
+.representative-portfolio-card[open] > summary {
+  border-bottom: 1px solid rgba(15, 59, 46, 0.08);
+  background: rgba(236, 247, 240, 0.45);
+}
+
+.representative-portfolio-card[open] > summary::after {
+  content: "⌃";
+}
+
+.representative-portfolio-identity {
+  display: grid;
+  min-width: 0;
+}
+
+.representative-portfolio-identity b {
+  overflow: hidden;
+  color: var(--ink);
+  font-size: 11px;
+  font-weight: 950;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.representative-portfolio-identity em {
+  overflow: hidden;
+  color: rgba(38, 50, 56, 0.58);
+  font-size: 8px;
+  font-style: normal;
+  font-weight: 760;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.representative-portfolio-evidence {
+  overflow: hidden;
+  flex: 0 1 auto;
+  max-width: 132px;
+  text-overflow: ellipsis;
+}
+
+.representative-portfolio-evidence[data-confidence="자료 축적 중"] {
+  border-color: rgba(173, 117, 26, 0.16);
+  background: rgba(255, 244, 221, 0.75);
+  color: #80591b;
+}
+
+.representative-portfolio-card > div:not(.representative-portfolio-metrics):not(.representative-portfolio-observation) {
+  min-width: 0;
+}
+
+.representative-portfolio-metrics {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 1px;
+  background: rgba(15, 59, 46, 0.08);
+}
+
+.representative-portfolio-metrics article {
+  display: grid;
+  min-width: 0;
+  background: rgba(255, 254, 250, 0.9);
+  padding: 7px;
+}
+
+.representative-portfolio-metrics span,
+.representative-portfolio-observation span {
+  overflow: hidden;
+  color: rgba(15, 59, 46, 0.66);
+  font-size: 8px;
+  font-weight: 900;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.representative-portfolio-metrics strong {
+  color: var(--fitness-green);
+  font-size: 14px;
+  font-weight: 950;
+  letter-spacing: -0.04em;
+  line-height: 1.08;
+}
+
+.representative-portfolio-metrics em {
+  overflow: hidden;
+  color: rgba(38, 50, 56, 0.52);
+  font-size: 7px;
+  font-style: normal;
+  font-weight: 760;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.representative-portfolio-observation {
+  display: grid;
+  gap: 2px;
+  margin: 7px;
+  border-radius: 9px;
+  background: rgba(244, 248, 244, 0.88);
+  padding: 7px;
+}
+
+.representative-portfolio-observation p {
+  margin: 0;
+  color: rgba(38, 50, 56, 0.74);
+  font-size: 9px;
+  font-weight: 760;
+  line-height: 1.35;
+}
+
 @media (max-width: 760px) {
   .representative-analysis-kpis {
     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -10609,6 +10869,27 @@ textarea:focus-visible {
 
   .representative-analysis-body {
     grid-template-columns: minmax(0, 1fr);
+  }
+
+  .representative-portfolio-head {
+    display: grid;
+  }
+
+  .representative-portfolio-summary {
+    justify-content: flex-start;
+    max-width: none;
+  }
+
+  .representative-portfolio-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .representative-portfolio-metrics {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .representative-portfolio-metrics article:last-child {
+    grid-column: span 2;
   }
 }
 

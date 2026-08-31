@@ -1533,6 +1533,9 @@ async function checkOverviewCommandBoard(browser) {
       analysisKpis: document.querySelectorAll("#representativeEmployeeAnalysis .representative-analysis-kpis article").length,
       analysisCompetencies: document.querySelectorAll("#representativeEmployeeAnalysis .representative-competency-panel label").length,
       analysisText: document.querySelector("#representativeEmployeeAnalysis")?.textContent?.replace(/\s+/g, " ").trim() || "",
+      portfolioVisible: Boolean(document.querySelector("#representativeEmployeeAnalysis .representative-portfolio-report")),
+      portfolioCards: document.querySelectorAll("#representativeEmployeeAnalysis .representative-portfolio-card").length,
+      portfolioText: document.querySelector("#representativeEmployeeAnalysis .representative-portfolio-report")?.textContent?.replace(/\s+/g, " ").trim() || "",
       commonFirst,
       commonText,
       employeeOrder,
@@ -1558,6 +1561,9 @@ async function checkOverviewCommandBoard(browser) {
     || overviewDetailMetrics.analysisKpis !== 4
     || overviewDetailMetrics.analysisCompetencies !== 5
     || !overviewDetailMetrics.analysisText.includes("결근 판정이 아니며")
+    || !overviewDetailMetrics.portfolioVisible
+    || overviewDetailMetrics.portfolioCards < 2
+    || !overviewDetailMetrics.portfolioText.includes("성격·인성·잠재력 또는 인사결정은 자동으로 판정하지 않습니다")
     || !overviewDetailMetrics.commonFirst
     || !overviewDetailMetrics.commonText.includes("전 사업장 공통 보고")
     || overviewDetailMetrics.employeeOrder[0] !== "beyond-company-leader"
@@ -2028,6 +2034,9 @@ async function checkDelegatedPermissionMenus(browser) {
     };
     normalizeState();
     switchView(getInitialLandingView());
+    state.selectedEmployeeId = "bangju-finance-manager";
+    switchView("bangju-log");
+    renderRepresentativeEmployeeAnalysis("bangju-log");
     const executiveDelegate = {
       activeView: document.body.dataset.activeView,
       representative: isRepresentativeProfile(),
@@ -2035,7 +2044,9 @@ async function checkDelegatedPermissionMenus(browser) {
       overview: canAccessWorklogOverview(),
       canIssue: canIssueWorklogActionToEmployee("bangju-finance-manager"),
       canEditOwn: canEditEmployeeSlot("profile-user"),
-      canEditOther: canEditEmployeeSlot("fitness-trainer-1")
+      canEditOther: canEditEmployeeSlot("fitness-trainer-1"),
+      analysisVisible: !document.querySelector("#representativeEmployeeAnalysis")?.hidden,
+      portfolioVisible: Boolean(document.querySelector("#representativeEmployeeAnalysis .representative-portfolio-report"))
     };
     return JSON.stringify({ worklogAll, staffOnly, laborApproval, pinnedAccount, guardedView, executiveDelegate });
   })()`));
@@ -2062,6 +2073,8 @@ async function checkDelegatedPermissionMenus(browser) {
     || !parsed.executiveDelegate.canIssue
     || !parsed.executiveDelegate.canEditOwn
     || parsed.executiveDelegate.canEditOther
+    || parsed.executiveDelegate.analysisVisible
+    || parsed.executiveDelegate.portfolioVisible
     || parsed.executiveDelegate.activeView === "worklog-overview") {
     fail("executive delegates must start in their own editor while retaining scoped overview and action authority", matrix);
   }
