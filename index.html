@@ -32,8 +32,12 @@
             <span id="globalViewModeLabel">CEO</span>
           </button>
           <button id="globalAttendanceButton" class="global-attendance-button" type="button" aria-haspopup="dialog" aria-expanded="false">출결</button>
-          <button id="globalCommandButton" class="global-command-button" type="button" aria-haspopup="dialog" aria-expanded="false" aria-label="검색과 빠른 이동">찾기</button>
-          <button id="settingsGearButton" type="button" aria-haspopup="menu" aria-expanded="false" aria-label="메뉴 열기">메뉴</button>
+          <button id="globalCommandButton" class="global-command-button" type="button" aria-haspopup="dialog" aria-expanded="false" aria-label="검색과 빠른 이동" title="검색과 빠른 이동">
+            <span class="command-button-icon" aria-hidden="true">⌕</span>
+            <span>찾기</span>
+            <kbd class="command-key-hint" aria-hidden="true">⌘K</kbd>
+          </button>
+          <button id="settingsGearButton" type="button" aria-haspopup="menu" aria-expanded="false" aria-label="메뉴 열기" title="전체 메뉴">메뉴</button>
         </div>
         <div class="main-menu-popover" id="mainMenuPopover" role="menu" hidden>
           <span class="main-menu-section-label">핵심 메뉴</span>

@@ -28118,6 +28118,148 @@ body.is-fitness-focus-open.is-fitness-coaching-open .fitness-coaching-sheet {
   display: grid !important;
 }
 
+/* 2026-08-31 command rail: the overview must keep date navigation, Find,
+   and Menu in one predictable row. Older rules lifted Menu above the date
+   rail, which made it disappear on some desktop canvases. */
+.global-command-button .command-button-icon {
+  display: inline-grid;
+  place-items: center;
+  width: 16px;
+  font-family: ui-sans-serif, system-ui, sans-serif;
+  font-size: 19px;
+  font-weight: 700;
+  line-height: 1;
+  transform: translateY(-1px);
+}
+
+.global-command-button .command-key-hint {
+  display: none;
+  margin: 0;
+  padding: 2px 4px;
+  border: 1px solid rgba(16, 61, 48, 0.16);
+  border-radius: 5px;
+  background: rgba(16, 61, 48, 0.05);
+  color: rgba(16, 61, 48, 0.72);
+  font: 800 9px/1 ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+#settingsGearButton::after {
+  content: "☰";
+  display: none;
+  font-size: 17px;
+  line-height: 1;
+}
+
+@media (min-width: 761px) {
+  body[data-active-view="worklog-overview"]:not(.physical-phone-device) .worklog-overview-hero {
+    grid-template-columns: minmax(250px, 1fr) minmax(0, 560px) !important;
+    align-items: center !important;
+  }
+
+  body[data-active-view="worklog-overview"]:not(.physical-phone-device) .worklog-overview-hero > div:first-child {
+    padding-right: 0 !important;
+  }
+
+  body[data-active-view="worklog-overview"]:not(.physical-phone-device) .overview-date-nav,
+  body[data-active-view="worklog-overview"]:not(.physical-phone-device) .overview-date-nav:has(#worklogOverviewTodayButton.is-current-date) {
+    display: grid !important;
+    grid-template-columns: 40px minmax(0, 1fr) 40px auto auto auto !important;
+    align-items: center !important;
+    justify-self: stretch !important;
+    width: 100% !important;
+    min-width: 0 !important;
+    gap: 7px !important;
+  }
+
+  body[data-active-view="worklog-overview"]:not(.physical-phone-device) .overview-date-nav:has(#worklogOverviewTodayButton.is-current-date) {
+    grid-template-columns: 40px minmax(0, 1fr) 40px auto auto !important;
+  }
+
+  body[data-active-view="worklog-overview"]:not(.physical-phone-device) .overview-date-nav #overviewPrevDateButton,
+  body[data-active-view="worklog-overview"]:not(.physical-phone-device) .overview-date-nav #overviewNextDateButton,
+  body[data-active-view="worklog-overview"]:not(.physical-phone-device) .overview-date-nav #worklogOverviewTodayButton {
+    min-width: 40px !important;
+    min-height: 46px !important;
+  }
+
+  body[data-active-view="worklog-overview"]:not(.physical-phone-device) .overview-date-nav #overviewDateButton {
+    min-width: 0 !important;
+    min-height: 46px !important;
+  }
+
+  body[data-active-view="worklog-overview"]:not(.physical-phone-device) .overview-date-nav .global-command-button,
+  body[data-active-view="worklog-overview"]:not(.physical-phone-device) .overview-date-nav #settingsGearButton {
+    position: static !important;
+    inset: auto !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    min-width: 0 !important;
+    min-height: 46px !important;
+    margin: 0 !important;
+    border-radius: 14px !important;
+    white-space: nowrap !important;
+  }
+
+  body[data-active-view="worklog-overview"]:not(.physical-phone-device) .overview-date-nav .global-command-button {
+    gap: 5px !important;
+    padding: 0 10px !important;
+    border-color: rgba(255, 254, 250, 0.34) !important;
+    background: rgba(255, 254, 250, 0.14) !important;
+    color: #fffefa !important;
+    box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.08) !important;
+  }
+
+  body[data-active-view="worklog-overview"]:not(.physical-phone-device) .overview-date-nav #settingsGearButton {
+    gap: 6px !important;
+    padding: 0 12px !important;
+    border: 1px solid rgba(255, 254, 250, 0.78) !important;
+    background: linear-gradient(180deg, rgba(255, 254, 250, 0.98), rgba(244, 247, 241, 0.95)) !important;
+    color: #10261f !important;
+    box-shadow: 0 10px 22px rgba(6, 30, 23, 0.16), inset 0 0 0 1px rgba(255, 255, 255, 0.78) !important;
+  }
+
+  body[data-active-view="worklog-overview"]:not(.physical-phone-device) .overview-date-nav #settingsGearButton::after {
+    display: inline-block;
+  }
+
+  body[data-active-view="worklog-overview"]:not(.physical-phone-device) .overview-date-nav .global-command-button:hover,
+  body[data-active-view="worklog-overview"]:not(.physical-phone-device) .overview-date-nav .global-command-button:focus-visible {
+    background: rgba(255, 254, 250, 0.24) !important;
+  }
+
+  body[data-active-view="worklog-overview"]:not(.physical-phone-device) .overview-date-nav #settingsGearButton:hover,
+  body[data-active-view="worklog-overview"]:not(.physical-phone-device) .overview-date-nav #settingsGearButton:focus-visible {
+    transform: translateY(-1px);
+    box-shadow: 0 14px 26px rgba(6, 30, 23, 0.2), inset 0 0 0 1px rgba(255, 255, 255, 0.84) !important;
+  }
+
+  body[data-active-view="worklog-overview"]:not(.physical-phone-device) .overview-date-nav .main-menu-popover {
+    width: min(488px, calc(100vw - 32px)) !important;
+    max-height: min(590px, calc(100dvh - 106px)) !important;
+    grid-template-columns: repeat(3, minmax(132px, 1fr)) !important;
+    gap: 8px !important;
+    padding: 10px !important;
+  }
+
+  body[data-active-view="worklog-overview"]:not(.physical-phone-device) .overview-date-nav .main-menu-popover button {
+    min-height: 52px !important;
+    padding: 9px 11px !important;
+  }
+}
+
+@media (min-width: 1120px) {
+  body[data-active-view="worklog-overview"]:not(.physical-phone-device) .overview-date-nav .global-command-button .command-key-hint {
+    display: inline-block;
+  }
+}
+
+@media (max-width: 760px) {
+  .global-command-button .command-button-icon {
+    display: none;
+  }
+}
+
 /* Worklog workspace navigation: ownership stays obvious and layout choice is
    independent from the app-wide CEO/classic presentation. */
 .worklog-access-toolbar {
