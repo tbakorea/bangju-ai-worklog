@@ -1574,6 +1574,8 @@ async function checkOverviewCommandBoard(browser) {
     || overviewDetailMetrics.staffReportCards < 2
     || !overviewDetailMetrics.staffReportTabVisible
     || !overviewDetailMetrics.staffReportText.includes("성격·인성·잠재력 또는 인사결정은 자동으로 판정하지 않습니다")
+    || !overviewDetailMetrics.staffReportText.includes("월별 업무실적·성과")
+    || !overviewDetailMetrics.staffReportText.includes("자동 판정 제외")
     || !overviewDetailMetrics.commonFirst
     || !overviewDetailMetrics.commonText.includes("전 사업장 공통 보고")
     || overviewDetailMetrics.employeeOrder[0] !== "beyond-company-leader"
