@@ -1575,6 +1575,9 @@ async function checkOverviewCommandBoard(browser) {
     || !overviewDetailMetrics.staffReportTabVisible
     || !overviewDetailMetrics.staffReportText.includes("성격·인성·잠재력 또는 인사결정은 자동으로 판정하지 않습니다")
     || !overviewDetailMetrics.staffReportText.includes("월별 업무실적·성과")
+    || !overviewDetailMetrics.staffReportText.includes("2026.08.01 이후 저장된 업무일지·출결 기록 기준")
+    || !overviewDetailMetrics.staffReportText.includes("직원 운영·성장 리포트")
+    || !overviewDetailMetrics.staffReportText.includes("대표 면담 확인")
     || !overviewDetailMetrics.staffReportText.includes("자동 판정 제외")
     || !overviewDetailMetrics.commonFirst
     || !overviewDetailMetrics.commonText.includes("전 사업장 공통 보고")

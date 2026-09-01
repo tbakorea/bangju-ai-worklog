@@ -10990,6 +10990,82 @@ textarea:focus-visible {
   line-height: 1.32;
 }
 
+.representative-portfolio-a4-brief {
+  display: grid;
+  gap: 5px;
+  margin: 7px;
+  border: 1px solid rgba(15, 59, 46, 0.16);
+  border-radius: 9px;
+  background: linear-gradient(135deg, rgba(244, 249, 245, 0.96), rgba(255, 254, 250, 0.92));
+  padding: 7px;
+}
+
+.representative-portfolio-a4-brief > header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  border-bottom: 1px solid rgba(15, 59, 46, 0.1);
+  padding-bottom: 5px;
+}
+
+.representative-portfolio-a4-brief > header span {
+  color: var(--fitness-green);
+  font-size: 9px;
+  font-weight: 950;
+  letter-spacing: 0.02em;
+}
+
+.representative-portfolio-a4-brief > header strong {
+  color: rgba(38, 50, 56, 0.62);
+  font-size: 7px;
+  font-weight: 820;
+  text-align: right;
+}
+
+.representative-portfolio-a4-brief > div {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 4px;
+}
+
+.representative-portfolio-a4-brief article {
+  display: grid;
+  align-content: start;
+  gap: 2px;
+  min-width: 0;
+  border-radius: 6px;
+  background: rgba(255, 254, 250, 0.76);
+  padding: 5px 6px;
+}
+
+.representative-portfolio-a4-brief article[data-tone="manager"] {
+  grid-column: span 2;
+  border-left: 3px solid rgba(173, 117, 26, 0.7);
+  background: rgba(255, 249, 233, 0.82);
+}
+
+.representative-portfolio-a4-brief article span {
+  color: rgba(15, 59, 46, 0.7);
+  font-size: 7px;
+  font-weight: 930;
+}
+
+.representative-portfolio-a4-brief article p {
+  margin: 0;
+  color: rgba(38, 50, 56, 0.72);
+  font-size: 7px;
+  font-weight: 730;
+  line-height: 1.34;
+}
+
+@media print {
+  body[data-active-view="staff"] .representative-portfolio-card[open] {
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+}
+
 @media (max-width: 760px) {
   .representative-analysis-kpis {
     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -11026,6 +11102,14 @@ textarea:focus-visible {
 
   .representative-portfolio-capabilities {
     grid-template-columns: minmax(0, 1fr);
+  }
+
+  .representative-portfolio-a4-brief > div {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .representative-portfolio-a4-brief article[data-tone="manager"] {
+    grid-column: auto;
   }
 }
 

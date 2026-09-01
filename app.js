@@ -4829,10 +4829,13 @@ function getRepresentativeAnalysisDateKeys(endDateKey = getActiveDateKey(), days
   });
 }
 
-function getRepresentativeAnalysisHistoricalDateKeys(endDateKey = getActiveDateKey()) {
+const representativeEmployeeReportStartDate = "2026-08-01";
+
+function getRepresentativeAnalysisHistoricalDateKeys(endDateKey = getActiveDateKey(), startDateKey = "") {
   const safeEndKey = endDateKey > todayKey ? todayKey : endDateKey;
+  const safeStartKey = /^\d{4}-\d{2}-\d{2}$/.test(startDateKey) ? startDateKey : "";
   return Object.keys(state.employeeLogs || {})
-    .filter((dateKey) => /^\d{4}-\d{2}-\d{2}$/.test(dateKey) && dateKey <= safeEndKey)
+    .filter((dateKey) => /^\d{4}-\d{2}-\d{2}$/.test(dateKey) && dateKey <= safeEndKey && (!safeStartKey || dateKey >= safeStartKey))
     .sort();
 }
 
@@ -5000,8 +5003,10 @@ function buildRepresentativeEmployeeAnalysis(employee = {}, endDateKey = getActi
 }
 
 function buildRepresentativeEmployeeMonthlyEvidence(employee = {}, endDateKey = getActiveDateKey(), options = {}) {
-  const dateKeys = Array.isArray(options.dateKeys) ? options.dateKeys : getRepresentativeAnalysisHistoricalDateKeys(endDateKey);
-  if (!dateKeys.length) return { months: [], totalMonths: 0, firstMonth: "", lastMonth: "" };
+  const dateKeys = Array.isArray(options.dateKeys)
+    ? options.dateKeys
+    : getRepresentativeAnalysisHistoricalDateKeys(endDateKey, options.startDateKey);
+  if (!dateKeys.length) return { months: [], totals: {}, totalMonths: 0, firstMonth: "", lastMonth: "" };
   const history = buildRepresentativeEmployeeAnalysis(employee, endDateKey, { dateKeys });
   const byMonth = new Map();
   history.rows.forEach((row) => {
@@ -5050,8 +5055,15 @@ function buildRepresentativeEmployeeMonthlyEvidence(employee = {}, endDateKey = 
       attendanceRate: month.scheduledDays ? month.attendanceDays / month.scheduledDays : 0,
     }))
     .sort((left, right) => right.monthKey.localeCompare(left.monthKey));
+  const totals = months.reduce((result, month) => {
+    Object.entries(month).forEach(([key, value]) => {
+      if (typeof value === "number") result[key] = numberValue(result[key]) + value;
+    });
+    return result;
+  }, {});
   return {
     months,
+    totals,
     totalMonths: months.length,
     firstMonth: months.at(-1)?.monthKey || "",
     lastMonth: months[0]?.monthKey || "",
@@ -5061,9 +5073,9 @@ function buildRepresentativeEmployeeMonthlyEvidence(employee = {}, endDateKey = 
 function getRepresentativeEmployeeReportEntries(viewName = activeView, endDateKey = getActiveDateKey(), groupIds = []) {
   const requestedGroupIds = new Set((groupIds || []).filter(Boolean));
   const groups = getWorklogOverviewGroups().filter((group) => !requestedGroupIds.size || requestedGroupIds.has(group.id));
-  const historicalDateKeys = getRepresentativeAnalysisHistoricalDateKeys(endDateKey);
+  const historicalDateKeys = getRepresentativeAnalysisHistoricalDateKeys(endDateKey, representativeEmployeeReportStartDate);
   return groups.flatMap((group) => getOverviewGroupEmployeeEntries(group).map(({ employeeId, employee }) => {
-    const analysis = buildRepresentativeEmployeeAnalysis(employee, endDateKey);
+    const analysis = buildRepresentativeEmployeeAnalysis(employee, endDateKey, { dateKeys: historicalDateKeys });
     return {
       group,
       employeeId,
@@ -5093,6 +5105,36 @@ function getRepresentativeEmployeeReportNote(analysis = {}) {
   return "기록 흐름이 안정적입니다. 실제 성과와 업무 난이도는 관리자 면담으로 함께 확인하세요.";
 }
 
+function buildRepresentativeEmployeeA4Brief(analysis = {}, monthlyEvidence = {}, endDateKey = getActiveDateKey()) {
+  const totals = monthlyEvidence.totals || {};
+  const periodStart = representativeEmployeeReportStartDate.replaceAll("-", ".");
+  const periodEnd = String(endDateKey || getActiveDateKey()).replaceAll("-", ".");
+  const completionRate = analysis.taskTotal ? `${Math.round(analysis.completionRate * 100)}%` : "기록 없음";
+  const trend = analysis.executionTrendAvailable
+    ? `${analysis.executionTrendDelta >= 0 ? "최근 실행 흐름이 상승" : "최근 실행 흐름을 점검"}하고 있습니다(${Math.abs(Math.round(analysis.executionTrendDelta))}점 차이).`
+    : "최근 비교에 필요한 기록을 더 축적 중입니다.";
+  const performance = analysis.taskTotal
+    ? `등록 업무 ${analysis.taskTotal}건 중 ${analysis.completedTotal}건을 완료 처리했습니다(완료율 ${completionRate}).`
+    : "업무 완료 실적을 판단할 기록이 아직 충분하지 않습니다.";
+  const recordQuality = analysis.worklogDays
+    ? `업무일지 ${analysis.worklogDays}일, 보고·회고 ${analysis.reportDays}일, 시간표 기록 ${analysis.scheduleDays}일이 남아 있습니다.`
+    : "업무일지·시간표·보고 기록을 함께 남기면 분석의 정확도가 높아집니다.";
+  const monthlyPerformance = numberValue(totals.taskTotal)
+    ? `8월 1일 이후 누적 업무 ${numberValue(totals.taskTotal)}건 · 완료 ${numberValue(totals.completedTotal)}건 · 역할 수행 근거 ${numberValue(totals.roleEvidenceDays)}일입니다.`
+    : "8월 1일 이후 해당 직원의 저장된 업무기록을 확인 중입니다.";
+  const growth = `학습·개선 표현 ${analysis.learningDays}일, 제안·개선 기록 ${analysis.initiativeDays}일입니다. ${trend}`;
+  const collaboration = `협업·지원·인수인계 기록 ${analysis.collaborationDays}일, 책임·마감 확인 기록 ${analysis.responsibilityDays}일입니다.`;
+  return {
+    periodLabel: `${periodStart}–${periodEnd}`,
+    monthlyPerformance,
+    performance,
+    recordQuality,
+    growth,
+    collaboration,
+    managementPrompt: analysis.attention?.[0] || "업무 난이도·지원 필요·현장 상황을 본인과 면담으로 함께 확인하세요.",
+  };
+}
+
 function renderRepresentativeEmployeePortfolioReport(viewName = activeView, selectedEmployee = null, options = {}) {
   if (!isRepresentativeProfile()) return "";
   const groupIds = Array.isArray(options.groupIds) ? options.groupIds : [];
@@ -5114,7 +5156,7 @@ function renderRepresentativeEmployeePortfolioReport(viewName = activeView, sele
         <div>
           <span>Worklog Evidence Report</span>
           <strong>전체 직원 직무·근태·성장 지원 리포트</strong>
-          <small>최근 30일 운영지표 · 앱에 저장된 전체 기간의 월별 기록 · ${escapeHtml(scopeLabel)}</small>
+          <small>2026.08.01 이후 저장된 업무일지·출결 기록 기준 · ${escapeHtml(scopeLabel)}</small>
         </div>
         <div class="representative-portfolio-summary" aria-label="리포트 데이터 범위">
           <span>직원 <b>${entries.length}명</b></span>
@@ -5142,6 +5184,7 @@ function renderRepresentativeEmployeePortfolioReport(viewName = activeView, sele
                 const trendLabel = analysis.executionTrendAvailable
                   ? `${analysis.executionTrendDelta >= 0 ? "최근 실행 흐름 상승" : "최근 실행 흐름 점검"} ${Math.abs(Math.round(analysis.executionTrendDelta))}점`
                   : "비교 가능한 최근 기록 축적 중";
+                const a4Brief = buildRepresentativeEmployeeA4Brief(analysis, monthlyEvidence, getActiveDateKey());
                 return `
                   <details class="representative-portfolio-card" ${isSelected ? "open" : ""}>
                     <summary>
@@ -5160,8 +5203,8 @@ function renderRepresentativeEmployeePortfolioReport(viewName = activeView, sele
                     </div>
                     <section class="representative-portfolio-history" aria-label="${escapeAttr(employeeName)} 월별 업무실적과 성과">
                       <header>
-                        <span>월별 업무실적·성과</span>
-                        <em>${escapeHtml(periodLabel)}</em>
+                        <span>월별 업무실적·성과 · A4 1장 요약</span>
+                        <em>${escapeHtml(a4Brief.periodLabel)} · ${escapeHtml(periodLabel)}</em>
                       </header>
                       <div class="representative-portfolio-months">
                         ${visibleMonths.length ? visibleMonths.map((month) => `
@@ -5195,6 +5238,20 @@ function renderRepresentativeEmployeePortfolioReport(viewName = activeView, sele
                         <strong>자동 판정 제외</strong>
                         <em>업무기록만으로 단정하지 않고 면담·상호 피드백으로 확인</em>
                       </article>
+                    </section>
+                    <section class="representative-portfolio-a4-brief" aria-label="${escapeAttr(employeeName)} A4 직원 리포트 요약">
+                      <header>
+                        <span>직원 운영·성장 리포트</span>
+                        <strong>${escapeHtml(a4Brief.periodLabel)} 기록 기준</strong>
+                      </header>
+                      <div>
+                        <article><span>누적 실적</span><p>${escapeHtml(a4Brief.monthlyPerformance)}</p></article>
+                        <article><span>업무 성과</span><p>${escapeHtml(a4Brief.performance)}</p></article>
+                        <article><span>기록 품질</span><p>${escapeHtml(a4Brief.recordQuality)}</p></article>
+                        <article><span>성장·개선</span><p>${escapeHtml(a4Brief.growth)}</p></article>
+                        <article><span>협업·책임</span><p>${escapeHtml(a4Brief.collaboration)}</p></article>
+                        <article data-tone="manager"><span>대표 면담 확인</span><p>${escapeHtml(a4Brief.managementPrompt)}</p></article>
+                      </div>
                     </section>
                     <div class="representative-portfolio-observation">
                       <span>관리자 확인·성장 지원 · 기타 직원 파악</span>
