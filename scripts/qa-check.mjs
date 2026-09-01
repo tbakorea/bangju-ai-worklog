@@ -629,6 +629,15 @@ check(
 );
 
 check(
+  "representative worklog directives stay separate from employee editing",
+  /function renderInlineWorklogDirectivePanel[\s\S]{0,600}const canCompose = isRepresentativeProfile\(\) && canIssueWorklogActionToEmployee\(employeeId\);/.test(js)
+    && js.includes("data-inline-directive-submit")
+    && /function applyFitnessLogPermissionState\(\)[\s\S]{0,1800}inline-worklog-directive-compose[\s\S]{0,360}canIssueWorklogActionToEmployee/.test(js)
+    && /function issueManagedWorklogAction[\s\S]{0,1900}isOpenEmployeeWorklog[\s\S]{0,180}renderEntries\(\)/.test(js),
+  "only representatives should compose a directive in a read-only employee worklog, then see the saved instruction immediately"
+);
+
+check(
   "representative personal worklog is removed from remote snapshots",
   /const hasPersonalWorklog = !isRepresentativeProfile\(\);[\s\S]{0,220}const ownerEmployeeId = hasPersonalWorklog \?[\s\S]{0,100}: "";[\s\S]{0,180}const ownerWorklog = hasPersonalWorklog/.test(js)
     && !js.includes("benny 업무일지"),

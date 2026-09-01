@@ -22527,6 +22527,141 @@ body[data-view-mode="ceo"][data-active-view="worklog-overview"]:not(.physical-ph
   font-weight: 950;
 }
 
+.inline-worklog-directive-panel {
+  display: grid;
+  gap: 6px;
+  margin: 3px 0 5px;
+  border: 1px solid rgba(126, 73, 34, 0.2);
+  border-radius: 12px;
+  background: linear-gradient(135deg, rgba(255, 247, 238, 0.96), rgba(255, 254, 250, 0.88));
+  box-shadow: 0 5px 14px rgba(15, 59, 46, 0.05);
+  padding: 7px;
+}
+
+.inline-worklog-directive-panel header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.inline-worklog-directive-panel header > div {
+  display: grid;
+  min-width: 0;
+  gap: 1px;
+}
+
+.inline-worklog-directive-panel header span {
+  color: #8b4a21;
+  font-size: 9px;
+  font-weight: 950;
+  letter-spacing: 0.08em;
+}
+
+.inline-worklog-directive-panel header strong {
+  overflow: hidden;
+  color: var(--fitness-green);
+  font-size: 12px;
+  font-weight: 950;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.inline-worklog-directive-panel header em {
+  flex: 0 0 auto;
+  color: rgba(38, 50, 56, 0.58);
+  font-size: 10px;
+  font-style: normal;
+  font-weight: 850;
+}
+
+.inline-worklog-directive-list {
+  display: grid;
+  gap: 4px;
+}
+
+.inline-worklog-directive-list article,
+.inline-worklog-directive-empty {
+  margin: 0;
+  border-radius: 8px;
+  background: rgba(255, 254, 250, 0.78);
+  padding: 5px 6px;
+}
+
+.inline-worklog-directive-list article {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  align-items: start;
+  gap: 6px;
+}
+
+.inline-worklog-directive-list b {
+  color: #8b4a21;
+  font-size: 10px;
+  font-weight: 950;
+  white-space: nowrap;
+}
+
+.inline-worklog-directive-list p,
+.inline-worklog-directive-empty {
+  display: -webkit-box;
+  overflow: hidden;
+  color: rgba(38, 50, 56, 0.78);
+  font-size: 11px;
+  font-weight: 780;
+  line-height: 1.3;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.inline-worklog-directive-compose {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 48px;
+  gap: 5px;
+}
+
+.inline-worklog-directive-compose input {
+  min-width: 0;
+  min-height: 32px;
+  border: 1px solid rgba(15, 59, 46, 0.16);
+  border-radius: 9px;
+  background: rgba(255, 254, 250, 0.94);
+  color: var(--ink);
+  padding: 0 8px;
+  font-size: 12px;
+  font-weight: 820;
+}
+
+.inline-worklog-directive-compose button {
+  min-height: 32px;
+  border: 0;
+  border-radius: 9px;
+  background: var(--fitness-green);
+  color: var(--nordic-sheet);
+  font-size: 11px;
+  font-weight: 950;
+}
+
+.inline-worklog-directive-compose button:disabled {
+  opacity: 0.46;
+}
+
+@media (max-width: 759px) {
+  .inline-worklog-directive-panel {
+    gap: 5px;
+    padding: 6px;
+  }
+
+  .inline-worklog-directive-panel header strong {
+    font-size: 11px;
+  }
+
+  .inline-worklog-directive-list p,
+  .inline-worklog-directive-empty {
+    font-size: 10px;
+  }
+}
+
 .overview-sheet-body h4 {
   display: flex;
   align-items: center;

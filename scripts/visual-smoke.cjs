@@ -325,6 +325,12 @@ async function checkTabletRepresentativeWorklogChrome(browser) {
       weatherRangeSize: range ? Number.parseFloat(getComputedStyle(range).fontSize) : 0,
       identityText: document.getElementById("worklogIdentityBadge")?.textContent?.replace(/\s+/g, " ").trim() || "",
       dailyTabText: document.getElementById("selectedWorklogTab")?.textContent?.replace(/\s+/g, " ").trim() || "",
+      directivePanelVisible: Boolean(document.querySelector("#worklogTaskBoard .inline-worklog-directive-panel")),
+      directiveInputEnabled: Boolean(document.querySelector("#worklogTaskBoard [data-inline-directive-input]")
+        && !document.querySelector("#worklogTaskBoard [data-inline-directive-input]")?.disabled),
+      directiveButtonEnabled: Boolean(document.querySelector("#worklogTaskBoard [data-inline-directive-submit]")
+        && !document.querySelector("#worklogTaskBoard [data-inline-directive-submit]")?.disabled),
+      directiveTargetText: document.querySelector("#worklogTaskBoard .inline-worklog-directive-panel header strong")?.textContent?.replace(/\s+/g, " ").trim() || "",
       staleTaskCleared: Boolean(window.__qaRepresentativeStaleTaskCleared),
       horizontalOverflow: document.documentElement.scrollWidth - window.innerWidth,
     };
@@ -341,6 +347,10 @@ async function checkTabletRepresentativeWorklogChrome(browser) {
   if (!metrics.identityText.includes("최희진") || !metrics.identityText.includes("업무일지")
     || metrics.dailyTabText !== "최희진 업무일지") {
     fail("representative detail should identify the selected employee in both the context badge and daily tab", JSON.stringify(metrics));
+  }
+  if (!metrics.directivePanelVisible || !metrics.directiveInputEnabled || !metrics.directiveButtonEnabled
+    || !metrics.directiveTargetText.includes("최희진")) {
+    fail("representative employee worklogs should provide an enabled, clearly targeted directive composer", JSON.stringify(metrics));
   }
   if (!metrics.staleTaskCleared) {
     fail("representative detail should accept an authoritative empty employee snapshot and clear stale tasks", JSON.stringify(metrics));

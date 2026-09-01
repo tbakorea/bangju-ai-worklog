@@ -8524,7 +8524,11 @@ async function issueManagedWorklogAction(employeeId = "", text = "", type = "dir
     createdAt: now,
   });
   saveState();
-  renderWorklogOverview();
+  const canonicalEmployeeId = getEmployeeWorklogId(employee) || employeeId;
+  const isOpenEmployeeWorklog = isWorklogEditView(activeView)
+    && getCurrentWorklogEmployeeId(activeView) === canonicalEmployeeId;
+  if (isOpenEmployeeWorklog) renderEntries();
+  else renderWorklogOverview();
   showAppToast(type === "mission" ? "직원 AI 미션을 배정했습니다" : "직원 업무지시를 전달했습니다");
   return true;
 }
@@ -12256,6 +12260,15 @@ function applyFitnessLogPermissionState() {
     .fitness-personal-month-summary textarea,
     .fitness-personal-month-summary button
   `).forEach((control) => {
+    const directiveCompose = control.closest(".inline-worklog-directive-compose");
+    if (directiveCompose) {
+      const employeeId = directiveCompose.dataset.inlineDirectiveTarget || "";
+      const canComposeDirective = isRepresentativeProfile()
+        && canIssueWorklogActionToEmployee(employeeId);
+      control.disabled = !canComposeDirective;
+      control.setAttribute("aria-disabled", String(!canComposeDirective));
+      return;
+    }
     if (control.matches("[data-mobile-focus-open], [data-mobile-focus-close]")) {
       control.disabled = false;
       control.setAttribute("aria-disabled", "false");
@@ -15385,10 +15398,104 @@ function renderCompanyCommonWeekDay(dateKey, items = [], editable = false) {
   `;
 }
 
+function getInlineWorklogDirectiveEntries(log = getSelectedLog(), employee = getSelectedEmployee()) {
+  const assigned = getAssignedMissionForEmployee(employee);
+  const assignmentText = canRevealAssignedMission(employee, assigned) ? String(assigned.text || "").trim() : "";
+  const assignmentEntries = assignmentText
+    .split(/\n+/)
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((line) => {
+      const match = line.match(/^\[([^\]]+)\]\s*/);
+      return {
+        status: match?.[1] || "대표 업무지시",
+        text: line.replace(/^\[[^\]]+\]\s*/, "").trim(),
+      };
+    })
+    .filter((item) => item.text);
+  const localEntries = (Array.isArray(log?.directives) ? log.directives : [])
+    .slice(-2)
+    .reverse()
+    .filter((item) => {
+      const text = String(item?.text || "").trim();
+      return text && !assignmentText.includes(text);
+    })
+    .map((item) => ({
+      status: item.status || "대표 업무지시",
+      text: String(item.text || "").trim(),
+    }));
+  return [...assignmentEntries, ...localEntries].slice(0, 3);
+}
+
+function renderInlineWorklogDirectivePanel(log = getSelectedLog()) {
+  const employeeId = String(log?.employeeId || getCurrentWorklogEmployeeId(activeView) || "").trim();
+  const employee = findEmployeeRecordById(employeeId) || getSelectedEmployee();
+  if (!employeeId || !employee) return null;
+  const canCompose = isRepresentativeProfile() && canIssueWorklogActionToEmployee(employeeId);
+  const isOwnWorklog = !isRepresentativeProfile() && canEditEmployeeSlot(employeeId);
+  const entries = getInlineWorklogDirectiveEntries(log, employee);
+  if (!canCompose && !isOwnWorklog) return null;
+
+  const name = String(employee.name || employee.nickname || "직원").trim();
+  const role = String(employee.role || "").trim();
+  const targetLabel = `${name}${role && !name.includes(role) ? ` · ${role}` : ""}`;
+  const panel = document.createElement("section");
+  panel.className = "inline-worklog-directive-panel";
+  panel.dataset.inlineWorklogDirective = "true";
+  panel.dataset.inlineDirectiveTarget = employeeId;
+  panel.setAttribute("aria-label", "대표 업무지시");
+  panel.innerHTML = `
+    <header>
+      <div>
+        <span>대표 업무지시</span>
+        <strong>${escapeHtml(canCompose ? `${targetLabel}에게 전달` : "오늘 받은 대표 지시")}</strong>
+      </div>
+      <em>${escapeHtml(canCompose ? "직원 열람 중" : "확인 전용")}</em>
+    </header>
+    <div class="inline-worklog-directive-list">
+      ${entries.length ? entries.map((item) => `
+        <article>
+          <b>${escapeHtml(item.status)}</b>
+          <p>${escapeHtml(item.text)}</p>
+        </article>
+      `).join("") : `<p class="inline-worklog-directive-empty">${escapeHtml(canCompose ? "아직 전달한 대표 업무지시가 없습니다." : "현재 전달된 대표 업무지시가 없습니다.")}</p>`}
+    </div>
+    ${canCompose ? `
+      <div class="inline-worklog-directive-compose" data-inline-directive-target="${escapeAttr(employeeId)}">
+        <input type="text" data-inline-directive-input="${escapeAttr(employeeId)}" placeholder="직원에게 전달할 업무지시를 입력하세요" aria-label="${escapeAttr(`${name}에게 전달할 업무지시`)}" />
+        <button type="button" data-inline-directive-submit="${escapeAttr(employeeId)}">전달</button>
+      </div>
+    ` : ""}
+  `;
+  const submit = panel.querySelector("[data-inline-directive-submit]");
+  const input = panel.querySelector("[data-inline-directive-input]");
+  const submitDirective = async () => {
+    const text = String(input?.value || "").trim();
+    if (!text) {
+      showAppToast("직원에게 전달할 업무지시를 입력해주세요");
+      input?.focus();
+      return;
+    }
+    if (submit) submit.disabled = true;
+    const saved = await issueManagedWorklogAction(employeeId, text, "directive");
+    if (!saved && submit) submit.disabled = false;
+  };
+  submit?.addEventListener("click", submitDirective);
+  input?.addEventListener("keydown", (event) => {
+    if (event.key !== "Enter" || event.isComposing) return;
+    event.preventDefault();
+    submitDirective();
+  });
+  return panel;
+}
+
 function renderWorklogTaskBoard(log) {
   const board = document.getElementById("worklogTaskBoard");
   board.innerHTML = "";
   board.appendChild(renderWorklogPriorityWarning(log));
+  const directivePanel = renderInlineWorklogDirectivePanel(log);
+  if (directivePanel) board.appendChild(directivePanel);
   const list = document.createElement("section");
   list.className = "worklog-task-list";
   getVisibleWorklogTaskRefs(log, { view: activeView }).forEach((ref) => {
@@ -15413,6 +15520,8 @@ function renderFitnessTaskBoard(log) {
   if (!board) return;
   board.innerHTML = "";
   board.appendChild(renderWorklogPriorityWarning(log));
+  const directivePanel = renderInlineWorklogDirectivePanel(log);
+  if (directivePanel) board.appendChild(directivePanel);
   const list = document.createElement("section");
   list.className = "worklog-task-list fitness-task-list";
   const visibleRefs = getVisibleWorklogTaskRefs(log, { view: "fitness-log", compactEditable: true });
