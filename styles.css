@@ -1936,6 +1936,24 @@ body[data-device-mode="narrow"] .os-mode-switch span[data-device-mode="narrow"] 
   color: rgba(47, 65, 56, 0.42);
 }
 
+.task-delegated-from {
+  position: relative;
+  z-index: 2;
+  flex: 0 0 auto;
+  max-width: 106px;
+  overflow: hidden;
+  border: 1px solid rgba(26, 91, 71, 0.2);
+  border-radius: 999px;
+  background: rgba(22, 100, 75, 0.1);
+  color: #185f49;
+  padding: 3px 6px;
+  font-size: 10px;
+  font-weight: 900;
+  line-height: 1.1;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .task-origin-tag {
   flex: 0 0 auto;
   border: 1px solid rgba(15, 59, 46, 0.16);
@@ -8900,6 +8918,18 @@ textarea:focus-visible {
     gap: 3px;
   }
 
+  .task-row.status-delegate .delegate-input {
+    min-width: 54px;
+    max-width: 68px;
+    font-size: 10px;
+  }
+
+  .task-delegated-from {
+    max-width: 78px;
+    padding: 2px 4px;
+    font-size: 9px;
+  }
+
   .task-text-input {
     min-height: 28px;
     padding: 0 2px;
@@ -13145,6 +13175,12 @@ body[data-layout-mode="phone"] .fitness-log-task-panel .priority-select,
 body[data-layout-mode="phone"] .fitness-log-task-panel .postpone-date-button,
 body[data-layout-mode="phone"] .fitness-log-task-panel .delegate-input {
   font-size: 14px;
+}
+
+body[data-layout-mode="phone"] .fitness-log-task-panel .task-row.status-delegate .delegate-input {
+  min-width: 54px;
+  max-width: 68px;
+  font-size: 10px;
 }
 
 body[data-layout-mode="phone"] .fitness-log-schedule-panel .appointment-row {
@@ -30466,6 +30502,229 @@ body.is-command-open {
   #view-today .worklog-week-page { padding: 8px; }
   .worklog-week-board { grid-auto-columns: minmax(82vw, 1fr); }
   .worklog-week-day { min-height: 0; }
+}
+
+/* CEO daily ledger plus shared calendar views.  These boards deliberately use
+   the same compact rhythm as employee worklogs, while keeping CEO editing
+   visually and structurally separate from employee records. */
+.executive-personal-worklog {
+  display: grid;
+  gap: 12px;
+  margin: 0 0 14px;
+  padding: clamp(12px, 1.6vw, 20px);
+  border: 1px solid rgba(15, 59, 46, 0.18);
+  border-radius: 18px;
+  background: linear-gradient(145deg, rgba(247, 253, 249, 0.98), rgba(255, 251, 241, 0.94));
+  box-shadow: 0 12px 28px rgba(15, 59, 46, 0.07);
+}
+
+.executive-personal-worklog-header,
+.executive-worklog-calendar-heading,
+.fitness-calendar-heading {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.executive-personal-worklog-header > div,
+.executive-worklog-calendar-heading > div,
+.fitness-calendar-heading > div { display: grid; gap: 3px; }
+.executive-personal-worklog-header span,
+.executive-worklog-calendar-heading span,
+.fitness-calendar-heading span {
+  color: #477365;
+  font-size: 10px;
+  font-weight: 950;
+  letter-spacing: 0.1em;
+}
+.executive-personal-worklog-header h3,
+.executive-worklog-calendar-heading strong,
+.fitness-calendar-heading strong { margin: 0; color: #103d30; font-size: clamp(18px, 2vw, 24px); }
+.executive-personal-worklog-header small,
+.executive-worklog-calendar-heading small,
+.fitness-calendar-heading small { color: rgba(31, 55, 48, 0.64); font-size: 11px; font-weight: 700; text-align: right; }
+
+.executive-worklog-modebar,
+.fitness-calendar-modebar {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px;
+  border: 1px solid rgba(15, 59, 46, 0.14);
+  border-radius: 13px;
+  background: rgba(255, 255, 252, 0.88);
+}
+
+.executive-worklog-modebar button,
+.fitness-calendar-modebar button {
+  min-height: 33px;
+  padding: 6px 10px;
+  border: 0;
+  border-radius: 9px;
+  background: transparent;
+  color: #537062;
+  font-size: 12px;
+  font-weight: 850;
+}
+
+.executive-worklog-modebar button.is-active,
+.fitness-calendar-modebar button.is-active {
+  background: #115541;
+  color: #fff;
+  box-shadow: 0 4px 10px rgba(11, 68, 49, 0.18);
+}
+
+.executive-personal-worklog-daily {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 10px;
+}
+
+.executive-personal-worklog-panel,
+.executive-personal-worklog-memo {
+  display: grid;
+  align-content: start;
+  gap: 8px;
+  min-width: 0;
+  padding: 12px;
+  border: 1px solid rgba(15, 59, 46, 0.14);
+  border-radius: 14px;
+  background: rgba(255, 255, 253, 0.9);
+}
+
+.executive-personal-worklog-panel > header,
+.executive-personal-worklog-memo > header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding-bottom: 7px;
+  border-bottom: 1px solid rgba(15, 59, 46, 0.1);
+}
+.executive-personal-worklog-panel header > div,
+.executive-personal-worklog-memo header > div { display: grid; gap: 1px; }
+.executive-personal-worklog-panel header span,
+.executive-personal-worklog-memo header span { color: #4b7767; font-size: 9px; font-weight: 950; letter-spacing: 0.08em; }
+.executive-personal-worklog-panel h4,
+.executive-personal-worklog-memo h4 { margin: 0; color: #123b30; font-size: 16px; }
+.executive-personal-worklog-panel header em { color: #185e48; font-size: 13px; font-style: normal; font-weight: 900; }
+.executive-personal-worklog-panel header button { min-height: 30px; padding-inline: 10px; border-radius: 9px; background: #0f5942; color: #fff; font-size: 12px; }
+
+.executive-task-board,
+.executive-schedule-board { display: grid; gap: 5px; }
+.executive-task-row { display: grid; grid-template-columns: 20px 70px minmax(0, 1fr) 24px; gap: 6px; align-items: center; min-width: 0; padding: 5px 0; border-bottom: 1px solid rgba(15, 59, 46, 0.08); }
+.executive-task-row:last-child { border-bottom: 0; }
+.executive-task-row input[type="checkbox"] { inline-size: 17px; block-size: 17px; margin: 0; accent-color: #0d6449; }
+.executive-task-row select,
+.executive-task-row input,
+.executive-schedule-row input,
+.executive-personal-worklog-memo textarea { min-width: 0; border: 1px solid rgba(15, 59, 46, 0.18); border-radius: 8px; background: #fffefa; color: #153a2e; font: inherit; }
+.executive-task-row select { min-height: 31px; padding-inline: 6px; font-size: 11px; font-weight: 800; }
+.executive-task-row input { min-height: 31px; padding: 5px 7px; font-size: 12px; }
+.executive-task-field { display: grid; gap: 4px; min-width: 0; }
+.executive-task-field .executive-task-delegate { width: 100%; min-height: 30px; padding-inline: 7px; border: 1px solid rgba(15, 89, 66, 0.2); border-radius: 8px; background: rgba(233, 246, 238, 0.72); color: #155f48; font-size: 11px; font-weight: 850; }
+.executive-task-row.is-complete input[type="text"] { color: rgba(31, 55, 48, 0.48); text-decoration: line-through; }
+.executive-task-remove { min-height: 27px; padding: 0; border: 0; background: transparent; color: #a2554a; font-size: 18px; line-height: 1; }
+.executive-schedule-board { max-height: 365px; overflow: auto; padding-right: 2px; }
+.executive-schedule-row { display: grid; grid-template-columns: 48px minmax(0, 1fr); gap: 7px; align-items: center; padding: 3px 0; border-bottom: 1px solid rgba(15, 59, 46, 0.08); }
+.executive-schedule-row b { color: #245c4a; font-size: 11px; white-space: nowrap; }
+.executive-schedule-row input { min-height: 29px; padding: 4px 7px; font-size: 12px; }
+.executive-personal-worklog-memo { grid-column: 1 / -1; }
+.executive-personal-worklog-memo textarea { min-height: 86px; resize: vertical; padding: 9px; line-height: 1.45; }
+
+.executive-worklog-calendar,
+.fitness-calendar-board {
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid rgba(15, 59, 46, 0.14);
+  border-radius: 14px;
+  background: rgba(255, 255, 253, 0.88);
+}
+
+.executive-worklog-calendar-grid,
+.fitness-calendar-grid,
+.worklog-month-board {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 6px;
+  min-width: 0;
+}
+
+.executive-worklog-calendar-day,
+.fitness-calendar-day,
+.worklog-month-day {
+  display: grid;
+  align-content: start;
+  gap: 4px;
+  min-width: 0;
+  min-height: 110px;
+  padding: 8px;
+  border: 1px solid rgba(15, 59, 46, 0.13);
+  border-radius: 10px;
+  background: linear-gradient(180deg, #fffefa, #f2f8f3);
+  color: #25483c;
+  text-align: left;
+}
+
+.executive-worklog-calendar-day:hover,
+.fitness-calendar-day:hover,
+.worklog-month-day:hover,
+.executive-worklog-calendar-day:focus-visible,
+.fitness-calendar-day:focus-visible,
+.worklog-month-day:focus-visible { border-color: #197153; box-shadow: 0 4px 12px rgba(15, 59, 46, 0.12); outline: 0; }
+.executive-worklog-calendar-day.is-current,
+.fitness-calendar-day.is-current,
+.worklog-month-day.is-selected-date { border-color: #146047; box-shadow: inset 0 3px 0 #146047; }
+.executive-worklog-calendar-day b,
+.fitness-calendar-day header b,
+.worklog-month-day header strong { color: #153d31; font-size: 12px; }
+.executive-worklog-calendar-day > span,
+.worklog-month-day > b { overflow: hidden; color: #314c42; font-size: 11px; font-weight: 800; text-overflow: ellipsis; white-space: nowrap; }
+.executive-worklog-calendar-day em,
+.fitness-calendar-day em,
+.worklog-month-day em { margin-top: auto; color: #5b7569; font-size: 9px; font-style: normal; font-weight: 850; }
+.fitness-calendar-day > header,
+.worklog-month-day > header { display: flex; align-items: center; justify-content: space-between; gap: 4px; }
+.fitness-calendar-day > header span,
+.worklog-month-day > header span { color: #547568; font-size: 9px; font-weight: 850; }
+.fitness-calendar-day ul { display: grid; gap: 3px; margin: 0; padding: 0; list-style: none; }
+.fitness-calendar-day li { display: grid; grid-template-columns: 33px minmax(0, 1fr); gap: 3px; color: #41554d; font-size: 9px; line-height: 1.25; }
+.fitness-calendar-day li.is-pt { color: #894754; font-weight: 850; }
+.fitness-calendar-day time { color: #24614d; font-weight: 900; white-space: nowrap; }
+.fitness-calendar-day li span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.fitness-calendar-day p { margin: 0; color: rgba(31, 55, 48, 0.52); font-size: 10px; font-weight: 750; }
+.worklog-month-day > small { overflow: hidden; color: #5b7569; font-size: 9px; font-weight: 800; text-overflow: ellipsis; white-space: nowrap; }
+
+#view-today .worklog-month-page { display: none; }
+#view-today .worklog-main[data-today-page="month"] .worklog-month-page { display: block; }
+#view-today .worklog-month-page { min-height: 0; padding: 12px; }
+
+@media (max-width: 759px) {
+  .executive-personal-worklog { padding: 10px; border-radius: 14px; }
+  .executive-personal-worklog-header,
+  .executive-worklog-calendar-heading,
+  .fitness-calendar-heading { align-items: start; flex-direction: column; gap: 8px; }
+  .executive-personal-worklog-header small,
+  .executive-worklog-calendar-heading small,
+  .fitness-calendar-heading small { text-align: left; }
+  .executive-worklog-modebar,
+  .fitness-calendar-modebar { width: 100%; }
+  .executive-worklog-modebar button,
+  .fitness-calendar-modebar button { flex: 1 1 0; }
+  .executive-personal-worklog-daily { grid-template-columns: 1fr; }
+  .executive-personal-worklog-memo { grid-column: auto; }
+  .executive-schedule-board { max-height: 300px; }
+  .executive-worklog-calendar,
+  .fitness-calendar-board,
+  #view-today .worklog-month-page { overflow-x: auto; padding: 9px; }
+  .executive-worklog-calendar-grid,
+  .fitness-calendar-grid,
+  .worklog-month-board { min-width: 630px; }
+  .executive-worklog-calendar-day,
+  .fitness-calendar-day,
+  .worklog-month-day { min-height: 94px; padding: 6px; }
 }
 
 /* Keep the global view guard last: new worklog sub-pages must never reveal

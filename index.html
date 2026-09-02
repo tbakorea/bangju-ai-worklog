@@ -216,6 +216,45 @@
           <p>대표 경영페이지는 대표와 대표가 직접 지정한 경영권한자만 볼 수 있습니다.</p>
         </div>
         <div class="executive-body" id="executiveBody">
+          <section class="executive-personal-worklog" aria-labelledby="executivePersonalWorklogTitle">
+            <header class="executive-personal-worklog-header">
+              <div>
+                <span>CEO DAILY WORKLOG</span>
+                <h3 id="executivePersonalWorklogTitle">대표의 우선업무 · 시간별일정 · 메모</h3>
+                <small>대표 본인만 기록하며, 날짜별 실행기록은 주간·월간으로도 확인할 수 있습니다.</small>
+              </div>
+              <nav class="executive-worklog-modebar" aria-label="대표 업무일지 보기 방식">
+                <button type="button" data-executive-worklog-mode="daily">일일</button>
+                <button type="button" data-executive-worklog-mode="week">주간</button>
+                <button type="button" data-executive-worklog-mode="month">월간</button>
+              </nav>
+            </header>
+            <div class="executive-personal-worklog-daily" id="executivePersonalWorklogDaily">
+              <article class="executive-personal-worklog-panel">
+                <header>
+                  <div><span>PRIORITY</span><h4>오늘의 우선업무</h4></div>
+                  <strong id="executiveTaskCompletion">0/0</strong>
+                </header>
+                <div id="executiveTaskBoard" class="executive-task-board"></div>
+                <button type="button" class="executive-add-task-button" id="executiveAddTaskButton">+ 우선업무 추가</button>
+              </article>
+              <article class="executive-personal-worklog-panel">
+                <header>
+                  <div><span>TIME BLOCK</span><h4>시간별일정</h4></div>
+                  <small>실행 시간과 핵심 메모를 남기세요.</small>
+                </header>
+                <div id="executiveScheduleBoard" class="executive-schedule-board"></div>
+              </article>
+              <article class="executive-personal-worklog-memo">
+                <label for="executiveMemo">
+                  <span>CEO MEMO</span>
+                  <strong>판단 메모 · 지시사항 · 내일 확인</strong>
+                </label>
+                <textarea id="executiveMemo" rows="4" placeholder="오늘의 판단 근거, 지시 내용, 다음 확인사항을 기록합니다."></textarea>
+              </article>
+            </div>
+            <section class="executive-worklog-calendar" id="executiveWorklogCalendar" hidden aria-label="대표 업무일지 주간 및 월간 보기"></section>
+          </section>
           <div class="executive-kpi-grid" id="executiveKpiGrid"></div>
           <section class="executive-decision-card is-open" data-executive-section="intervention">
             <header data-executive-toggle="intervention">
@@ -358,6 +397,7 @@
               <button type="button" data-worklog-page-choice="common">공통 일정</button>
               <button type="button" data-worklog-page-choice="daily" id="selectedWorklogTab">나의 업무일지</button>
               <button type="button" data-worklog-page-choice="week">주간 시간표</button>
+              <button type="button" data-worklog-page-choice="month">월간 일정</button>
               <button type="button" data-worklog-page-choice="coworker">
                 동료 업무일지 <span id="coworkerWorklogCount">0</span>
               </button>
@@ -414,6 +454,16 @@
                 <small>날짜를 누르면 해당 업무일지로 이동합니다.</small>
               </header>
               <div id="worklogWeekBoard" class="worklog-week-board" aria-label="주간 업무와 팀 일정"></div>
+            </article>
+            <article class="worklog-panel shared-worklog-panel worklog-month-page">
+              <header class="worklog-week-header">
+                <div>
+                  <span>Monthly Worklog</span>
+                  <h3>월간 일정</h3>
+                </div>
+                <small>날짜를 누르면 해당 업무일지로 이동합니다.</small>
+              </header>
+              <div id="worklogMonthBoard" class="worklog-month-board" aria-label="월간 업무일지"></div>
             </article>
             <div class="worklog-daily-page">
               <article class="worklog-panel worklog-task-panel day-task-panel" data-mobile-focus-panel="tasks">
@@ -517,6 +567,12 @@
           </div>
           <button type="button" id="fitnessLogNextPageButton" aria-label="동료 업무일지로 이동">동료업무일지 >></button>
         </div>
+        <nav class="fitness-calendar-modebar" aria-label="피트니스 업무일지 보기 방식">
+          <button type="button" data-fitness-calendar-mode="daily">일일</button>
+          <button type="button" data-fitness-calendar-mode="week">주간</button>
+          <button type="button" data-fitness-calendar-mode="month">월간</button>
+        </nav>
+        <section class="fitness-calendar-board" id="fitnessCalendarBoard" hidden aria-label="피트니스 업무일지 주간 및 월간 보기"></section>
         <button type="button" class="fitness-work-mode-button" id="fitnessWorkModeButton" aria-pressed="false" hidden>
           <span>근무상태</span>
           <strong>근무</strong>

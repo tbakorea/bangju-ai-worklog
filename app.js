@@ -1141,6 +1141,9 @@ function createState() {
   return {
     selectedEmployeeId: "beyond-fitness-manager",
     selectedDateKey: todayKey,
+    executiveWorklogs: {},
+    executiveWorklogMode: "daily",
+    fitnessCalendarMode: "daily",
     profile: { ...defaultProfile },
     employeeLogs: {
       [todayKey]: { "beyond-fitness-manager": createEmployeeLog(employees.find((employee) => employee.id === "beyond-fitness-manager") || profileEmployee, defaultProfile) },
@@ -1225,6 +1228,67 @@ function createEmployeeLog(employee = employees[0], profile = defaultProfile, da
   };
 }
 
+function createExecutiveWorklog(dateKey = todayKey) {
+  return {
+    dateKey,
+    tasks: Array.from({ length: 3 }, (_, index) => ({
+      id: `executive-task-${dateKey}-${index}`,
+      priority: "?",
+      text: "",
+      status: "예정",
+      done: false,
+    })),
+    schedule: getScheduleTimes("08:00-20:00").map((time) => ({ time, text: "", status: "예정" })),
+    memo: "",
+    updatedAt: "",
+  };
+}
+
+function normalizeExecutiveWorklog(log = {}, dateKey = getActiveDateKey()) {
+  const fallback = createExecutiveWorklog(dateKey);
+  const taskRows = Array.isArray(log?.tasks) ? log.tasks.filter((task) => task && typeof task === "object") : [];
+  const scheduleRows = Array.isArray(log?.schedule) ? log.schedule.filter((entry) => entry && typeof entry === "object") : [];
+  const tasks = taskRows.map((task, index) => ({
+    id: task.id || `executive-task-${dateKey}-${index}-${Math.random().toString(36).slice(2, 7)}`,
+    priority: ["A", "B", "C", "?"].includes(task.priority) ? task.priority : "?",
+    text: String(task.text || ""),
+    status: task.done || task.status === "완료" ? "완료" : String(task.status || "예정"),
+    done: Boolean(task.done || task.status === "완료"),
+    delegate: String(task.delegate || ""),
+    delegatedToId: String(task.delegatedToId || ""),
+    delegationId: String(task.delegationId || ""),
+  }));
+  while (tasks.length < 3) {
+    tasks.push({
+      id: `executive-task-${dateKey}-${tasks.length}-${Math.random().toString(36).slice(2, 7)}`,
+      priority: "?",
+      text: "",
+      status: "예정",
+      done: false,
+    });
+  }
+  const scheduleByTime = new Map(scheduleRows.map((entry) => [String(entry.time || ""), entry]));
+  const schedule = fallback.schedule.map((row) => {
+    const saved = scheduleByTime.get(row.time) || {};
+    return { time: row.time, text: String(saved.text || ""), status: String(saved.status || "예정") };
+  });
+  return {
+    ...fallback,
+    ...log,
+    dateKey,
+    tasks,
+    schedule,
+    memo: String(log?.memo || ""),
+    updatedAt: String(log?.updatedAt || ""),
+  };
+}
+
+function getExecutiveWorklog(dateKey = getActiveDateKey()) {
+  state.executiveWorklogs ||= {};
+  state.executiveWorklogs[dateKey] = normalizeExecutiveWorklog(state.executiveWorklogs[dateKey], dateKey);
+  return state.executiveWorklogs[dateKey];
+}
+
 function normalizeState() {
   state.profile = { ...defaultProfile, ...(state.profile || {}) };
   state.profile = applyProfilePlacementOverride(state.profile);
@@ -1273,6 +1337,16 @@ function normalizeState() {
     state.selectedEmployeeId = getMappedProfileEmployeeId() || "profile-user";
   }
   state.selectedDateKey ||= todayKey;
+  state.executiveWorklogs = { ...(state.executiveWorklogs || {}) };
+  Object.entries(state.executiveWorklogs).forEach(([dateKey, log]) => {
+    state.executiveWorklogs[dateKey] = normalizeExecutiveWorklog(log, dateKey);
+  });
+  state.executiveWorklogMode = ["daily", "week", "month"].includes(state.executiveWorklogMode)
+    ? state.executiveWorklogMode
+    : "daily";
+  state.fitnessCalendarMode = ["daily", "week", "month"].includes(state.fitnessCalendarMode)
+    ? state.fitnessCalendarMode
+    : "daily";
   state.fitnessLogPage = Number.isFinite(Number(state.fitnessLogPage)) ? Number(state.fitnessLogPage) : 1;
   state.fitnessLogPageId = String(state.fitnessLogPageId || "");
   state.staffMasterTab = ["staff-list", "approval", "permission", "manual", "growth"].includes(state.staffMasterTab)
@@ -1428,6 +1502,11 @@ function normalizeEmployeeLogRows(log, dateKey = getActiveDateKey()) {
     normalizeWorklogTaskState(task);
     task.text ||= "";
     task.delegate ||= "";
+    task.delegatedToId ||= "";
+    task.delegationId ||= "";
+    task.delegatedFromId ||= "";
+    task.delegatedFromName ||= "";
+    task.delegatedSourceDate ||= "";
     task.postponeDate ||= "";
   });
   while (log.tasks.length < 14) {
@@ -1791,6 +1870,137 @@ function scheduleWorklogPostponedTask(task, sourceLog, targetDateKey, sourceDate
   }
   normalizeEmployeeLogRows(targetLog, targetDateKey);
   return Boolean(targetTask);
+}
+
+function getExecutiveDelegatorName() {
+  const profile = getProfileEmployee();
+  const name = getEmployeeOwnLabel(profile) || state.profile?.name || "대표";
+  return /^대표/.test(String(name || "")) ? String(name) : `대표 ${name}`;
+}
+
+function getTaskDelegationSource(sourceLog = {}, { executive = false, viewName = activeView } = {}) {
+  if (executive) {
+    return {
+      id: "executive-ceo",
+      name: getExecutiveDelegatorName(),
+      employee: getProfileEmployee(),
+      executive: true,
+      viewName,
+    };
+  }
+  const employeeId = String(sourceLog?.employeeId || getCurrentWorklogEmployeeId(viewName) || "").trim();
+  const employee = findEmployeeRecordById(employeeId) || getSelectedEmployee();
+  return {
+    id: getEmployeeWorklogId(employee) || employeeId,
+    name: getEmployeeOwnLabel(employee) || employee?.name || "업무 담당자",
+    employee,
+    executive: false,
+    viewName,
+  };
+}
+
+function getTaskDelegationCandidates(source = {}, viewName = source.viewName || activeView) {
+  const sourceId = String(source.id || "").trim();
+  let candidates = [];
+  if (source.executive) {
+    candidates = getStaffDirectoryEmployees().filter((employee) => !isRepresentativeWorklogEmployee(employee));
+  } else if (source.employee) {
+    candidates = getCoworkerEmployeesForWorklog(source.employee, viewName);
+  }
+  const unique = new Map();
+  candidates.forEach((employee) => {
+    const employeeId = getEmployeeWorklogId(employee) || employee?.id || "";
+    if (!employeeId || employeeId === sourceId || unique.has(employeeId)) return;
+    unique.set(employeeId, employee);
+  });
+  return [...unique.values()];
+}
+
+function getTaskDelegationRecipientId(task = {}, candidates = []) {
+  const stored = String(task.delegatedToId || "").trim();
+  if (stored && candidates.some((employee) => (getEmployeeWorklogId(employee) || employee.id) === stored)) return stored;
+  const legacyName = String(task.delegate || "").trim();
+  const matched = candidates.find((employee) => [employee.name, employee.nickname, getEmployeeOwnLabel(employee)].filter(Boolean).includes(legacyName));
+  return matched ? (getEmployeeWorklogId(matched) || matched.id || "") : "";
+}
+
+function getTaskDelegationCandidateLabel(employee = {}) {
+  const name = getEmployeeOwnLabel(employee) || employee.name || "직원";
+  const role = String(employee.role || employee.position || "").trim();
+  return role && !String(name).includes(role) ? `${name} · ${role}` : name;
+}
+
+function getTaskDelegationId(task = {}, source = {}, sourceDateKey = getActiveDateKey()) {
+  task.delegationId ||= `delegation-${source.id || "employee"}-${sourceDateKey}-${task.id || Date.now()}`;
+  return task.delegationId;
+}
+
+function syncDelegatedTaskToRecipient(task, sourceLog, recipientId, {
+  executive = false,
+  sourceDateKey = getActiveDateKey(),
+  viewName = activeView,
+} = {}) {
+  const source = getTaskDelegationSource(sourceLog, { executive, viewName });
+  const candidates = getTaskDelegationCandidates(source, viewName);
+  const recipient = candidates.find((employee) => (getEmployeeWorklogId(employee) || employee.id) === recipientId);
+  const text = String(task?.text || "").trim();
+  if (!task || !recipient || !text || recipientId === source.id) return { ok: false, reason: "recipient" };
+
+  const canonicalRecipientId = getEmployeeWorklogId(recipient) || recipient.id;
+  const delegationId = getTaskDelegationId(task, source, sourceDateKey);
+  const targetLog = getEmployeeLogForDate(canonicalRecipientId, sourceDateKey);
+  let targetTask = (targetLog.tasks || []).find((item) => item?.delegatedFromId === delegationId);
+  const priorTarget = Object.entries(state.employeeLogs?.[sourceDateKey] || {})
+    .flatMap(([employeeId, log]) => (log?.tasks || []).map((item, index) => ({ employeeId, log, item, index })))
+    .find((entry) => entry.item?.delegatedFromId === delegationId && entry.item !== targetTask);
+  if (!targetTask && priorTarget) {
+    const receiverAlreadyWorked = String(priorTarget.item.text || "") !== String(priorTarget.item.delegatedOriginalText || "")
+      || priorTarget.item.done
+      || ["완료", "진행중"].includes(normalizeWorklogTaskStatus(priorTarget.item.status));
+    if (receiverAlreadyWorked) return { ok: false, reason: "recipient-edited" };
+    priorTarget.log.tasks.splice(priorTarget.index, 1);
+    const blankIndex = targetLog.tasks.findIndex((item) => !isActiveTask(item));
+    if (blankIndex >= 0) targetLog.tasks.splice(blankIndex, 1, priorTarget.item);
+    else targetLog.tasks.push(priorTarget.item);
+    normalizeEmployeeLogRows(priorTarget.log, sourceDateKey);
+    targetTask = priorTarget.item;
+  }
+  const priority = ["A", "B", "C"].includes(task.priority) ? task.priority : "?";
+  if (!targetTask) {
+    targetTask = {
+      ...createWorklogTask(priority),
+      text,
+      priority,
+      status: "미완료",
+      done: false,
+      delegatedFromId: delegationId,
+      delegatedFromName: source.name,
+      delegatedSourceEmployeeId: source.id,
+      delegatedSourceDate: sourceDateKey,
+      delegatedOriginalText: text,
+      delegatedAt: new Date().toISOString(),
+    };
+    const blankIndex = targetLog.tasks.findIndex((item) => !isActiveTask(item));
+    if (blankIndex >= 0) targetLog.tasks.splice(blankIndex, 1, targetTask);
+    else targetLog.tasks.push(targetTask);
+  } else {
+    if (targetTask.text === String(targetTask.delegatedOriginalText || "")) {
+      targetTask.text = text;
+      targetTask.delegatedOriginalText = text;
+    }
+    targetTask.priority = priority;
+    targetTask.delegatedFromName = source.name;
+    targetTask.delegatedSourceDate = sourceDateKey;
+  }
+
+  task.status = "위임";
+  task.done = false;
+  task.delegate = getEmployeeOwnLabel(recipient) || recipient.name || "직원";
+  task.delegatedToId = canonicalRecipientId;
+  task.delegationId = delegationId;
+  targetLog.updatedAt = new Date().toISOString();
+  normalizeEmployeeLogRows(targetLog, sourceDateKey);
+  return { ok: true, recipient, targetTask, source };
 }
 
 function getSelectedEmployee() {
@@ -6104,6 +6314,254 @@ function renderControlTower() {
   });
 }
 
+function setExecutiveWorklogMode(mode = "daily") {
+  if (!isRepresentativeProfile()) return;
+  state.executiveWorklogMode = ["daily", "week", "month"].includes(mode) ? mode : "daily";
+  saveState({ fastSave: true });
+  renderExecutiveWorklog();
+}
+
+function getExecutiveWorklogCalendarDateKeys(mode = state.executiveWorklogMode, dateKey = getActiveDateKey()) {
+  if (mode === "week") return getWeekDateKeys(dateKey);
+  const date = parseDateKey(dateKey);
+  const firstDate = new Date(date.getFullYear(), date.getMonth(), 1);
+  const leadingBlanks = firstDate.getDay();
+  const lastDate = new Date(date.getFullYear(), date.getMonth() + 1, 0).getDate();
+  return [
+    ...Array.from({ length: leadingBlanks }, () => ""),
+    ...Array.from({ length: lastDate }, (_, index) => formatDateKey(new Date(date.getFullYear(), date.getMonth(), index + 1))),
+  ];
+}
+
+function getExecutiveWorklogSummary(log = {}) {
+  const activeTasks = (log.tasks || []).filter((task) => String(task?.text || "").trim());
+  const completed = activeTasks.filter((task) => task.done || task.status === "완료").length;
+  const schedules = (log.schedule || []).filter((entry) => String(entry?.text || "").trim()).length;
+  return { total: activeTasks.length, completed, schedules };
+}
+
+function renderExecutiveWorklogCalendar() {
+  const calendar = document.getElementById("executiveWorklogCalendar");
+  if (!calendar) return;
+  const mode = state.executiveWorklogMode || "daily";
+  if (mode === "daily") {
+    calendar.hidden = true;
+    calendar.innerHTML = "";
+    return;
+  }
+  const dateKey = getActiveDateKey();
+  const dates = getExecutiveWorklogCalendarDateKeys(mode, dateKey);
+  const title = mode === "week"
+    ? `${formatFormalKoreanDate(getWeekDateKeys(dateKey)[0])} 주간 실행 보기`
+    : `${parseDateKey(dateKey).getFullYear()}년 ${parseDateKey(dateKey).getMonth() + 1}월 실행 보기`;
+  calendar.hidden = false;
+  calendar.innerHTML = `
+    <header class="executive-worklog-calendar-heading">
+      <div><span>${mode === "week" ? "WEEKLY CEO PLAN" : "MONTHLY CEO PLAN"}</span><strong>${escapeHtml(title)}</strong></div>
+      <small>날짜를 누르면 해당 일의 대표 업무일지로 이동합니다.</small>
+    </header>
+    <div class="executive-worklog-calendar-grid ${mode === "week" ? "is-week" : "is-month"}">
+      ${dates.map((key) => {
+        if (!key) return '<span class="executive-worklog-calendar-blank" aria-hidden="true"></span>';
+        const log = state.executiveWorklogs?.[key] ? normalizeExecutiveWorklog(state.executiveWorklogs[key], key) : null;
+        const summary = getExecutiveWorklogSummary(log || {});
+        const preview = (log?.tasks || []).find((task) => String(task?.text || "").trim())?.text || "기록 없음";
+        const current = key === dateKey;
+        return `
+          <button type="button" class="executive-worklog-calendar-day ${current ? "is-current" : ""}" data-executive-calendar-date="${escapeAttr(key)}">
+            <b>${escapeHtml(formatWeekdayShort(key))}</b>
+            <span>${escapeHtml(preview)}</span>
+            <em>우선 ${summary.completed}/${summary.total} · 일정 ${summary.schedules}</em>
+          </button>
+        `;
+      }).join("")}
+    </div>
+  `;
+  calendar.querySelectorAll("[data-executive-calendar-date]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const nextDateKey = button.dataset.executiveCalendarDate;
+      if (!nextDateKey) return;
+      state.executiveWorklogMode = "daily";
+      setSelectedDateKey(nextDateKey);
+    });
+  });
+}
+
+function renderExecutiveTaskDelegateControl(task, log) {
+  const source = getTaskDelegationSource(log, { executive: true, viewName: "executive" });
+  const candidates = getTaskDelegationCandidates(source, "executive");
+  const recipientId = getTaskDelegationRecipientId(task, candidates);
+  if (!candidates.length) {
+    return '<select class="executive-task-delegate" disabled aria-label="위임받을 직원"><option>위임 가능한 직원 없음</option></select>';
+  }
+  return `
+    <select class="executive-task-delegate" data-executive-task-delegate="${escapeAttr(task.id)}" aria-label="위임받을 직원">
+      <option value="">위임할 직원 선택</option>
+      ${candidates.map((employee) => {
+        const employeeId = getEmployeeWorklogId(employee) || employee.id || "";
+        return `<option value="${escapeAttr(employeeId)}" ${employeeId === recipientId ? "selected" : ""}>${escapeHtml(getTaskDelegationCandidateLabel(employee))}</option>`;
+      }).join("")}
+    </select>
+  `;
+}
+
+function renderExecutiveWorklog() {
+  const section = document.querySelector(".executive-personal-worklog");
+  if (!section || !isRepresentativeProfile()) return;
+  const log = getExecutiveWorklog();
+  const mode = state.executiveWorklogMode || "daily";
+  const daily = document.getElementById("executivePersonalWorklogDaily");
+  const taskBoard = document.getElementById("executiveTaskBoard");
+  const scheduleBoard = document.getElementById("executiveScheduleBoard");
+  const memo = document.getElementById("executiveMemo");
+  const completion = document.getElementById("executiveTaskCompletion");
+  document.querySelectorAll("[data-executive-worklog-mode]").forEach((button) => {
+    const active = button.dataset.executiveWorklogMode === mode;
+    button.classList.toggle("is-active", active);
+    button.setAttribute("aria-pressed", String(active));
+  });
+  if (daily) daily.hidden = mode !== "daily";
+  const summary = getExecutiveWorklogSummary(log);
+  if (completion) completion.textContent = `${summary.completed}/${summary.total}`;
+  if (taskBoard) {
+    taskBoard.innerHTML = log.tasks.map((task, index) => `
+      <div class="executive-task-row ${task.done ? "is-complete" : ""}">
+        <input type="checkbox" data-executive-task-done="${index}" ${task.done ? "checked" : ""} aria-label="${index + 1}번 대표 우선업무 완료" />
+        <select data-executive-task-priority="${index}" aria-label="${index + 1}번 우선순위">
+          ${[["?", "우선"], ["A", "A 중요"], ["B", "B 일반"], ["C", "C 참고"], ["위임", "위임"]].map(([value, label]) => `<option value="${value}" ${(task.status === "위임" ? "위임" : task.priority) === value ? "selected" : ""}>${label}</option>`).join("")}
+        </select>
+        <div class="executive-task-field">
+          <input type="text" data-executive-task-text="${index}" value="${escapeAttr(task.text || "")}" placeholder="대표 우선업무를 입력하세요" />
+          ${task.status === "위임" ? renderExecutiveTaskDelegateControl(task, log) : ""}
+        </div>
+        <button type="button" class="executive-task-remove" data-executive-task-remove="${index}" aria-label="${index + 1}번 업무 삭제">×</button>
+      </div>
+    `).join("");
+    taskBoard.querySelectorAll("[data-executive-task-done]").forEach((input) => {
+      input.addEventListener("change", () => {
+        const task = log.tasks[Number(input.dataset.executiveTaskDone)];
+        if (!task) return;
+        task.done = input.checked;
+        task.status = task.done ? "완료" : "예정";
+        log.updatedAt = new Date().toISOString();
+        saveState({ fastSave: true });
+        renderExecutiveWorklog();
+      });
+    });
+    taskBoard.querySelectorAll("[data-executive-task-priority]").forEach((input) => {
+      input.addEventListener("change", () => {
+        const task = log.tasks[Number(input.dataset.executiveTaskPriority)];
+        if (!task) return;
+        if (input.value === "위임") {
+          task.status = "위임";
+          task.done = false;
+        } else {
+          task.priority = input.value;
+          if (task.status === "위임") task.status = "예정";
+        }
+        log.updatedAt = new Date().toISOString();
+        saveState({ fastSave: true });
+        renderExecutiveWorklog();
+      });
+    });
+    taskBoard.querySelectorAll("[data-executive-task-text]").forEach((input) => {
+      input.addEventListener("input", () => {
+        const task = log.tasks[Number(input.dataset.executiveTaskText)];
+        if (!task) return;
+        task.text = input.value;
+        if (task.status === "위임" && task.delegatedToId) {
+          syncDelegatedTaskToRecipient(task, log, task.delegatedToId, {
+            executive: true,
+            sourceDateKey: getActiveDateKey(),
+            viewName: "executive",
+          });
+        }
+        log.updatedAt = new Date().toISOString();
+        saveState({ input: true });
+      });
+    });
+    taskBoard.querySelectorAll("[data-executive-task-delegate]").forEach((input) => {
+      input.addEventListener("change", () => {
+        const task = log.tasks.find((item) => item.id === input.dataset.executiveTaskDelegate);
+        if (!task) return;
+        const result = syncDelegatedTaskToRecipient(task, log, input.value, {
+          executive: true,
+          sourceDateKey: getActiveDateKey(),
+          viewName: "executive",
+        });
+        if (!result.ok) {
+          showAppToast(result.reason === "recipient-edited"
+            ? "수신자가 수정한 위임 업무는 수신자를 변경할 수 없습니다."
+            : "대표 우선업무 내용을 입력한 뒤 위임할 직원을 선택하세요.");
+          return;
+        }
+        log.updatedAt = new Date().toISOString();
+        saveState({ fastSave: true });
+        renderExecutiveWorklog();
+        showAppToast(`${getTaskDelegationCandidateLabel(result.recipient)}님 업무일지에 위임했습니다.`);
+      });
+    });
+    taskBoard.querySelectorAll("[data-executive-task-remove]").forEach((button) => {
+      button.addEventListener("click", () => {
+        const index = Number(button.dataset.executiveTaskRemove);
+        log.tasks.splice(index, 1);
+        while (log.tasks.length < 3) {
+          log.tasks.push({
+            id: `executive-task-${Date.now()}-${log.tasks.length}-${Math.random().toString(36).slice(2, 7)}`,
+            priority: "?",
+            text: "",
+            status: "예정",
+            done: false,
+          });
+        }
+        log.updatedAt = new Date().toISOString();
+        saveState({ fastSave: true });
+        renderExecutiveWorklog();
+      });
+    });
+  }
+  if (scheduleBoard) {
+    scheduleBoard.innerHTML = log.schedule.map((entry, index) => `
+      <label class="executive-schedule-row"><b>${escapeHtml(entry.time)}</b><input type="text" data-executive-schedule-text="${index}" value="${escapeAttr(entry.text || "")}" placeholder="시간별 실행 메모" /></label>
+    `).join("");
+    scheduleBoard.querySelectorAll("[data-executive-schedule-text]").forEach((input) => {
+      input.addEventListener("input", () => {
+        const entry = log.schedule[Number(input.dataset.executiveScheduleText)];
+        if (!entry) return;
+        entry.text = input.value;
+        log.updatedAt = new Date().toISOString();
+        saveState({ input: true });
+      });
+    });
+  }
+  if (memo) {
+    memo.value = log.memo || "";
+    memo.oninput = () => {
+      log.memo = memo.value;
+      log.updatedAt = new Date().toISOString();
+      saveState({ input: true });
+    };
+  }
+  const addTaskButton = document.getElementById("executiveAddTaskButton");
+  if (addTaskButton) {
+    const freshAddTaskButton = addTaskButton.cloneNode(true);
+    addTaskButton.replaceWith(freshAddTaskButton);
+    freshAddTaskButton.addEventListener("click", () => {
+      log.tasks.push({
+        id: `executive-task-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+        priority: "?",
+        text: "",
+        status: "예정",
+        done: false,
+      });
+      log.updatedAt = new Date().toISOString();
+      saveState({ fastSave: true });
+      renderExecutiveWorklog();
+    });
+  }
+  renderExecutiveWorklogCalendar();
+}
+
 function renderExecutiveManagement() {
   if (!isActiveRenderView("executive")) return;
   const accessCard = document.getElementById("executiveAccessCard");
@@ -6115,6 +6573,7 @@ function renderExecutiveManagement() {
   body.hidden = !allowed;
   if (accessLabel) accessLabel.textContent = allowed ? "대표 접근 중 · 오늘의 판단 · 지시 · 위임" : "대표 전용 · 의사결정과 개입사항";
   if (!allowed) return;
+  renderExecutiveWorklog();
 
   const assetRows = getAssetRows();
   const staffRows = getControlStaffRows();
@@ -7415,20 +7874,28 @@ function renderDateNav() {
     overviewTodayButton.classList.toggle("is-current-date", isToday);
     overviewTodayButton.setAttribute("aria-disabled", String(isToday));
   }
-  [
-    [executiveTodayButton, executiveNextButton],
-    [controlTodayButton, controlNextButton],
-  ].forEach(([todayButton, nextButton]) => {
-    if (todayButton) {
-      todayButton.hidden = isToday;
-      todayButton.disabled = isToday;
-      todayButton.setAttribute("aria-disabled", String(isToday));
+  [controlTodayButton, controlNextButton].forEach((button, index) => {
+    if (!button) return;
+    if (index === 0) {
+      button.hidden = isToday;
+      button.disabled = isToday;
+      button.setAttribute("aria-disabled", String(isToday));
+      return;
     }
-    if (nextButton) {
-      nextButton.disabled = isToday;
-      nextButton.setAttribute("aria-disabled", String(isToday));
-    }
+    button.disabled = isToday;
+    button.setAttribute("aria-disabled", String(isToday));
   });
+  if (executiveTodayButton) {
+    executiveTodayButton.hidden = isToday;
+    executiveTodayButton.disabled = isToday;
+    executiveTodayButton.setAttribute("aria-disabled", String(isToday));
+  }
+  if (executiveNextButton) {
+    executiveNextButton.disabled = false;
+    executiveNextButton.setAttribute("aria-disabled", "false");
+  }
+  /* 통합관제는 현재 시점 이후 자료를 열지 않지만, 대표의 개인 업무일지는
+     미래 계획을 기록할 수 있게 별도로 열어 둡니다. */
   renderWorklogCalendar();
 }
 
@@ -7536,14 +8003,14 @@ function renderWorklogCalendar() {
   const selectedDateKey = calendarPickerMode === "postpone"
     ? calendarPostponeTask?.postponeDate || getActiveDateKey()
     : getActiveDateKey();
-  const isDashboardCalendar = ["executive", "control"].includes(calendarPickerMode);
+  const isDashboardCalendar = calendarPickerMode === "control";
   monthTitle.textContent = `${year}년`;
   selectedLabel.textContent = calendarPickerMode === "postpone"
     ? `연기일 ${selectedDateKey ? formatKoreanDate(selectedDateKey) : "미정"}`
     : calendarPickerMode === "fitness"
       ? `피트니스 업무일지 ${formatKoreanDate(getActiveDateKey())}`
       : calendarPickerMode === "executive"
-        ? `대표 경영페이지 ${formatFormalKoreanDate(getActiveDateKey())}`
+        ? `대표 업무일지 ${formatFormalKoreanDate(getActiveDateKey())}`
         : calendarPickerMode === "control"
           ? `통합관제 ${formatFormalKoreanDate(getActiveDateKey())}`
           : formatKoreanDate(getActiveDateKey());
@@ -7620,7 +8087,7 @@ function selectCalendarDate(dateKey) {
     renderEntries();
     return;
   }
-  if (["executive", "control"].includes(calendarPickerMode) && dateKey > todayKey) return;
+  if (calendarPickerMode === "control" && dateKey > todayKey) return;
   setSelectedDateKey(dateKey);
 }
 
@@ -12177,6 +12644,7 @@ function renderFitnessWorklog(log = getSelectedLog()) {
   if (unitButton) unitButton.textContent = log.scheduleUnit === "60" ? "1시간" : "30분";
   updateWorklogScheduleControlLabels(log, "fitness");
   renderFitnessLogPager();
+  renderFitnessCalendarMode(page);
   renderFitnessWorkModeControl(log, page);
   renderFitnessDesktopCoworkers(page);
   const todayDateKey = formatDateKey(new Date());
@@ -12224,6 +12692,79 @@ function renderFitnessLogPager() {
     next.textContent = getFitnessPagerSideLabel("next", pageIndex, pages);
     next.disabled = pageIndex === pages.length - 1;
   }
+}
+
+function setFitnessCalendarMode(mode = "daily") {
+  state.fitnessCalendarMode = ["daily", "week", "month"].includes(mode) ? mode : "daily";
+  saveState({ fastSave: true });
+  renderFitnessCalendarMode();
+}
+
+function getFitnessCalendarDateKeys(mode = state.fitnessCalendarMode, dateKey = getActiveDateKey()) {
+  return mode === "week" ? getWeekDateKeys(dateKey) : getWorklogMonthDateKeys(dateKey);
+}
+
+function getFitnessCalendarEntries(page, dateKey) {
+  const pages = getFitnessLogPages();
+  const people = page?.type === "center"
+    ? pages.filter((item) => item.type === "employee").map((item) => item.employee)
+    : [page?.employee].filter(Boolean);
+  return people.flatMap((employee) => {
+    const log = getStoredEmployeeLogForWeek(employee, dateKey);
+    return getWeekScheduleSummary(log || {}).map(({ time, item }) => ({
+      employee,
+      time,
+      text: formatScheduleItemInline(item).replace(/^\([^)]+\)\s*/, ""),
+      type: item.type || "",
+    }));
+  }).sort((left, right) => timeToMinutes(left.time) - timeToMinutes(right.time));
+}
+
+function renderFitnessCalendarMode(page = getCurrentFitnessLogPage()) {
+  const board = document.getElementById("fitnessCalendarBoard");
+  if (!board) return;
+  const mode = state.fitnessCalendarMode || "daily";
+  document.querySelectorAll("[data-fitness-calendar-mode]").forEach((button) => {
+    const active = button.dataset.fitnessCalendarMode === mode;
+    button.classList.toggle("is-active", active);
+    button.setAttribute("aria-pressed", String(active));
+  });
+  if (mode === "daily") {
+    board.hidden = true;
+    board.innerHTML = "";
+    return;
+  }
+  const dates = getFitnessCalendarDateKeys(mode);
+  const scope = page?.type === "center" ? "센터 전체" : getEmployeeAdminLabel(page?.employee || {});
+  board.hidden = false;
+  board.innerHTML = `
+    <header class="fitness-calendar-heading">
+      <div><span>${mode === "week" ? "WEEKLY FITNESS PLAN" : "MONTHLY FITNESS PLAN"}</span><strong>${escapeHtml(scope)} ${mode === "week" ? "주간" : "월간"} 일정</strong></div>
+      <small>PT 수업과 시간별 업무를 날짜별로 확인합니다.</small>
+    </header>
+    <div class="fitness-calendar-grid ${mode === "week" ? "is-week" : "is-month"}">
+      ${dates.map((dateKey) => {
+        if (!dateKey) return '<span class="fitness-calendar-blank" aria-hidden="true"></span>';
+        const entries = getFitnessCalendarEntries(page, dateKey);
+        const ptCount = entries.filter((entry) => /PT/i.test(String(entry.type || ""))).length;
+        return `
+          <button type="button" class="fitness-calendar-day ${dateKey === getActiveDateKey() ? "is-current" : ""}" data-fitness-calendar-date="${escapeAttr(dateKey)}">
+            <header><b>${escapeHtml(formatWeekdayShort(dateKey))}</b><span>${dateKey === todayKey ? "오늘" : "열기"}</span></header>
+            ${entries.length ? `<ul>${entries.slice(0, 5).map((entry) => `<li class="${/PT/i.test(String(entry.type || "")) ? "is-pt" : ""}"><time>${escapeHtml(entry.time || "")}</time><span>${page?.type === "center" ? `${escapeHtml(getEmployeeOwnLabel(entry.employee) || entry.employee?.name || "직원")} · ` : ""}${escapeHtml(entry.text)}</span></li>`).join("")}</ul>` : '<p>예정 일정 없음</p>'}
+            <em>일정 ${entries.length} · PT ${ptCount}</em>
+          </button>
+        `;
+      }).join("")}
+    </div>
+  `;
+  board.querySelectorAll("[data-fitness-calendar-date]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const dateKey = button.dataset.fitnessCalendarDate;
+      if (!dateKey) return;
+      state.fitnessCalendarMode = "daily";
+      setSelectedDateKey(dateKey);
+    });
+  });
 }
 
 function renderFitnessDesktopCoworkers(currentPage = getCurrentFitnessLogPage()) {
@@ -14844,14 +15385,14 @@ function renderWorklogEditLockBanner(scope = "worklog") {
 }
 
 function setTodayPageMode(mode) {
-  todayPageMode = ["common", "daily", "week", "coworker"].includes(mode) ? mode : "daily";
+  todayPageMode = ["common", "daily", "week", "month", "coworker"].includes(mode) ? mode : "daily";
   resetMobileDayFocusToSplit({ blur: true });
   applyTodayPageMode();
   if (todayPageMode === "week") void hydrateWorklogWeekOnDemand();
 }
 
 function moveTodayPage(delta) {
-  const modes = ["common", "daily", "week", "coworker"];
+  const modes = ["common", "daily", "week", "month", "coworker"];
   const index = modes.indexOf(todayPageMode);
   setTodayPageMode(modes[Math.max(0, Math.min(modes.length - 1, index + delta))]);
 }
@@ -15018,6 +15559,7 @@ function renderSharedWorklogPanels(log = getSelectedLog()) {
     });
   });
   renderWorklogWeekBoard();
+  renderWorklogMonthBoard();
 }
 
 function renderSharedTaskList(items, emptyText) {
@@ -15261,6 +15803,49 @@ function renderWorklogWeekBoard() {
   board.querySelectorAll("[data-worklog-week-date]").forEach((button) => {
     button.addEventListener("click", () => {
       const dateKey = button.dataset.worklogWeekDate;
+      if (!dateKey) return;
+      setSelectedDateKey(dateKey);
+      setTodayPageMode("daily");
+    });
+  });
+}
+
+function getWorklogMonthDateKeys(dateKey = getActiveDateKey()) {
+  const date = parseDateKey(dateKey);
+  const first = new Date(date.getFullYear(), date.getMonth(), 1);
+  const leading = first.getDay();
+  const days = new Date(date.getFullYear(), date.getMonth() + 1, 0).getDate();
+  return [
+    ...Array.from({ length: leading }, () => ""),
+    ...Array.from({ length: days }, (_, index) => formatDateKey(new Date(date.getFullYear(), date.getMonth(), index + 1))),
+  ];
+}
+
+function renderWorklogMonthBoard() {
+  const board = document.getElementById("worklogMonthBoard");
+  if (!board) return;
+  const selected = getSelectedEmployee();
+  const dates = getWorklogMonthDateKeys(getActiveDateKey());
+  board.innerHTML = dates.map((dateKey) => {
+    if (!dateKey) return '<span class="worklog-month-blank" aria-hidden="true"></span>';
+    const log = getStoredEmployeeLogForWeek(selected, dateKey);
+    const schedule = getWeekScheduleSummary(log || {});
+    const activeTasks = (log?.tasks || []).filter((task) => String(task?.text || "").trim());
+    const done = activeTasks.filter((task) => task.done || task.status === "완료").length;
+    const shift = getWeekShiftSummary(selected, dateKey, log);
+    const preview = schedule[0]?.item ? formatScheduleItemInline(schedule[0].item).replace(/^\([^)]+\)\s*/, "") : activeTasks[0]?.text || "기록 없음";
+    return `
+      <button type="button" class="worklog-month-day ${dateKey === getActiveDateKey() ? "is-selected-date" : ""}" data-worklog-month-date="${escapeAttr(dateKey)}" aria-label="${escapeAttr(formatKoreanDate(dateKey))} ${escapeAttr(getEmployeeOwnLabel(selected) || selected.name || "직원")} 업무일지 열기">
+        <header><strong>${escapeHtml(formatWeekdayShort(dateKey))}</strong><span>${dateKey === todayKey ? "오늘" : "열기"}</span></header>
+        <small>${escapeHtml(shift)}</small>
+        <b>${escapeHtml(preview)}</b>
+        <em>우선 ${done}/${activeTasks.length} · 일정 ${schedule.length}</em>
+      </button>
+    `;
+  }).join("");
+  board.querySelectorAll("[data-worklog-month-date]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const dateKey = button.dataset.worklogMonthDate;
       if (!dateKey) return;
       setSelectedDateKey(dateKey);
       setTodayPageMode("daily");
@@ -15804,8 +16389,9 @@ function renderWorklogTaskRow(ref, currentLog, options = {}) {
     <button class="task-cycle" type="button" aria-label="상태 변경: 완료, 진행중, 해제 순환">${getWorklogTaskMarkerLabel(displayTask)}</button>
     <div class="task-status-cell">${renderTaskMetaControl(displayTask)}</div>
     <div class="task-text-cell">
+      ${displayTask.delegatedFromName ? `<span class="task-delegated-from" title="${escapeAttr(`${displayTask.delegatedFromName}님이 위임한 업무`)}">${escapeHtml(`${displayTask.delegatedFromName} 위임`)}</span>` : ""}
       <input class="task-text-input" type="text" value="${escapeAttr(displayTask.text)}" placeholder="업무 내용" aria-label="주요업무" />
-      ${renderTaskActionControl(displayTask)}
+      ${renderTaskActionControl(displayTask, currentLog, viewName)}
       ${renderWorklogTaskTags(getWorklogTaskTags(displayTask))}
       <span class="task-priority-warning" ${priorityMissing ? "" : "hidden"}>중요도 선택 필요</span>
       ${(isCarryover || isPostponedFromOtherDate) ? `<span class="task-origin-tag">${escapeHtml(formatShortDate(sourceDateKey))} 이월</span>` : ""}
@@ -15830,6 +16416,12 @@ function renderWorklogTaskRow(ref, currentLog, options = {}) {
     editableRef.task.text = event.target.value;
     promptAttendanceBeforeWorklogInput(editableRef.log, editableRef.task.text);
     syncWorklogTaskTimeHintToSchedule(editableRef.task, editableRef.log);
+    if (editableRef.task.status === "위임" && editableRef.task.delegatedToId) {
+      syncDelegatedTaskToRecipient(editableRef.task, editableRef.log, editableRef.task.delegatedToId, {
+        sourceDateKey: editableRef.sourceDateKey || getActiveDateKey(),
+        viewName,
+      });
+    }
     saveState({ input: true });
     updateTaskPriorityWarningState(row, editableRef.task, { log: editableRef.log });
     updateTaskRowTags(row, editableRef.task);
@@ -15894,9 +16486,23 @@ function renderTaskMetaControl(task) {
   `;
 }
 
-function renderTaskActionControl(task) {
+function renderTaskActionControl(task, currentLog = getSelectedLog(), viewName = activeView) {
   if (task.status === "위임") {
-    return `<input class="delegate-input task-action-control" type="text" value="${escapeAttr(task.delegate || "")}" placeholder="위임자" aria-label="위임받은 사람" />`;
+    const source = getTaskDelegationSource(currentLog, { viewName });
+    const candidates = getTaskDelegationCandidates(source, viewName);
+    const recipientId = getTaskDelegationRecipientId(task, candidates);
+    if (!candidates.length) {
+      return '<select class="delegate-input task-action-control" disabled aria-label="위임받을 직원"><option>동료 없음</option></select>';
+    }
+    return `
+      <select class="delegate-input task-action-control" aria-label="위임받을 직원">
+        <option value="">위임</option>
+        ${candidates.map((employee) => {
+          const employeeId = getEmployeeWorklogId(employee) || employee.id || "";
+          return `<option value="${escapeAttr(employeeId)}" ${employeeId === recipientId ? "selected" : ""}>${escapeHtml(getTaskDelegationCandidateLabel(employee))}</option>`;
+        }).join("")}
+      </select>
+    `;
   }
   if (task.status === "연기") {
     const label = task.postponeDate ? formatShortDate(task.postponeDate) : "미정";
@@ -15909,11 +16515,22 @@ function bindTaskMetaControl(row, ref, currentLog, viewName = activeView) {
   const task = ref.task;
   const delegateInput = row.querySelector(".delegate-input");
   if (delegateInput) {
-    delegateInput.oninput = () => {
+    delegateInput.onchange = () => {
       if (!guardWorklogEdit(viewName)) return;
       const editableRef = materializeWorklogCarryover(ref, currentLog);
-      editableRef.task.delegate = delegateInput.value;
-      saveState({ input: true });
+      const result = syncDelegatedTaskToRecipient(editableRef.task, editableRef.log, delegateInput.value, {
+        sourceDateKey: editableRef.sourceDateKey || getActiveDateKey(),
+        viewName,
+      });
+      if (!result.ok) {
+        showAppToast(result.reason === "recipient-edited"
+          ? "수신자가 수정한 위임 업무는 수신자를 변경할 수 없습니다."
+          : "업무 내용을 입력한 뒤 위임할 직원을 선택하세요.");
+        return;
+      }
+      saveState({ fastSave: true });
+      renderEntries();
+      showAppToast(`${getTaskDelegationCandidateLabel(result.recipient)}님 업무일지에 위임했습니다.`);
     };
   }
   const postponeButton = row.querySelector(".postpone-date-button");
@@ -26205,6 +26822,12 @@ document.querySelectorAll("[data-worklog-layout-choice]").forEach((button) => {
 document.querySelectorAll("[data-worklog-page-choice]").forEach((button) => {
   button.addEventListener("click", () => setTodayPageMode(button.dataset.worklogPageChoice || "daily"));
 });
+document.querySelectorAll("[data-executive-worklog-mode]").forEach((button) => {
+  button.addEventListener("click", () => setExecutiveWorklogMode(button.dataset.executiveWorklogMode || "daily"));
+});
+document.querySelectorAll("[data-fitness-calendar-mode]").forEach((button) => {
+  button.addEventListener("click", () => setFitnessCalendarMode(button.dataset.fitnessCalendarMode || "daily"));
+});
 document.getElementById("globalViewModeButton")?.addEventListener("click", toggleGlobalViewMode);
 document.getElementById("fitnessLogPrevPageButton")?.addEventListener("click", moveFitnessLogPrevPage);
 document.getElementById("fitnessLogNextPageButton")?.addEventListener("click", moveFitnessLogNextPage);
@@ -27042,7 +27665,7 @@ function moveDashboardDate(view, offsetDays) {
   const date = parseDateKey(getActiveDateKey());
   date.setDate(date.getDate() + offsetDays);
   const nextDateKey = formatDateKey(date);
-  if (nextDateKey > todayKey) return;
+  if (view === "control" && nextDateKey > todayKey) return;
   moveSelectedDate(offsetDays, true);
   window.setTimeout(() => switchView(view), 180);
 }
