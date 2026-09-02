@@ -3776,7 +3776,7 @@ async function checkExecutiveManagementPage(browser) {
   if (metrics.activeView !== "executive") fail("executive active view mismatch", metrics.activeView);
   if (metrics.headerHeight > 1) fail("executive duplicate top header should be visually removed", `${metrics.headerHeight}px`);
   if (metrics.heroSticky !== "sticky") fail("executive hero should be sticky", metrics.heroSticky);
-  if (metrics.titleText !== "대표의 오늘") fail("executive title mismatch", metrics.titleText);
+  if (metrics.titleText !== "대표 업무일지") fail("executive title mismatch", metrics.titleText);
   if (metrics.titleColor !== "rgb(255, 247, 207)") fail("executive title color should stand out", metrics.titleColor);
   if (!/^\d{4}\.\d{2}\.\d{2}\([日月火水木金土]\)$/.test(metrics.todayText)) fail("executive date button should show compact date", metrics.todayText);
   if (!metrics.todayFits) fail("executive date button is clipped", metrics.todayText);

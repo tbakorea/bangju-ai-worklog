@@ -363,7 +363,7 @@ check(
   "representative delegates retain their own worklog editor and scoped action authority",
   /function isRepresentativeProfile\(\)[\s\S]{0,240}return controlTowerEmails\.has\(email\);/.test(js)
     && /function isRepresentativeDelegateProfile[\s\S]{0,420}presetKey === "executive_delegate"/.test(js)
-    && /function getUserWorklogView\(\)[\s\S]{0,360}isRepresentativeProfile\(\) && canAccessWorklogOverview\(\)[\s\S]{0,160}return getOwnWorklogView\(\);/.test(js)
+    && /function getUserWorklogView\(\)[\s\S]{0,300}isRepresentativeProfile\(\)\) return "executive";[\s\S]{0,160}return getOwnWorklogView\(\);/.test(js)
     && js.includes("function resetWorklogLaunchToOwnProfile")
     && /function canIssueWorklogActionToEmployee[\s\S]{0,360}getAccessibleWorklogSiteGroupIds\(\)\.includes\(groupId\)/.test(js)
     && js.includes("data-overview-mission-add")
@@ -1116,6 +1116,20 @@ check(
   /function clearAuthRuntimeState\(\)[\s\S]{0,420}authState\.user = null[\s\S]{0,420}authState\.saveTimer = null[\s\S]{0,420}authState\.approvalTimer = null/.test(js)
     && /async function signOutWithSupabase\(\)[\s\S]{0,260}clearAuthRuntimeState\(\)/.test(js),
   "login/logout labels and approval state should not remain stale after sign-out"
+);
+
+check(
+  "representative opens a worklog-first lightweight stage before command-center hydration",
+  js.includes('function shouldDeferRepresentativeControlData')
+    && js.includes('function hydrateRepresentativeControlData')
+    && /function getUserWorklogView\(\)[\s\S]{0,300}return "executive";/.test(js)
+    && /function shouldDeferRepresentativeControlData\(dateKey = getActiveDateKey\(\)\)[\s\S]{0,240}\["executive", "worklog-overview"\]/.test(js)
+    && /function shouldHydrateRepresentativeControlForView\(view = activeView\)[\s\S]{0,320}\["auth", "executive", "worklog-overview"/.test(js)
+    && /async function loadRemoteWorklogForActiveDate\(\)[\s\S]{0,3600}const deferRepresentativeControl = shouldDeferRepresentativeControlData\(key\)[\s\S]{0,1500}if \(!deferRepresentativeControl\)/.test(js)
+    && /function toggleMainMenuPopover[\s\S]{0,1200}isRepresentativeProfile\(\)[\s\S]{0,220}hydrateRepresentativeControlData/.test(js)
+    && /function switchView[\s\S]{0,2200}shouldHydrateRepresentativeControlForView\(view\)[\s\S]{0,220}hydrateRepresentativeControlData/.test(js)
+    && /function renderWorklogOverview[\s\S]{0,1700}hasRepresentativeControlData\(dateKey\)[\s\S]{0,260}loadRepresentativeCoachingFollowups/.test(js),
+  "representative login must open the CEO worklog, load worklogs/weather first, and defer control datasets until the menu or a command-center view is opened"
 );
 
 const riskPatterns = [

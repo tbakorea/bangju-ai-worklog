@@ -937,6 +937,8 @@ const authState = {
   dagymPtScheduleMonthCache: new Map(),
   dagymSyncHealthCache: new Map(),
   dagymSyncHealthLoading: new Set(),
+  representativeControlDataDateKey: "",
+  representativeControlDataLoading: null,
   coachingFollowupCache: new Map(),
   coachingFollowupLoading: new Set(),
   coachingFollowupOverviewRows: [],
@@ -5975,7 +5977,10 @@ function renderWorklogOverview() {
   const dateKey = getActiveDateKey();
   const coachingOverviewIsStale = authState.coachingFollowupOverviewDateKey !== dateKey
     || Date.now() - Number(authState.coachingFollowupOverviewLoadedAt || 0) >= 60 * 1000;
-  if (canAccessAllWorklogs() && coachingOverviewIsStale && !authState.coachingFollowupOverviewLoading) {
+  if (canAccessAllWorklogs()
+    && (!isRepresentativeProfile() || hasRepresentativeControlData(dateKey))
+    && coachingOverviewIsStale
+    && !authState.coachingFollowupOverviewLoading) {
     loadRepresentativeCoachingFollowups(dateKey).catch(() => {});
   }
   const dateLabel = formatShortDate(dateKey);
@@ -7815,9 +7820,11 @@ function getOwnWorklogView(profile = state.profile || {}) {
 }
 
 function getUserWorklogView() {
-  // 대표만 통합 현황으로 시작합니다. 권한을 위임받은 직원은 항상 본인
-  // 업무일지 작성 화면에서 하루를 시작하고, 열람은 별도 메뉴로 이동합니다.
-  if (isRepresentativeProfile() && canAccessWorklogOverview()) return "worklog-overview";
+  // 대표는 전 사업장 관제보다 자신의 CEO 업무일지에서 하루를 시작합니다.
+  // 통합관제·전 사업장 업무일지는 메뉴에서 필요할 때 열어, 첫 화면을 가볍고
+  // 집중된 의사결정 흐름으로 유지합니다. 권한을 위임받은 직원은 기존처럼
+  // 본인 업무일지 작성 화면에서 시작합니다.
+  if (isRepresentativeProfile()) return "executive";
   return getOwnWorklogView();
 }
 
@@ -7835,6 +7842,28 @@ function resetWorklogLaunchToOwnProfile() {
 
 function getInitialLandingView() {
   return getUserWorklogView();
+}
+
+// 대표 계정은 첫 화면에서 CEO 업무일지와 전 사업장 업무일지에 필요한 데이터만 먼저 읽습니다.
+// 노무·다짐 분석·급여초안처럼 관제 메뉴에서만 필요한 무거운 자료는 메뉴를 열거나
+// 관제 화면을 선택한 뒤에 한 번만 준비합니다. 직원의 일반 진입은 기존처럼 즉시
+// 전체 업무일지 흐름을 유지합니다.
+function hasRepresentativeControlData(dateKey = getActiveDateKey()) {
+  return isRepresentativeProfile()
+    && authState.representativeControlDataDateKey === dateKey;
+}
+
+function shouldDeferRepresentativeControlData(dateKey = getActiveDateKey()) {
+  return isRepresentativeProfile()
+    && ["executive", "worklog-overview"].includes(activeView)
+    && !hasRepresentativeControlData(dateKey);
+}
+
+function shouldHydrateRepresentativeControlForView(view = activeView) {
+  if (!isRepresentativeProfile()) return false;
+  // CEO 업무일지, 전 사업장 업무일지와 일반 업무일지는 첫 진입 경량 모드로 유지합니다.
+  // 피트니스 운영·통합관제·노무 등은 메뉴에서 여는 즉시 관제 자료를 준비합니다.
+  return !["auth", "executive", "worklog-overview", "bangju-log", "beyond-log"].includes(view);
 }
 
 function getWorklogEmployeeIdsForView(view) {
@@ -9940,6 +9969,8 @@ function clearAuthRuntimeState() {
   authState.dagymPtScheduleMonthCache = new Map();
   authState.dagymSyncHealthCache = new Map();
   authState.dagymSyncHealthLoading = new Set();
+  authState.representativeControlDataDateKey = "";
+  authState.representativeControlDataLoading = null;
   authState.coachingFollowupCache = new Map();
   authState.coachingFollowupLoading = new Set();
   authState.coachingFollowupOverviewRows = [];
@@ -10481,6 +10512,38 @@ async function saveRemoteLeaveRequest(request = {}) {
   return true;
 }
 
+async function hydrateRepresentativeControlData(dateKey = getActiveDateKey()) {
+  if (!supabaseClient || !authState.user || !isRepresentativeProfile()) return false;
+  if (hasRepresentativeControlData(dateKey)) return true;
+  if (authState.representativeControlDataLoading) return authState.representativeControlDataLoading;
+
+  const task = (async () => {
+    // 관제에서 사용하는 원격 데이터는 서로 의존하지 않으므로 동시에 읽습니다.
+    // 하나의 보조 자료가 지연되어도 업무일지·메뉴 이동은 계속 가능해야 합니다.
+    const results = await Promise.allSettled([
+      loadRemoteDagymDailyAnalysis(dateKey),
+      loadRemoteDagymSyncHealth(dateKey),
+      loadRemoteLaborPayrollDrafts(),
+      loadRemoteLeaveRequests(),
+      loadDagymMonthlyPtSchedules(dateKey),
+    ]);
+    const failed = results.filter((result) => result.status === "rejected");
+    if (failed.length) console.warn("Representative control data partially deferred", failed);
+    authState.representativeControlDataDateKey = dateKey;
+    normalizeState();
+    writeStateToLocalStorage();
+    ensureTodayDagymDailyAnalysis({ silent: true });
+    // 메뉴를 열어둔 채로는 다시 그리지 않아 선택 흐름을 끊지 않습니다.
+    // 사용자가 관제 화면으로 이동한 경우에만 최신 자료로 조용히 갱신합니다.
+    if (activeView !== "worklog-overview") renderAll();
+    return true;
+  })().finally(() => {
+    authState.representativeControlDataLoading = null;
+  });
+  authState.representativeControlDataLoading = task;
+  return task;
+}
+
 async function loadRemoteWorklogForActiveDate() {
   if (!supabaseClient || !authState.user) return;
   const key = getActiveDateKey();
@@ -10516,24 +10579,30 @@ async function loadRemoteWorklogForActiveDate() {
       state.weatherCache = { ...(state.weatherCache || {}), ...(data.state.weatherCache || {}) };
       state.weatherLocationCache = { ...(state.weatherLocationCache || {}), ...(data.state.weatherLocationCache || {}) };
     }
-    // These datasets do not depend on one another. Loading them together
-    // removes the old login waterfall while keeping the staff worklog merge
-    // ordered before DaGym schedule projection below.
+    const deferRepresentativeControl = shouldDeferRepresentativeControlData(key);
+    // 사업장 날씨와 업무일지 원장은 첫 화면에 보이므로 먼저 준비합니다.
+    // 대표의 관제용 자료는 메뉴 진입 뒤 hydrateRepresentativeControlData에서 읽어
+    // 첫 진입의 불필요한 원격 요청과 렌더링을 줄입니다.
     const [, sharedWeatherRows] = await Promise.all([
       loadLatestRemoteSiteWeatherSettings(),
       loadSharedSiteWeatherSettings(),
-      loadRemoteDagymDailyAnalysis(key),
-      loadRemoteDagymSyncHealth(key),
-      loadRemoteLaborPayrollDrafts(),
-      loadRemoteLeaveRequests(),
     ]);
     if (Array.isArray(sharedWeatherRows)) await publishRepresentativeSiteWeatherSettings(sharedWeatherRows);
     if (canAccessAllWorklogs()) await loadVisibleStaffWorklogsForDate(key);
     else await loadCoworkerWorklogsForDate(key);
-    await loadDagymMonthlyPtSchedules(key);
+    if (!deferRepresentativeControl) {
+      await Promise.allSettled([
+        loadRemoteDagymDailyAnalysis(key),
+        loadRemoteDagymSyncHealth(key),
+        loadRemoteLaborPayrollDrafts(),
+        loadRemoteLeaveRequests(),
+        loadDagymMonthlyPtSchedules(key),
+      ]);
+      if (isRepresentativeProfile()) authState.representativeControlDataDateKey = key;
+    }
     normalizeState();
-    localStorage.setItem(storageKey, JSON.stringify(state));
-    ensureTodayDagymDailyAnalysis({ silent: true });
+    writeStateToLocalStorage();
+    if (!deferRepresentativeControl) ensureTodayDagymDailyAnalysis({ silent: true });
     renderAll();
     renderAuthStatus();
   } finally {
@@ -25877,6 +25946,9 @@ function switchView(view, options = {}) {
   ensureSelectedEmployeeForWorklogView(view);
   activeView = view;
   document.body.dataset.activeView = view;
+  if (shouldHydrateRepresentativeControlForView(view)) {
+    void hydrateRepresentativeControlData(getActiveDateKey());
+  }
   renderResponsiveMode();
   closeMainMenuPopover();
   closeGlobalCommandPalette();
@@ -25992,7 +26064,10 @@ function toggleMainMenuPopover(trigger = null) {
   button?.setAttribute("aria-expanded", String(willOpen));
   executiveButton?.setAttribute("aria-expanded", String(willOpen));
   controlButton?.setAttribute("aria-expanded", String(willOpen));
-  if (willOpen) closeAttendancePopover();
+  if (willOpen) {
+    closeAttendancePopover();
+    if (isRepresentativeProfile()) void hydrateRepresentativeControlData(getActiveDateKey());
+  }
   if (willOpen) popover.querySelector("button:not([hidden])")?.focus();
 }
 
