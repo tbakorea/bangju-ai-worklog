@@ -1252,11 +1252,12 @@ function normalizeExecutiveWorklog(log = {}, dateKey = getActiveDateKey()) {
     id: task.id || `executive-task-${dateKey}-${index}-${Math.random().toString(36).slice(2, 7)}`,
     priority: ["A", "B", "C", "?"].includes(task.priority) ? task.priority : "?",
     text: String(task.text || ""),
-    status: task.done || task.status === "완료" ? "완료" : String(task.status || "예정"),
+    status: normalizeWorklogTaskStatus(task.done || task.status === "완료" ? "완료" : task.status || "예정"),
     done: Boolean(task.done || task.status === "완료"),
     delegate: String(task.delegate || ""),
     delegatedToId: String(task.delegatedToId || ""),
     delegationId: String(task.delegationId || ""),
+    postponeDate: String(task.postponeDate || ""),
   }));
   while (tasks.length < 3) {
     tasks.push({
@@ -1268,16 +1269,21 @@ function normalizeExecutiveWorklog(log = {}, dateKey = getActiveDateKey()) {
     });
   }
   const scheduleByTime = new Map(scheduleRows.map((entry) => [String(entry.time || ""), entry]));
+  const defaultScheduleTimes = new Set(fallback.schedule.map((row) => row.time));
   const schedule = fallback.schedule.map((row) => {
     const saved = scheduleByTime.get(row.time) || {};
     return { time: row.time, text: String(saved.text || ""), status: String(saved.status || "예정") };
-  });
+  }).concat(scheduleRows
+    .filter((entry) => /^([01]\d|2[0-3]):[0-5]\d$/.test(String(entry.time || "")) && !defaultScheduleTimes.has(String(entry.time || "")))
+    .map((entry) => ({ time: String(entry.time), text: String(entry.text || ""), status: String(entry.status || "예정") })))
+    .sort((a, b) => timeToMinutes(a.time) - timeToMinutes(b.time));
   return {
     ...fallback,
     ...log,
     dateKey,
     tasks,
     schedule,
+    autoTaskScheduleLinks: { ...(log?.autoTaskScheduleLinks || {}) },
     memo: String(log?.memo || ""),
     updatedAt: String(log?.updatedAt || ""),
   };
@@ -6405,6 +6411,26 @@ function renderExecutiveTaskDelegateControl(task, log) {
   `;
 }
 
+function updateExecutiveWorklogTaskPriority(task, value) {
+  const actionValues = ["진행중", "위임", "연기", "취소"];
+  if (actionValues.includes(value)) {
+    task.status = value;
+    task.done = false;
+    if (!["A", "B", "C", "?"].includes(task.priority)) task.priority = "?";
+    if (value !== "위임") {
+      task.delegate = "";
+      task.delegatedToId = "";
+    }
+    if (value !== "연기") task.postponeDate = "";
+    return;
+  }
+  task.priority = ["A", "B", "C", "?"].includes(value) ? value : "?";
+  if (actionValues.includes(task.status)) task.status = "예정";
+  task.delegate = "";
+  task.delegatedToId = "";
+  task.postponeDate = "";
+}
+
 function renderExecutiveWorklog() {
   const section = document.querySelector(".executive-personal-worklog");
   if (!section || !isRepresentativeProfile()) return;
@@ -6425,13 +6451,13 @@ function renderExecutiveWorklog() {
   if (completion) completion.textContent = `${summary.completed}/${summary.total}`;
   if (taskBoard) {
     taskBoard.innerHTML = log.tasks.map((task, index) => `
-      <div class="executive-task-row ${task.done ? "is-complete" : ""}">
+      <div class="executive-task-row ${task.done ? "is-complete" : ""} ${getWorklogTaskStatusClass(task)}">
         <input type="checkbox" data-executive-task-done="${index}" ${task.done ? "checked" : ""} aria-label="${index + 1}번 대표 우선업무 완료" />
-        <select data-executive-task-priority="${index}" aria-label="${index + 1}번 우선순위">
-          ${[["?", "우선"], ["A", "A 중요"], ["B", "B 일반"], ["C", "C 참고"], ["위임", "위임"]].map(([value, label]) => `<option value="${value}" ${(task.status === "위임" ? "위임" : task.priority) === value ? "selected" : ""}>${label}</option>`).join("")}
+        <select data-executive-task-priority="${index}" aria-label="${index + 1}번 중요도 및 처리">
+          ${[["?", "우선"], ["A", "A 중요"], ["B", "B 일반"], ["C", "C 참고"], ["진행중", "진행중"], ["위임", "위임"], ["연기", "연기"], ["취소", "취소"]].map(([value, label]) => `<option value="${value}" ${getPriorityValue(task) === value ? "selected" : ""}>${label}</option>`).join("")}
         </select>
         <div class="executive-task-field">
-          <input type="text" data-executive-task-text="${index}" value="${escapeAttr(task.text || "")}" placeholder="대표 우선업무를 입력하세요" />
+          <input type="text" data-executive-task-text="${index}" value="${escapeAttr(task.text || "")}" placeholder="예: 14:30 거래처 미팅" title="시간을 함께 입력하면 시간별일정에 자동으로 표시됩니다" />
           ${task.status === "위임" ? renderExecutiveTaskDelegateControl(task, log) : ""}
         </div>
         <button type="button" class="executive-task-remove" data-executive-task-remove="${index}" aria-label="${index + 1}번 업무 삭제">×</button>
@@ -6443,6 +6469,7 @@ function renderExecutiveWorklog() {
         if (!task) return;
         task.done = input.checked;
         task.status = task.done ? "완료" : "예정";
+        syncExecutiveTaskTimeHintToSchedule(task, log);
         log.updatedAt = new Date().toISOString();
         saveState({ fastSave: true });
         renderExecutiveWorklog();
@@ -6452,13 +6479,8 @@ function renderExecutiveWorklog() {
       input.addEventListener("change", () => {
         const task = log.tasks[Number(input.dataset.executiveTaskPriority)];
         if (!task) return;
-        if (input.value === "위임") {
-          task.status = "위임";
-          task.done = false;
-        } else {
-          task.priority = input.value;
-          if (task.status === "위임") task.status = "예정";
-        }
+        updateExecutiveWorklogTaskPriority(task, input.value);
+        syncExecutiveTaskTimeHintToSchedule(task, log);
         log.updatedAt = new Date().toISOString();
         saveState({ fastSave: true });
         renderExecutiveWorklog();
@@ -6469,6 +6491,7 @@ function renderExecutiveWorklog() {
         const task = log.tasks[Number(input.dataset.executiveTaskText)];
         if (!task) return;
         task.text = input.value;
+        syncExecutiveTaskTimeHintToSchedule(task, log);
         if (task.status === "위임" && task.delegatedToId) {
           syncDelegatedTaskToRecipient(task, log, task.delegatedToId, {
             executive: true,
@@ -6478,6 +6501,14 @@ function renderExecutiveWorklog() {
         }
         log.updatedAt = new Date().toISOString();
         saveState({ input: true });
+      });
+      input.addEventListener("blur", () => {
+        const task = log.tasks[Number(input.dataset.executiveTaskText)];
+        if (!task) return;
+        syncExecutiveTaskTimeHintToSchedule(task, log);
+        log.updatedAt = new Date().toISOString();
+        saveState({ fastSave: true });
+        renderExecutiveWorklog();
       });
     });
     taskBoard.querySelectorAll("[data-executive-task-delegate]").forEach((input) => {
@@ -6504,6 +6535,8 @@ function renderExecutiveWorklog() {
     taskBoard.querySelectorAll("[data-executive-task-remove]").forEach((button) => {
       button.addEventListener("click", () => {
         const index = Number(button.dataset.executiveTaskRemove);
+        const removedTask = log.tasks[index];
+        if (removedTask) removeExecutiveTaskLinkedSchedule(removedTask, log);
         log.tasks.splice(index, 1);
         while (log.tasks.length < 3) {
           log.tasks.push({
@@ -16390,7 +16423,7 @@ function renderWorklogTaskRow(ref, currentLog, options = {}) {
     <div class="task-status-cell">${renderTaskMetaControl(displayTask)}</div>
     <div class="task-text-cell">
       ${displayTask.delegatedFromName ? `<span class="task-delegated-from" title="${escapeAttr(`${displayTask.delegatedFromName}님이 위임한 업무`)}">${escapeHtml(`${displayTask.delegatedFromName} 위임`)}</span>` : ""}
-      <input class="task-text-input" type="text" value="${escapeAttr(displayTask.text)}" placeholder="업무 내용" aria-label="주요업무" />
+      <input class="task-text-input" type="text" value="${escapeAttr(displayTask.text)}" placeholder="예: 14:30 거래처 미팅" aria-label="주요업무" title="시간을 함께 입력하면 시간별일정에 자동으로 표시됩니다" />
       ${renderTaskActionControl(displayTask, currentLog, viewName)}
       ${renderWorklogTaskTags(getWorklogTaskTags(displayTask))}
       <span class="task-priority-warning" ${priorityMissing ? "" : "hidden"}>중요도 선택 필요</span>
@@ -17257,7 +17290,10 @@ function syncWorklogTaskTimeHintToSchedule(task, log) {
     return;
   }
   const hint = extractWorklogTaskTimeHint(task.text);
-  if (!hint || !hint.text) return;
+  if (!hint || !hint.text) {
+    removeLinkedSchedule(task, log);
+    return;
+  }
   if (existing && existing.slot !== hint.slot) {
     const previous = findScheduleEntry(log, existing.slot);
     if (previous) {
@@ -17304,6 +17340,93 @@ function removeLinkedSchedule(task, log) {
     syncScheduleEntryText(entry);
   }
   delete log.autoTaskScheduleLinks[linkId];
+}
+
+function getExecutiveTaskScheduleLinkId(task = {}) {
+  return `executive-task:${task.id || task.text}`;
+}
+
+function getExecutiveScheduleTextParts(text = "") {
+  return String(text || "")
+    .split(/\s*·\s*/)
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+
+function setExecutiveScheduleText(entry, parts = []) {
+  entry.text = [...new Set(parts.map((item) => String(item || "").trim()).filter(Boolean))].join(" · ");
+}
+
+function isExecutiveDefaultScheduleSlot(slot = "") {
+  return getScheduleTimes("08:00-20:00").includes(slot);
+}
+
+function ensureExecutiveScheduleSlot(log, slot) {
+  log.schedule = Array.isArray(log.schedule) ? log.schedule : [];
+  let entry = log.schedule.find((item) => item?.time === slot);
+  if (!entry) {
+    entry = { time: slot, text: "", status: "예정" };
+    log.schedule.push(entry);
+    log.schedule.sort((a, b) => timeToMinutes(a.time) - timeToMinutes(b.time));
+  }
+  return entry;
+}
+
+function hasOtherExecutiveTaskScheduleLink(log, linkId, slot, text) {
+  return Object.entries(log?.autoTaskScheduleLinks || {}).some(([id, link]) => (
+    id !== linkId
+    && link?.type === "executive-task"
+    && link.slot === slot
+    && link.text === text
+  ));
+}
+
+function removeExecutiveTaskLinkedSchedule(task, log) {
+  log.autoTaskScheduleLinks ||= {};
+  const linkId = getExecutiveTaskScheduleLinkId(task);
+  const existing = log.autoTaskScheduleLinks[linkId];
+  if (!existing) return;
+  const entry = (log.schedule || []).find((item) => item?.time === existing.slot);
+  if (entry) {
+    const parts = getExecutiveScheduleTextParts(entry.text);
+    const itemIndex = parts.indexOf(existing.text);
+    if (itemIndex >= 0 && !hasOtherExecutiveTaskScheduleLink(log, linkId, existing.slot, existing.text)) {
+      parts.splice(itemIndex, 1);
+    }
+    setExecutiveScheduleText(entry, parts);
+    if (!entry.text && !isExecutiveDefaultScheduleSlot(entry.time)) {
+      log.schedule = log.schedule.filter((item) => item !== entry);
+    }
+  }
+  delete log.autoTaskScheduleLinks[linkId];
+}
+
+function syncExecutiveTaskTimeHintToSchedule(task, log) {
+  log.autoTaskScheduleLinks ||= {};
+  const linkId = getExecutiveTaskScheduleLinkId(task);
+  const existing = log.autoTaskScheduleLinks[linkId];
+  const status = normalizeWorklogTaskStatus(task?.status || "예정");
+  const hint = extractWorklogTaskTimeHint(task?.text);
+  if (["취소", "연기", "위임"].includes(status) || !hint?.text) {
+    removeExecutiveTaskLinkedSchedule(task, log);
+    return false;
+  }
+  if (existing && existing.slot !== hint.slot) removeExecutiveTaskLinkedSchedule(task, log);
+  const entry = ensureExecutiveScheduleSlot(log, hint.slot);
+  const parts = getExecutiveScheduleTextParts(entry.text);
+  const currentLink = log.autoTaskScheduleLinks[linkId];
+  if (currentLink) {
+    const itemIndex = parts.indexOf(currentLink.text);
+    if (itemIndex >= 0 && !hasOtherExecutiveTaskScheduleLink(log, linkId, currentLink.slot, currentLink.text)) {
+      parts[itemIndex] = hint.text;
+    }
+    else if (!parts.includes(hint.text)) parts.push(hint.text);
+  } else if (!parts.includes(hint.text)) {
+    parts.push(hint.text);
+  }
+  setExecutiveScheduleText(entry, parts);
+  log.autoTaskScheduleLinks[linkId] = { type: "executive-task", slot: hint.slot, text: hint.text };
+  return true;
 }
 
 function ensureWorklogAppointmentSlot(log, slot) {
