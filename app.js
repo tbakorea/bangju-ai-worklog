@@ -46,6 +46,8 @@ const fitnessRevenueLedgerReference = Object.freeze({
 let activeView = "auth";
 let attendancePromptLastAt = 0;
 let todayPageMode = "daily";
+let worklogMemoSearchQuery = "";
+let selectedWorklogMemoDateKey = "";
 const bangjuOrganization = [
   {
     name: "(주)방주",
@@ -1220,6 +1222,11 @@ function createEmployeeLog(employee = employees[0], profile = defaultProfile, da
     scheduleUnit: "60",
     report: "",
     memo: "",
+    memoTitle: "",
+    memoRecord: "",
+    memoWins: "",
+    memoCarry: "",
+    memoLesson: "",
     record: "",
     fitnessOps: createFitnessOps(),
     fitnessOpsManual: createFitnessOpsManual(),
@@ -1238,7 +1245,7 @@ function createExecutiveWorklog(dateKey = todayKey) {
       status: "예정",
       done: false,
     })),
-    schedule: getScheduleTimes("08:00-20:00").map((time) => ({ time, text: "", status: "예정" })),
+    schedule: getExecutiveScheduleTimes().map((time) => ({ time, text: "", status: "예정" })),
     memo: "",
     updatedAt: "",
   };
@@ -1460,6 +1467,11 @@ function normalizeState() {
     normalizeEmployeeLogRows(log, getActiveDateKey());
     log.report ||= log.record || "";
     log.memo ||= "";
+    log.memoTitle ||= "";
+    log.memoRecord ||= log.record || "";
+    log.memoWins ||= "";
+    log.memoCarry ||= "";
+    log.memoLesson ||= "";
     log.record ||= "";
     log.fitnessOps = { ...createFitnessOps(), ...(log.fitnessOps || {}) };
     log.fitnessOpsManual = { ...createFitnessOpsManual(), ...(log.fitnessOpsManual || {}) };
@@ -1489,6 +1501,12 @@ function normalizeEmployeeLogRows(log, dateKey = getActiveDateKey()) {
     : [];
   log.fitnessGrowthMissionDone = Boolean(log.fitnessGrowthMissionDone);
   log.fitnessGrowthReflection = String(log.fitnessGrowthReflection || "");
+  log.memoTitle = String(log.memoTitle || "");
+  log.memo = String(log.memo || "");
+  log.memoRecord = String(log.memoRecord || log.record || "");
+  log.memoWins = String(log.memoWins || "");
+  log.memoCarry = String(log.memoCarry || "");
+  log.memoLesson = String(log.memoLesson || "");
   log.tasks.forEach((task, index) => {
     task.id ||= `task-${Date.now()}-${index}-${Math.random().toString(36).slice(2, 7)}`;
     const isBlankDefaultTask = !String(task.text || "").trim()
@@ -3641,6 +3659,10 @@ function getScheduleTimes(workHoursValue) {
     times.push(`${String(hour).padStart(2, "0")}:${String(min).padStart(2, "0")}`);
   }
   return times;
+}
+
+function getExecutiveScheduleTimes() {
+  return Array.from({ length: 24 }, (_, hour) => `${String(hour).padStart(2, "0")}:00`);
 }
 
 function getWorklogScheduleBoundarySlots(workHoursValue, unitValue = 60) {
@@ -6320,6 +6342,11 @@ function renderControlTower() {
   });
 }
 
+function confirmWorklogEventDeletion(message = "삭제한 항목은 되돌리기 전까지 복구할 수 없습니다. 삭제할까요?") {
+  if (typeof window === "undefined" || typeof window.confirm !== "function") return true;
+  return window.confirm(message);
+}
+
 function setExecutiveWorklogMode(mode = "daily") {
   if (!isRepresentativeProfile()) return;
   state.executiveWorklogMode = ["daily", "week", "month"].includes(mode) ? mode : "daily";
@@ -6344,6 +6371,37 @@ function getExecutiveWorklogSummary(log = {}) {
   const completed = activeTasks.filter((task) => task.done || task.status === "완료").length;
   const schedules = (log.schedule || []).filter((entry) => String(entry?.text || "").trim()).length;
   return { total: activeTasks.length, completed, schedules };
+}
+
+function renderExecutiveWeeklyBoard() {
+  const board = document.getElementById("executiveWeeklyBoard");
+  if (!board) return;
+  const selectedDateKey = getActiveDateKey();
+  const dates = getWeekDateKeys(selectedDateKey);
+  board.innerHTML = dates.map((dateKey) => {
+    const storedLog = state.executiveWorklogs?.[dateKey];
+    const dayLog = storedLog ? normalizeExecutiveWorklog(storedLog, dateKey) : createExecutiveWorklog(dateKey);
+    const summary = getExecutiveWorklogSummary(dayLog);
+    const nextTask = (dayLog.tasks || []).find((task) => String(task?.text || "").trim() && !(task.done || task.status === "완료"));
+    const nextSchedule = (dayLog.schedule || []).find((entry) => String(entry?.text || "").trim());
+    const preview = nextTask?.text || nextSchedule?.text || "기록 없음";
+    return `
+      <button type="button" class="executive-weekly-day ${dateKey === selectedDateKey ? "is-current" : ""}" data-executive-weekly-date="${escapeAttr(dateKey)}">
+        <span>${escapeHtml(formatWeekdayShort(dateKey))}</span>
+        <strong>${escapeHtml(formatShortDate(dateKey))}</strong>
+        <em>${escapeHtml(preview)}</em>
+        <small>우선 ${summary.completed}/${summary.total} · 일정 ${summary.schedules}</small>
+      </button>
+    `;
+  }).join("");
+  board.querySelectorAll("[data-executive-weekly-date]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const dateKey = button.dataset.executiveWeeklyDate;
+      if (!dateKey) return;
+      state.executiveWorklogMode = "daily";
+      setSelectedDateKey(dateKey);
+    });
+  });
 }
 
 function renderExecutiveWorklogCalendar() {
@@ -6536,6 +6594,7 @@ function renderExecutiveWorklog() {
       button.addEventListener("click", () => {
         const index = Number(button.dataset.executiveTaskRemove);
         const removedTask = log.tasks[index];
+        if (!removedTask || !confirmWorklogEventDeletion("이 우선업무를 삭제할까요? 연결된 시간별일정도 함께 삭제됩니다.")) return;
         if (removedTask) removeExecutiveTaskLinkedSchedule(removedTask, log);
         log.tasks.splice(index, 1);
         while (log.tasks.length < 3) {
@@ -6555,7 +6614,7 @@ function renderExecutiveWorklog() {
   }
   if (scheduleBoard) {
     scheduleBoard.innerHTML = log.schedule.map((entry, index) => `
-      <label class="executive-schedule-row"><b>${escapeHtml(entry.time)}</b><input type="text" data-executive-schedule-text="${index}" value="${escapeAttr(entry.text || "")}" placeholder="시간별 실행 메모" /></label>
+      <div class="executive-schedule-row"><b>${escapeHtml(entry.time)}</b><input type="text" data-executive-schedule-text="${index}" value="${escapeAttr(entry.text || "")}" placeholder="시간별 실행 메모" /><button type="button" data-executive-schedule-remove="${index}" aria-label="${escapeAttr(entry.time)} 일정 삭제" ${entry.text ? "" : "disabled"}>×</button></div>
     `).join("");
     scheduleBoard.querySelectorAll("[data-executive-schedule-text]").forEach((input) => {
       input.addEventListener("input", () => {
@@ -6564,6 +6623,21 @@ function renderExecutiveWorklog() {
         entry.text = input.value;
         log.updatedAt = new Date().toISOString();
         saveState({ input: true });
+      });
+    });
+    scheduleBoard.querySelectorAll("[data-executive-schedule-remove]").forEach((button) => {
+      button.addEventListener("click", () => {
+        const index = Number(button.dataset.executiveScheduleRemove);
+        const entry = log.schedule[index];
+        if (!entry?.text || !confirmWorklogEventDeletion("이 시간별일정을 삭제할까요? 우선업무는 유지됩니다.")) return;
+        Object.keys(log.autoTaskScheduleLinks || {}).forEach((taskId) => {
+          if (log.autoTaskScheduleLinks[taskId]?.slot === entry.time) delete log.autoTaskScheduleLinks[taskId];
+        });
+        entry.text = "";
+        entry.status = "예정";
+        log.updatedAt = new Date().toISOString();
+        saveState({ fastSave: true });
+        renderExecutiveWorklog();
       });
     });
   }
@@ -6575,6 +6649,7 @@ function renderExecutiveWorklog() {
       saveState({ input: true });
     };
   }
+  renderExecutiveWeeklyBoard();
   const addTaskButton = document.getElementById("executiveAddTaskButton");
   if (addTaskButton) {
     const freshAddTaskButton = addTaskButton.cloneNode(true);
@@ -12958,7 +13033,12 @@ function applyCurrentWorklogPermissionState(viewName = activeView) {
       #worklogHoursButton,
       #worklogAddTimeButton,
       #employeeReport,
-      #employeeMemo
+      #employeeMemoTitle,
+      #employeeMemo,
+      #employeeMemoRecord,
+      #employeeMemoWins,
+      #employeeMemoCarry,
+      #employeeMemoLesson
     `).forEach((control) => {
       control.disabled = readOnly;
       control.setAttribute("aria-disabled", String(readOnly));
@@ -15418,14 +15498,14 @@ function renderWorklogEditLockBanner(scope = "worklog") {
 }
 
 function setTodayPageMode(mode) {
-  todayPageMode = ["common", "daily", "week", "month", "coworker"].includes(mode) ? mode : "daily";
+  todayPageMode = ["common", "daily", "week", "month", "memo", "coworker"].includes(mode) ? mode : "daily";
   resetMobileDayFocusToSplit({ blur: true });
   applyTodayPageMode();
   if (todayPageMode === "week") void hydrateWorklogWeekOnDemand();
 }
 
 function moveTodayPage(delta) {
-  const modes = ["common", "daily", "week", "month", "coworker"];
+  const modes = ["common", "daily", "week", "month", "memo", "coworker"];
   const index = modes.indexOf(todayPageMode);
   setTodayPageMode(modes[Math.max(0, Math.min(modes.length - 1, index + delta))]);
 }
@@ -15538,6 +15618,7 @@ function renderSharedWorklogPanels(log = getSelectedLog()) {
   common.querySelectorAll("[data-common-board-delete]").forEach((button) => {
     button.addEventListener("click", () => {
       if (!guardCompanyCommonEdit(selectedEmployee)) return;
+      if (!confirmWorklogEventDeletion("이 공통 일정 이벤트를 삭제할까요?")) return;
       const beforeWeek = cloneWorklogLogForAudit(week);
       Object.keys(week.sections || {}).forEach((sectionId) => {
         week.sections[sectionId] = (week.sections[sectionId] || []).filter((item) => item.id !== button.dataset.commonBoardDelete);
@@ -16477,6 +16558,9 @@ function renderWorklogTaskRow(ref, currentLog, options = {}) {
   });
   row.querySelector(".task-delete").onclick = () => {
     if (!guardWorklogEdit(viewName)) return;
+    if (!confirmWorklogEventDeletion(isCarryover || isPostponedFromOtherDate
+      ? "이 날짜에 표시된 이월 우선업무를 삭제할까요? 원본 업무는 유지됩니다."
+      : "이 우선업무를 삭제할까요? 연결된 시간별일정도 함께 삭제됩니다.")) return;
     if (isCarryover || isPostponedFromOtherDate) {
       task.carryoverDeletedFrom = getActiveDateKey();
       saveState();
@@ -16995,6 +17079,7 @@ function renderAppointmentRow(entry, log, scope = "worklog") {
     });
     remove.onclick = () => {
       if (!guardWorklogEdit()) return;
+      if (!confirmWorklogEventDeletion("이 시간별일정 이벤트를 삭제할까요?")) return;
       const beforeLog = cloneWorklogLogForAudit(log);
       items.splice(itemIndex, 1);
       if (!items.length) items.push(createScheduleItem());
@@ -17126,6 +17211,7 @@ function renderFitnessScheduleEditor() {
   existing.querySelectorAll("[data-remove-schedule-item]").forEach((button) => {
     button.onclick = () => {
       const editorLog = fitnessScheduleEditorState.log;
+      if (!confirmWorklogEventDeletion("이 시간별일정 이벤트를 삭제할까요?")) return;
       const beforeLog = cloneWorklogLogForAudit(editorLog);
       const index = Number(button.dataset.removeScheduleItem);
       items.splice(index, 1);
@@ -17358,7 +17444,7 @@ function setExecutiveScheduleText(entry, parts = []) {
 }
 
 function isExecutiveDefaultScheduleSlot(slot = "") {
-  return getScheduleTimes("08:00-20:00").includes(slot);
+  return getExecutiveScheduleTimes().includes(slot);
 }
 
 function ensureExecutiveScheduleSlot(log, slot) {
@@ -17551,10 +17637,144 @@ function getNextScheduleEntry(log) {
     .sort((a, b) => timeToMinutes(a.time) - timeToMinutes(b.time))[0];
 }
 
+const worklogMemoFieldMap = {
+  employeeMemoTitle: "memoTitle",
+  employeeMemo: "memo",
+  employeeMemoRecord: "memoRecord",
+  employeeMemoWins: "memoWins",
+  employeeMemoCarry: "memoCarry",
+  employeeMemoLesson: "memoLesson",
+};
+
+function getWorklogMemoTitle(log = {}) {
+  const explicitTitle = String(log.memoTitle || "").trim();
+  if (explicitTitle) return explicitTitle;
+  const firstLine = String(log.memo || log.memoRecord || log.record || "")
+    .split(/\n+/)
+    .map((line) => line.trim())
+    .find(Boolean);
+  return firstLine ? firstLine.slice(0, 42) : "제목 없는 메모";
+}
+
+function getWorklogMemoPreview(log = {}) {
+  const content = [log.memo, log.memoRecord || log.record, log.memoWins, log.memoCarry, log.memoLesson]
+    .map((value) => String(value || "").trim())
+    .filter(Boolean)
+    .join(" · ");
+  return content ? content.slice(0, 120) : "작성한 메모가 없습니다.";
+}
+
+function getWorklogMemoEntries(employee = getSelectedEmployee()) {
+  return Object.keys(state.employeeLogs || {})
+    .sort((a, b) => b.localeCompare(a))
+    .map((dateKey) => ({ dateKey, log: getStoredEmployeeLogForWeek(employee, dateKey) }))
+    .filter(({ log }) => log && ["memoTitle", "memo", "memoRecord", "record", "memoWins", "memoCarry", "memoLesson"]
+      .some((field) => String(log[field] || "").trim()))
+    .map(({ dateKey, log }) => ({
+      dateKey,
+      title: getWorklogMemoTitle(log),
+      preview: getWorklogMemoPreview(log),
+      log,
+    }));
+}
+
+function renderWorklogMemoFields(log = getSelectedLog()) {
+  const editable = canEditCurrentWorklog();
+  Object.entries(worklogMemoFieldMap).forEach(([fieldId, fieldName]) => {
+    const field = document.getElementById(fieldId);
+    if (!field) return;
+    const value = fieldName === "memoRecord" ? (log.memoRecord || log.record || "") : (log[fieldName] || "");
+    if (field.value !== value) field.value = value;
+    field.disabled = !editable;
+    field.setAttribute("aria-disabled", String(!editable));
+    field.oninput = (event) => {
+      if (!guardWorklogEdit()) return;
+      const value = event.target.value;
+      log[fieldName] = value;
+      if (fieldName === "memoRecord") log.record = value;
+      promptAttendanceBeforeWorklogInput(log, value);
+      saveState({ input: true });
+      scheduleInputRender("worklog-memo-archive", () => renderWorklogMemoArchive(log), 700);
+      scheduleInputRender("worklog-report", renderReport, 1600);
+    };
+  });
+}
+
+function renderWorklogMemoArchive(log = getSelectedLog()) {
+  const heading = document.getElementById("worklogMemoHeading");
+  const guide = document.getElementById("worklogMemoAccessGuide");
+  const date = document.getElementById("worklogMemoComposerDate");
+  const searchInput = document.getElementById("worklogMemoSearchInput");
+  const count = document.getElementById("worklogMemoListCount");
+  const list = document.getElementById("worklogMemoList");
+  const detail = document.getElementById("worklogMemoDetail");
+  if (!list || !detail) return;
+  const employee = getSelectedEmployee();
+  const editable = canEditCurrentWorklog();
+  const employeeLabel = getEmployeeOwnLabel(employee) || employee?.name || "직원";
+  if (heading) heading.textContent = editable ? "나의 메모 페이지" : `${employeeLabel} 메모 페이지`;
+  if (guide) guide.textContent = editable
+    ? "날짜별 기록을 남기면 제목·내용·회고를 검색하여 다시 볼 수 있습니다."
+    : "열람 전용입니다. 메모의 작성·수정은 본인 업무일지에서만 가능합니다.";
+  if (date) date.textContent = `${formatFormalKoreanDate(getActiveDateKey())} 메모`;
+  const allEntries = getWorklogMemoEntries(employee);
+  const query = String(worklogMemoSearchQuery || "").trim().toLocaleLowerCase();
+  const entries = query
+    ? allEntries.filter((entry) => `${entry.title} ${entry.preview}`.toLocaleLowerCase().includes(query))
+    : allEntries;
+  if (!entries.some((entry) => entry.dateKey === selectedWorklogMemoDateKey)) {
+    selectedWorklogMemoDateKey = entries.find((entry) => entry.dateKey === getActiveDateKey())?.dateKey || entries[0]?.dateKey || "";
+  }
+  if (searchInput) {
+    searchInput.value = worklogMemoSearchQuery;
+    searchInput.oninput = (event) => {
+      worklogMemoSearchQuery = event.target.value;
+      renderWorklogMemoArchive(log);
+      document.getElementById("worklogMemoSearchInput")?.focus();
+    };
+  }
+  if (count) count.textContent = String(entries.length);
+  list.innerHTML = entries.length
+    ? entries.map((entry) => `
+      <button type="button" class="worklog-memo-list-item ${entry.dateKey === selectedWorklogMemoDateKey ? "is-selected" : ""}" data-worklog-memo-date="${escapeAttr(entry.dateKey)}">
+        <time>${escapeHtml(formatShortDate(entry.dateKey))}</time>
+        <strong>${escapeHtml(entry.title)}</strong>
+        <span>${escapeHtml(entry.preview)}</span>
+      </button>
+    `).join("")
+    : `<p class="worklog-memo-empty">${query ? "검색 결과가 없습니다." : "아직 저장된 메모가 없습니다."}</p>`;
+  list.querySelectorAll("[data-worklog-memo-date]").forEach((button) => {
+    button.addEventListener("click", () => {
+      selectedWorklogMemoDateKey = button.dataset.worklogMemoDate || "";
+      renderWorklogMemoArchive(log);
+    });
+  });
+  const selected = entries.find((entry) => entry.dateKey === selectedWorklogMemoDateKey);
+  detail.innerHTML = selected ? `
+    <header>
+      <div><span>${escapeHtml(formatFormalKoreanDate(selected.dateKey))}</span><h4>${escapeHtml(selected.title)}</h4></div>
+      <button type="button" data-worklog-memo-open-day="${escapeAttr(selected.dateKey)}">업무일지 열기</button>
+    </header>
+    <p>${escapeHtml(selected.preview)}</p>
+    <dl>
+      ${selected.log.memoWins ? `<div><dt>완료/성과</dt><dd>${escapeHtml(selected.log.memoWins)}</dd></div>` : ""}
+      ${selected.log.memoCarry ? `<div><dt>내일로 넘길 일</dt><dd>${escapeHtml(selected.log.memoCarry)}</dd></div>` : ""}
+      ${selected.log.memoLesson ? `<div><dt>개선할 점</dt><dd>${escapeHtml(selected.log.memoLesson)}</dd></div>` : ""}
+    </dl>
+  ` : `<p class="worklog-memo-empty">왼쪽 목록에서 날짜를 선택하면 기록을 자세히 볼 수 있습니다.</p>`;
+  detail.querySelector("[data-worklog-memo-open-day]")?.addEventListener("click", (event) => {
+    const dateKey = event.currentTarget.dataset.worklogMemoOpenDay;
+    if (!dateKey) return;
+    setSelectedDateKey(dateKey);
+    setTodayPageMode("memo");
+  });
+}
+
 function renderEmployeeDetailFields() {
   const log = getSelectedLog();
   document.getElementById("employeeReport").value = log.report || "";
-  document.getElementById("employeeMemo").value = log.memo || "";
+  renderWorklogMemoFields(log);
+  renderWorklogMemoArchive(log);
   renderFitnessOperations(log);
 }
 
@@ -26878,7 +27098,12 @@ document.addEventListener("focusout", (event) => {
     "[data-dagym-field]",
     "[data-fitness-goal]",
     "#employeeReport",
+    "#employeeMemoTitle",
     "#employeeMemo",
+    "#employeeMemoRecord",
+    "#employeeMemoWins",
+    "#employeeMemoCarry",
+    "#employeeMemoLesson",
     "#dagymImportText",
     "#manualEditor",
     "#manualMissionEditor",
@@ -27676,15 +27901,7 @@ document.getElementById("employeeReport").oninput = (event) => {
   saveState({ input: true });
   scheduleInputRender("worklog-report", renderReport, 1600);
 };
-document.getElementById("employeeMemo").oninput = (event) => {
-  if (!guardWorklogEdit()) return;
-  const log = getSelectedLog();
-  log.memo = event.target.value;
-  promptAttendanceBeforeWorklogInput(log, event.target.value);
-  saveState({ input: true });
-  scheduleInputRender("worklog-report", renderReport, 1600);
-};
-["employeeReport", "employeeMemo"].forEach((fieldId) => {
+["employeeReport", ...Object.keys(worklogMemoFieldMap)].forEach((fieldId) => {
   document.getElementById(fieldId)?.addEventListener("blur", () => {
     if (activeView === "fitness-log" && getActiveDateKey() === formatDateKey(new Date())) {
       scheduleFitnessGuidanceReconciliation(40);

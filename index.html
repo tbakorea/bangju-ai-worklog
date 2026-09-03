@@ -230,26 +230,36 @@
               </nav>
             </header>
             <div class="executive-personal-worklog-daily" id="executivePersonalWorklogDaily">
-              <article class="executive-personal-worklog-panel">
+              <article class="executive-personal-worklog-panel executive-weekly-panel">
                 <header>
-                  <div><span>PRIORITY</span><h4>오늘의 우선업무</h4></div>
-                  <strong id="executiveTaskCompletion">0/0</strong>
+                  <div><span>WEEKLY FOCUS</span><h4>주간별일정</h4></div>
+                  <small>날짜를 누르면 오늘 영역으로 이동합니다.</small>
                 </header>
-                <div id="executiveTaskBoard" class="executive-task-board"></div>
-                <button type="button" class="executive-add-task-button" id="executiveAddTaskButton">+ 우선업무 추가</button>
+                <div id="executiveWeeklyBoard" class="executive-weekly-board" aria-label="대표 주간별일정"></div>
               </article>
-              <article class="executive-personal-worklog-panel">
-                <header>
-                  <div><span>TIME BLOCK</span><h4>시간별일정</h4></div>
-                  <small>실행 시간과 핵심 메모를 남기세요.</small>
-                </header>
-                <div id="executiveScheduleBoard" class="executive-schedule-board"></div>
-              </article>
+              <section class="executive-day-focus" aria-label="대표 오늘 업무">
+                <article class="executive-personal-worklog-panel executive-priority-panel">
+                  <header>
+                    <div><span>PRIORITY</span><h4>오늘의 우선업무</h4></div>
+                    <strong id="executiveTaskCompletion">0/0</strong>
+                  </header>
+                  <div id="executiveTaskBoard" class="executive-task-board"></div>
+                  <button type="button" class="executive-add-task-button" id="executiveAddTaskButton">+ 우선업무 추가</button>
+                </article>
+                <article class="executive-personal-worklog-panel executive-schedule-panel">
+                  <header>
+                    <div><span>TIME BLOCK</span><h4>시간별일정</h4></div>
+                    <small>00:00부터 하루 전체를 확인합니다.</small>
+                  </header>
+                  <div id="executiveScheduleBoard" class="executive-schedule-board"></div>
+                </article>
+              </section>
               <article class="executive-personal-worklog-memo">
-                <label for="executiveMemo">
-                  <span>CEO MEMO</span>
-                  <strong>판단 메모 · 지시사항 · 내일 확인</strong>
-                </label>
+                <header>
+                  <div><span>CEO MEMO</span><h4>메모 페이지</h4></div>
+                  <small>판단 · 지시 · 내일 확인</small>
+                </header>
+                <label for="executiveMemo" class="sr-only">대표 메모</label>
                 <textarea id="executiveMemo" rows="4" placeholder="오늘의 판단 근거, 지시 내용, 다음 확인사항을 기록합니다."></textarea>
               </article>
             </div>
@@ -398,6 +408,7 @@
               <button type="button" data-worklog-page-choice="daily" id="selectedWorklogTab">나의 업무일지</button>
               <button type="button" data-worklog-page-choice="week">주간 시간표</button>
               <button type="button" data-worklog-page-choice="month">월간 일정</button>
+              <button type="button" data-worklog-page-choice="memo">메모 관리</button>
               <button type="button" data-worklog-page-choice="coworker">
                 동료 업무일지 <span id="coworkerWorklogCount">0</span>
               </button>
@@ -493,15 +504,43 @@
               <h3>동료업무</h3>
               <div id="coworkerWorklogBoard"></div>
             </article>
+            <article class="worklog-panel shared-worklog-panel worklog-memo-page">
+              <header class="worklog-week-header">
+                <div>
+                  <span>Personal Memo Archive</span>
+                  <h3 id="worklogMemoHeading">나의 메모 페이지</h3>
+                </div>
+                <small id="worklogMemoAccessGuide">기록은 본인만 수정할 수 있으며, 날짜별로 자동 정리됩니다.</small>
+              </header>
+              <div class="worklog-memo-app-shell">
+                <section class="worklog-memo-composer" aria-label="오늘의 메모 작성">
+                  <header><strong id="worklogMemoComposerDate">오늘의 메모</strong><small>제목과 기록을 남기면 검색·회고 자산으로 쌓입니다.</small></header>
+                  <input id="employeeMemoTitle" type="text" placeholder="제목 또는 첫 줄 자동 제목" aria-label="메모 제목" />
+                  <label><span>메모</span><textarea id="employeeMemo" rows="8" placeholder="떠오른 생각, 회의 메모, 후속 조치를 자유롭게 적습니다."></textarea></label>
+                  <label><span>Daily Note</span><textarea id="employeeMemoRecord" rows="5" placeholder="오늘의 진행, 결정, 배운 점을 적습니다."></textarea></label>
+                  <div class="worklog-memo-review-grid" aria-label="하루 회고">
+                    <label><span>완료/성과</span><textarea id="employeeMemoWins" rows="3" placeholder="오늘 끝낸 일과 성과"></textarea></label>
+                    <label><span>내일로 넘길 일</span><textarea id="employeeMemoCarry" rows="3" placeholder="다음 첫 행동"></textarea></label>
+                    <label><span>개선할 점</span><textarea id="employeeMemoLesson" rows="3" placeholder="조정할 방식"></textarea></label>
+                  </div>
+                </section>
+                <section class="worklog-memo-archive" aria-label="날짜별 메모 아카이브">
+                  <header>
+                    <label class="worklog-memo-search-box">메모 검색<input id="worklogMemoSearchInput" type="search" placeholder="제목, 메모, 회고 검색" /></label>
+                    <span><strong id="worklogMemoListCount">0</strong>건</span>
+                  </header>
+                  <div class="worklog-memo-archive-body">
+                    <div id="worklogMemoList" class="worklog-memo-list"></div>
+                    <article id="worklogMemoDetail" class="worklog-memo-detail" aria-live="polite"></article>
+                  </div>
+                </section>
+              </div>
+            </article>
           </div>
         </section>
         <article class="planner-section">
           <h3>업무보고</h3>
           <textarea id="employeeReport" rows="7" placeholder="오늘 진행한 업무, 완료사항, 이슈, 지원 요청을 보고 형식으로 정리합니다."></textarea>
-        </article>
-        <article class="planner-section">
-          <h3>메모</h3>
-          <textarea id="employeeMemo" rows="6" placeholder="회의 메모, 인수인계, 내일 확인할 내용을 자유롭게 적습니다."></textarea>
         </article>
         <button type="button" class="worklog-report-menu-button" id="worklogReportMenuButton">보고서</button>
       </section>

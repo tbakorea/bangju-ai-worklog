@@ -28790,6 +28790,225 @@ body.is-fitness-focus-open.is-fitness-coaching-open .fitness-coaching-sheet {
   display: grid !important;
 }
 
+/* Today-style CEO board: weekly context, full-day plan, and memo stay visible
+   as distinct lanes on wider displays without forcing an over-wide canvas. */
+.executive-personal-worklog-daily {
+  grid-template-columns: minmax(185px, 0.76fr) minmax(390px, 1.42fr) minmax(230px, 0.88fr);
+  align-items: start;
+}
+
+.executive-day-focus {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+}
+
+.executive-weekly-panel,
+.executive-personal-worklog-memo {
+  min-height: 100%;
+}
+
+.executive-personal-worklog-memo {
+  grid-column: auto;
+}
+
+.executive-weekly-panel header small {
+  color: rgba(31, 55, 48, 0.58);
+  font-size: 10px;
+  font-weight: 750;
+  line-height: 1.35;
+  text-align: right;
+}
+
+.executive-weekly-board {
+  display: grid;
+  gap: 6px;
+}
+
+.executive-weekly-day {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 2px 7px;
+  min-width: 0;
+  padding: 8px;
+  border: 1px solid rgba(15, 59, 46, 0.1);
+  border-radius: 10px;
+  background: linear-gradient(180deg, #fffefa, #f4f8f3);
+  color: #23483b;
+  text-align: left;
+}
+
+.executive-weekly-day:hover,
+.executive-weekly-day:focus-visible,
+.executive-weekly-day.is-current {
+  border-color: #17634b;
+  background: linear-gradient(135deg, #eaf6ef, #fffdf5);
+  box-shadow: inset 3px 0 0 #17634b;
+  outline: 0;
+}
+
+.executive-weekly-day > span {
+  color: #166249;
+  font-size: 10px;
+  font-weight: 950;
+  letter-spacing: 0.05em;
+}
+
+.executive-weekly-day > strong {
+  overflow: hidden;
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.executive-weekly-day > em,
+.executive-weekly-day > small {
+  grid-column: 1 / -1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.executive-weekly-day > em {
+  color: #355449;
+  font-size: 11px;
+  font-style: normal;
+  font-weight: 750;
+}
+
+.executive-weekly-day > small {
+  color: #6b8077;
+  font-size: 9px;
+  font-weight: 800;
+}
+
+.executive-schedule-board {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  column-gap: 11px;
+  max-height: none;
+  overflow: visible;
+  padding-right: 0;
+}
+
+.executive-schedule-row {
+  grid-template-columns: 43px minmax(0, 1fr) 22px;
+  gap: 5px;
+  min-height: 29px;
+}
+
+.executive-schedule-row input {
+  min-height: 27px;
+  padding: 3px 6px;
+  font-size: 11px;
+}
+
+.executive-schedule-row button {
+  min-height: 24px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: #a2554a;
+  font-size: 17px;
+  line-height: 1;
+}
+
+.executive-schedule-row button:disabled { visibility: hidden; }
+
+/* Date-based note management follows the Beyond Work memo rhythm, while
+   retaining this app's worklog access rules. */
+#view-today .worklog-memo-page { display: none; }
+#view-today .worklog-main[data-today-page="memo"] .worklog-memo-page { display: block; }
+
+.worklog-memo-app-shell {
+  display: grid;
+  grid-template-columns: minmax(0, 1.03fr) minmax(270px, 0.97fr);
+  gap: 12px;
+}
+
+.worklog-memo-composer,
+.worklog-memo-archive {
+  display: grid;
+  align-content: start;
+  gap: 9px;
+  min-width: 0;
+  padding: 12px;
+  border: 1px solid rgba(15, 59, 46, 0.13);
+  border-radius: 13px;
+  background: linear-gradient(145deg, rgba(255, 255, 252, 0.96), rgba(240, 248, 243, 0.82));
+}
+
+.worklog-memo-composer > header,
+.worklog-memo-archive > header,
+.worklog-memo-detail > header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.worklog-memo-composer > header { align-items: start; }
+.worklog-memo-composer header strong,
+.worklog-memo-detail h4 { color: #123e31; font-size: 14px; }
+.worklog-memo-composer header small,
+.worklog-memo-archive > header > span { color: #648075; font-size: 10px; font-weight: 750; }
+
+.worklog-memo-composer input,
+.worklog-memo-composer textarea,
+.worklog-memo-search-box input {
+  box-sizing: border-box;
+  width: 100%;
+  border: 1px solid rgba(15, 59, 46, 0.18);
+  border-radius: 9px;
+  background: #fffefa;
+  color: #183e32;
+  font: inherit;
+}
+
+.worklog-memo-composer input { min-height: 37px; padding: 7px 9px; font-weight: 800; }
+.worklog-memo-composer label { display: grid; gap: 4px; color: #527066; font-size: 11px; font-weight: 900; }
+.worklog-memo-composer textarea { min-height: 72px; padding: 8px 9px; line-height: 1.45; resize: vertical; }
+.worklog-memo-review-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 7px; }
+.worklog-memo-review-grid textarea { min-height: 68px; }
+
+.worklog-memo-archive > header { align-items: end; }
+.worklog-memo-search-box { display: grid; flex: 1 1 auto; gap: 4px; color: #45695c; font-size: 10px; font-weight: 900; }
+.worklog-memo-search-box input { min-height: 34px; padding: 6px 8px; }
+.worklog-memo-archive-body { display: grid; grid-template-columns: minmax(0, 0.86fr) minmax(0, 1.14fr); gap: 8px; min-height: 250px; }
+.worklog-memo-list { display: grid; align-content: start; gap: 5px; max-height: 520px; overflow: auto; padding-right: 2px; }
+.worklog-memo-list-item { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 2px 6px; min-width: 0; padding: 8px; border: 1px solid rgba(15, 59, 46, 0.1); border-radius: 9px; background: rgba(255, 255, 253, 0.78); color: #26483c; text-align: left; }
+.worklog-memo-list-item:hover,
+.worklog-memo-list-item:focus-visible,
+.worklog-memo-list-item.is-selected { border-color: #17634b; background: #e9f5ee; outline: 0; }
+.worklog-memo-list-item time { color: #17634b; font-size: 10px; font-weight: 950; }
+.worklog-memo-list-item strong { overflow: hidden; font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
+.worklog-memo-list-item span { grid-column: 1 / -1; display: -webkit-box; overflow: hidden; color: #5a7168; font-size: 10px; font-weight: 700; line-height: 1.35; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
+.worklog-memo-detail { display: grid; align-content: start; gap: 9px; min-width: 0; padding: 10px; border: 1px solid rgba(15, 59, 46, 0.1); border-radius: 10px; background: rgba(255, 255, 253, 0.74); }
+.worklog-memo-detail header span { color: #5e7d70; font-size: 10px; font-weight: 850; }
+.worklog-memo-detail h4 { margin: 2px 0 0; }
+.worklog-memo-detail header button { min-height: 31px; padding-inline: 8px; border-radius: 8px; background: #145d46; color: #fff; font-size: 10px; }
+.worklog-memo-detail p { margin: 0; color: #415c51; font-size: 11px; line-height: 1.55; white-space: pre-wrap; }
+.worklog-memo-detail dl { display: grid; gap: 6px; margin: 0; }
+.worklog-memo-detail dl div { padding: 7px; border-radius: 8px; background: rgba(239, 247, 241, 0.78); }
+.worklog-memo-detail dt { color: #27634e; font-size: 10px; font-weight: 950; }
+.worklog-memo-detail dd { margin: 3px 0 0; color: #405a50; font-size: 10px; line-height: 1.4; white-space: pre-wrap; }
+.worklog-memo-empty { margin: 0; color: #72857d; font-size: 11px; font-weight: 750; }
+
+@media (max-width: 1050px) {
+  .executive-personal-worklog-daily { grid-template-columns: minmax(175px, 0.8fr) minmax(0, 1.45fr); }
+  .executive-personal-worklog-memo { grid-column: 1 / -1; }
+}
+
+@media (max-width: 759px) {
+  .executive-personal-worklog-daily,
+  .worklog-memo-app-shell,
+  .worklog-memo-archive-body { grid-template-columns: 1fr; }
+  .executive-personal-worklog-memo { grid-column: auto; }
+  .executive-schedule-board { grid-template-columns: 1fr; }
+  .executive-weekly-board { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .worklog-memo-review-grid { grid-template-columns: 1fr; }
+  .worklog-memo-list { max-height: 250px; }
+}
+
 /* 2026-08-31 command rail: the overview must keep date navigation, Find,
    and Menu in one predictable row. Older rules lifted Menu above the date
    rail, which made it disappear on some desktop canvases. */
@@ -30725,6 +30944,28 @@ body.is-command-open {
   .executive-worklog-calendar-day,
   .fitness-calendar-day,
   .worklog-month-day { min-height: 94px; padding: 6px; }
+}
+
+/* Final CEO worklog layout override. This follows all legacy responsive rules. */
+.executive-personal-worklog-daily { grid-template-columns: minmax(185px, 0.76fr) minmax(390px, 1.42fr) minmax(230px, 0.88fr); align-items: start; }
+.executive-personal-worklog-memo { grid-column: auto; min-height: 100%; }
+.executive-day-focus { display: grid; gap: 10px; min-width: 0; }
+.executive-schedule-board { grid-template-columns: repeat(2, minmax(0, 1fr)); column-gap: 11px; max-height: none; overflow: visible; padding-right: 0; }
+.executive-schedule-row { grid-template-columns: 43px minmax(0, 1fr) 22px; gap: 5px; min-height: 29px; }
+.executive-schedule-row input { min-height: 27px; padding: 3px 6px; font-size: 11px; }
+.executive-schedule-row button { min-height: 24px; padding: 0; border: 0; background: transparent; color: #a2554a; font-size: 17px; line-height: 1; }
+.executive-schedule-row button:disabled { visibility: hidden; }
+
+@media (max-width: 1050px) {
+  .executive-personal-worklog-daily { grid-template-columns: minmax(175px, 0.8fr) minmax(0, 1.45fr); }
+  .executive-personal-worklog-memo { grid-column: 1 / -1; }
+}
+
+@media (max-width: 759px) {
+  .executive-personal-worklog-daily { grid-template-columns: 1fr; }
+  .executive-personal-worklog-memo { grid-column: auto; }
+  .executive-schedule-board { grid-template-columns: 1fr; max-height: none; }
+  .executive-weekly-board { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 
 /* Keep the global view guard last: new worklog sub-pages must never reveal
