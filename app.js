@@ -1281,7 +1281,11 @@ function normalizeExecutiveWorklog(log = {}, dateKey = getActiveDateKey()) {
     const saved = scheduleByTime.get(row.time) || {};
     return { time: row.time, text: String(saved.text || ""), status: String(saved.status || "예정") };
   }).concat(scheduleRows
-    .filter((entry) => /^([01]\d|2[0-3]):[0-5]\d$/.test(String(entry.time || "")) && !defaultScheduleTimes.has(String(entry.time || "")))
+    // 00:00~07:00·20:00~23:00에 남아 있던 이전 기본 빈 행은 정리하되,
+    // 대표가 실제로 기록한 야간·새벽 일정은 계속 보존합니다.
+    .filter((entry) => /^([01]\d|2[0-3]):[0-5]\d$/.test(String(entry.time || ""))
+      && !defaultScheduleTimes.has(String(entry.time || ""))
+      && (String(entry.text || "").trim() || String(entry.status || "예정") !== "예정"))
     .map((entry) => ({ time: String(entry.time), text: String(entry.text || ""), status: String(entry.status || "예정") })))
     .sort((a, b) => timeToMinutes(a.time) - timeToMinutes(b.time));
   return {
@@ -3662,7 +3666,7 @@ function getScheduleTimes(workHoursValue) {
 }
 
 function getExecutiveScheduleTimes() {
-  return Array.from({ length: 24 }, (_, hour) => `${String(hour).padStart(2, "0")}:00`);
+  return Array.from({ length: 12 }, (_, index) => `${String(index + 8).padStart(2, "0")}:00`);
 }
 
 function getWorklogScheduleBoundarySlots(workHoursValue, unitValue = 60) {
