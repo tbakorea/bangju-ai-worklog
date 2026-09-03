@@ -1045,6 +1045,10 @@ function refreshCurrentTimeIndicators() {
     const start = timeToMinutes(row.dataset.scheduleTime);
     row.classList.toggle("is-current", Boolean(isToday && Number.isFinite(start) && currentMinutes >= start && currentMinutes < start + scheduleUnit));
   });
+  document.querySelectorAll("[data-executive-schedule-time]").forEach((row) => {
+    const start = timeToMinutes(row.dataset.executiveScheduleTime);
+    row.classList.toggle("is-current", Boolean(isToday && Number.isFinite(start) && currentMinutes >= start && currentMinutes < start + 60));
+  });
   checkAttendanceRecordReminder(now);
   if (now.getHours() >= 1) ensureTodayDagymDailyAnalysis({ now, silent: true });
 }
@@ -1265,7 +1269,15 @@ function normalizeExecutiveWorklog(log = {}, dateKey = getActiveDateKey()) {
     delegate: String(task.delegate || ""),
     delegatedToId: String(task.delegatedToId || ""),
     delegationId: String(task.delegationId || ""),
+    delegatedFromId: String(task.delegatedFromId || ""),
+    delegatedFromName: String(task.delegatedFromName || ""),
+    delegatedSourceEmployeeId: String(task.delegatedSourceEmployeeId || ""),
+    delegatedSourceDate: String(task.delegatedSourceDate || ""),
+    delegatedOriginalText: String(task.delegatedOriginalText || ""),
     postponeDate: String(task.postponeDate || ""),
+    postponeId: String(task.postponeId || ""),
+    postponedFrom: String(task.postponedFrom || ""),
+    postponedSourceDate: String(task.postponedSourceDate || ""),
   }));
   while (tasks.length < 3) {
     tasks.push({
@@ -1901,6 +1913,45 @@ function scheduleWorklogPostponedTask(task, sourceLog, targetDateKey, sourceDate
   return Boolean(targetTask);
 }
 
+function scheduleExecutiveWorklogPostponedTask(task, sourceLog, targetDateKey, sourceDateKey = getActiveDateKey()) {
+  if (!task || !sourceLog || !/^\d{4}-\d{2}-\d{2}$/.test(String(targetDateKey || ""))) return false;
+  task.status = "연기";
+  task.done = false;
+  task.delegate = "";
+  task.delegatedToId = "";
+  task.postponeDate = targetDateKey;
+  task.postponeId ||= `executive-postpone-${task.id || Date.now()}-${Math.random().toString(16).slice(2)}`;
+
+  // Same-day postponement only records the choice. A later date receives one
+  // durable copy of the task, so reopening the calendar never duplicates it.
+  if (targetDateKey === sourceDateKey) return true;
+  const targetLog = getExecutiveWorklog(targetDateKey);
+  let targetTask = targetLog.tasks.find((item) => item?.postponedFrom === task.postponeId);
+  const priority = ["A", "B", "C"].includes(task.priority) ? task.priority : "?";
+  if (!targetTask && String(task.text || "").trim()) {
+    targetTask = {
+      id: `executive-task-${targetDateKey}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+      priority,
+      text: String(task.text).trim(),
+      status: "예정",
+      done: false,
+      postponedFrom: task.postponeId,
+      postponedSourceDate: sourceDateKey,
+    };
+    const blankIndex = targetLog.tasks.findIndex((item) => !isActiveTask(item));
+    if (blankIndex >= 0) targetLog.tasks.splice(blankIndex, 1, targetTask);
+    else targetLog.tasks.push(targetTask);
+  } else if (targetTask) {
+    targetTask.text = String(task.text || "").trim();
+    targetTask.priority = priority;
+    targetTask.status = "예정";
+    targetTask.done = false;
+    targetTask.postponedSourceDate = sourceDateKey;
+  }
+  targetLog.updatedAt = new Date().toISOString();
+  return Boolean(targetTask);
+}
+
 function getExecutiveDelegatorName() {
   const profile = getProfileEmployee();
   const name = getEmployeeOwnLabel(profile) || state.profile?.name || "대표";
@@ -1957,6 +2008,20 @@ function getTaskDelegationCandidateLabel(employee = {}) {
   const name = getEmployeeOwnLabel(employee) || employee.name || "직원";
   const role = String(employee.role || employee.position || "").trim();
   return role && !String(name).includes(role) ? `${name} · ${role}` : name;
+}
+
+function getTaskDelegationRecipientByInput(candidates = [], value = "") {
+  const query = String(value || "").trim().replace(/\s+/g, " ").toLocaleLowerCase("ko-KR");
+  if (!query) return null;
+  return candidates.find((employee) => {
+    const labels = [
+      getTaskDelegationCandidateLabel(employee),
+      getEmployeeOwnLabel(employee),
+      employee?.name,
+      employee?.nickname,
+    ].filter(Boolean).map((label) => String(label).trim().replace(/\s+/g, " ").toLocaleLowerCase("ko-KR"));
+    return labels.includes(query);
+  }) || null;
 }
 
 function getTaskDelegationId(task = {}, source = {}, sourceDateKey = getActiveDateKey()) {
@@ -2456,6 +2521,7 @@ function renderWeatherDateButton(button, employee, dateKey = getActiveDateKey())
 function renderWeatherDateButtons(dateKey = getActiveDateKey()) {
   renderWeatherDateButton(document.getElementById("todayJumpButton"), getSelectedEmployee(), dateKey);
   renderWeatherDateButton(document.getElementById("fitnessTodayButton"), getActiveWeatherEmployee("fitness-log"), dateKey);
+  renderWeatherDateButton(document.getElementById("executiveTodayButton"), getActiveWeatherEmployee("executive"), dateKey);
 }
 
 function getHistoricalWeatherBannerMarkup(record, siteKey = "") {
@@ -6465,18 +6531,23 @@ function renderExecutiveTaskDelegateControl(task, log) {
   const source = getTaskDelegationSource(log, { executive: true, viewName: "executive" });
   const candidates = getTaskDelegationCandidates(source, "executive");
   const recipientId = getTaskDelegationRecipientId(task, candidates);
+  const selectedRecipient = candidates.find((employee) => (getEmployeeWorklogId(employee) || employee.id) === recipientId);
+  const listId = `executive-task-delegate-list-${String(task.id || "task").replace(/[^a-zA-Z0-9_-]/g, "-")}`;
   if (!candidates.length) {
-    return '<select class="executive-task-delegate" disabled aria-label="위임받을 직원"><option>위임 가능한 직원 없음</option></select>';
+    return '<input class="executive-task-delegate" disabled aria-label="위임받을 직원" placeholder="위임 가능한 직원 없음" />';
   }
   return `
-    <select class="executive-task-delegate" data-executive-task-delegate="${escapeAttr(task.id)}" aria-label="위임받을 직원">
-      <option value="">위임할 직원 선택</option>
-      ${candidates.map((employee) => {
-        const employeeId = getEmployeeWorklogId(employee) || employee.id || "";
-        return `<option value="${escapeAttr(employeeId)}" ${employeeId === recipientId ? "selected" : ""}>${escapeHtml(getTaskDelegationCandidateLabel(employee))}</option>`;
-      }).join("")}
-    </select>
+    <input class="executive-task-delegate" type="text" list="${escapeAttr(listId)}" data-executive-task-delegate="${escapeAttr(task.id)}" value="${escapeAttr(selectedRecipient ? getTaskDelegationCandidateLabel(selectedRecipient) : task.delegate || "")}" placeholder="위임할 직원 이름" aria-label="위임할 직원 이름" autocomplete="off" />
+    <datalist id="${escapeAttr(listId)}">
+      ${candidates.map((employee) => `<option value="${escapeAttr(getTaskDelegationCandidateLabel(employee))}"></option>`).join("")}
+    </datalist>
   `;
+}
+
+function renderExecutiveTaskActionControl(task) {
+  if (task.status !== "연기") return "";
+  const label = task.postponeDate ? formatShortDate(task.postponeDate) : "미정";
+  return `<button class="executive-task-postpone" type="button" data-executive-task-postpone="${escapeAttr(task.id)}" aria-label="연기 날짜 선택">${escapeHtml(label)}</button>`;
 }
 
 function updateExecutiveWorklogTaskPriority(task, value) {
@@ -6525,8 +6596,9 @@ function renderExecutiveWorklog() {
           ${[["?", "우선"], ["A", "A 중요"], ["B", "B 일반"], ["C", "C 참고"], ["진행중", "진행중"], ["위임", "위임"], ["연기", "연기"], ["취소", "취소"]].map(([value, label]) => `<option value="${value}" ${getPriorityValue(task) === value ? "selected" : ""}>${label}</option>`).join("")}
         </select>
         <div class="executive-task-field">
-          <input type="text" data-executive-task-text="${index}" value="${escapeAttr(task.text || "")}" placeholder="예: 14:30 거래처 미팅" title="시간을 함께 입력하면 시간별일정에 자동으로 표시됩니다" />
+          <span class="executive-task-text-wrap"><input type="text" data-executive-task-text="${index}" value="${escapeAttr(task.text || "")}" placeholder="예: 14:30 거래처 미팅" title="시간을 함께 입력하면 시간별일정에 자동으로 표시됩니다" /></span>
           ${task.status === "위임" ? renderExecutiveTaskDelegateControl(task, log) : ""}
+          ${renderExecutiveTaskActionControl(task)}
         </div>
         <button type="button" class="executive-task-remove" data-executive-task-remove="${index}" aria-label="${index + 1}번 업무 삭제">×</button>
       </div>
@@ -6583,7 +6655,15 @@ function renderExecutiveWorklog() {
       input.addEventListener("change", () => {
         const task = log.tasks.find((item) => item.id === input.dataset.executiveTaskDelegate);
         if (!task) return;
-        const result = syncDelegatedTaskToRecipient(task, log, input.value, {
+        const source = getTaskDelegationSource(log, { executive: true, viewName: "executive" });
+        const candidates = getTaskDelegationCandidates(source, "executive");
+        const recipient = getTaskDelegationRecipientByInput(candidates, input.value);
+        if (!recipient) {
+          showAppToast("위임할 직원 이름을 목록에서 선택하거나 정확히 입력하세요.");
+          return;
+        }
+        const recipientId = getEmployeeWorklogId(recipient) || recipient.id || "";
+        const result = syncDelegatedTaskToRecipient(task, log, recipientId, {
           executive: true,
           sourceDateKey: getActiveDateKey(),
           viewName: "executive",
@@ -6598,6 +6678,14 @@ function renderExecutiveWorklog() {
         saveState({ fastSave: true });
         renderExecutiveWorklog();
         showAppToast(`${getTaskDelegationCandidateLabel(result.recipient)}님 업무일지에 위임했습니다.`);
+      });
+    });
+    taskBoard.querySelectorAll("[data-executive-task-postpone]").forEach((button) => {
+      button.addEventListener("click", () => {
+        const task = log.tasks.find((item) => item.id === button.dataset.executiveTaskPostpone);
+        if (!task) return;
+        saveState({ fastSave: true });
+        openExecutivePostponeCalendar(task, log);
       });
     });
     taskBoard.querySelectorAll("[data-executive-task-remove]").forEach((button) => {
@@ -6624,7 +6712,7 @@ function renderExecutiveWorklog() {
   }
   if (scheduleBoard) {
     scheduleBoard.innerHTML = log.schedule.map((entry, index) => `
-      <div class="executive-schedule-row"><b>${escapeHtml(entry.time)}</b><input type="text" data-executive-schedule-text="${index}" value="${escapeAttr(entry.text || "")}" placeholder="시간별 실행 메모" /><button type="button" data-executive-schedule-remove="${index}" aria-label="${escapeAttr(entry.time)} 일정 삭제" ${entry.text ? "" : "disabled"}>×</button></div>
+      <div class="executive-schedule-row" data-executive-schedule-time="${escapeAttr(entry.time)}"><b><i class="executive-current-led" aria-hidden="true"></i>${escapeHtml(entry.time)}</b><input type="text" data-executive-schedule-text="${index}" value="${escapeAttr(entry.text || "")}" placeholder="시간별 실행 메모" /><button type="button" data-executive-schedule-remove="${index}" aria-label="${escapeAttr(entry.time)} 일정 삭제" ${entry.text ? "" : "disabled"}>×</button></div>
     `).join("");
     scheduleBoard.querySelectorAll("[data-executive-schedule-text]").forEach((input) => {
       input.addEventListener("input", () => {
@@ -6651,6 +6739,7 @@ function renderExecutiveWorklog() {
       });
     });
   }
+  refreshCurrentTimeIndicators();
   if (memo) {
     memo.value = log.memo || "";
     memo.oninput = () => {
@@ -8003,11 +8092,9 @@ function renderDateNav() {
     button.disabled = isToday;
     button.setAttribute("aria-disabled", String(isToday));
   });
-  if (executiveTodayButton) {
-    executiveTodayButton.hidden = isToday;
-    executiveTodayButton.disabled = isToday;
-    executiveTodayButton.setAttribute("aria-disabled", String(isToday));
-  }
+  // Today's slot on the CEO date row doubles as a large weather chip. On a
+  // different date the same stable slot remains the return-to-today button.
+  renderWeatherDateButton(executiveTodayButton, getActiveWeatherEmployee("executive"), activeDateKey);
   if (executiveNextButton) {
     executiveNextButton.disabled = false;
     executiveNextButton.setAttribute("aria-disabled", "false");
@@ -8057,6 +8144,18 @@ function openPostponeCalendar(task, context = {}) {
     task,
     log: context.log || getSelectedLog(),
     sourceDateKey: context.sourceDateKey || getActiveDateKey(),
+  };
+  openCalendarSheet(parseDateKey(task.postponeDate || getActiveDateKey()));
+}
+
+function openExecutivePostponeCalendar(task, log = getExecutiveWorklog()) {
+  calendarPickerMode = "executive-postpone";
+  calendarTriggerButtonId = "executiveDateButton";
+  calendarPostponeTask = task;
+  calendarPostponeContext = {
+    task,
+    log,
+    sourceDateKey: getActiveDateKey(),
   };
   openCalendarSheet(parseDateKey(task.postponeDate || getActiveDateKey()));
 }
@@ -8118,12 +8217,13 @@ function renderWorklogCalendar() {
   const todayButton = document.getElementById("calendarTodaySheetButton");
   const year = calendarViewDate.getFullYear();
   const month = calendarViewDate.getMonth();
-  const selectedDateKey = calendarPickerMode === "postpone"
+  const isPostponePicker = ["postpone", "executive-postpone"].includes(calendarPickerMode);
+  const selectedDateKey = isPostponePicker
     ? calendarPostponeTask?.postponeDate || getActiveDateKey()
     : getActiveDateKey();
   const isDashboardCalendar = calendarPickerMode === "control";
   monthTitle.textContent = `${year}년`;
-  selectedLabel.textContent = calendarPickerMode === "postpone"
+  selectedLabel.textContent = isPostponePicker
     ? `연기일 ${selectedDateKey ? formatKoreanDate(selectedDateKey) : "미정"}`
     : calendarPickerMode === "fitness"
       ? `피트니스 업무일지 ${formatKoreanDate(getActiveDateKey())}`
@@ -8132,7 +8232,7 @@ function renderWorklogCalendar() {
         : calendarPickerMode === "control"
           ? `통합관제 ${formatFormalKoreanDate(getActiveDateKey())}`
           : formatKoreanDate(getActiveDateKey());
-  todayButton.textContent = calendarPickerMode === "postpone" ? "오늘로 지정" : "오늘로 이동";
+  todayButton.textContent = isPostponePicker ? "오늘로 지정" : "오늘로 이동";
   dayGrid.innerHTML = "";
   const firstDay = new Date(year, month, 1).getDay();
   const lastDate = new Date(year, month + 1, 0).getDate();
@@ -8203,6 +8303,20 @@ function selectCalendarDate(dateKey) {
     saveState();
     closeWorklogCalendar();
     renderEntries();
+    return;
+  }
+  if (calendarPickerMode === "executive-postpone" && calendarPostponeTask) {
+    const context = calendarPostponeContext || {};
+    scheduleExecutiveWorklogPostponedTask(
+      context.task || calendarPostponeTask,
+      context.log || getExecutiveWorklog(),
+      dateKey,
+      context.sourceDateKey || getActiveDateKey(),
+    );
+    saveState({ fastSave: true });
+    closeWorklogCalendar();
+    renderExecutiveWorklog();
+    showAppToast(`${formatShortDate(dateKey)} 대표 우선업무에 연기 일정을 기록했습니다.`);
     return;
   }
   if (calendarPickerMode === "control" && dateKey > todayKey) return;
@@ -16743,17 +16857,16 @@ function renderTaskActionControl(task, currentLog = getSelectedLog(), viewName =
     const source = getTaskDelegationSource(currentLog, { viewName });
     const candidates = getTaskDelegationCandidates(source, viewName);
     const recipientId = getTaskDelegationRecipientId(task, candidates);
+    const selectedRecipient = candidates.find((employee) => (getEmployeeWorklogId(employee) || employee.id) === recipientId);
+    const listId = `task-delegate-list-${String(task.id || "task").replace(/[^a-zA-Z0-9_-]/g, "-")}`;
     if (!candidates.length) {
-      return '<select class="delegate-input task-action-control" disabled aria-label="위임받을 직원"><option>동료 없음</option></select>';
+      return '<input class="delegate-input task-action-control" disabled aria-label="위임받을 직원" placeholder="위임 가능한 동료 없음" />';
     }
     return `
-      <select class="delegate-input task-action-control" aria-label="위임받을 직원">
-        <option value="">위임</option>
-        ${candidates.map((employee) => {
-          const employeeId = getEmployeeWorklogId(employee) || employee.id || "";
-          return `<option value="${escapeAttr(employeeId)}" ${employeeId === recipientId ? "selected" : ""}>${escapeHtml(getTaskDelegationCandidateLabel(employee))}</option>`;
-        }).join("")}
-      </select>
+      <input class="delegate-input task-action-control" type="text" list="${escapeAttr(listId)}" value="${escapeAttr(selectedRecipient ? getTaskDelegationCandidateLabel(selectedRecipient) : task.delegate || "")}" placeholder="위임할 직원 이름" aria-label="위임할 직원 이름" autocomplete="off" />
+      <datalist id="${escapeAttr(listId)}">
+        ${candidates.map((employee) => `<option value="${escapeAttr(getTaskDelegationCandidateLabel(employee))}"></option>`).join("")}
+      </datalist>
     `;
   }
   if (task.status === "연기") {
@@ -16770,7 +16883,15 @@ function bindTaskMetaControl(row, ref, currentLog, viewName = activeView) {
     delegateInput.onchange = () => {
       if (!guardWorklogEdit(viewName)) return;
       const editableRef = materializeWorklogCarryover(ref, currentLog);
-      const result = syncDelegatedTaskToRecipient(editableRef.task, editableRef.log, delegateInput.value, {
+      const source = getTaskDelegationSource(editableRef.log, { viewName });
+      const candidates = getTaskDelegationCandidates(source, viewName);
+      const recipient = getTaskDelegationRecipientByInput(candidates, delegateInput.value);
+      if (!recipient) {
+        showAppToast("위임할 직원 이름을 목록에서 선택하거나 정확히 입력하세요.");
+        return;
+      }
+      const recipientId = getEmployeeWorklogId(recipient) || recipient.id || "";
+      const result = syncDelegatedTaskToRecipient(editableRef.task, editableRef.log, recipientId, {
         sourceDateKey: editableRef.sourceDateKey || getActiveDateKey(),
         viewName,
       });

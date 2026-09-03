@@ -28790,6 +28790,169 @@ body.is-fitness-focus-open.is-fitness-coaching-open .fitness-coaching-sheet {
   display: grid !important;
 }
 
+/* CEO date row: preserve one stable slot beside the date. It presents a
+   generous weather readout for today and becomes the familiar Today action
+   when browsing another date. */
+body[data-active-view="executive"] #executiveDateButton {
+  font-size: clamp(25px, 2.25vw, 36px) !important;
+  font-weight: 950 !important;
+  letter-spacing: -0.045em;
+  font-variant-numeric: tabular-nums;
+}
+
+#view-executive #executiveTodayButton.is-weather-today {
+  display: inline-flex !important;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-width: 142px !important;
+  min-height: 64px !important;
+  padding: 4px 12px !important;
+  border-color: rgba(255, 247, 207, 0.34) !important;
+  background:
+    radial-gradient(circle at 74% 22%, rgba(255, 255, 255, 0.24) 0 17%, transparent 18%),
+    linear-gradient(145deg, rgba(255, 253, 245, 0.98), rgba(222, 237, 225, 0.94)) !important;
+  color: #123e31 !important;
+  box-shadow: 0 9px 22px rgba(2, 26, 19, 0.17), inset 0 1px 0 rgba(255, 255, 255, 0.88) !important;
+  cursor: default;
+  opacity: 1 !important;
+}
+
+#view-executive #executiveTodayButton.is-weather-today i {
+  flex: 0 0 auto;
+  font-family: "Apple Color Emoji", "Segoe UI Emoji", sans-serif;
+  font-size: 42px;
+  font-style: normal;
+  line-height: 1;
+}
+
+#view-executive #executiveTodayButton.is-weather-today small {
+  flex: 0 0 auto;
+  color: #193e32;
+  font-size: 17px;
+  font-weight: 950;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.04em;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+#view-executive #executiveTodayButton.is-weather-today[data-weather-status="loading"] small,
+#view-executive #executiveTodayButton.is-weather-today[data-weather-status="retry"] small {
+  font-size: 11px;
+  letter-spacing: -0.05em;
+}
+
+/* A completed, delegated or cancelled event remains readable in black. The
+   centered red stroke is the durable visual outcome marker used in Beyond. */
+.worklog-task-row.status-complete .task-text-input,
+.worklog-task-row.status-delegate .task-text-input,
+.worklog-task-row.status-cancel .task-text-input,
+.executive-task-row.status-complete .executive-task-text-wrap input,
+.executive-task-row.status-delegate .executive-task-text-wrap input,
+.executive-task-row.status-cancel .executive-task-text-wrap input {
+  color: #111b16 !important;
+  text-decoration: none !important;
+}
+
+.executive-task-text-wrap {
+  position: relative;
+  display: block;
+  min-width: 0;
+}
+
+.executive-task-text-wrap input { width: 100%; }
+
+.executive-task-row.status-complete .executive-task-text-wrap::after,
+.executive-task-row.status-delegate .executive-task-text-wrap::after,
+.executive-task-row.status-cancel .executive-task-text-wrap::after {
+  position: absolute;
+  z-index: 1;
+  top: 50%;
+  right: 5px;
+  left: 5px;
+  height: 2px;
+  border-radius: 999px;
+  background: #cf3d38;
+  box-shadow: 0 1px 0 rgba(126, 23, 20, 0.22);
+  content: "";
+  pointer-events: none;
+  transform: rotate(-0.8deg);
+}
+
+.executive-task-postpone {
+  justify-self: start;
+  min-height: 30px;
+  padding: 4px 9px;
+  border: 1px solid rgba(135, 91, 32, 0.26);
+  border-radius: 8px;
+  background: #fff8e9;
+  color: #805922;
+  font-size: 11px;
+  font-weight: 900;
+}
+
+.executive-task-field .executive-task-delegate {
+  color: #123e31;
+}
+
+.executive-schedule-row b {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.executive-current-led {
+  display: none;
+  width: 7px;
+  height: 7px;
+  flex: 0 0 7px;
+  border-radius: 50%;
+  background: #ed3d30;
+  box-shadow: 0 0 0 2px rgba(237, 61, 48, 0.14), 0 0 8px rgba(237, 61, 48, 0.92);
+}
+
+.executive-schedule-row.is-current .executive-current-led {
+  display: inline-block;
+  animation: executive-led-flame 1.05s ease-in-out infinite alternate;
+}
+
+.executive-schedule-row.is-current b { color: #bb312d; }
+
+@keyframes executive-led-flame {
+  from { opacity: 0.68; transform: scale(0.8); }
+  to { opacity: 1; transform: scale(1.16); }
+}
+
+@media (max-width: 759px) {
+  body[data-active-view="executive"] .executive-hero-actions {
+    grid-template-columns: 34px minmax(0, 1fr) 34px minmax(82px, 0.62fr) 46px !important;
+  }
+
+  body[data-active-view="executive"] #executiveDateButton {
+    font-size: clamp(17px, 4.5vw, 21px) !important;
+    letter-spacing: -0.055em;
+  }
+
+  body[data-active-view="executive"] #executivePrevDateButton { grid-column: 1; }
+  body[data-active-view="executive"] #executiveDateButton { grid-column: 2; }
+  body[data-active-view="executive"] #executiveNextDateButton { grid-column: 3; }
+  body[data-active-view="executive"] #executiveTodayButton { grid-column: 4; }
+  body[data-active-view="executive"] #executiveMenuButton { grid-column: 5; }
+
+  #view-executive #executiveTodayButton.is-weather-today {
+    min-width: 82px !important;
+    min-height: 46px !important;
+    gap: 2px;
+    padding-inline: 3px !important;
+  }
+
+  #view-executive #executiveTodayButton.is-weather-today i { font-size: 30px; }
+  #view-executive #executiveTodayButton.is-weather-today small { font-size: 10px; }
+  #view-executive #executiveTodayButton.is-weather-today[data-weather-status="loading"] small,
+  #view-executive #executiveTodayButton.is-weather-today[data-weather-status="retry"] small { font-size: 8px; }
+}
+
 /* Today-style CEO board: weekly context, full-day plan, and memo stay visible
    as distinct lanes on wider displays without forcing an over-wide canvas. */
 .executive-personal-worklog-daily {
@@ -31097,4 +31260,29 @@ body.is-command-open {
 .worklog-shell > #view-today.is-active,
 .worklog-shell > #view-attendance.is-active {
   display: grid !important;
+}
+
+/* Final precedence for the CEO date and its weather slot. */
+body[data-active-view="executive"] #executiveDateButton {
+  font-size: clamp(25px, 2.25vw, 36px) !important;
+  font-weight: 950 !important;
+  letter-spacing: -0.045em;
+  font-variant-numeric: tabular-nums;
+}
+
+@media (max-width: 759px) {
+  body[data-active-view="executive"] .executive-hero-actions {
+    grid-template-columns: 34px minmax(0, 1fr) 34px minmax(82px, 0.62fr) 46px !important;
+  }
+
+  body[data-active-view="executive"] #executiveDateButton {
+    font-size: clamp(17px, 4.5vw, 21px) !important;
+    letter-spacing: -0.055em;
+  }
+
+  body[data-active-view="executive"] #executivePrevDateButton { grid-column: 1; }
+  body[data-active-view="executive"] #executiveDateButton { grid-column: 2; }
+  body[data-active-view="executive"] #executiveNextDateButton { grid-column: 3; }
+  body[data-active-view="executive"] #executiveTodayButton { grid-column: 4; }
+  body[data-active-view="executive"] #executiveMenuButton { grid-column: 5; }
 }
