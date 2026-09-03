@@ -17698,7 +17698,6 @@ function renderWorklogMemoFields(log = getSelectedLog()) {
       if (fieldName === "memoRecord") log.record = value;
       promptAttendanceBeforeWorklogInput(log, value);
       saveState({ input: true });
-      scheduleInputRender("worklog-memo-archive", () => renderWorklogMemoArchive(log), 700);
       scheduleInputRender("worklog-report", renderReport, 1600);
     };
   });
@@ -17712,22 +17711,23 @@ function renderWorklogMemoArchive(log = getSelectedLog()) {
   const count = document.getElementById("worklogMemoListCount");
   const list = document.getElementById("worklogMemoList");
   const detail = document.getElementById("worklogMemoDetail");
+  const openDayButton = document.getElementById("worklogMemoOpenDayButton");
   if (!list || !detail) return;
   const employee = getSelectedEmployee();
   const editable = canEditCurrentWorklog();
   const employeeLabel = getEmployeeOwnLabel(employee) || employee?.name || "직원";
+  const activeDateKey = getActiveDateKey();
   if (heading) heading.textContent = editable ? "나의 메모 페이지" : `${employeeLabel} 메모 페이지`;
   if (guide) guide.textContent = editable
     ? "날짜별 기록을 남기면 제목·내용·회고를 검색하여 다시 볼 수 있습니다."
     : "열람 전용입니다. 메모의 작성·수정은 본인 업무일지에서만 가능합니다.";
-  if (date) date.textContent = `${formatFormalKoreanDate(getActiveDateKey())} 메모`;
   const allEntries = getWorklogMemoEntries(employee);
   const query = String(worklogMemoSearchQuery || "").trim().toLocaleLowerCase();
   const entries = query
     ? allEntries.filter((entry) => `${entry.title} ${entry.preview}`.toLocaleLowerCase().includes(query))
     : allEntries;
   if (!entries.some((entry) => entry.dateKey === selectedWorklogMemoDateKey)) {
-    selectedWorklogMemoDateKey = entries.find((entry) => entry.dateKey === getActiveDateKey())?.dateKey || entries[0]?.dateKey || "";
+    selectedWorklogMemoDateKey = entries.find((entry) => entry.dateKey === activeDateKey)?.dateKey || entries[0]?.dateKey || (query ? "" : activeDateKey);
   }
   if (searchInput) {
     searchInput.value = worklogMemoSearchQuery;
@@ -17753,31 +17753,69 @@ function renderWorklogMemoArchive(log = getSelectedLog()) {
       renderWorklogMemoArchive(log);
     });
   });
-  const selected = entries.find((entry) => entry.dateKey === selectedWorklogMemoDateKey);
-  detail.innerHTML = selected ? `
-    <header>
-      <div><span>${escapeHtml(formatFormalKoreanDate(selected.dateKey))}</span><h4>${escapeHtml(selected.title)}</h4></div>
-      <button type="button" data-worklog-memo-open-day="${escapeAttr(selected.dateKey)}">업무일지 열기</button>
-    </header>
-    <p>${escapeHtml(selected.preview)}</p>
-    <dl>
-      ${selected.log.memoWins ? `<div><dt>완료/성과</dt><dd>${escapeHtml(selected.log.memoWins)}</dd></div>` : ""}
-      ${selected.log.memoCarry ? `<div><dt>내일로 넘길 일</dt><dd>${escapeHtml(selected.log.memoCarry)}</dd></div>` : ""}
-      ${selected.log.memoLesson ? `<div><dt>개선할 점</dt><dd>${escapeHtml(selected.log.memoLesson)}</dd></div>` : ""}
-    </dl>
-  ` : `<p class="worklog-memo-empty">왼쪽 목록에서 날짜를 선택하면 기록을 자세히 볼 수 있습니다.</p>`;
-  detail.querySelector("[data-worklog-memo-open-day]")?.addEventListener("click", (event) => {
-    const dateKey = event.currentTarget.dataset.worklogMemoOpenDay;
-    if (!dateKey) return;
-    setSelectedDateKey(dateKey);
-    setTodayPageMode("memo");
-  });
+  let selected = allEntries.find((entry) => entry.dateKey === selectedWorklogMemoDateKey);
+  if (!selected && !query && selectedWorklogMemoDateKey === activeDateKey) {
+    selected = {
+      dateKey: activeDateKey,
+      title: getWorklogMemoTitle(log),
+      preview: getWorklogMemoPreview(log),
+      log,
+    };
+  }
+  const isCurrentMemo = Boolean(selected && selected.dateKey === activeDateKey && !query);
+  if (date) date.textContent = selected
+    ? `${formatFormalKoreanDate(selected.dateKey)} 메모`
+    : "메모 상세";
+  if (selected && isCurrentMemo) {
+    detail.innerHTML = `
+      <div class="worklog-memo-detail-heading">
+        <span>Daily Memo</span>
+        <h4>${escapeHtml(formatFormalKoreanDate(selected.dateKey))}</h4>
+        <p>오늘의 판단, 진행, 배운 점을 개인 기록으로 남깁니다.</p>
+      </div>
+      <label class="worklog-memo-detail-field"><span>제목</span><input id="employeeMemoTitle" type="text" placeholder="제목 또는 첫 줄 자동 제목" aria-label="메모 제목" value="${escapeAttr(selected.log.memoTitle || "")}" /></label>
+      <label class="worklog-memo-detail-field"><span>메모</span><textarea id="employeeMemo" rows="9" placeholder="떠오른 생각, 회의 메모, 후속 조치를 자유롭게 적습니다."></textarea></label>
+      <label class="worklog-memo-detail-field"><span>Daily Note</span><textarea id="employeeMemoRecord" rows="6" placeholder="오늘의 진행, 결정, 배운 점을 적습니다."></textarea></label>
+      <div class="worklog-memo-review-grid" aria-label="하루 회고">
+        <label><span>완료/성과</span><textarea id="employeeMemoWins" rows="4" placeholder="오늘 끝낸 일과 성과"></textarea></label>
+        <label><span>내일로 넘길 일</span><textarea id="employeeMemoCarry" rows="4" placeholder="다음 첫 행동"></textarea></label>
+        <label><span>개선할 점</span><textarea id="employeeMemoLesson" rows="4" placeholder="조정할 방식"></textarea></label>
+      </div>
+    `;
+    renderWorklogMemoFields(log);
+  } else if (selected) {
+    detail.innerHTML = `
+      <div class="worklog-memo-detail-heading">
+        <span>${escapeHtml(formatFormalKoreanDate(selected.dateKey))}</span>
+        <h4>${escapeHtml(selected.title)}</h4>
+      </div>
+      <p>${escapeHtml(selected.preview)}</p>
+      <dl>
+        ${selected.log.memo ? `<div><dt>메모</dt><dd>${escapeHtml(selected.log.memo)}</dd></div>` : ""}
+        ${(selected.log.memoRecord || selected.log.record) ? `<div><dt>Daily Note</dt><dd>${escapeHtml(selected.log.memoRecord || selected.log.record)}</dd></div>` : ""}
+        ${selected.log.memoWins ? `<div><dt>완료/성과</dt><dd>${escapeHtml(selected.log.memoWins)}</dd></div>` : ""}
+        ${selected.log.memoCarry ? `<div><dt>내일로 넘길 일</dt><dd>${escapeHtml(selected.log.memoCarry)}</dd></div>` : ""}
+        ${selected.log.memoLesson ? `<div><dt>개선할 점</dt><dd>${escapeHtml(selected.log.memoLesson)}</dd></div>` : ""}
+      </dl>
+    `;
+  } else {
+    detail.innerHTML = `<p class="worklog-memo-empty">왼쪽 목록에서 날짜를 선택하거나, 오늘의 메모를 새로 작성할 수 있습니다.</p>`;
+  }
+  if (openDayButton) {
+    openDayButton.disabled = !selected;
+    openDayButton.textContent = isCurrentMemo ? "오늘 업무일지" : "업무일지에서 열기";
+    openDayButton.onclick = () => {
+      const dateKey = selected?.dateKey;
+      if (!dateKey) return;
+      setSelectedDateKey(dateKey);
+      setTodayPageMode("daily");
+    };
+  }
 }
 
 function renderEmployeeDetailFields() {
   const log = getSelectedLog();
   document.getElementById("employeeReport").value = log.report || "";
-  renderWorklogMemoFields(log);
   renderWorklogMemoArchive(log);
   renderFitnessOperations(log);
 }
