@@ -1278,6 +1278,9 @@ function normalizeExecutiveWorklog(log = {}, dateKey = getActiveDateKey()) {
     postponeId: String(task.postponeId || ""),
     postponedFrom: String(task.postponedFrom || ""),
     postponedSourceDate: String(task.postponedSourceDate || ""),
+    carryoverDeletedFrom: String(task.carryoverDeletedFrom || ""),
+    carryoverForkFrom: String(task.carryoverForkFrom || ""),
+    carryoverSourceDate: String(task.carryoverSourceDate || ""),
   }));
   while (tasks.length < 3) {
     tasks.push({
@@ -1317,6 +1320,97 @@ function getExecutiveWorklog(dateKey = getActiveDateKey()) {
   state.executiveWorklogs ||= {};
   state.executiveWorklogs[dateKey] = normalizeExecutiveWorklog(state.executiveWorklogs[dateKey], dateKey);
   return state.executiveWorklogs[dateKey];
+}
+
+function getExecutiveWorklogTaskRefs(log = getExecutiveWorklog(), activeDateKey = getActiveDateKey()) {
+  const refs = (log.tasks || []).map((task, index) => ({
+    task,
+    index,
+    log,
+    sourceDateKey: activeDateKey,
+    isCarryover: false,
+    isPostponedFromOtherDate: false,
+  }));
+  Object.keys(state.executiveWorklogs || {})
+    .filter((dateKey) => dateKey < activeDateKey)
+    .sort()
+    .forEach((dateKey) => {
+      const sourceLog = getExecutiveWorklog(dateKey);
+      (sourceLog.tasks || []).forEach((task, index) => {
+        const deletedFrom = String(task.carryoverDeletedFrom || "");
+        const rolloverDate = getWorklogTaskRolloverDate(task, dateKey);
+        const isPostponedHere = task.status === "연기"
+          && task.postponeDate === activeDateKey
+          && !hasExecutivePostponedTaskOccurrence(task, log)
+          && hasWorklogCarryoverDateArrived(activeDateKey);
+        const isOpenCarryover = Boolean(
+          isWorklogTaskDueForDate(task, dateKey, activeDateKey)
+          && (!deletedFrom || deletedFrom > activeDateKey)
+        );
+        if (isOpenCarryover || isPostponedHere) {
+          refs.push({
+            task,
+            index,
+            log: sourceLog,
+            sourceDateKey: dateKey,
+            isCarryover: isOpenCarryover,
+            isPostponedFromOtherDate: task.status === "연기" && rolloverDate <= activeDateKey,
+          });
+        }
+      });
+    });
+  return refs.sort((left, right) => {
+    const activeLeft = isActiveTask(left.task);
+    const activeRight = isActiveTask(right.task);
+    return Number(activeRight) - Number(activeLeft)
+      || getPrioritySortValue(left.task.priority) - getPrioritySortValue(right.task.priority)
+      || left.index - right.index;
+  });
+}
+
+function getExecutiveWorklogCarryoverForkKey(ref = {}) {
+  return `${ref.sourceDateKey || "unknown"}:${ref.task?.id || ref.index || "task"}`;
+}
+
+function materializeExecutiveWorklogCarryover(ref, currentLog = getExecutiveWorklog()) {
+  if (!ref?.isCarryover && !ref?.isPostponedFromOtherDate) return ref;
+  const forkKey = getExecutiveWorklogCarryoverForkKey(ref);
+  let targetIndex = (currentLog.tasks || []).findIndex((task) => task.carryoverForkFrom === forkKey);
+  if (targetIndex < 0) {
+    const targetTask = {
+      ...cloneWorklogLogForAudit(ref.task),
+      id: `executive-task-${getActiveDateKey()}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+      done: false,
+      carryoverDeletedFrom: "",
+      carryoverForkFrom: forkKey,
+      carryoverSourceDate: ref.sourceDateKey,
+    };
+    if (ref.isPostponedFromOtherDate) {
+      targetTask.status = "미완료";
+      targetTask.done = false;
+      targetTask.postponeDate = "";
+      targetTask.postponedFrom ||= ref.task.postponeId || "";
+      targetTask.postponedSourceDate ||= ref.sourceDateKey;
+    }
+    const blankIndex = (currentLog.tasks || []).findIndex((task) => !isActiveTask(task));
+    if (blankIndex >= 0) {
+      currentLog.tasks[blankIndex] = targetTask;
+      targetIndex = blankIndex;
+    } else {
+      currentLog.tasks.push(targetTask);
+      targetIndex = currentLog.tasks.length - 1;
+    }
+  }
+  ref.task.carryoverDeletedFrom = getActiveDateKey();
+  currentLog.updatedAt = new Date().toISOString();
+  return {
+    task: currentLog.tasks[targetIndex],
+    index: targetIndex,
+    log: currentLog,
+    sourceDateKey: getActiveDateKey(),
+    isCarryover: false,
+    isPostponedFromOtherDate: false,
+  };
 }
 
 function normalizeState() {
@@ -1921,11 +2015,13 @@ function scheduleExecutiveWorklogPostponedTask(task, sourceLog, targetDateKey, s
   task.delegatedToId = "";
   task.postponeDate = targetDateKey;
   task.postponeId ||= `executive-postpone-${task.id || Date.now()}-${Math.random().toString(16).slice(2)}`;
+  task.carryoverDeletedFrom = targetDateKey;
 
   // Same-day postponement only records the choice. A later date receives one
   // durable copy of the task, so reopening the calendar never duplicates it.
   if (targetDateKey === sourceDateKey) return true;
   const targetLog = getExecutiveWorklog(targetDateKey);
+  removeExecutivePostponedTaskOccurrence(task.postponeId, targetDateKey);
   let targetTask = targetLog.tasks.find((item) => item?.postponedFrom === task.postponeId);
   const priority = ["A", "B", "C"].includes(task.priority) ? task.priority : "?";
   if (!targetTask && String(task.text || "").trim()) {
@@ -1950,6 +2046,21 @@ function scheduleExecutiveWorklogPostponedTask(task, sourceLog, targetDateKey, s
   }
   targetLog.updatedAt = new Date().toISOString();
   return Boolean(targetTask);
+}
+
+function removeExecutivePostponedTaskOccurrence(postponeId, keepDateKey = "") {
+  if (!postponeId) return;
+  Object.entries(state.executiveWorklogs || {}).forEach(([dateKey, log]) => {
+    if (dateKey === keepDateKey || !Array.isArray(log?.tasks)) return;
+    const nextTasks = log.tasks.filter((item) => item?.postponedFrom !== postponeId);
+    if (nextTasks.length === log.tasks.length) return;
+    state.executiveWorklogs[dateKey] = normalizeExecutiveWorklog({ ...log, tasks: nextTasks }, dateKey);
+  });
+}
+
+function hasExecutivePostponedTaskOccurrence(task = {}, targetLog = {}) {
+  const postponeId = String(task.postponeId || "").trim();
+  return Boolean(postponeId && (targetLog?.tasks || []).some((item) => item?.postponedFrom === postponeId));
 }
 
 function getExecutiveDelegatorName() {
@@ -6442,8 +6553,9 @@ function getExecutiveWorklogCalendarDateKeys(mode = state.executiveWorklogMode, 
   ];
 }
 
-function getExecutiveWorklogSummary(log = {}) {
-  const activeTasks = (log.tasks || []).filter((task) => String(task?.text || "").trim());
+function getExecutiveWorklogSummary(log = {}, { includeCarryover = false, dateKey = getActiveDateKey() } = {}) {
+  const taskRows = includeCarryover ? getExecutiveWorklogTaskRefs(log, dateKey).map((ref) => ref.task) : (log.tasks || []);
+  const activeTasks = taskRows.filter((task) => String(task?.text || "").trim());
   const completed = activeTasks.filter((task) => task.done || task.status === "완료").length;
   const schedules = (log.schedule || []).filter((entry) => String(entry?.text || "").trim()).length;
   return { total: activeTasks.length, completed, schedules };
@@ -6527,7 +6639,7 @@ function renderExecutiveWorklogCalendar() {
   });
 }
 
-function renderExecutiveTaskDelegateControl(task, log) {
+function renderExecutiveTaskDelegateControl(task, log, refIndex = -1) {
   const source = getTaskDelegationSource(log, { executive: true, viewName: "executive" });
   const candidates = getTaskDelegationCandidates(source, "executive");
   const recipientId = getTaskDelegationRecipientId(task, candidates);
@@ -6537,22 +6649,24 @@ function renderExecutiveTaskDelegateControl(task, log) {
     return '<input class="executive-task-delegate" disabled aria-label="위임받을 직원" placeholder="위임 가능한 직원 없음" />';
   }
   return `
-    <input class="executive-task-delegate" type="text" list="${escapeAttr(listId)}" data-executive-task-delegate="${escapeAttr(task.id)}" value="${escapeAttr(selectedRecipient ? getTaskDelegationCandidateLabel(selectedRecipient) : task.delegate || "")}" placeholder="위임할 직원 이름" aria-label="위임할 직원 이름" autocomplete="off" />
+    <input class="executive-task-delegate" type="text" list="${escapeAttr(listId)}" data-executive-task-delegate="${refIndex}" value="${escapeAttr(selectedRecipient ? getTaskDelegationCandidateLabel(selectedRecipient) : task.delegate || "")}" placeholder="위임할 직원 이름" aria-label="위임할 직원 이름" autocomplete="off" />
     <datalist id="${escapeAttr(listId)}">
       ${candidates.map((employee) => `<option value="${escapeAttr(getTaskDelegationCandidateLabel(employee))}"></option>`).join("")}
     </datalist>
   `;
 }
 
-function renderExecutiveTaskActionControl(task) {
+function renderExecutiveTaskActionControl(task, refIndex = -1) {
   if (task.status !== "연기") return "";
   const label = task.postponeDate ? formatShortDate(task.postponeDate) : "미정";
-  return `<button class="executive-task-postpone" type="button" data-executive-task-postpone="${escapeAttr(task.id)}" aria-label="연기 날짜 선택">${escapeHtml(label)}</button>`;
+  return `<button class="executive-task-postpone" type="button" data-executive-task-postpone="${refIndex}" aria-label="연기 날짜 선택">${escapeHtml(label)}</button>`;
 }
 
 function updateExecutiveWorklogTaskPriority(task, value) {
   const actionValues = ["진행중", "위임", "연기", "취소"];
+  const wasPostponed = task.status === "연기";
   if (actionValues.includes(value)) {
+    if (wasPostponed && value !== "연기") removeExecutivePostponedTaskOccurrence(task.postponeId);
     task.status = value;
     task.done = false;
     if (!["A", "B", "C", "?"].includes(task.priority)) task.priority = "?";
@@ -6563,6 +6677,7 @@ function updateExecutiveWorklogTaskPriority(task, value) {
     if (value !== "연기") task.postponeDate = "";
     return;
   }
+  if (wasPostponed) removeExecutivePostponedTaskOccurrence(task.postponeId);
   task.priority = ["A", "B", "C", "?"].includes(value) ? value : "?";
   if (actionValues.includes(task.status)) task.status = "예정";
   task.delegate = "";
@@ -6586,76 +6701,103 @@ function renderExecutiveWorklog() {
     button.setAttribute("aria-pressed", String(active));
   });
   if (daily) daily.hidden = mode !== "daily";
-  const summary = getExecutiveWorklogSummary(log);
+  const taskRefs = getExecutiveWorklogTaskRefs(log);
+  const summary = getExecutiveWorklogSummary(log, { includeCarryover: true });
   if (completion) completion.textContent = `${summary.completed}/${summary.total}`;
   if (taskBoard) {
-    taskBoard.innerHTML = log.tasks.map((task, index) => `
-      <div class="executive-task-row ${task.done ? "is-complete" : ""} ${getWorklogTaskStatusClass(task)}">
-        <input type="checkbox" data-executive-task-done="${index}" ${task.done ? "checked" : ""} aria-label="${index + 1}번 대표 우선업무 완료" />
-        <select data-executive-task-priority="${index}" aria-label="${index + 1}번 중요도 및 처리">
-          ${[["?", "우선"], ["A", "A 중요"], ["B", "B 일반"], ["C", "C 참고"], ["진행중", "진행중"], ["위임", "위임"], ["연기", "연기"], ["취소", "취소"]].map(([value, label]) => `<option value="${value}" ${getPriorityValue(task) === value ? "selected" : ""}>${label}</option>`).join("")}
-        </select>
-        <div class="executive-task-field">
-          <span class="executive-task-text-wrap"><input type="text" data-executive-task-text="${index}" value="${escapeAttr(task.text || "")}" placeholder="예: 14:30 거래처 미팅" title="시간을 함께 입력하면 시간별일정에 자동으로 표시됩니다" /></span>
-          ${task.status === "위임" ? renderExecutiveTaskDelegateControl(task, log) : ""}
-          ${renderExecutiveTaskActionControl(task)}
+    taskBoard.innerHTML = taskRefs.map((ref, refIndex) => {
+      const task = ref.isPostponedFromOtherDate
+        ? { ...ref.task, status: "미완료", done: false, postponeDate: "" }
+        : ref.task;
+      return `
+        <div class="executive-task-row ${task.done ? "is-complete" : ""} ${getWorklogTaskStatusClass(task)} ${ref.isCarryover ? "is-carryover" : ""} ${ref.isPostponedFromOtherDate ? "is-postponed-in" : ""}">
+          <input type="checkbox" data-executive-task-done="${refIndex}" ${task.done ? "checked" : ""} aria-label="${refIndex + 1}번 대표 우선업무 완료" />
+          <select data-executive-task-priority="${refIndex}" aria-label="${refIndex + 1}번 중요도 및 처리">
+            ${[["?", "우선"], ["A", "A 중요"], ["B", "B 일반"], ["C", "C 참고"], ["진행중", "진행중"], ["위임", "위임"], ["연기", "연기"], ["취소", "취소"]].map(([value, label]) => `<option value="${value}" ${getPriorityValue(task) === value ? "selected" : ""}>${label}</option>`).join("")}
+          </select>
+          <div class="executive-task-field">
+            <span class="executive-task-text-wrap"><input type="text" data-executive-task-text="${refIndex}" value="${escapeAttr(task.text || "")}" placeholder="예: 14:30 거래처 미팅" title="시간을 함께 입력하면 시간별일정에 자동으로 표시됩니다" /></span>
+            ${task.status === "위임" ? renderExecutiveTaskDelegateControl(task, log, refIndex) : ""}
+            ${renderExecutiveTaskActionControl(task, refIndex)}
+            ${(ref.isCarryover || ref.isPostponedFromOtherDate) ? `<span class="executive-task-origin">${escapeHtml(formatShortDate(ref.sourceDateKey))} 이월</span>` : ""}
+          </div>
+          <button type="button" class="executive-task-remove" data-executive-task-remove="${refIndex}" aria-label="${refIndex + 1}번 업무 삭제">×</button>
         </div>
-        <button type="button" class="executive-task-remove" data-executive-task-remove="${index}" aria-label="${index + 1}번 업무 삭제">×</button>
-      </div>
-    `).join("");
+      `;
+    }).join("");
+    const getEditableTaskRef = (value) => {
+      const ref = taskRefs[Number(value)];
+      return ref ? materializeExecutiveWorklogCarryover(ref, log) : null;
+    };
     taskBoard.querySelectorAll("[data-executive-task-done]").forEach((input) => {
       input.addEventListener("change", () => {
-        const task = log.tasks[Number(input.dataset.executiveTaskDone)];
+        const editableRef = getEditableTaskRef(input.dataset.executiveTaskDone);
+        const task = editableRef?.task;
         if (!task) return;
         task.done = input.checked;
         task.status = task.done ? "완료" : "예정";
-        syncExecutiveTaskTimeHintToSchedule(task, log);
-        log.updatedAt = new Date().toISOString();
+        syncExecutiveTaskTimeHintToSchedule(task, editableRef.log);
+        editableRef.log.updatedAt = new Date().toISOString();
         saveState({ fastSave: true });
         renderExecutiveWorklog();
       });
     });
     taskBoard.querySelectorAll("[data-executive-task-priority]").forEach((input) => {
       input.addEventListener("change", () => {
-        const task = log.tasks[Number(input.dataset.executiveTaskPriority)];
+        const editableRef = getEditableTaskRef(input.dataset.executiveTaskPriority);
+        const task = editableRef?.task;
         if (!task) return;
         updateExecutiveWorklogTaskPriority(task, input.value);
-        syncExecutiveTaskTimeHintToSchedule(task, log);
-        log.updatedAt = new Date().toISOString();
+        if (task.status === "위임" && task.delegate) {
+          const source = getTaskDelegationSource(editableRef.log, { executive: true, viewName: "executive" });
+          const recipient = getTaskDelegationRecipientByInput(getTaskDelegationCandidates(source, "executive"), task.delegate);
+          if (recipient) {
+            syncDelegatedTaskToRecipient(task, editableRef.log, getEmployeeWorklogId(recipient) || recipient.id || "", {
+              executive: true,
+              sourceDateKey: getActiveDateKey(),
+              viewName: "executive",
+            });
+          }
+        }
+        syncExecutiveTaskTimeHintToSchedule(task, editableRef.log);
+        editableRef.log.updatedAt = new Date().toISOString();
         saveState({ fastSave: true });
         renderExecutiveWorklog();
       });
     });
     taskBoard.querySelectorAll("[data-executive-task-text]").forEach((input) => {
       input.addEventListener("input", () => {
-        const task = log.tasks[Number(input.dataset.executiveTaskText)];
+        const editableRef = getEditableTaskRef(input.dataset.executiveTaskText);
+        const task = editableRef?.task;
         if (!task) return;
         task.text = input.value;
-        syncExecutiveTaskTimeHintToSchedule(task, log);
+        syncExecutiveTaskTimeHintToSchedule(task, editableRef.log);
         if (task.status === "위임" && task.delegatedToId) {
-          syncDelegatedTaskToRecipient(task, log, task.delegatedToId, {
+          syncDelegatedTaskToRecipient(task, editableRef.log, task.delegatedToId, {
             executive: true,
             sourceDateKey: getActiveDateKey(),
             viewName: "executive",
           });
         }
-        log.updatedAt = new Date().toISOString();
+        editableRef.log.updatedAt = new Date().toISOString();
         saveState({ input: true });
       });
       input.addEventListener("blur", () => {
-        const task = log.tasks[Number(input.dataset.executiveTaskText)];
+        const editableRef = getEditableTaskRef(input.dataset.executiveTaskText);
+        const task = editableRef?.task;
         if (!task) return;
-        syncExecutiveTaskTimeHintToSchedule(task, log);
-        log.updatedAt = new Date().toISOString();
+        syncExecutiveTaskTimeHintToSchedule(task, editableRef.log);
+        editableRef.log.updatedAt = new Date().toISOString();
         saveState({ fastSave: true });
         renderExecutiveWorklog();
       });
     });
     taskBoard.querySelectorAll("[data-executive-task-delegate]").forEach((input) => {
       input.addEventListener("change", () => {
-        const task = log.tasks.find((item) => item.id === input.dataset.executiveTaskDelegate);
+        const editableRef = getEditableTaskRef(input.dataset.executiveTaskDelegate);
+        const task = editableRef?.task;
         if (!task) return;
-        const source = getTaskDelegationSource(log, { executive: true, viewName: "executive" });
+        const source = getTaskDelegationSource(editableRef.log, { executive: true, viewName: "executive" });
         const candidates = getTaskDelegationCandidates(source, "executive");
         const recipient = getTaskDelegationRecipientByInput(candidates, input.value);
         if (!recipient) {
@@ -6663,7 +6805,7 @@ function renderExecutiveWorklog() {
           return;
         }
         const recipientId = getEmployeeWorklogId(recipient) || recipient.id || "";
-        const result = syncDelegatedTaskToRecipient(task, log, recipientId, {
+        const result = syncDelegatedTaskToRecipient(task, editableRef.log, recipientId, {
           executive: true,
           sourceDateKey: getActiveDateKey(),
           viewName: "executive",
@@ -6674,7 +6816,7 @@ function renderExecutiveWorklog() {
             : "대표 우선업무 내용을 입력한 뒤 위임할 직원을 선택하세요.");
           return;
         }
-        log.updatedAt = new Date().toISOString();
+        editableRef.log.updatedAt = new Date().toISOString();
         saveState({ fastSave: true });
         renderExecutiveWorklog();
         showAppToast(`${getTaskDelegationCandidateLabel(result.recipient)}님 업무일지에 위임했습니다.`);
@@ -6682,19 +6824,29 @@ function renderExecutiveWorklog() {
     });
     taskBoard.querySelectorAll("[data-executive-task-postpone]").forEach((button) => {
       button.addEventListener("click", () => {
-        const task = log.tasks.find((item) => item.id === button.dataset.executiveTaskPostpone);
+        const editableRef = getEditableTaskRef(button.dataset.executiveTaskPostpone);
+        const task = editableRef?.task;
         if (!task) return;
         saveState({ fastSave: true });
-        openExecutivePostponeCalendar(task, log);
+        openExecutivePostponeCalendar(task, editableRef.log);
       });
     });
     taskBoard.querySelectorAll("[data-executive-task-remove]").forEach((button) => {
       button.addEventListener("click", () => {
-        const index = Number(button.dataset.executiveTaskRemove);
-        const removedTask = log.tasks[index];
-        if (!removedTask || !confirmWorklogEventDeletion("이 우선업무를 삭제할까요? 연결된 시간별일정도 함께 삭제됩니다.")) return;
-        if (removedTask) removeExecutiveTaskLinkedSchedule(removedTask, log);
-        log.tasks.splice(index, 1);
+        const ref = taskRefs[Number(button.dataset.executiveTaskRemove)];
+        if (!ref || !confirmWorklogEventDeletion(ref.isCarryover || ref.isPostponedFromOtherDate
+          ? "이 날짜에 표시된 이월 우선업무를 삭제할까요? 원본 업무는 유지됩니다."
+          : "이 우선업무를 삭제할까요? 연결된 시간별일정도 함께 삭제됩니다.")) return;
+        if (ref.isCarryover || ref.isPostponedFromOtherDate) {
+          ref.task.carryoverDeletedFrom = getActiveDateKey();
+          saveState({ fastSave: true });
+          renderExecutiveWorklog();
+          return;
+        }
+        const removedTask = ref.task;
+        removeExecutivePostponedTaskOccurrence(removedTask.postponeId);
+        removeExecutiveTaskLinkedSchedule(removedTask, log);
+        log.tasks.splice(ref.index, 1);
         while (log.tasks.length < 3) {
           log.tasks.push({
             id: `executive-task-${Date.now()}-${log.tasks.length}-${Math.random().toString(36).slice(2, 7)}`,
