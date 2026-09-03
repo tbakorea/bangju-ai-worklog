@@ -933,6 +933,7 @@ const authState = {
   coworkerEmployees: [],
   visibleWorklogsLoading: false,
   visibleWorklogsTimer: null,
+  executiveWorklogTimer: null,
   visibleWorklogRefreshTimer: null,
   visibleWorklogLastCheckedAt: new Map(),
   visibleWorklogFingerprints: new Map(),
@@ -4008,7 +4009,12 @@ function getCalendarDayMeta(dateKey) {
 function setSelectedDateKey(dateKey) {
   state.selectedDateKey = dateKey;
   normalizeState();
-  saveState();
+  // 날짜를 먼저 옮긴 뒤에는 아직 그 날짜의 원격 원장을 읽지 않은 상태입니다.
+  // 여기서 자동 원격 저장을 하면 다른 기기에만 있던 대표 업무일지를 빈
+  // 스냅샷으로 덮어쓸 수 있으므로, 선택값은 기기에만 저장하고 원격 원장을
+  // 불러온 후 실제 입력이 있을 때만 저장합니다.
+  flushDeferredStateSave({ write: false });
+  writeStateToLocalStorage();
   renderAll();
   loadRemoteWorklogForActiveDate();
   closeWorklogCalendar();
@@ -10543,6 +10549,8 @@ function clearAuthRuntimeState() {
   authState.remoteSnapshotQueued = new Set();
   clearInterval(authState.visibleWorklogsTimer);
   authState.visibleWorklogsTimer = null;
+  clearInterval(authState.executiveWorklogTimer);
+  authState.executiveWorklogTimer = null;
   authState.visibleWorklogLastCheckedAt = new Map();
   authState.visibleWorklogFingerprints = new Map();
   authState.dagymPtScheduleMonthCache = new Map();
@@ -10859,6 +10867,7 @@ async function applySession(session) {
   scheduleRemoteSave(0);
   startApprovalNotificationPolling();
   startVisibleWorklogPolling();
+  startExecutiveWorklogPolling();
   resetWorklogLaunchToOwnProfile();
   renderAll();
   renderAuthStatus();
@@ -10913,6 +10922,63 @@ function getDateScopedRemoteWeatherCache(records = {}, dateKey = getActiveDateKe
   return Object.fromEntries(Object.entries(records || {}).filter(([key]) => String(key).startsWith(prefix)));
 }
 
+function hasExecutiveWorklogContent(log = {}) {
+  return Boolean(
+    String(log?.memo || "").trim()
+    || (log?.tasks || []).some((task) => String(task?.text || "").trim())
+    || (log?.schedule || []).some((entry) => String(entry?.text || "").trim())
+  );
+}
+
+function getExecutiveWorklogUpdatedAt(log = {}, fallback = "") {
+  return String(log?.updatedAt || fallback || "");
+}
+
+function shouldUseRemoteExecutiveWorklog(localLog, remoteLog, sourceUpdatedAt = "") {
+  if (!remoteLog || typeof remoteLog !== "object") return false;
+  if (!localLog || typeof localLog !== "object") return true;
+  const localUpdatedAt = getExecutiveWorklogUpdatedAt(localLog);
+  const remoteUpdatedAt = getExecutiveWorklogUpdatedAt(remoteLog, sourceUpdatedAt);
+  if (remoteUpdatedAt && (!localUpdatedAt || remoteUpdatedAt > localUpdatedAt)) return true;
+  if (remoteUpdatedAt && localUpdatedAt && remoteUpdatedAt < localUpdatedAt) return false;
+  return hasExecutiveWorklogContent(remoteLog) && !hasExecutiveWorklogContent(localLog);
+}
+
+function mergeRemoteExecutiveWorklogs(remoteWorklogs = {}, sourceUpdatedAt = "") {
+  if (!remoteWorklogs || typeof remoteWorklogs !== "object") return false;
+  state.executiveWorklogs ||= {};
+  let changed = false;
+  Object.entries(remoteWorklogs).forEach(([dateKey, remoteLog]) => {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(String(dateKey || "")) || !remoteLog || typeof remoteLog !== "object") return;
+    const localLog = state.executiveWorklogs[dateKey];
+    if (!shouldUseRemoteExecutiveWorklog(localLog, remoteLog, sourceUpdatedAt)) return;
+    state.executiveWorklogs[dateKey] = normalizeExecutiveWorklog(cloneWorklogLogForAudit(remoteLog), dateKey);
+    changed = true;
+  });
+  return changed;
+}
+
+async function protectRepresentativeOutboxSnapshot(entry = {}) {
+  if (!isRepresentativeProfile() || !entry?.snapshot?.executiveWorklogs || !supabaseClient || !authState.user) return entry;
+  const { data, error } = await supabaseClient
+    .from("worklog_states")
+    .select("state,updated_at")
+    .eq("user_id", authState.user.id)
+    .eq("organization", entry.organization || state.profile?.org || "(주)방주")
+    .eq("log_date", entry.dateKey)
+    .maybeSingle();
+  if (error || !data?.state?.executiveWorklogs) return entry;
+  const snapshot = cloneWorklogLogForAudit(entry.snapshot);
+  snapshot.executiveWorklogs ||= {};
+  Object.entries(data.state.executiveWorklogs).forEach(([dateKey, remoteLog]) => {
+    const localLog = snapshot.executiveWorklogs[dateKey];
+    if (shouldUseRemoteExecutiveWorklog(localLog, remoteLog, data.updated_at || "")) {
+      snapshot.executiveWorklogs[dateKey] = cloneWorklogLogForAudit(remoteLog);
+    }
+  });
+  return { ...entry, snapshot };
+}
+
 function buildRemoteSnapshot(dateKey = getActiveDateKey()) {
   const key = dateKey || getActiveDateKey();
   const snapshotProfile = applyProfilePlacementOverride(state.profile || {});
@@ -10935,6 +11001,14 @@ function buildRemoteSnapshot(dateKey = getActiveDateKey()) {
     ownerWorklogVersion: 2,
     ownerWorklog: ownerWorklog ? cloneWorklogLogForAudit(ownerWorklog) : null,
     employeeLogs: { [key]: ownerWorklog ? { [ownerEmployeeId]: cloneWorklogLogForAudit(ownerWorklog) } : {} },
+    // 대표 계정은 employeeLogs가 아닌 별도 CEO 원장을 사용합니다. 이 필드가
+    // 빠져 있으면 기기마다 로컬 저장본만 보게 되므로, 해당 날짜 원장을 함께
+    // 저장해 아이폰·아이패드·PC에서 동일한 대표 업무일지를 읽습니다.
+    executiveWorklogVersion: 1,
+    executiveWorklogs: isRepresentativeProfile()
+      ? getDateScopedRemoteRecords(state.executiveWorklogs, key)
+      : {},
+    executiveWorklogMode: isRepresentativeProfile() ? state.executiveWorklogMode || "daily" : "daily",
     attendance: { [key]: state.attendance?.[key] || [] },
     companyCommonWeeks: state.companyCommonWeeks || {},
     // Each worklog_states row already has a date key. Re-sending every past
@@ -10976,7 +11050,10 @@ async function flushOfflineRemoteSaveQueue() {
   setWorklogSaveStatus("saving");
   try {
     for (const entry of entries) {
-      const result = await upsertRemoteWorklogSnapshot(entry);
+      // 오래된 오프라인 큐가 이미 다른 기기에서 수정된 대표 업무일지를 다시
+      // 덮어쓰지 않도록, 전송 직전에 원격의 더 최신 CEO 원장을 보존합니다.
+      const protectedEntry = await protectRepresentativeOutboxSnapshot(entry);
+      const result = await upsertRemoteWorklogSnapshot(protectedEntry);
       if (!result.ok) {
         setWorklogSaveStatus("queued");
         return false;
@@ -11128,7 +11205,7 @@ async function loadRemoteWorklogForActiveDate() {
   const key = getActiveDateKey();
   const { data, error } = await supabaseClient
     .from("worklog_states")
-    .select("state")
+    .select("state,updated_at")
     .eq("user_id", authState.user.id)
     .eq("log_date", key)
     .order("updated_at", { ascending: false })
@@ -11147,6 +11224,10 @@ async function loadRemoteWorklogForActiveDate() {
       state.profile = applyProfilePlacementOverride(state.profile);
       normalizeProfilePlacementForAuth();
       enforceAuthProfileBoundary();
+      mergeRemoteExecutiveWorklogs(data.state.executiveWorklogs || {}, data.updated_at || "");
+      if (isRepresentativeProfile() && ["daily", "week", "month"].includes(data.state.executiveWorklogMode)) {
+        state.executiveWorklogMode = data.state.executiveWorklogMode;
+      }
       mergeOwnRemoteEmployeeLogs(data.state.employeeLogs || {});
       state.attendance = { ...(state.attendance || {}), ...(data.state.attendance || {}) };
       state.companyCommonWeeks = { ...(state.companyCommonWeeks || {}), ...(data.state.companyCommonWeeks || {}) };
@@ -11184,6 +11265,46 @@ async function loadRemoteWorklogForActiveDate() {
     if (!deferRepresentativeControl) ensureTodayDagymDailyAnalysis({ silent: true });
     renderAll();
     renderAuthStatus();
+  } finally {
+    authState.applyingRemote = false;
+  }
+}
+
+async function refreshRemoteExecutiveWorklogForActiveDate(options = {}) {
+  if (!supabaseClient || !authState.user || !isRepresentativeProfile()) return false;
+  if (!options.force && (activeView !== "executive" || document.visibilityState !== "visible" || isEditingDailyField())) return false;
+  const dateKey = getActiveDateKey();
+  const { data, error } = await supabaseClient
+    .from("worklog_states")
+    .select("state,updated_at")
+    .eq("user_id", authState.user.id)
+    .eq("log_date", dateKey)
+    .order("updated_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (error || !data?.state?.executiveWorklogs) return false;
+  const remoteLog = data.state.executiveWorklogs?.[dateKey];
+  const fingerprint = [
+    dateKey,
+    data.updated_at || "",
+    remoteLog?.updatedAt || "",
+    remoteLog?.memo || "",
+  ].join("::");
+  authState.executiveWorklogFingerprints ||= new Map();
+  if (!options.force && authState.executiveWorklogFingerprints.get(dateKey) === fingerprint) return false;
+  authState.executiveWorklogFingerprints.set(dateKey, fingerprint);
+  if (!remoteLog) return false;
+  authState.applyingRemote = true;
+  try {
+    const changed = mergeRemoteExecutiveWorklogs({ [dateKey]: remoteLog }, data.updated_at || "");
+    if (!changed) return false;
+    if (["daily", "week", "month"].includes(data.state.executiveWorklogMode)) {
+      state.executiveWorklogMode = data.state.executiveWorklogMode;
+    }
+    normalizeState();
+    localStorage.setItem(storageKey, JSON.stringify(state));
+    if (activeView === "executive" && dateKey === getActiveDateKey()) renderExecutiveWorklog();
+    return true;
   } finally {
     authState.applyingRemote = false;
   }
@@ -12174,6 +12295,16 @@ function startVisibleWorklogPolling() {
     if (document.visibilityState !== "visible" || !isVisibleWorklog) return;
     refreshVisibleStaffWorklogsForActiveDate();
   }, 60 * 1000);
+}
+
+function startExecutiveWorklogPolling() {
+  clearInterval(authState.executiveWorklogTimer);
+  authState.executiveWorklogTimer = null;
+  if (!authState.user || !isRepresentativeProfile()) return;
+  authState.executiveWorklogTimer = setInterval(() => {
+    if (document.visibilityState !== "visible" || activeView !== "executive") return;
+    refreshRemoteExecutiveWorklogForActiveDate();
+  }, 30 * 1000);
 }
 
 async function refreshCoworkerWorklogsForActiveDate(options = {}) {
@@ -28196,6 +28327,7 @@ document.addEventListener("visibilitychange", () => {
     return;
   }
   restoreTodayAfterAppResume();
+  if (activeView === "executive" && isRepresentativeProfile()) refreshRemoteExecutiveWorklogForActiveDate({ force: true });
   if (activeView === "worklog-overview" && canAccessAllWorklogs()) refreshVisibleStaffWorklogsForActiveDate();
   if (isGeneralEmployeeWorklogView(activeView) && canAccessAllWorklogs()) refreshVisibleStaffWorklogsForActiveDate();
   if (activeView === "fitness-log") {
