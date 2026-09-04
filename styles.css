@@ -28896,33 +28896,7 @@ body[data-active-view="executive"] #executiveDateButton {
   color: #123e31;
 }
 
-.executive-schedule-row b {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-}
-
-.executive-current-led {
-  display: none;
-  width: 7px;
-  height: 7px;
-  flex: 0 0 7px;
-  border-radius: 50%;
-  background: #ed3d30;
-  box-shadow: 0 0 0 2px rgba(237, 61, 48, 0.14), 0 0 8px rgba(237, 61, 48, 0.92);
-}
-
-.executive-schedule-row.is-current .executive-current-led {
-  display: inline-block;
-  animation: executive-led-flame 1.05s ease-in-out infinite alternate;
-}
-
 .executive-schedule-row.is-current b { color: #bb312d; }
-
-@keyframes executive-led-flame {
-  from { opacity: 0.68; transform: scale(0.8); }
-  to { opacity: 1; transform: scale(1.16); }
-}
 
 @media (max-width: 759px) {
   body[data-active-view="executive"] .executive-hero-actions {

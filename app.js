@@ -6713,13 +6713,12 @@ function renderExecutiveWorklog() {
         <div class="executive-task-row ${task.done ? "is-complete" : ""} ${getWorklogTaskStatusClass(task)} ${ref.isCarryover ? "is-carryover" : ""} ${ref.isPostponedFromOtherDate ? "is-postponed-in" : ""}">
           <input type="checkbox" data-executive-task-done="${refIndex}" ${task.done ? "checked" : ""} aria-label="${refIndex + 1}번 대표 우선업무 완료" />
           <select data-executive-task-priority="${refIndex}" aria-label="${refIndex + 1}번 중요도 및 처리">
-            ${[["?", "우선"], ["A", "A 중요"], ["B", "B 일반"], ["C", "C 참고"], ["진행중", "진행중"], ["위임", "위임"], ["연기", "연기"], ["취소", "취소"]].map(([value, label]) => `<option value="${value}" ${getPriorityValue(task) === value ? "selected" : ""}>${label}</option>`).join("")}
+            ${[["?", "?"], ["A", "A"], ["B", "B"], ["C", "C"], ["진행중", "진행중"], ["위임", "위임"], ["연기", "연기"], ["취소", "취소"]].map(([value, label]) => `<option value="${value}" ${getPriorityValue(task) === value ? "selected" : ""}>${label}</option>`).join("")}
           </select>
           <div class="executive-task-field">
             <span class="executive-task-text-wrap"><input type="text" data-executive-task-text="${refIndex}" value="${escapeAttr(task.text || "")}" placeholder="예: 14:30 거래처 미팅" title="시간을 함께 입력하면 시간별일정에 자동으로 표시됩니다" /></span>
             ${task.status === "위임" ? renderExecutiveTaskDelegateControl(task, log, refIndex) : ""}
             ${renderExecutiveTaskActionControl(task, refIndex)}
-            ${(ref.isCarryover || ref.isPostponedFromOtherDate) ? `<span class="executive-task-origin">${escapeHtml(formatShortDate(ref.sourceDateKey))} 이월</span>` : ""}
           </div>
           <button type="button" class="executive-task-remove" data-executive-task-remove="${refIndex}" aria-label="${refIndex + 1}번 업무 삭제">×</button>
         </div>
@@ -6864,7 +6863,7 @@ function renderExecutiveWorklog() {
   }
   if (scheduleBoard) {
     scheduleBoard.innerHTML = log.schedule.map((entry, index) => `
-      <div class="executive-schedule-row" data-executive-schedule-time="${escapeAttr(entry.time)}"><b><i class="executive-current-led" aria-hidden="true"></i>${escapeHtml(entry.time)}</b><input type="text" data-executive-schedule-text="${index}" value="${escapeAttr(entry.text || "")}" placeholder="시간별 실행 메모" /><button type="button" data-executive-schedule-remove="${index}" aria-label="${escapeAttr(entry.time)} 일정 삭제" ${entry.text ? "" : "disabled"}>×</button></div>
+      <div class="executive-schedule-row" data-executive-schedule-time="${escapeAttr(entry.time)}"><b>${escapeHtml(entry.time)}</b><input type="text" data-executive-schedule-text="${index}" value="${escapeAttr(entry.text || "")}" placeholder="시간별 실행 메모" /><button type="button" data-executive-schedule-remove="${index}" aria-label="${escapeAttr(entry.time)} 일정 삭제" ${entry.text ? "" : "disabled"}>×</button></div>
     `).join("");
     scheduleBoard.querySelectorAll("[data-executive-schedule-text]").forEach((input) => {
       input.addEventListener("input", () => {
