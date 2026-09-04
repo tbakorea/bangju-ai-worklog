@@ -879,18 +879,18 @@ async function checkPhoneWorklog(browser) {
   const restored = await page.evaluate(() => !document.querySelector("#worklogMain")?.classList.contains("is-mobile-focus-active"));
   if (!restored) fail("phone worklog schedule focus close button did not restore split mode");
 
-  const undoDelete = await page.evaluate(() => {
-    const rowsBefore = document.querySelectorAll("#worklogTaskBoard .worklog-task-row").length;
-    document.querySelector("#worklogTaskBoard .task-delete")?.click();
-    const toast = document.querySelector("#undoToast");
-    toast?.querySelector("button")?.click();
-    const rowsAfter = document.querySelectorAll("#worklogTaskBoard .worklog-task-row").length;
-    return {
-      rowsBefore,
-      rowsAfter,
-      hasUndo: Boolean(toast?.textContent?.includes("되돌리기")),
-    };
-  });
+  const rowsBeforeDelete = await page.locator("#worklogTaskBoard .worklog-task-row").count();
+  const deleteConfirmation = page.waitForEvent("dialog");
+  await page.click("#worklogTaskBoard .task-delete");
+  const dialog = await deleteConfirmation;
+  await dialog.accept();
+  const undoToast = page.locator("#undoToast");
+  await undoToast.getByRole("button", { name: "되돌리기" }).click();
+  const undoDelete = {
+    rowsBefore: rowsBeforeDelete,
+    rowsAfter: await page.locator("#worklogTaskBoard .worklog-task-row").count(),
+    hasUndo: await undoToast.textContent().then((text) => Boolean(text?.includes("되돌리기"))),
+  };
   if (!undoDelete.hasUndo || undoDelete.rowsAfter !== undoDelete.rowsBefore) {
     fail("worklog delete undo should restore task rows", JSON.stringify(undoDelete));
   }

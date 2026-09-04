@@ -3,7 +3,7 @@ import path from "node:path";
 
 const root = process.cwd();
 const gymId = process.env.DAGYM_GYM_ID || "2387f907-0810-49b9-9db2-7ceb7861e076";
-const cdpUrl = process.env.DAGYM_CDP_URL || "http://127.0.0.1:9222";
+const cdpUrl = process.env.DAGYM_CDP_URL || "http://127.0.0.1:9233";
 const baseUrl = process.env.DAGYM_BASE_URL || "https://www.dagym-manager.com";
 const uploadUrl = process.env.DAGYM_DAILY_SYNC_URL || "https://bangju-ai-worklog.vercel.app/api/dagym-browser-daily";
 const syncSecret = process.env.DAGYM_BROWSER_SYNC_SECRET || "";
@@ -238,7 +238,9 @@ async function upload(payload) {
 
 async function main() {
   const { chromium } = await importPlaywright();
-  const browser = await chromium.connectOverCDP(cdpUrl);
+  const browser = await chromium.connectOverCDP(cdpUrl, { timeout: 20000 }).catch((error) => {
+    throw new Error(`다짐 전용 Chrome 연결 점검에 실패했습니다 (${cdpUrl}). 개인 Chrome이 아니라 전용 수집 브라우저가 실행 중인지 확인해주세요. ${error?.message || ""}`.trim());
+  });
   const context = browser.contexts()[0];
   if (!context) throw new Error("다짐 전용 브라우저 컨텍스트를 찾지 못했습니다.");
   const page = context.pages()[0] || await context.newPage();

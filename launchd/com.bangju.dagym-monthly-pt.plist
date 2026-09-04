@@ -13,6 +13,8 @@
   <dict>
     <key>DAGYM_USER_DATA_DIR</key>
     <string>/Users/bangju/Library/Application Support/BangjuWorklog/dagym-sync/browser-profile</string>
+    <key>DAGYM_DEBUG_PORT</key>
+    <string>9233</string>
   </dict>
   <key>WorkingDirectory</key>
   <string>/Users/bangju/Library/Application Support/BangjuWorklog/dagym-sync</string>
@@ -23,8 +25,6 @@
     <key>Minute</key>
     <integer>5</integer>
   </dict>
-  <key>StartInterval</key>
-  <integer>3600</integer>
   <key>RunAtLoad</key>
   <true/>
   <key>ProcessType</key>

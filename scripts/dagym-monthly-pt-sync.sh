@@ -3,16 +3,18 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 NODE_BIN="${NODE_BIN:-/Users/bangju/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/bin/node}"
-DEBUG_PORT="${DAGYM_DEBUG_PORT:-9222}"
+# 포트 9222는 개발·개인 Chrome이 이미 사용할 수 있습니다. 다짐 수집기는
+# 별도 포트와 별도 프로필만 사용해, 사용 중인 브라우저 탭에 붙지 않습니다.
+DEBUG_PORT="${DAGYM_DEBUG_PORT:-9233}"
 CDP_URL="${DAGYM_CDP_URL:-http://127.0.0.1:$DEBUG_PORT}"
 CHROME_BIN="${DAGYM_BROWSER_EXECUTABLE:-/Applications/Google Chrome.app/Contents/MacOS/Google Chrome}"
-LEGACY_PROFILE="/Users/bangju/Documents/Codex/2026-07-06/bangju-ai-worklog/work/dagym-browser-profile"
-USER_DATA_DIR="${DAGYM_USER_DATA_DIR:-$LEGACY_PROFILE}"
+USER_DATA_DIR="${DAGYM_USER_DATA_DIR:-$ROOT_DIR/browser-profile}"
 STARTED_BROWSER_PID=""
 SYNC_STATE_DIR="$ROOT_DIR/work/dagym-sync"
 SYNC_LOCK_DIR="$SYNC_STATE_DIR/run.lock"
 LAST_SUCCESS_FILE="$SYNC_STATE_DIR/last-successful-target-date"
 DAILY_AUDIT_FILE="$ROOT_DIR/work/dagym-daily-sync/latest.json"
+BROWSER_PID_FILE="$SYNC_STATE_DIR/dagym-browser.pid"
 SYNC_FORCE="${DAGYM_SYNC_FORCE:-0}"
 SYNC_DRY_RUN="${DAGYM_SYNC_DRY_RUN:-0}"
 
@@ -25,6 +27,10 @@ TARGET_DATE="${DAGYM_DATE:-$(TZ=Asia/Seoul date -v-1d +%F)}"
 cleanup() {
   if [ -n "$STARTED_BROWSER_PID" ] && kill -0 "$STARTED_BROWSER_PID" >/dev/null 2>&1; then
     kill "$STARTED_BROWSER_PID" >/dev/null 2>&1 || true
+  fi
+  if [ -n "$STARTED_BROWSER_PID" ] && [ -f "$BROWSER_PID_FILE" ] \
+    && [ "$(tr -d '[:space:]' < "$BROWSER_PID_FILE")" = "$STARTED_BROWSER_PID" ]; then
+    rm -f "$BROWSER_PID_FILE"
   fi
   rmdir "$SYNC_LOCK_DIR" >/dev/null 2>&1 || true
 }
@@ -93,24 +99,55 @@ apply_browser_jitter() {
 
 ensure_dagym_browser() {
   apply_browser_jitter
-  if ! curl -fsS "$CDP_URL/json/version" >/dev/null 2>&1; then
-    if [ ! -x "$CHROME_BIN" ]; then
-      echo "다짐 전용 Chrome을 찾지 못했습니다: $CHROME_BIN" >&2
-      return 1
+  if curl --connect-timeout 3 --max-time 5 -fsS "$CDP_URL/json/version" >/dev/null 2>&1; then
+    # 이 포트는 다짐 수집기만 쓰도록 예약했습니다. PID 파일이 없는 프로세스는
+    # 다른 도구일 수 있으므로 종료하거나 제어하지 않고 안전하게 실패 처리합니다.
+    if [ -f "$BROWSER_PID_FILE" ]; then
+      OWNED_PID="$(tr -d '[:space:]' < "$BROWSER_PID_FILE")"
+      OWNED_COMMAND="$(ps -p "$OWNED_PID" -o command= 2>/dev/null || true)"
+      if [ -n "$OWNED_COMMAND" ] \
+        && [[ "$OWNED_COMMAND" == *"--remote-debugging-port=$DEBUG_PORT"* ]] \
+        && [[ "$OWNED_COMMAND" == *"--user-data-dir=$USER_DATA_DIR"* ]]; then
+        return 0
+      fi
     fi
-    "$CHROME_BIN" \
-      --remote-debugging-address=127.0.0.1 \
-      --remote-debugging-port="$DEBUG_PORT" \
-      --user-data-dir="$USER_DATA_DIR" \
-      "https://www.dagym-manager.com/dashboard/attendance?gymId=${DAGYM_GYM_ID:-2387f907-0810-49b9-9db2-7ceb7861e076}" \
-      >/tmp/bangju-dagym-monthly-browser.log 2>&1 &
-    STARTED_BROWSER_PID="$!"
-    for _ in {1..30}; do
-      curl -fsS "$CDP_URL/json/version" >/dev/null 2>&1 && break
-      sleep 2
-    done
+    echo "다짐 전용 포트($DEBUG_PORT)가 예상하지 않은 Chrome에 사용 중입니다. 다른 브라우저는 건드리지 않고 이번 수집을 중단합니다." >&2
+    return 1
   fi
-  if ! curl -fsS "$CDP_URL/json/version" >/dev/null 2>&1; then
+
+  # 남은 PID 파일은 이번 실행에서 만든 전용 Chrome일 때만 정리합니다.
+  if [ -f "$BROWSER_PID_FILE" ]; then
+    STALE_PID="$(tr -d '[:space:]' < "$BROWSER_PID_FILE")"
+    STALE_COMMAND="$(ps -p "$STALE_PID" -o command= 2>/dev/null || true)"
+    if [ -n "$STALE_COMMAND" ] \
+      && [[ "$STALE_COMMAND" == *"--remote-debugging-port=$DEBUG_PORT"* ]] \
+      && [[ "$STALE_COMMAND" == *"--user-data-dir=$USER_DATA_DIR"* ]]; then
+      kill "$STALE_PID" >/dev/null 2>&1 || true
+      sleep 1
+    fi
+    rm -f "$BROWSER_PID_FILE"
+  fi
+
+  if [ ! -x "$CHROME_BIN" ]; then
+    echo "다짐 전용 Chrome을 찾지 못했습니다: $CHROME_BIN" >&2
+    return 1
+  fi
+  mkdir -p "$USER_DATA_DIR"
+  "$CHROME_BIN" \
+    --remote-debugging-address=127.0.0.1 \
+    --remote-debugging-port="$DEBUG_PORT" \
+    --no-first-run \
+    --no-default-browser-check \
+    --user-data-dir="$USER_DATA_DIR" \
+    "https://www.dagym-manager.com/dashboard/attendance?gymId=${DAGYM_GYM_ID:-2387f907-0810-49b9-9db2-7ceb7861e076}" \
+    >/tmp/bangju-dagym-monthly-browser.log 2>&1 &
+  STARTED_BROWSER_PID="$!"
+  printf '%s\n' "$STARTED_BROWSER_PID" > "$BROWSER_PID_FILE"
+  for _ in {1..30}; do
+    curl --connect-timeout 3 --max-time 5 -fsS "$CDP_URL/json/version" >/dev/null 2>&1 && break
+    sleep 2
+  done
+  if ! curl --connect-timeout 3 --max-time 5 -fsS "$CDP_URL/json/version" >/dev/null 2>&1; then
     echo "다짐 전용 브라우저에 연결할 수 없습니다: $CDP_URL" >&2
     return 1
   fi

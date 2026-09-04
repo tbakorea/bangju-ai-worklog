@@ -23,6 +23,8 @@ const dagymWorklogOverrideMigration = existsSync(join(root, "supabase/migrations
 const dagymMonthlyScheduleCollector = existsSync(join(root, "scripts/dagym-monthly-pt-sync.mjs")) ? read("scripts/dagym-monthly-pt-sync.mjs") : "";
 const dagymDailyBrowserApi = existsSync(join(root, "api/dagym-browser-daily.js")) ? read("api/dagym-browser-daily.js") : "";
 const dagymDailyBrowserCollector = existsSync(join(root, "scripts/dagym-daily-sync.mjs")) ? read("scripts/dagym-daily-sync.mjs") : "";
+const dagymBrowserLauncher = existsSync(join(root, "scripts/dagym-monthly-pt-sync.sh")) ? read("scripts/dagym-monthly-pt-sync.sh") : "";
+const dagymLaunchAgent = existsSync(join(root, "launchd/com.bangju.dagym-monthly-pt.plist")) ? read("launchd/com.bangju.dagym-monthly-pt.plist") : "";
 const dagymDailyPipelineMigration = existsSync(join(root, "supabase/migrations/20260816090000_dagym_daily_sync_pipeline.sql"))
   ? read("supabase/migrations/20260816090000_dagym_daily_sync_pipeline.sql")
   : "";
@@ -130,6 +132,18 @@ check(
     && schema.includes("create table if not exists public.dagym_daily_snapshots")
     && dagymNightlyApi.includes("loadDailySnapshot"),
   "daily attendance, sales, member and PT data must be saved independently of worklog state and feed the next-day analysis"
+);
+check(
+  "DaGym browser automation stays isolated and runs once per day",
+  dagymBrowserLauncher.includes('DEBUG_PORT="${DAGYM_DEBUG_PORT:-9233}"')
+    && dagymBrowserLauncher.includes("BROWSER_PID_FILE")
+    && dagymBrowserLauncher.includes("예상하지 않은 Chrome에 사용 중입니다")
+    && dagymDailyBrowserCollector.includes('http://127.0.0.1:9233')
+    && dagymMonthlyScheduleCollector.includes('http://127.0.0.1:9233')
+    && dagymLaunchAgent.includes("<key>DAGYM_DEBUG_PORT</key>")
+    && dagymLaunchAgent.includes("<string>9233</string>")
+    && !dagymLaunchAgent.includes("<key>StartInterval</key>"),
+  "daily DaGym collection must use its dedicated Chrome profile/port and must not retry by reopening the portal every hour"
 );
 check(
   "DaGym CEO report intake is private, duplicate-safe, and feeds nightly analysis",
