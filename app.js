@@ -10631,6 +10631,7 @@ function renderMainMenuVisibility() {
   if (worklogButton) {
     const scope = canAccessAllWorklogs() ? "전 직원 업무일지" : canAccessWorklogOverview() ? "소속 업무일지" : "나의 업무일지";
     setMainMenuButtonCopy(worklogButton, "업무", scope);
+    worklogButton.setAttribute("aria-label", `${scope} 열기`);
   }
   if (laborButton) {
     const scope = canAccessAllLabor() ? "전 직원 근태·휴가" : hasProfilePermission("laborSite") ? "소속 근태·휴가" : "나의 근태·휴가";
@@ -10648,6 +10649,10 @@ function renderMainMenuVisibility() {
     settings: () => isKnownLoggedInProfile(),
     auth: () => true,
   };
+  if (worklogButton && isRepresentativeProfile()) {
+    setMainMenuButtonCopy(worklogButton, "전직원 업무일지", "직원별 기록 관제");
+    worklogButton.setAttribute("aria-label", "전직원 업무일지 관제 열기");
+  }
   document.querySelectorAll("#mainMenuPopover [data-menu-view]").forEach((item) => {
     const view = item.dataset.menuView;
     if (isExplicitlySignedOut()) {
@@ -10664,7 +10669,7 @@ function renderMainMenuVisibility() {
     const allowed = viewAccess[item.value]?.() ?? false;
     item.hidden = !allowed;
     item.disabled = !allowed;
-    if (item.value === "worklog") item.textContent = "업무";
+    if (item.value === "worklog") item.textContent = isRepresentativeProfile() ? "전직원 업무일지" : "업무";
   });
   document.querySelectorAll("#mainMenuPopover [data-menu-action]").forEach((item) => {
     if (isExplicitlySignedOut() && !item.dataset.menuView) item.hidden = true;
@@ -27737,6 +27742,13 @@ document.querySelectorAll("[data-menu-view]").forEach((button) => {
     }
     if (view === "auth" || view === "settings") renderProfileForm();
     if (view === "settings") switchSettingsTab("employee");
+    if (view === "worklog" && isRepresentativeProfile()) {
+      // 대표 메뉴의 전직원 업무일지는 항상 전체 사업장 관제 범위에서 시작합니다.
+      state.worklogOverviewScope = "all";
+      saveState({ fastSave: true });
+      switchView("worklog-overview");
+      return;
+    }
     switchView(view);
   };
 });
