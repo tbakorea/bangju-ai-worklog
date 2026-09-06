@@ -115,6 +115,15 @@ const taskStatusGuideLabels = {
   "취소": "취소",
   "미완료": "해제",
 };
+// 직원 원장은 고용·노무 이력을 보존하고, 업무일지에만 표시할지 여부를 별도로
+// 관리합니다. 퇴사/휴직/병가로 바뀌어도 과거 업무일지와 보고서는 삭제하지 않습니다.
+const worklogParticipationStatusOptions = [
+  ["active", "업무일지 대상"],
+  ["resigned", "퇴사"],
+  ["leave_of_absence", "휴직"],
+  ["sick_leave", "병가"],
+  ["other_excluded", "기타 제외"],
+];
 const permissionKeys = [
   ["executiveRoom", "대표 의사결정"],
   ["controlTower", "전사업장 현황"],
@@ -1473,7 +1482,7 @@ function normalizeState() {
     : "daily";
   state.fitnessLogPage = Number.isFinite(Number(state.fitnessLogPage)) ? Number(state.fitnessLogPage) : 1;
   state.fitnessLogPageId = String(state.fitnessLogPageId || "");
-  state.staffMasterTab = ["staff-list", "approval", "permission", "manual", "growth"].includes(state.staffMasterTab)
+  state.staffMasterTab = ["staff-list", "approval", "permission", "manual", "growth", "employee-report"].includes(state.staffMasterTab)
     ? state.staffMasterTab
     : "staff-list";
   state.staffMasterSite ||= "all";
@@ -1558,7 +1567,7 @@ function normalizeState() {
   }
   migrateEmployeeLogIdentityAliases();
   state.employeeLogs[getActiveDateKey()] ||= {};
-  getEmployeeOptions().filter((employee) => !isRepresentativeWorklogEmployee(employee)).forEach((employee) => {
+  getEmployeeOptions({ worklogParticipantsOnly: true }).filter((employee) => !isRepresentativeWorklogEmployee(employee)).forEach((employee) => {
     const employeeId = getEmployeeWorklogId(employee);
     state.employeeLogs[getActiveDateKey()][employeeId] ||= createEmployeeLog({ ...employee, id: employeeId }, state.profile, getActiveDateKey());
     const log = state.employeeLogs[getActiveDateKey()][employeeId];
@@ -2094,7 +2103,9 @@ function getTaskDelegationCandidates(source = {}, viewName = source.viewName || 
   const sourceId = String(source.id || "").trim();
   let candidates = [];
   if (source.executive) {
-    candidates = getStaffDirectoryEmployees().filter((employee) => !isRepresentativeWorklogEmployee(employee));
+    candidates = getStaffDirectoryEmployees()
+      .filter((employee) => !isRepresentativeWorklogEmployee(employee))
+      .filter((employee) => isEmployeeWorklogParticipantOnDate(employee, getActiveDateKey()));
   } else if (source.employee) {
     candidates = getCoworkerEmployeesForWorklog(source.employee, viewName);
   }
@@ -2214,8 +2225,45 @@ function getSelectedEmployee() {
     || getProfileEmployee();
 }
 
-function getEmployeeOptions() {
-  return getStaffDirectoryEmployees();
+function normalizeWorklogParticipationStatus(value = "") {
+  return worklogParticipationStatusOptions.some(([key]) => key === value) ? value : "active";
+}
+
+function getWorklogParticipationStatusLabel(status = "active") {
+  return worklogParticipationStatusOptions.find(([key]) => key === normalizeWorklogParticipationStatus(status))?.[1] || "업무일지 대상";
+}
+
+function isWorklogParticipationDateKey(value = "") {
+  return /^\d{4}-\d{2}-\d{2}$/.test(String(value || ""));
+}
+
+function getEmployeeWorklogParticipation(employee = {}, dateKey = getActiveDateKey()) {
+  const status = normalizeWorklogParticipationStatus(employee.worklogStatus || employee.worklog_status);
+  const excludedFrom = String(employee.worklogExcludedFrom || employee.worklog_excluded_from || "").trim();
+  const excludedUntil = String(employee.worklogExcludedUntil || employee.worklog_excluded_until || "").trim();
+  const label = getWorklogParticipationStatusLabel(status);
+  const validDate = isWorklogParticipationDateKey(dateKey) ? dateKey : getActiveDateKey();
+
+  if (status === "active") {
+    return { status, label, participating: true, phase: "active", excludedFrom, excludedUntil };
+  }
+  if (isWorklogParticipationDateKey(excludedFrom) && validDate < excludedFrom) {
+    return { status, label: `${label} 예정`, participating: true, phase: "scheduled", excludedFrom, excludedUntil };
+  }
+  if (isWorklogParticipationDateKey(excludedUntil) && validDate >= excludedUntil) {
+    return { status, label: "복귀", participating: true, phase: "returned", excludedFrom, excludedUntil };
+  }
+  return { status, label, participating: false, phase: "excluded", excludedFrom, excludedUntil };
+}
+
+function isEmployeeWorklogParticipantOnDate(employee = {}, dateKey = getActiveDateKey()) {
+  return getEmployeeWorklogParticipation(employee, dateKey).participating;
+}
+
+function getEmployeeOptions(options = {}) {
+  const rows = getStaffDirectoryEmployees();
+  if (!options.worklogParticipantsOnly) return rows;
+  return rows.filter((employee) => isEmployeeWorklogParticipantOnDate(employee, options.dateKey || getActiveDateKey()));
 }
 
 function getEmployeeIdentityKeys(employee = {}) {
@@ -3000,6 +3048,7 @@ function getFitnessEmployees() {
   const add = (employee, priority = 0) => {
     if (!isVisibleFitnessRosterEmployee(employee)) return;
     const normalized = normalizeFitnessEmployeeForWorklog(employee);
+    if (!isEmployeeWorklogParticipantOnDate(normalized, getActiveDateKey())) return;
     const emailKey = normalizeEmailValue(normalized.email || "");
     if (isRetiredFitnessManagerIdentity(normalized)) return;
     const rosterSlot = getFitnessRosterSlotId(normalized);
@@ -3691,19 +3740,31 @@ function canEditWorklogDate(employeeId = "", dateKey = getActiveDateKey()) {
 
 function canEditCurrentWorklog(view = activeView) {
   if (!isWorklogEditView(view)) return false;
-  if (isRepresentativeProfile()) return false;
   const currentEmployeeId = getCurrentWorklogEmployeeId(view);
+  // 대표 계정은 언제나 열람 전용입니다. 슬롯 권한은 본인 업무일지에만 적용합니다.
+  const representativeViewer = isRepresentativeProfile();
+  const canEditOwnEmployeeSlot = !representativeViewer && canEditEmployeeSlot(currentEmployeeId);
+  if (representativeViewer) return false;
+  const currentEmployee = findEmployeeRecordById(currentEmployeeId) || getSelectedEmployee();
+  if (!isEmployeeWorklogParticipantOnDate(currentEmployee, getActiveDateKey())) return false;
   if (!canEditWorklogDate(currentEmployeeId, getActiveDateKey())) return false;
   if (view === "fitness-log") {
-    return isCurrentFitnessLogEditable() && canEditEmployeeSlot(currentEmployeeId);
+    return isCurrentFitnessLogEditable() && canEditOwnEmployeeSlot;
   }
   const ownEmployeeId = getOwnEditableEmployeeIdForView(view);
-  return Boolean(currentEmployeeId && ownEmployeeId && currentEmployeeId === ownEmployeeId && canEditEmployeeSlot(currentEmployeeId));
+  return Boolean(currentEmployeeId && ownEmployeeId && currentEmployeeId === ownEmployeeId && canEditOwnEmployeeSlot);
 }
 
 function guardWorklogEdit(view = activeView) {
   if (canEditCurrentWorklog(view)) return true;
   const employeeId = getCurrentWorklogEmployeeId(view);
+  const employee = findEmployeeRecordById(employeeId) || getSelectedEmployee();
+  if (!isEmployeeWorklogParticipantOnDate(employee, getActiveDateKey())) {
+    showAppToast("현재 선택일에는 업무일지 대상에서 제외되어 기록할 수 없습니다.");
+    if (view === "fitness-log") applyFitnessLogPermissionState();
+    else applyCurrentWorklogPermissionState(view);
+    return false;
+  }
   const lock = getWorklogEditLockInfo(employeeId);
   showAppToast(lock.lockedByDate ? "수정 가능 시간이 지나 정정 요청이 필요합니다" : "열람 전용 업무일지입니다");
   if (view === "fitness-log") applyFitnessLogPermissionState();
@@ -3952,6 +4013,19 @@ function findEmployeeRecordById(employeeId) {
 function getWorklogEditLockInfo(employeeId = getCurrentWorklogEmployeeId(), dateKey = getActiveDateKey()) {
   if (!employeeId) {
     return { locked: true, lockedByDate: false, label: "열람 전용", detail: "선택된 직원 업무일지가 없습니다." };
+  }
+  const employee = findEmployeeRecordById(employeeId) || getSelectedEmployee();
+  const participation = getEmployeeWorklogParticipation(employee, dateKey);
+  if (!participation.participating) {
+    const starts = participation.excludedFrom ? `${formatShortDate(participation.excludedFrom)}부터 ` : "";
+    const returns = participation.excludedUntil ? ` ${formatShortDate(participation.excludedUntil)} 복귀 예정` : "";
+    return {
+      locked: true,
+      lockedByDate: false,
+      excluded: true,
+      label: "업무일지 제외",
+      detail: `${starts}${participation.label} 상태입니다.${returns}`.trim(),
+    };
   }
   if (canEditEmployeeSlot(employeeId) && isWithinWorklogEditWindow(dateKey)) {
     return { locked: false, label: "수정 가능", detail: "미래 일정은 언제든 기록할 수 있고, 지난 업무일지는 다음날 정오까지 수정할 수 있습니다." };
@@ -7119,7 +7193,7 @@ function buildExecutiveAgenda({ staffRows, siteRows, fitnessOps, taskTotal, comp
 }
 
 function getControlStaffRows() {
-  return getEmployeeOptions().map((employee) => {
+  return getEmployeeOptions({ worklogParticipantsOnly: true }).map((employee) => {
     const log = getEmployeeLogForDate(employee.id);
     const tasks = log.tasks || [];
     const taskCount = tasks.filter((task) => String(task.text || "").trim()).length;
@@ -8739,7 +8813,23 @@ function shouldHydrateRepresentativeControlForView(view = activeView) {
 
 function getWorklogEmployeeIdsForView(view) {
   const includeOwnProfile = !isRepresentativeProfile() && (!authState.user || !getProfileMappedEmployeeId());
-  const withOwnProfile = (ids) => (includeOwnProfile ? ["profile-user", ...ids] : ids);
+  const filterParticipants = (ids) => ids.filter((employeeId) => {
+    const employee = employeeId === "profile-user"
+      ? getProfileEmployee()
+      : findEmployeeRecordById(employeeId) || employees.find((item) => item.id === employeeId);
+    return isEmployeeWorklogParticipantOnDate(employee || {}, getActiveDateKey());
+  });
+  const ownEmployeeId = getProfileMappedEmployeeId() || (authState.user ? "profile-user" : "");
+  const ownEmployee = ownEmployeeId === "profile-user"
+    ? getProfileEmployee()
+    : findEmployeeRecordById(ownEmployeeId) || getProfileEmployee();
+  const ownIsExcluded = !isRepresentativeProfile()
+    && Boolean(ownEmployeeId)
+    && !isEmployeeWorklogParticipantOnDate(ownEmployee, getActiveDateKey());
+  const withOwnProfile = (ids) => {
+    if (ownIsExcluded) return [ownEmployeeId];
+    return filterParticipants(includeOwnProfile ? ["profile-user", ...ids] : ids);
+  };
   if (view === "fitness-log") return withOwnProfile(getAssignedWorklogEmployeeIds(fitnessEmployeeIds));
   if (view === "beyond-log") {
     const ids = [
@@ -8771,7 +8861,7 @@ function getCoworkerEmployeesForWorklog(selectedEmployee = getSelectedEmployee()
   const preferredOrder = new Map(preferredIds.map((employeeId, index) => [employeeId, index]));
   const selectedKeys = new Set(getEmployeeIdentityKeys(selectedEmployee));
   const byEmployeeId = new Map();
-  getEmployeeOptions()
+  getEmployeeOptions({ worklogParticipantsOnly: true })
     .filter(isAssignedWorklogEmployee)
     .filter((employee) => !isRepresentativeWorklogEmployee(employee))
     .filter((employee) => !getEmployeeIdentityKeys(employee).some((key) => selectedKeys.has(key)))
@@ -12774,6 +12864,12 @@ function profileToRemoteRow(options = {}) {
     pay_day: profile.payDay || "",
     work_hours: profile.workHours,
     weekly_work_hours: profile.weeklyWorkHours || {},
+    worklog_status: normalizeWorklogParticipationStatus(profile.worklogStatus),
+    worklog_status_reason: profile.worklogStatusReason || "",
+    worklog_excluded_from: profile.worklogExcludedFrom || null,
+    worklog_excluded_until: profile.worklogExcludedUntil || null,
+    worklog_status_updated_by: profile.worklogStatusUpdatedBy || null,
+    worklog_status_updated_at: profile.worklogStatusUpdatedAt || null,
     extra: profile.extra,
     strengths: profile.strengths,
     weaknesses: profile.weaknesses,
@@ -12812,6 +12908,12 @@ function remoteRowToProfile(row) {
     payDay: row.pay_day || "",
     workHours: row.work_hours,
     weeklyWorkHours: row.weekly_work_hours || {},
+    worklogStatus: normalizeWorklogParticipationStatus(row.worklog_status),
+    worklogStatusReason: row.worklog_status_reason || "",
+    worklogExcludedFrom: row.worklog_excluded_from || "",
+    worklogExcludedUntil: row.worklog_excluded_until || "",
+    worklogStatusUpdatedBy: row.worklog_status_updated_by || "",
+    worklogStatusUpdatedAt: row.worklog_status_updated_at || "",
     extra: row.extra,
     strengths: row.strengths,
     weaknesses: row.weaknesses,
@@ -21520,6 +21622,7 @@ function getEmployeeMasterRows() {
       labor,
       tasks,
       completed,
+      worklogParticipation: getEmployeeWorklogParticipation(employee, getActiveDateKey()),
     };
   });
 }
@@ -21613,6 +21716,12 @@ function approvalRowToStaffEmployee(row = {}) {
     payDay: profile.payDay || "",
     workHours: profile.workHours || base?.workHours || defaultProfile.workHours,
     weeklyWorkHours: getEffectiveWeeklyWorkHours({ ...profile, mappedEmployeeId: mappedId }),
+    worklogStatus: profile.worklogStatus,
+    worklogStatusReason: profile.worklogStatusReason,
+    worklogExcludedFrom: profile.worklogExcludedFrom,
+    worklogExcludedUntil: profile.worklogExcludedUntil,
+    worklogStatusUpdatedBy: profile.worklogStatusUpdatedBy,
+    worklogStatusUpdatedAt: profile.worklogStatusUpdatedAt,
     approvalStatus: profile.approvalStatus || row.approval_status || "approved",
     assignedMission: row.assigned_mission || profile.assignedMission || "",
     assignedMissionVisible: row.assigned_mission_visible !== false,
@@ -22019,10 +22128,10 @@ function renderStaffSectionTabbar() {
 function renderStaffMasterStats(rows = []) {
   const stats = [
     ["직원", `${rows.length}명`],
+    ["업무일지 대상", `${rows.filter((row) => row.worklogParticipation?.participating).length}명`],
+    ["제외·복귀예정", `${rows.filter((row) => !row.worklogParticipation?.participating || row.worklogParticipation?.phase === "scheduled").length}명`],
     ["권한관리", `${rows.filter((row) => row.access.permissions.staffManage || row.access.permissions.staffApproval).length}명`],
-    ["온보딩 완료", `${rows.filter((row) => row.onboarding.done === row.onboarding.total).length}명`],
     ["오늘 작성", `${rows.filter((row) => row.tasks.length).length}명`],
-    ["노무 기록", `${rows.filter((row) => row.labor.recordedDays).length}명`],
     ["유료 PT", `${rows.reduce((sum, row) => sum + Number(row.labor.settlementPtCount || 0), 0)}건`],
   ];
   return `
@@ -22040,13 +22149,13 @@ function renderStaffMasterTable(rows = []) {
           <span>Master Data</span>
           <h3>전체 직원 명부</h3>
         </div>
-        <p class="staff-master-hint">목록에서 직원을 선택하면 세부 정보와 권한, 온보딩 상태를 한 명씩 확인합니다.</p>
+        <p class="staff-master-hint">직원 원장과 과거 기록은 보존하면서, 대표가 업무일지 대상·제외 사유·복귀일을 한 명씩 관리합니다.</p>
       </header>
       ${rows.length ? `
         <div class="staff-master-table-wrap">
           <table class="staff-master-table">
             <thead>
-              <tr><th>직원</th><th>소속/사업장</th><th>직무</th><th>권한</th><th>근무시간</th><th>오늘 업무</th><th>온보딩</th><th>상세</th></tr>
+              <tr><th>직원</th><th>소속/사업장</th><th>직무</th><th>업무일지 상태</th><th>권한</th><th>근무시간</th><th>오늘 업무</th><th>상세</th></tr>
             </thead>
             <tbody>
               ${rows.map((row) => `
@@ -22054,10 +22163,10 @@ function renderStaffMasterTable(rows = []) {
                   <td><b>${escapeHtml(row.name || "")}</b><span>${escapeHtml(row.email || row.employeeCode)}</span></td>
                   <td><b>${escapeHtml(row.site)}</b><span>${escapeHtml(row.org || "")}</span></td>
                   <td><b>${escapeHtml(row.role || "직원")}</b><span>${escapeHtml(row.primaryWork || row.employmentType || "직무 확인")}</span></td>
+                  <td><em class="staff-worklog-status is-${escapeAttr(row.worklogParticipation?.phase || "active")}">${escapeHtml(row.worklogParticipation?.label || "업무일지 대상")}</em><span>${escapeHtml(row.worklogStatusReason || "기록 유지")}</span></td>
                   <td><b>${escapeHtml(row.access.role)}</b><span>${escapeHtml(row.access.worklog)} · ${escapeHtml(row.access.labor)}</span></td>
                   <td>${escapeHtml(row.workHours || defaultProfile.workHours)}</td>
                   <td>${escapeHtml(`${row.completed}/${row.tasks.length || 0}`)}</td>
-                  <td>${escapeHtml(`${row.onboarding.done}/${row.onboarding.total}`)}</td>
                   <td><button type="button" class="staff-detail-open" data-staff-detail-id="${escapeAttr(row.id)}">열기</button></td>
                 </tr>
               `).join("")}
@@ -22267,6 +22376,10 @@ function canEditStaffProfile(row = {}) {
   return hasApprovalAuthority();
 }
 
+function canManageStaffWorklogParticipation() {
+  return isRepresentativeProfile();
+}
+
 function staffDetailEditField(row, key, label, type = "text") {
   const value = key === "phone" ? formatPhoneNumber(row[key] || "") : row[key] || "";
   return `
@@ -22318,6 +22431,38 @@ function staffDetailMissionEditor(row = {}) {
         <span>직원에게 보이기</span>
       </label>
       <p>숨김 상태에서는 대표와 권한자만 내용을 볼 수 있고, 직원 화면에는 직접 문구를 노출하지 않습니다.</p>
+    </section>
+  `;
+}
+
+function staffDetailWorklogParticipationEditor(row = {}) {
+  const participation = getEmployeeWorklogParticipation(row, getActiveDateKey());
+  const status = normalizeWorklogParticipationStatus(row.worklogStatus || row.worklog_status);
+  const excludedFrom = row.worklogExcludedFrom || row.worklog_excluded_from || (status === "active" ? "" : getActiveDateKey());
+  const excludedUntil = row.worklogExcludedUntil || row.worklog_excluded_until || "";
+  return `
+    <section class="staff-detail-section staff-worklog-participation">
+      <div class="staff-detail-edit-title">
+        <strong>업무일지 운영 상태 <em>대표 전용</em></strong>
+        <span>업무일지 명부·동료 목록·대표 관제에서만 제외합니다. 기존 업무기록과 노무 원장은 삭제하지 않습니다.</span>
+      </div>
+      <div class="staff-worklog-participation-grid">
+        <label>상태
+          <select data-staff-edit-field="worklogStatus">
+            ${worklogParticipationStatusOptions.map(([key, label]) => `<option value="${escapeAttr(key)}" ${key === status ? "selected" : ""}>${escapeHtml(label)}</option>`).join("")}
+          </select>
+        </label>
+        <label>제외 시작일
+          <input type="date" data-staff-edit-field="worklogExcludedFrom" value="${escapeAttr(excludedFrom)}" />
+        </label>
+        <label>복귀 예정일
+          <input type="date" data-staff-edit-field="worklogExcludedUntil" value="${escapeAttr(excludedUntil)}" />
+        </label>
+        <label class="is-wide">사유
+          <textarea data-staff-edit-field="worklogStatusReason" rows="3" placeholder="예: 개인 사유로 2026.09.30까지 휴직">${escapeHtml(row.worklogStatusReason || row.worklog_status_reason || "")}</textarea>
+        </label>
+      </div>
+      <p>현재 상태: <b>${escapeHtml(participation.label)}</b> · 휴직·병가·기타 제외는 복귀 예정일부터 자동으로 업무일지 대상에 복귀합니다. 퇴사는 대표가 직접 대상 복귀로 변경할 때까지 유지됩니다.</p>
     </section>
   `;
 }
@@ -22389,6 +22534,14 @@ function staffEditFieldsToRemotePayload(fields = {}, row = {}) {
       payload.assigned_mission_updated_at = new Date().toISOString();
     }
   }
+  if (hasField("worklogStatus")) {
+    payload.worklog_status = normalizeWorklogParticipationStatus(fields.worklogStatus);
+    payload.worklog_status_reason = fields.worklogStatusReason || "";
+    payload.worklog_excluded_from = fields.worklogExcludedFrom || null;
+    payload.worklog_excluded_until = fields.worklogExcludedUntil || null;
+    payload.worklog_status_updated_by = authState.user?.id || null;
+    payload.worklog_status_updated_at = new Date().toISOString();
+  }
   return payload;
 }
 
@@ -22414,6 +22567,12 @@ function mergeStaffFieldsIntoApprovalRow(row = {}, fields = {}) {
     assigned_mission_visible: fields.assignedMissionVisible ?? row.assigned_mission_visible,
     assigned_mission_updated_by: fields.assignedMission !== undefined ? (authState.user?.id || row.assigned_mission_updated_by) : row.assigned_mission_updated_by,
     assigned_mission_updated_at: fields.assignedMission !== undefined ? new Date().toISOString() : row.assigned_mission_updated_at,
+    worklog_status: fields.worklogStatus !== undefined ? normalizeWorklogParticipationStatus(fields.worklogStatus) : (row.worklog_status || "active"),
+    worklog_status_reason: fields.worklogStatusReason ?? row.worklog_status_reason,
+    worklog_excluded_from: fields.worklogExcludedFrom === "" ? null : (fields.worklogExcludedFrom ?? row.worklog_excluded_from),
+    worklog_excluded_until: fields.worklogExcludedUntil === "" ? null : (fields.worklogExcludedUntil ?? row.worklog_excluded_until),
+    worklog_status_updated_by: fields.worklogStatus !== undefined ? (authState.user?.id || row.worklog_status_updated_by) : row.worklog_status_updated_by,
+    worklog_status_updated_at: fields.worklogStatus !== undefined ? new Date().toISOString() : row.worklog_status_updated_at,
     updated_at: new Date().toISOString(),
   };
 }
@@ -22454,6 +22613,12 @@ function profileRowToEmployeeOverride(row = {}) {
     assignedMissionVisible: profile.assignedMissionVisible !== false,
     assignedMissionUpdatedAt: profile.assignedMissionUpdatedAt || "",
     assignedMissionUpdatedBy: profile.assignedMissionUpdatedBy || "",
+    worklogStatus: profile.worklogStatus || "active",
+    worklogStatusReason: profile.worklogStatusReason || "",
+    worklogExcludedFrom: profile.worklogExcludedFrom || "",
+    worklogExcludedUntil: profile.worklogExcludedUntil || "",
+    worklogStatusUpdatedBy: profile.worklogStatusUpdatedBy || "",
+    worklogStatusUpdatedAt: profile.worklogStatusUpdatedAt || "",
   };
 }
 
@@ -22507,6 +22672,37 @@ async function saveStaffProfileEdits(employeeId) {
   if (!String(fields.org || "").trim()) {
     setStaffDetailSaveStatus("소속은 비울 수 없습니다.", "error");
     return;
+  }
+  if (Object.prototype.hasOwnProperty.call(fields, "worklogStatus")) {
+    if (!canManageStaffWorklogParticipation()) {
+      delete fields.worklogStatus;
+      delete fields.worklogStatusReason;
+      delete fields.worklogExcludedFrom;
+      delete fields.worklogExcludedUntil;
+    } else {
+      fields.worklogStatus = normalizeWorklogParticipationStatus(fields.worklogStatus);
+      if (fields.worklogStatus === "active") {
+        fields.worklogStatusReason = "";
+        fields.worklogExcludedFrom = "";
+        fields.worklogExcludedUntil = "";
+      } else {
+        if (!isWorklogParticipationDateKey(fields.worklogExcludedFrom)) {
+          setStaffDetailSaveStatus("제외 시작일을 선택해주세요.", "error");
+          return;
+        }
+        if (!String(fields.worklogStatusReason || "").trim()) {
+          setStaffDetailSaveStatus("업무일지에서 제외하는 사유를 입력해주세요.", "error");
+          return;
+        }
+        if (
+          isWorklogParticipationDateKey(fields.worklogExcludedUntil)
+          && fields.worklogExcludedUntil < fields.worklogExcludedFrom
+        ) {
+          setStaffDetailSaveStatus("복귀 예정일은 제외 시작일보다 빠를 수 없습니다.", "error");
+          return;
+        }
+      }
+    }
   }
   setStaffDetailSaveStatus("저장 중...", "saving");
   if (row.sourceProfileId && supabaseClient && authState.user) {
@@ -22577,6 +22773,7 @@ function renderStaffDetailModal(row) {
     .filter(([key]) => row.access.permissions[key])
     .map(([, label]) => label);
   const canEdit = canEditStaffProfile(row);
+  const canManageParticipation = canManageStaffWorklogParticipation();
   return `
     <div class="staff-detail-backdrop" data-staff-detail-close>
       <article class="staff-detail-card" role="dialog" aria-modal="true" aria-label="직원 상세">
@@ -22614,6 +22811,12 @@ function renderStaffDetailModal(row) {
           <section class="staff-detail-section">
             <strong>대표 지정 미션</strong>
             <p>${escapeHtml(getAssignedMissionForEmployee(row).visible === false ? "비공개 미션입니다." : (getAssignedMissionForEmployee(row).text || "아직 부여된 미션이 없습니다."))}</p>
+          </section>
+        `}
+        ${canManageParticipation ? staffDetailWorklogParticipationEditor(row) : `
+          <section class="staff-detail-section">
+            <strong>업무일지 운영 상태</strong>
+            <p>${escapeHtml(row.worklogParticipation?.label || "업무일지 대상")} · 업무일지 대상 관리는 대표 계정에서만 변경할 수 있습니다.</p>
           </section>
         `}
         <section class="staff-detail-section staff-detail-edit">
