@@ -28900,11 +28900,11 @@ body[data-active-view="executive"] #executiveDateButton {
 
 @media (max-width: 759px) {
   body[data-active-view="executive"] .executive-hero-actions {
-    grid-template-columns: 34px minmax(0, 1fr) 34px minmax(82px, 0.62fr) 46px !important;
+    grid-template-columns: 32px minmax(0, 1fr) 32px minmax(74px, 0.54fr) 42px !important;
   }
 
   body[data-active-view="executive"] #executiveDateButton {
-    font-size: clamp(17px, 4.5vw, 21px) !important;
+    font-size: clamp(15px, 4.1vw, 19px) !important;
     letter-spacing: -0.055em;
   }
 
@@ -31246,11 +31246,11 @@ body[data-active-view="executive"] #executiveDateButton {
 
 @media (max-width: 759px) {
   body[data-active-view="executive"] .executive-hero-actions {
-    grid-template-columns: 34px minmax(0, 1fr) 34px minmax(82px, 0.62fr) 46px !important;
+    grid-template-columns: 30px minmax(0, 1fr) 30px minmax(64px, 0.5fr) 40px !important;
   }
 
   body[data-active-view="executive"] #executiveDateButton {
-    font-size: clamp(17px, 4.5vw, 21px) !important;
+    font-size: clamp(15px, 4.1vw, 19px) !important;
     letter-spacing: -0.055em;
   }
 
@@ -31259,4 +31259,137 @@ body[data-active-view="executive"] #executiveDateButton {
   body[data-active-view="executive"] #executiveNextDateButton { grid-column: 3; }
   body[data-active-view="executive"] #executiveTodayButton { grid-column: 4; }
   body[data-active-view="executive"] #executiveMenuButton { grid-column: 5; }
+
+  /* On a phone the menu is the single discoverable entry point for commands.
+     Keeping a second command button in the date grid squeezes and clips the
+     date itself, so the compact header deliberately keeps only one action. */
+  body[data-active-view="executive"] .executive-hero-actions .global-command-button {
+    display: none !important;
+  }
+
+  #view-executive #executiveTodayButton.is-weather-today {
+    min-width: 64px !important;
+    min-height: 42px !important;
+  }
+
+  #view-executive #executiveTodayButton.is-weather-today i { font-size: 26px; }
+  #view-executive #executiveTodayButton.is-weather-today small { font-size: 9px; }
+}
+
+/* Executive Operations header: tablet and desktop receive one calm, stable
+   command row. Keeping the identity and controls in a single grid prevents
+   the date, weather, quick command, and menu controls from colliding. */
+@media (min-width: 760px) {
+  body[data-active-view="executive"] .executive-hero {
+    display: grid !important;
+    grid-template-columns: minmax(214px, 0.72fr) minmax(560px, 1.28fr) !important;
+    align-items: center !important;
+    gap: clamp(18px, 2.8vw, 42px) !important;
+    min-height: 118px;
+    padding: 16px clamp(18px, 2.4vw, 34px) !important;
+  }
+
+  body[data-active-view="executive"] .executive-hero-copy {
+    display: grid;
+    align-content: center;
+    gap: 5px;
+    min-width: 0;
+  }
+
+  body[data-active-view="executive"] .executive-hero-copy p {
+    margin: 0;
+    color: rgba(234, 246, 239, 0.72);
+    font-size: 10px;
+    font-weight: 950;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+  }
+
+  body[data-active-view="executive"] .executive-hero-copy h2 {
+    margin: 0;
+    font-size: clamp(30px, 3.05vw, 46px);
+    line-height: 1;
+    letter-spacing: -0.055em;
+  }
+
+  body[data-active-view="executive"] .executive-hero-copy span {
+    overflow: hidden;
+    color: rgba(239, 248, 242, 0.8);
+    font-size: 12px;
+    font-weight: 760;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  body[data-active-view="executive"] .executive-hero-actions {
+    display: grid !important;
+    grid-template-columns: 46px minmax(250px, 1fr) 46px minmax(148px, auto) 48px 48px !important;
+    align-items: center !important;
+    justify-content: initial !important;
+    width: 100% !important;
+    min-width: 0;
+    gap: 7px !important;
+  }
+
+  body[data-active-view="executive"] #executivePrevDateButton { grid-column: 1; grid-row: 1; }
+  body[data-active-view="executive"] #executiveDateButton { grid-column: 2; grid-row: 1; min-width: 0 !important; }
+  body[data-active-view="executive"] #executiveNextDateButton { grid-column: 3; grid-row: 1; }
+  body[data-active-view="executive"] #executiveTodayButton { grid-column: 4; grid-row: 1; }
+
+  body[data-active-view="executive"] .executive-hero-actions .global-command-button {
+    grid-column: 5;
+    grid-row: 1;
+    width: 48px;
+    min-width: 48px;
+    min-height: 48px;
+    padding-inline: 0;
+    overflow: hidden;
+    font-size: 0;
+  }
+
+  body[data-active-view="executive"] .executive-hero-actions .global-command-button::before {
+    color: currentColor;
+    content: "⌘";
+    font-size: 21px;
+    font-weight: 700;
+    line-height: 1;
+  }
+
+  body[data-active-view="executive"] #executiveMenuButton {
+    grid-column: 6;
+    grid-row: 1;
+    margin-left: 0 !important;
+    justify-self: stretch !important;
+  }
+
+  #view-executive #executiveTodayButton.is-weather-today {
+    min-width: 148px !important;
+    min-height: 56px !important;
+    gap: 8px;
+    padding-inline: 11px !important;
+  }
+
+  #view-executive #executiveTodayButton.is-weather-today i { font-size: 34px; }
+  #view-executive #executiveTodayButton.is-weather-today small { font-size: 15px; }
+}
+
+@media (min-width: 760px) and (max-width: 960px) {
+  body[data-active-view="executive"] .executive-hero {
+    grid-template-columns: minmax(0, 1fr) !important;
+    gap: 12px !important;
+  }
+}
+
+/* Keep this final guard after the responsive executive header rules: inactive
+   pages must never be layered below the currently open worklog page. */
+.worklog-shell > .worklog-view:not(.is-active) {
+  display: none !important;
+}
+
+.worklog-shell > .worklog-view.is-active {
+  display: block !important;
+}
+
+.worklog-shell > .report-backup-view.is-active {
+  display: grid !important;
 }

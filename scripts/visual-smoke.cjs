@@ -880,10 +880,14 @@ async function checkPhoneWorklog(browser) {
   if (!restored) fail("phone worklog schedule focus close button did not restore split mode");
 
   const rowsBeforeDelete = await page.locator("#worklogTaskBoard .worklog-task-row").count();
-  const deleteConfirmation = page.waitForEvent("dialog");
+  let deleteConfirmationText = "";
+  // Playwright는 confirm 창이 열린 상태에서는 click 완료를 기다리므로,
+  // 확인창이 열리기 전에 처리기를 등록해야 모바일 QA가 멈추지 않는다.
+  page.once("dialog", async (dialog) => {
+    deleteConfirmationText = dialog.message();
+    await dialog.accept();
+  });
   await page.click("#worklogTaskBoard .task-delete");
-  const dialog = await deleteConfirmation;
-  await dialog.accept();
   const undoToast = page.locator("#undoToast");
   await undoToast.getByRole("button", { name: "되돌리기" }).click();
   const undoDelete = {
@@ -891,7 +895,7 @@ async function checkPhoneWorklog(browser) {
     rowsAfter: await page.locator("#worklogTaskBoard .worklog-task-row").count(),
     hasUndo: await undoToast.textContent().then((text) => Boolean(text?.includes("되돌리기"))),
   };
-  if (!undoDelete.hasUndo || undoDelete.rowsAfter !== undoDelete.rowsBefore) {
+  if (!deleteConfirmationText || !undoDelete.hasUndo || undoDelete.rowsAfter !== undoDelete.rowsBefore) {
     fail("worklog delete undo should restore task rows", JSON.stringify(undoDelete));
   }
 
@@ -3764,6 +3768,9 @@ async function checkExecutiveManagementPage(browser) {
       titleColor: title ? getComputedStyle(title).color : "",
       todayText: dateButton?.textContent?.trim() || "",
       todayFits: dateButton ? dateButton.scrollWidth <= dateButton.clientWidth + 2 : false,
+      dateClientWidth: dateButton?.clientWidth || 0,
+      dateScrollWidth: dateButton?.scrollWidth || 0,
+      dateGridColumns: dateButton?.parentElement ? getComputedStyle(dateButton.parentElement).gridTemplateColumns : "",
       kpiButtonCount: document.querySelectorAll("#executiveKpiGrid button[data-executive-jump]").length,
       menuVisible: Boolean(menuButton?.offsetWidth),
       menuLabel: menuButton?.textContent?.trim() || "",
@@ -3776,10 +3783,10 @@ async function checkExecutiveManagementPage(browser) {
   if (metrics.activeView !== "executive") fail("executive active view mismatch", metrics.activeView);
   if (metrics.headerHeight > 1) fail("executive duplicate top header should be visually removed", `${metrics.headerHeight}px`);
   if (metrics.heroSticky !== "sticky") fail("executive hero should be sticky", metrics.heroSticky);
-  if (metrics.titleText !== "대표 업무일지") fail("executive title mismatch", metrics.titleText);
+  if (metrics.titleText !== "전문경영 실행실") fail("executive title mismatch", metrics.titleText);
   if (metrics.titleColor !== "rgb(255, 247, 207)") fail("executive title color should stand out", metrics.titleColor);
   if (!/^\d{4}\.\d{2}\.\d{2}\([日月火水木金土]\)$/.test(metrics.todayText)) fail("executive date button should show compact date", metrics.todayText);
-  if (!metrics.todayFits) fail("executive date button is clipped", metrics.todayText);
+  if (!metrics.todayFits) fail("executive date button is clipped", JSON.stringify(metrics));
   if (metrics.kpiButtonCount !== 6) fail("executive KPI buttons should be six navigators", String(metrics.kpiButtonCount));
   if (!metrics.menuVisible) fail("executive menu button should be docked inside the active section");
   if (!metrics.menuInViewport) fail("executive menu button should stay in viewport", JSON.stringify(metrics));
@@ -3809,6 +3816,85 @@ async function checkExecutiveManagementPage(browser) {
   await page.waitForTimeout(150);
   const opened = await page.evaluate(() => document.querySelector('[data-executive-section="score"]')?.classList.contains("is-open"));
   if (!opened) fail("executive KPI button did not open target section");
+
+  // 아이패드에서는 대표 본인 사업장(또는 주소가 설정된 첫 사업장) 기준의
+  // 날씨를 쓰고, 마지막으로 열람한 직원의 소속에 따라 날짜 줄이 흔들리면 안 된다.
+  await page.setViewportSize({ width: 1024, height: 768 });
+  await page.evaluate(() => {
+    document.body.classList.remove("physical-phone-device");
+    document.body.dataset.layoutMode = "wide";
+    state.profile = {
+      ...state.profile,
+      org: "(주)방주",
+      workplace: "본사",
+      role: "대표",
+    };
+    state.selectedEmployeeId = "bangju-finance-manager";
+    state.siteWeatherAddresses = {
+      ...(state.siteWeatherAddresses || {}),
+      "비욘드 피트니스": "울산광역시 남구 대공원로 99번길 20-1",
+    };
+    const siteKey = "비욘드 피트니스";
+    state.weatherCache = {
+      ...(state.weatherCache || {}),
+      [getWeatherCacheKey(siteKey, todayKey)]: {
+        siteKey,
+        address: state.siteWeatherAddresses[siteKey],
+        dateKey: todayKey,
+        fetchedAt: new Date().toISOString(),
+        temperatureMin: 24,
+        temperatureMax: 31,
+        weatherCode: 0,
+        condition: "맑음",
+      },
+    };
+    normalizeState();
+    renderResponsiveMode();
+    switchView("executive", { skipRemoteRefresh: true });
+    renderAll();
+  });
+  await page.waitForTimeout(120);
+  const tabletChrome = await page.evaluate(() => {
+    const rect = (selector) => {
+      const node = document.querySelector(selector);
+      if (!node) return null;
+      const { left, right, top, bottom, width, height } = node.getBoundingClientRect();
+      return { left, right, top, bottom, width, height };
+    };
+    const date = rect("#executiveDateButton");
+    const weather = rect("#executiveTodayButton");
+    const command = rect(".executive-hero-actions .global-command-button");
+    const menu = rect("#executiveMenuButton");
+    const headerItems = [date, weather, command, menu].filter(Boolean);
+    const hasOverlap = headerItems.some((item, index) => headerItems.slice(index + 1).some((next) => item.right > next.left + 1));
+    const weatherButton = document.querySelector("#executiveTodayButton");
+    return {
+      title: document.querySelector(".executive-hero h2")?.textContent?.trim() || "",
+      weatherText: weatherButton?.textContent?.replace(/\s+/g, " ").trim() || "",
+      weatherStatus: weatherButton?.dataset.weatherStatus || "",
+      weatherWidth: weather?.width || 0,
+      weatherHeight: weather?.height || 0,
+      menuWidth: menu?.width || 0,
+      menuHeight: menu?.height || 0,
+      hasOverlap,
+      headerItemRects: headerItems.map((item) => ({
+        left: Math.round(item.left),
+        right: Math.round(item.right),
+        top: Math.round(item.top),
+        bottom: Math.round(item.bottom),
+      })),
+      inViewport: headerItems.every((item) => item.left >= 0 && item.right <= window.innerWidth && item.top >= 0 && item.bottom <= window.innerHeight),
+      fits: document.documentElement.scrollWidth <= window.innerWidth + 2,
+    };
+  });
+  if (tabletChrome.title !== "전문경영 실행실") fail("tablet executive title mismatch", tabletChrome.title);
+  if (tabletChrome.weatherStatus !== "ready" || !tabletChrome.weatherText.includes("24°/31°")) {
+    fail("tablet executive weather should use the representative weather site", JSON.stringify(tabletChrome));
+  }
+  if (tabletChrome.weatherWidth < 148 || tabletChrome.weatherHeight < 56 || tabletChrome.menuWidth < 44 || tabletChrome.menuHeight < 44
+    || tabletChrome.hasOverlap || !tabletChrome.inViewport || !tabletChrome.fits) {
+    fail("tablet executive header controls should be spaced, tappable, and fit", JSON.stringify(tabletChrome));
+  }
   if (errors.length) fail("executive page errors", errors.join(" | "));
   await page.close();
 }

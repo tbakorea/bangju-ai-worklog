@@ -2580,6 +2580,17 @@ function getActiveWeatherEmployee(scope = activeView) {
   return getSelectedEmployee();
 }
 
+function getExecutiveWeatherSiteKey() {
+  const representative = getProfileEmployee?.() || state.profile || {};
+  const representativeSiteKey = getSiteWeatherKeyForEmployee(representative);
+  if (getSiteWeatherAddress(representativeSiteKey)) return representativeSiteKey;
+
+  // 대표 화면은 마지막으로 열람한 직원의 소속이 아니라, 대표 기본 사업장 또는
+  // 주소가 설정된 첫 사업장을 기준으로 표시해야 합니다. 그래야 기기마다 마지막
+  // 열람 대상이 달라도 동일한 날씨 칩을 보여줍니다.
+  return getConfiguredWeatherSites()[0]?.siteKey || representativeSiteKey;
+}
+
 function renderWeatherWidgets(scope = activeView) {
   const dateKey = getActiveDateKey();
   // 업무일지를 열 때 숨겨진 다른 사업장까지 모두 조회하면 메뉴 전환마다
@@ -2599,7 +2610,7 @@ function renderWeatherWidgets(scope = activeView) {
   renderHistoricalWeatherBanners(dateKey);
 }
 
-function renderWeatherDateButton(button, employee, dateKey = getActiveDateKey()) {
+function renderWeatherDateButton(button, employee, dateKey = getActiveDateKey(), preferredSiteKey = "") {
   if (!button) return;
   const isToday = dateKey === todayKey;
   button.hidden = false;
@@ -2613,7 +2624,7 @@ function renderWeatherDateButton(button, employee, dateKey = getActiveDateKey())
     button.setAttribute("aria-label", "오늘 날짜로 이동");
     return;
   }
-  const siteKey = getSiteWeatherKeyForEmployee(employee);
+  const siteKey = String(preferredSiteKey || getSiteWeatherKeyForEmployee(employee)).trim() || "기타";
   const address = getSiteWeatherAddress(siteKey);
   const record = getWeatherRecordForSite(siteKey, dateKey);
   const requestKey = getWeatherCacheKey(siteKey, dateKey);
@@ -2632,7 +2643,12 @@ function renderWeatherDateButton(button, employee, dateKey = getActiveDateKey())
 function renderWeatherDateButtons(dateKey = getActiveDateKey()) {
   renderWeatherDateButton(document.getElementById("todayJumpButton"), getSelectedEmployee(), dateKey);
   renderWeatherDateButton(document.getElementById("fitnessTodayButton"), getActiveWeatherEmployee("fitness-log"), dateKey);
-  renderWeatherDateButton(document.getElementById("executiveTodayButton"), getActiveWeatherEmployee("executive"), dateKey);
+  renderWeatherDateButton(
+    document.getElementById("executiveTodayButton"),
+    getActiveWeatherEmployee("executive"),
+    dateKey,
+    getExecutiveWeatherSiteKey(),
+  );
 }
 
 function getHistoricalWeatherBannerMarkup(record, siteKey = "") {
@@ -2971,7 +2987,7 @@ async function requestWeatherForSite(siteKey, address, dateKey = getActiveDateKe
 
 function refreshWeatherForScope(scope = activeView) {
   const employee = getActiveWeatherEmployee(scope);
-  const siteKey = getSiteWeatherKeyForEmployee(employee);
+  const siteKey = scope === "executive" ? getExecutiveWeatherSiteKey() : getSiteWeatherKeyForEmployee(employee);
   const requestKey = getWeatherCacheKey(siteKey, getActiveDateKey());
   weatherBatchAttempted.delete(requestKey);
   clearWeatherRequestFailure(requestKey);
@@ -6609,8 +6625,8 @@ function renderExecutiveWorklogCalendar() {
   calendar.hidden = false;
   calendar.innerHTML = `
     <header class="executive-worklog-calendar-heading">
-      <div><span>${mode === "week" ? "WEEKLY CEO PLAN" : "MONTHLY CEO PLAN"}</span><strong>${escapeHtml(title)}</strong></div>
-      <small>날짜를 누르면 해당 일의 대표 업무일지로 이동합니다.</small>
+      <div><span>${mode === "week" ? "WEEKLY EXECUTIVE PLAN" : "MONTHLY EXECUTIVE PLAN"}</span><strong>${escapeHtml(title)}</strong></div>
+      <small>날짜를 누르면 해당 일의 전문경영 실행실로 이동합니다.</small>
     </header>
     <div class="executive-worklog-calendar-grid ${mode === "week" ? "is-week" : "is-month"}">
       ${dates.map((key) => {
@@ -6929,7 +6945,7 @@ function renderExecutiveManagement() {
   const allowed = isRepresentativeProfile();
   if (accessCard) accessCard.hidden = allowed;
   body.hidden = !allowed;
-  if (accessLabel) accessLabel.textContent = allowed ? "대표 접근 중 · 오늘의 판단 · 지시 · 위임" : "대표 전용 · 의사결정과 개입사항";
+  if (accessLabel) accessLabel.textContent = allowed ? "경영 책임자 접근 중 · 오늘의 판단 · 지시 · 위임" : "경영 책임자 전용 · 의사결정과 개입사항";
   if (!allowed) return;
   renderExecutiveWorklog();
 
@@ -8245,7 +8261,12 @@ function renderDateNav() {
   });
   // Today's slot on the CEO date row doubles as a large weather chip. On a
   // different date the same stable slot remains the return-to-today button.
-  renderWeatherDateButton(executiveTodayButton, getActiveWeatherEmployee("executive"), activeDateKey);
+  renderWeatherDateButton(
+    executiveTodayButton,
+    getActiveWeatherEmployee("executive"),
+    activeDateKey,
+    getExecutiveWeatherSiteKey(),
+  );
   if (executiveNextButton) {
     executiveNextButton.disabled = false;
     executiveNextButton.setAttribute("aria-disabled", "false");
@@ -8379,7 +8400,7 @@ function renderWorklogCalendar() {
     : calendarPickerMode === "fitness"
       ? `피트니스 업무일지 ${formatKoreanDate(getActiveDateKey())}`
       : calendarPickerMode === "executive"
-        ? `대표 업무일지 ${formatFormalKoreanDate(getActiveDateKey())}`
+        ? `전문경영 실행실 ${formatFormalKoreanDate(getActiveDateKey())}`
         : calendarPickerMode === "control"
           ? `통합관제 ${formatFormalKoreanDate(getActiveDateKey())}`
           : formatKoreanDate(getActiveDateKey());
