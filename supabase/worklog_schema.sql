@@ -1098,11 +1098,28 @@ begin
   end if;
 
   return query
-  select w.user_id, w.state, w.updated_at
+  select
+    w.user_id,
+    jsonb_build_object(
+      'profile', w.state -> 'profile',
+      'ownerEmployeeId', w.state -> 'ownerEmployeeId',
+      'ownerWorklogVersion', w.state -> 'ownerWorklogVersion',
+      'ownerWorklog', w.state -> 'ownerWorklog',
+      'selectedEmployeeId', w.state -> 'selectedEmployeeId',
+      'employeeLogs', jsonb_build_object(
+        to_char(target_date, 'YYYY-MM-DD'),
+        w.state -> 'employeeLogs' -> to_char(target_date, 'YYYY-MM-DD')
+      ),
+      'dagymDaily', w.state -> 'dagymDaily',
+      'dagymDailyAnalyses', w.state -> 'dagymDailyAnalyses',
+      'fitnessDailyGuidance', w.state -> 'fitnessDailyGuidance'
+    ) as state,
+    w.updated_at
   from public.worklog_states w
   where w.log_date = target_date
     and w.user_id <> auth.uid()
-  order by w.updated_at desc;
+  order by w.updated_at desc
+  limit 500;
 end;
 $$;
 
@@ -1141,7 +1158,23 @@ begin
   end if;
 
   return query
-  select w.user_id, w.state, w.updated_at
+  select
+    w.user_id,
+    jsonb_build_object(
+      'profile', w.state -> 'profile',
+      'ownerEmployeeId', w.state -> 'ownerEmployeeId',
+      'ownerWorklogVersion', w.state -> 'ownerWorklogVersion',
+      'ownerWorklog', w.state -> 'ownerWorklog',
+      'selectedEmployeeId', w.state -> 'selectedEmployeeId',
+      'employeeLogs', jsonb_build_object(
+        to_char(target_date, 'YYYY-MM-DD'),
+        w.state -> 'employeeLogs' -> to_char(target_date, 'YYYY-MM-DD')
+      ),
+      'dagymDaily', w.state -> 'dagymDaily',
+      'dagymDailyAnalyses', w.state -> 'dagymDailyAnalyses',
+      'fitnessDailyGuidance', w.state -> 'fitnessDailyGuidance'
+    ) as state,
+    w.updated_at
   from public.worklog_states w
   join public.profiles colleague on colleague.id = w.user_id
   where w.log_date = target_date
@@ -1162,7 +1195,8 @@ begin
         end = 'fitness'
       )
     )
-  order by w.updated_at desc;
+  order by w.updated_at desc
+  limit 500;
 end;
 $$;
 
