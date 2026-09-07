@@ -990,6 +990,19 @@ const fitnessReportAiAttempted = new Set();
 let activeWorklogReportAiKey = "";
 let worklogReportAiRequestId = 0;
 const worklogReportAiAttempted = new Set();
+// 운영 인사이트 분석실은 저장된 업무일지·근태·운영 지표를 질문별로 필요한
+// 범위만 요약해 분석합니다. 결과는 브라우저 세션에만 두어 직원 개인정보가
+// 불필요하게 장기 보관되거나 다른 사용자에게 노출되지 않게 합니다.
+const operationsInsightState = {
+  scope: "operations",
+  employeeId: "",
+  question: "",
+  loading: false,
+  result: null,
+  snapshot: null,
+  requestedAt: "",
+};
+let operationsInsightRequestId = 0;
 const dailyEditingState = {
   focused: false,
   composing: false,
@@ -8074,6 +8087,385 @@ function renderAiCoach() {
   });
 }
 
+function getOperationsInsightScopeMeta(scope = operationsInsightState.scope) {
+  return {
+    operations: { label: "통합 운영", hint: "전사 업무·근태·운영 신호를 근거로 봅니다." },
+    employee: { label: "직원 분석", hint: "선택한 직원의 업무 실행·근태·성장 기록만 분석합니다." },
+    fitness: { label: "피트니스 운영", hint: "수업·상담·회원·홍보 행동과 운영 흐름을 봅니다." },
+  }[scope] || { label: "통합 운영", hint: "전사 운영 기록을 근거로 봅니다." };
+}
+
+function getOperationsInsightEmployeeOptions() {
+  return getEmployeeOptions({ worklogParticipantsOnly: true }).filter(isAssignedWorklogEmployee);
+}
+
+function getOperationsInsightEmployee() {
+  const employees = getOperationsInsightEmployeeOptions();
+  const selectedId = String(operationsInsightState.employeeId || "").trim();
+  const employee = employees.find((item) => item.id === selectedId) || employees[0] || null;
+  if (employee && employee.id !== selectedId) operationsInsightState.employeeId = employee.id;
+  return employee;
+}
+
+function getOperationsInsightDagymMetrics(dateKey = getActiveDateKey()) {
+  const record = state.dagymDaily?.[dateKey] || {};
+  const nested = record.metrics && typeof record.metrics === "object" ? record.metrics : {};
+  const domains = record.domains && typeof record.domains === "object" ? record.domains : {};
+  const valueOf = (...values) => numberValue(values.find((value) => value !== undefined && value !== null && value !== ""));
+  return {
+    sales: valueOf(record.sales, nested.sales, domains.sales?.value, domains.sales?.amount),
+    visits: valueOf(record.visits, nested.visits, domains.members?.visits, domains.attendance?.visits),
+    newMembers: valueOf(record.newMembers, nested.newMembers, domains.members?.newMembers),
+    renewals: valueOf(record.renewals, nested.renewals, domains.members?.renewals),
+    ptBookings: valueOf(record.ptBookings, nested.ptBookings, domains.schedule?.ptBookings),
+    noShows: valueOf(record.noShows, nested.noShows, domains.schedule?.noShows),
+    importedAt: String(record.importedAt || record.updatedAt || domains.sales?.capturedAt || ""),
+  };
+}
+
+function buildOperationsInsightEmployeeSummary(employee = null) {
+  if (!employee) return null;
+  const dateKeys = getRepresentativeAnalysisHistoricalDateKeys(getActiveDateKey(), representativeEmployeeReportStartDate);
+  const analysis = buildRepresentativeEmployeeAnalysis(employee, getActiveDateKey(), { dateKeys });
+  const monthly = buildRepresentativeEmployeeMonthlyEvidence(employee, getActiveDateKey(), { dateKeys });
+  return {
+    name: getEmployeeAdminLabel(employee),
+    role: employee.role || "직원",
+    organization: employee.org || employee.workplace || "소속 미설정",
+    period: analysis.periodLabel || "기록 기간 없음",
+    confidence: analysis.confidenceLabel,
+    scheduledDays: analysis.scheduledDays,
+    evidenceDays: analysis.evidenceDays,
+    attendanceDays: analysis.attendanceDays,
+    missingAttendanceDays: analysis.missingAttendanceDays,
+    lateDays: analysis.lateDays,
+    earlyDays: analysis.earlyDays,
+    absentDays: analysis.absentDays,
+    worklogDays: analysis.worklogDays,
+    reportDays: analysis.reportDays,
+    taskTotal: analysis.taskTotal,
+    completedTotal: analysis.completedTotal,
+    completionRate: Math.round(analysis.completionRate * 100),
+    worklogRate: Math.round(analysis.worklogRate * 100),
+    attendanceRate: Math.round(analysis.attendanceRate * 100),
+    competencyScores: analysis.competencyScores.map((item) => ({ name: item.name, score: item.score })),
+    attention: analysis.attention,
+    monthly: monthly.months.slice(0, 3).map((month) => ({
+      month: month.monthKey,
+      tasks: month.taskTotal,
+      completed: month.completedTotal,
+      attendanceDays: month.attendanceDays,
+      worklogDays: month.worklogDays,
+      fitnessActions: month.fitnessActions,
+    })),
+  };
+}
+
+function buildOperationsInsightSnapshot(scope = operationsInsightState.scope, employeeId = operationsInsightState.employeeId, model = null) {
+  const safeScope = ["operations", "employee", "fitness"].includes(scope) ? scope : "operations";
+  const premiumModel = model || buildPremiumOperatingModel();
+  const staffRows = getControlStaffRows();
+  const fitnessOps = getFitnessOpsSummary();
+  const employee = safeScope === "employee"
+    ? getOperationsInsightEmployeeOptions().find((item) => item.id === employeeId) || getOperationsInsightEmployee()
+    : null;
+  const taskTotal = staffRows.reduce((sum, row) => sum + numberValue(row.taskCount), 0);
+  const completedTotal = staffRows.reduce((sum, row) => sum + numberValue(row.completedCount), 0);
+  const scheduleTotal = Object.values(state.employeeLogs?.[getActiveDateKey()] || {}).reduce((sum, log) => (
+    sum + (log?.schedule || []).filter((entry) => String(getScheduleEntryText(entry) || "").trim()).length
+  ), 0);
+  const staffSignals = staffRows
+    .filter((row) => row.aiSignal !== "정상" || row.attendanceStatus === "미기록")
+    .slice(0, 8)
+    .map((row) => ({
+      role: row.role,
+      organization: row.org,
+      attendance: row.attendanceStatus,
+      execution: `${row.completedCount}/${row.taskCount}`,
+      signal: row.aiSignal,
+    }));
+  const dagym = getOperationsInsightDagymMetrics();
+  const salesActions = fitnessOps.consultation + fitnessOps.snsPromotion + fitnessOps.outbound + fitnessOps.outsideSales + fitnessOps.customerNew + fitnessOps.customerRenewal;
+  return {
+    version: 1,
+    dateKey: getActiveDateKey(),
+    scope: safeScope,
+    scopeLabel: getOperationsInsightScopeMeta(safeScope).label,
+    question: String(operationsInsightState.question || "").trim().slice(0, 800),
+    dataPolicy: "업무일지·근태·운영 집계의 필요한 항목만 사용하며 연락처·주민번호·회원 연락처는 포함하지 않음",
+    dataCoverage: {
+      worklogDates: Object.keys(state.employeeLogs || {}).filter((key) => /^\d{4}-\d{2}-\d{2}$/.test(key)).length,
+      dagymDates: Object.keys(state.dagymDaily || {}).filter((key) => /^\d{4}-\d{2}-\d{2}$/.test(key)).length,
+      rosterCount: staffRows.length,
+    },
+    operations: {
+      readinessScore: premiumModel.readinessScore,
+      taskTotal,
+      completedTotal,
+      incompleteTotal: Math.max(0, taskTotal - completedTotal),
+      scheduleTotal,
+      staffSignalCount: staffSignals.length,
+      staffSignals,
+      missionQueueCount: premiumModel.missionQueue.length,
+    },
+    fitness: {
+      paidPt: fitnessOps.ptRegular,
+      freePt: fitnessOps.ptFree,
+      consultation: fitnessOps.consultation,
+      customerNew: fitnessOps.customerNew,
+      customerRenewal: fitnessOps.customerRenewal,
+      snsPromotion: fitnessOps.snsPromotion,
+      outbound: fitnessOps.outbound,
+      outsideSales: fitnessOps.outsideSales,
+      salesActions,
+      dagym,
+    },
+    employee: buildOperationsInsightEmployeeSummary(employee),
+  };
+}
+
+function buildOperationsInsightFallback(snapshot = {}, reason = "") {
+  const scope = snapshot.scope || "operations";
+  const operations = snapshot.operations || {};
+  const fitness = snapshot.fitness || {};
+  const employee = snapshot.employee;
+  if (scope === "employee" && employee) {
+    const completed = `${employee.completedTotal || 0}/${employee.taskTotal || 0}`;
+    const attendanceExceptions = numberValue(employee.lateDays) + numberValue(employee.earlyDays);
+    return {
+      source: "basic",
+      title: `${employee.name} 실행 기록 요약`,
+      conclusion: `${employee.period} 기준 기록 근거 ${employee.evidenceDays || 0}일, 우선업무 완료 ${completed}건입니다.`,
+      answer: `${employee.confidence || "자료 축적 중"} 단계입니다. 근태와 업무기록의 누락 여부를 먼저 보완하면 성장 추세를 더 정확하게 확인할 수 있습니다.`,
+      evidence: [
+        { label: "근태 기록", value: `${employee.attendanceDays || 0}/${employee.scheduledDays || 0}일`, detail: `미기록 ${employee.missingAttendanceDays || 0}일 · 지각/조퇴 ${attendanceExceptions}건` },
+        { label: "업무 실행", value: completed, detail: `업무일지 ${employee.worklogDays || 0}일 · 보고 ${employee.reportDays || 0}일` },
+        { label: "역량 근거", value: employee.competencyScores?.[0]?.name || "기록 축적", detail: employee.attention?.[0] || "최근 기록에서 즉시 확인할 위험 신호가 없습니다." },
+      ],
+      actions: [
+        { priority: "1", title: "오늘 기록 완결", owner: employee.name, detail: "근무 종료 전 우선업무 상태와 업무보고를 한 번에 확인합니다." },
+        { priority: "2", title: "누락 근거 보완", owner: employee.name, detail: "출퇴근 또는 시간별일정이 비어 있으면 사실 기준으로 보완합니다." },
+        { priority: "3", title: "다음 근무 행동", owner: "관리자", detail: "다음 근무일에 완료율과 기록률의 변화를 짧게 점검합니다." },
+      ],
+      caveat: reason || "이 결과는 저장된 업무·근태 기록만 바탕으로 한 운영 참고용 분석입니다. 성격이나 인사등급을 판단하지 않습니다.",
+    };
+  }
+  const incomplete = numberValue(operations.incompleteTotal);
+  const salesActions = numberValue(fitness.salesActions);
+  return {
+    source: "basic",
+    title: scope === "fitness" ? "피트니스 운영 흐름 요약" : "통합 운영 흐름 요약",
+    conclusion: `오늘 업무 완료 ${operations.completedTotal || 0}/${operations.taskTotal || 0}건, 확인이 필요한 직원 신호 ${operations.staffSignalCount || 0}건입니다.`,
+    answer: scope === "fitness"
+      ? `유료 PT ${fitness.paidPt || 0}건과 상담·재등록·홍보 행동 ${salesActions}건을 다음 예약·계약 후속업무까지 연결하는 것이 우선입니다.`
+      : `미완료 ${incomplete}건과 근태·업무 신호를 담당자별로 확인한 뒤, 오늘 마감 가능한 행동으로 나누어 실행하세요.`,
+    evidence: [
+      { label: "업무 실행", value: `${operations.completedTotal || 0}/${operations.taskTotal || 0}`, detail: `시간별 일정 ${operations.scheduleTotal || 0}건 · 미완료 ${incomplete}건` },
+      { label: "직원 신호", value: `${operations.staffSignalCount || 0}건`, detail: operations.staffSignals?.[0] ? `${operations.staffSignals[0].role} · ${operations.staffSignals[0].signal}` : "즉시 확인 신호가 없습니다." },
+      { label: "피트니스 행동", value: `${salesActions}건`, detail: `유료 PT ${fitness.paidPt || 0} · 상담 ${fitness.consultation || 0} · SNS ${fitness.snsPromotion || 0}` },
+    ],
+    actions: [
+      { priority: "1", title: "미완료 업무 마감", owner: "담당자", detail: "오늘 종료 전 미완료 업무의 완료·연기·위임 상태를 확정합니다." },
+      { priority: "2", title: "확인 신호 점검", owner: "관리자", detail: "근태 미기록과 업무점검 신호의 사실 여부를 먼저 확인합니다." },
+      { priority: "3", title: scope === "fitness" ? "매출 행동 연결" : "내일 실행 지정", owner: scope === "fitness" ? "센터장" : "운영책임자", detail: scope === "fitness" ? "상담·PT·재등록 행동마다 다음 연락 또는 예약을 지정합니다." : "핵심 신호마다 담당자와 다음 확인일을 지정합니다." },
+    ],
+    caveat: reason || "이 결과는 현재 저장된 운영 기록을 기준으로 한 기본 분석입니다. 매출·출석 원자료가 추가되면 판단 정확도가 높아집니다.",
+  };
+}
+
+function renderOperationsInsightResult(result = null) {
+  if (!result) return `
+    <div class="operations-insight-empty">
+      <strong>질문을 입력하면 근거·실행안·주의사항으로 답합니다.</strong>
+      <span>직원 분석은 업무 실행·근태·성장 기록을 중심으로 하며, 인성이나 성격을 단정하지 않습니다.</span>
+    </div>
+  `;
+  const evidence = Array.isArray(result.evidence) ? result.evidence : [];
+  const actions = Array.isArray(result.actions) ? result.actions : [];
+  return `
+    <article class="operations-insight-result ${result.source === "basic" ? "is-basic" : ""}">
+      <header>
+        <div>
+          <span>${result.source === "basic" ? "기록 기반 기본 분석" : "AI 운영 분석"}</span>
+          <strong>${escapeHtml(result.title || "운영 인사이트")}</strong>
+        </div>
+        <button type="button" class="compact-action-button" data-operations-insight-report ${result ? "" : "disabled"}>리포트 열기</button>
+      </header>
+      <section class="operations-insight-answer">
+        <b>핵심 판단</b>
+        <strong>${escapeHtml(result.conclusion || "기록을 분석 중입니다.")}</strong>
+        <p>${escapeHtml(result.answer || "")}</p>
+      </section>
+      <div class="operations-insight-evidence">
+        ${evidence.map((item) => `
+          <article>
+            <span>${escapeHtml(item.label || "근거")}</span>
+            <strong>${escapeHtml(item.value || "-")}</strong>
+            <p>${escapeHtml(item.detail || "")}</p>
+          </article>
+        `).join("")}
+      </div>
+      <section class="operations-insight-actions">
+        <h4>바로 실행할 일</h4>
+        <ol>${actions.map((item) => `<li><b>${escapeHtml(item.priority || "-")}</b><div><strong>${escapeHtml(item.title || "실행 항목")}</strong><span>${escapeHtml(item.owner || "담당자")} · ${escapeHtml(item.detail || "")}</span></div></li>`).join("")}</ol>
+      </section>
+      <p class="operations-insight-caveat">${escapeHtml(result.caveat || "")}</p>
+    </article>
+  `;
+}
+
+function renderOperationsInsightLab(model = null) {
+  const scopeMeta = getOperationsInsightScopeMeta();
+  const employees = getOperationsInsightEmployeeOptions();
+  const selectedEmployee = getOperationsInsightEmployee();
+  const loading = operationsInsightState.loading;
+  return `
+    <section class="operations-insight-lab" id="operationsInsightLab">
+      <header>
+        <div>
+          <span>AI Operations Intelligence</span>
+          <strong>운영 인사이트 분석실</strong>
+          <p>질문에 맞는 업무·근태·운영 지표를 근거로 분석하고, 결과를 실행 보고서로 정리합니다.</p>
+        </div>
+        <em>${escapeHtml(scopeMeta.label)}</em>
+      </header>
+      <div class="operations-insight-layout">
+        <form class="operations-insight-form" data-operations-insight-form>
+          <label>
+            <span>분석 범위</span>
+            <select data-operations-insight-scope aria-label="분석 범위">
+              <option value="operations" ${operationsInsightState.scope === "operations" ? "selected" : ""}>통합 운영</option>
+              <option value="employee" ${operationsInsightState.scope === "employee" ? "selected" : ""}>직원 분석</option>
+              <option value="fitness" ${operationsInsightState.scope === "fitness" ? "selected" : ""}>피트니스 운영</option>
+            </select>
+          </label>
+          ${operationsInsightState.scope === "employee" ? `
+            <label>
+              <span>분석할 직원</span>
+              <select data-operations-insight-employee aria-label="분석할 직원">
+                ${employees.map((employee) => `<option value="${escapeAttr(employee.id)}" ${selectedEmployee?.id === employee.id ? "selected" : ""}>${escapeHtml(getEmployeeAdminLabel(employee))} · ${escapeHtml(employee.role || "직원")}</option>`).join("") || "<option value=\"\">업무일지 대상 직원이 없습니다</option>"}
+              </select>
+            </label>
+          ` : ""}
+          <label class="operations-insight-question-field">
+            <span>질문</span>
+            <textarea data-operations-insight-question rows="3" maxlength="800" placeholder="예: 오늘 운영에서 먼저 처리할 위험 신호와 담당자별 실행안을 알려주세요.">${escapeHtml(operationsInsightState.question)}</textarea>
+          </label>
+          <div class="operations-insight-suggestions" aria-label="추천 질문">
+            <button type="button" data-operations-insight-suggestion="오늘 운영에서 먼저 처리할 위험 신호와 담당자별 실행안을 알려주세요.">오늘 운영 리스크</button>
+            <button type="button" data-operations-insight-suggestion="기록을 바탕으로 다음 근무에서 개선할 업무 실행안을 알려주세요.">실행·성장 분석</button>
+            <button type="button" data-operations-insight-suggestion="피트니스 매출과 회원관리에 필요한 오늘의 행동을 우선순위로 알려주세요.">피트니스 매출 행동</button>
+          </div>
+          <p class="operations-insight-policy">${escapeHtml(scopeMeta.hint)} 연락처·주민번호·회원 연락처 등 직접 식별정보는 분석에 포함하지 않습니다.</p>
+          <button type="submit" class="operations-insight-submit" ${loading ? "disabled" : ""}>${loading ? "분석 중…" : "AI 분석하기"}</button>
+        </form>
+        <div class="operations-insight-output" aria-live="polite">
+          ${renderOperationsInsightResult(operationsInsightState.result)}
+        </div>
+      </div>
+    </section>
+  `;
+}
+
+function getOperationsInsightReportHtml(result = {}, snapshot = {}) {
+  const evidence = Array.isArray(result.evidence) ? result.evidence : [];
+  const actions = Array.isArray(result.actions) ? result.actions : [];
+  const scopeMeta = getOperationsInsightScopeMeta(snapshot.scope);
+  return `<!doctype html><html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${escapeHtml(result.title || "운영 인사이트 리포트")}</title><style>
+    *{box-sizing:border-box} body{margin:0;background:#edf1ed;color:#17271f;font-family:-apple-system,BlinkMacSystemFont,"Apple SD Gothic Neo","Noto Sans KR",sans-serif} .toolbar{position:sticky;top:0;display:flex;justify-content:flex-end;gap:8px;padding:12px;background:#123d2f}.toolbar button{border:0;border-radius:10px;background:#fffdf7;color:#123d2f;padding:9px 13px;font-weight:800;cursor:pointer}.page{width:min(210mm,calc(100vw - 28px));min-height:297mm;margin:18px auto;padding:18mm;background:#fffefa;box-shadow:0 18px 50px rgba(12,45,34,.18)}.eyebrow{margin:0;color:#527064;font-size:11px;font-weight:900;letter-spacing:.12em;text-transform:uppercase}.title{margin:7px 0 3px;color:#103d2e;font-size:30px;line-height:1.18}.meta{margin:0;color:#64736c;font-size:13px;font-weight:700}.summary{margin-top:20px;border:1px solid #c9d8cf;border-radius:14px;background:#f4f8f2;padding:14px}.summary b{color:#607169;font-size:12px}.summary strong{display:block;margin-top:6px;color:#103d2e;font-size:20px;line-height:1.35}.summary p{margin:8px 0 0;font-size:14px;line-height:1.6}.section{margin-top:16px}.section h2{margin:0 0 8px;border-bottom:2px solid #174c3a;padding-bottom:6px;color:#103d2e;font-size:16px}.grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}.card{border:1px solid #d7e0d8;border-radius:10px;padding:10px}.card span,.actions span{display:block;color:#687870;font-size:11px;font-weight:800}.card strong{display:block;margin-top:4px;color:#123d2f;font-size:18px}.card p{margin:5px 0 0;font-size:12px;line-height:1.45}.actions{display:grid;gap:8px;padding:0;list-style:none;counter-reset:item}.actions li{display:grid;grid-template-columns:30px 1fr;gap:9px;border:1px solid #d7e0d8;border-radius:10px;padding:10px}.actions b{display:grid;place-items:center;width:28px;height:28px;border-radius:50%;background:#e5efe7;color:#123d2f}.actions strong{display:block;font-size:14px}.actions span{margin-top:3px;font-size:12px;line-height:1.5}.caveat{margin-top:16px;border-left:3px solid #b17a31;padding:8px 10px;background:#fff9eb;color:#665332;font-size:12px;line-height:1.55}@media print{body{background:#fff}.toolbar{display:none}.page{width:210mm;min-height:297mm;margin:0;box-shadow:none;page-break-after:always}@page{size:A4;margin:0}}</style></head><body><div class="toolbar"><button onclick="window.print()">A4 출력</button><button onclick="window.close()">닫기</button></div><main class="page"><p class="eyebrow">Bangju Operating Insight · Evidence Based Brief</p><h1 class="title">${escapeHtml(result.title || "운영 인사이트 리포트")}</h1><p class="meta">${escapeHtml(scopeMeta.label)} · 기준일 ${escapeHtml(formatKoreanDate(snapshot.dateKey || getActiveDateKey()))} · 생성 ${escapeHtml(new Date().toLocaleString("ko-KR"))}</p><section class="summary"><b>핵심 판단</b><strong>${escapeHtml(result.conclusion || "-")}</strong><p>${escapeHtml(result.answer || "-")}</p></section><section class="section"><h2>분석 근거</h2><div class="grid">${evidence.map((item) => `<article class="card"><span>${escapeHtml(item.label || "근거")}</span><strong>${escapeHtml(item.value || "-")}</strong><p>${escapeHtml(item.detail || "")}</p></article>`).join("")}</div></section><section class="section"><h2>실행 제안</h2><ol class="actions">${actions.map((item) => `<li><b>${escapeHtml(item.priority || "-")}</b><div><strong>${escapeHtml(item.title || "실행 항목")}</strong><span>${escapeHtml(item.owner || "담당자")} · ${escapeHtml(item.detail || "")}</span></div></li>`).join("")}</ol></section><p class="caveat">${escapeHtml(result.caveat || "")}</p></main></body></html>`;
+}
+
+function openOperationsInsightReport() {
+  const result = operationsInsightState.result;
+  if (!result) {
+    showAppToast("먼저 분석 결과를 만든 뒤 리포트를 열어주세요");
+    return;
+  }
+  const reportWindow = window.open("", "_blank");
+  if (!reportWindow) {
+    showAppToast("팝업이 차단되었습니다. 브라우저의 팝업 허용 후 다시 시도해주세요");
+    return;
+  }
+  reportWindow.opener = null;
+  reportWindow.document.open();
+  reportWindow.document.write(getOperationsInsightReportHtml(result, operationsInsightState.snapshot || {}));
+  reportWindow.document.close();
+}
+
+async function requestOperationsInsight() {
+  const question = String(operationsInsightState.question || "").trim();
+  if (question.length < 4) {
+    showAppToast("분석할 질문을 4자 이상 입력해주세요");
+    return;
+  }
+  const model = buildPremiumOperatingModel();
+  const snapshot = buildOperationsInsightSnapshot(operationsInsightState.scope, operationsInsightState.employeeId, model);
+  operationsInsightState.loading = true;
+  operationsInsightState.result = null;
+  operationsInsightState.snapshot = snapshot;
+  renderPremiumOperatingSystem();
+  const requestId = ++operationsInsightRequestId;
+  const accessToken = authState.session?.access_token;
+  if (!accessToken) {
+    operationsInsightState.loading = false;
+    operationsInsightState.result = buildOperationsInsightFallback(snapshot, "로그인 세션이 확인되지 않아 기기 안의 저장 기록으로 기본 분석을 만들었습니다.");
+    operationsInsightState.requestedAt = new Date().toISOString();
+    renderPremiumOperatingSystem();
+    showAppToast("기본 분석을 열었습니다. 로그인하면 AI 분석을 사용할 수 있습니다.");
+    return;
+  }
+  try {
+    const response = await fetch("/api/operations-insight", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ question, scope: snapshot.scope, snapshot }),
+    });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok || !payload.result) throw new Error(payload.error || "AI 분석을 생성하지 못했습니다.");
+    if (requestId !== operationsInsightRequestId) return;
+    operationsInsightState.result = { ...payload.result, source: "ai" };
+  } catch (error) {
+    if (requestId !== operationsInsightRequestId) return;
+    operationsInsightState.result = buildOperationsInsightFallback(snapshot, `${error.message || "AI 분석을 생성하지 못했습니다."} 현재 기록을 바탕으로 기본 분석을 제공합니다.`);
+    showAppToast("AI 분석 연결이 지연되어 기록 기반 분석으로 열었습니다");
+  } finally {
+    if (requestId === operationsInsightRequestId) {
+      operationsInsightState.loading = false;
+      operationsInsightState.requestedAt = new Date().toISOString();
+      renderPremiumOperatingSystem();
+    }
+  }
+}
+
+function bindOperationsInsightLab(node) {
+  node.querySelector("[data-operations-insight-form]")?.addEventListener("submit", (event) => {
+    event.preventDefault();
+    requestOperationsInsight();
+  });
+  node.querySelector("[data-operations-insight-scope]")?.addEventListener("change", (event) => {
+    operationsInsightState.scope = event.target.value;
+    operationsInsightState.result = null;
+    operationsInsightState.snapshot = null;
+    renderPremiumOperatingSystem();
+  });
+  node.querySelector("[data-operations-insight-employee]")?.addEventListener("change", (event) => {
+    operationsInsightState.employeeId = event.target.value;
+    operationsInsightState.result = null;
+    operationsInsightState.snapshot = null;
+    renderPremiumOperatingSystem();
+  });
+  node.querySelector("[data-operations-insight-question]")?.addEventListener("input", (event) => {
+    operationsInsightState.question = event.target.value.slice(0, 800);
+  });
+  node.querySelectorAll("[data-operations-insight-suggestion]").forEach((button) => {
+    button.addEventListener("click", () => {
+      operationsInsightState.question = button.dataset.operationsInsightSuggestion || "";
+      renderPremiumOperatingSystem();
+    });
+  });
+  node.querySelector("[data-operations-insight-report]")?.addEventListener("click", openOperationsInsightReport);
+}
+
 function buildPremiumOperatingModel() {
   const assetRows = getAssetRows();
   const staffRows = getControlStaffRows();
@@ -8179,6 +8571,7 @@ function renderPremiumOperatingSystem() {
         </article>
       `).join("")}
     </section>
+    ${renderOperationsInsightLab(model)}
     <section class="premium-agent-grid" id="premium-growth">
       ${model.agentLanes.map((lane, index) => `
         <button type="button" data-premium-jump="${escapeAttr(lane.view)}">
@@ -8280,6 +8673,7 @@ function renderPremiumOperatingSystem() {
   node.querySelectorAll("[data-benchmark-jump]").forEach((button) => {
     button.addEventListener("click", () => switchView(button.dataset.benchmarkJump || "premium"));
   });
+  bindOperationsInsightLab(node);
 }
 
 function renderDateNav() {
