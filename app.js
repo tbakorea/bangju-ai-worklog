@@ -1344,15 +1344,57 @@ function getExecutiveWorklog(dateKey = getActiveDateKey()) {
   return state.executiveWorklogs[dateKey];
 }
 
+function getExecutiveWorklogTaskLineageKey(task = {}, sourceDateKey = "", index = 0, visited = new Set()) {
+  const ownKey = `${sourceDateKey || "unknown"}:${task?.id || index || "task"}`;
+  const forkKey = String(task?.carryoverForkFrom || "").trim();
+  if (!forkKey || visited.has(forkKey)) return ownKey;
+
+  const separatorIndex = forkKey.indexOf(":");
+  if (separatorIndex <= 0) return forkKey;
+  const parentDateKey = forkKey.slice(0, separatorIndex);
+  const parentTaskId = forkKey.slice(separatorIndex + 1);
+  const parentLog = state.executiveWorklogs?.[parentDateKey];
+  const parentIndex = (parentLog?.tasks || []).findIndex((item) => String(item?.id || "") === parentTaskId);
+  if (parentIndex < 0) return forkKey;
+
+  const nextVisited = new Set(visited);
+  nextVisited.add(forkKey);
+  return getExecutiveWorklogTaskLineageKey(parentLog.tasks[parentIndex], parentDateKey, parentIndex, nextVisited);
+}
+
+function getExecutiveWorklogTaskRefPriority(ref = {}, activeDateKey = getActiveDateKey()) {
+  if (ref.sourceDateKey === activeDateKey) return 3;
+  if (ref.isPostponedFromOtherDate) return 2;
+  return 1;
+}
+
 function getExecutiveWorklogTaskRefs(log = getExecutiveWorklog(), activeDateKey = getActiveDateKey()) {
-  const refs = (log.tasks || []).map((task, index) => ({
-    task,
-    index,
-    log,
-    sourceDateKey: activeDateKey,
-    isCarryover: false,
-    isPostponedFromOtherDate: false,
-  }));
+  const refsByLineage = new Map();
+  const addRef = (ref) => {
+    const lineageKey = getExecutiveWorklogTaskLineageKey(ref.task, ref.sourceDateKey, ref.index);
+    const current = refsByLineage.get(lineageKey);
+    if (!current) {
+      refsByLineage.set(lineageKey, ref);
+      return;
+    }
+    const currentPriority = getExecutiveWorklogTaskRefPriority(current, activeDateKey);
+    const nextPriority = getExecutiveWorklogTaskRefPriority(ref, activeDateKey);
+    const shouldReplace = nextPriority > currentPriority
+      || (nextPriority === currentPriority
+        && ref.sourceDateKey > current.sourceDateKey);
+    if (shouldReplace) refsByLineage.set(lineageKey, ref);
+  };
+
+  (log.tasks || []).forEach((task, index) => {
+    addRef({
+      task,
+      index,
+      log,
+      sourceDateKey: activeDateKey,
+      isCarryover: false,
+      isPostponedFromOtherDate: false,
+    });
+  });
   Object.keys(state.executiveWorklogs || {})
     .filter((dateKey) => dateKey < activeDateKey)
     .sort()
@@ -1370,7 +1412,7 @@ function getExecutiveWorklogTaskRefs(log = getExecutiveWorklog(), activeDateKey 
           && (!deletedFrom || deletedFrom > activeDateKey)
         );
         if (isOpenCarryover || isPostponedHere) {
-          refs.push({
+          addRef({
             task,
             index,
             log: sourceLog,
@@ -1381,7 +1423,7 @@ function getExecutiveWorklogTaskRefs(log = getExecutiveWorklog(), activeDateKey 
         }
       });
     });
-  return refs.sort((left, right) => {
+  return [...refsByLineage.values()].sort((left, right) => {
     const activeLeft = isActiveTask(left.task);
     const activeRight = isActiveTask(right.task);
     return Number(activeRight) - Number(activeLeft)
@@ -1391,13 +1433,16 @@ function getExecutiveWorklogTaskRefs(log = getExecutiveWorklog(), activeDateKey 
 }
 
 function getExecutiveWorklogCarryoverForkKey(ref = {}) {
-  return `${ref.sourceDateKey || "unknown"}:${ref.task?.id || ref.index || "task"}`;
+  return getExecutiveWorklogTaskLineageKey(ref.task, ref.sourceDateKey, ref.index);
 }
 
 function materializeExecutiveWorklogCarryover(ref, currentLog = getExecutiveWorklog()) {
   if (!ref?.isCarryover && !ref?.isPostponedFromOtherDate) return ref;
   const forkKey = getExecutiveWorklogCarryoverForkKey(ref);
-  let targetIndex = (currentLog.tasks || []).findIndex((task) => task.carryoverForkFrom === forkKey);
+  const activeDateKey = getActiveDateKey();
+  let targetIndex = (currentLog.tasks || []).findIndex((task, index) => (
+    getExecutiveWorklogTaskLineageKey(task, activeDateKey, index) === forkKey
+  ));
   if (targetIndex < 0) {
     const targetTask = {
       ...cloneWorklogLogForAudit(ref.task),
