@@ -6912,7 +6912,12 @@ function renderExecutiveWorklog() {
       });
     });
     taskBoard.querySelectorAll("[data-executive-task-postpone]").forEach((button) => {
-      button.addEventListener("click", () => {
+      button.addEventListener("click", (event) => {
+        // The calendar sheet is closed by the document-level click handler.
+        // Keep this opener's click inside the task board so the newly opened
+        // postpone picker remains visible until the user selects a date or
+        // explicitly closes it.
+        event.stopPropagation();
         const editableRef = getEditableTaskRef(button.dataset.executiveTaskPostpone);
         const task = editableRef?.task;
         if (!task) return;
