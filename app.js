@@ -1362,6 +1362,79 @@ function getExecutiveWorklogTaskLineageKey(task = {}, sourceDateKey = "", index 
   return getExecutiveWorklogTaskLineageKey(parentLog.tasks[parentIndex], parentDateKey, parentIndex, nextVisited);
 }
 
+function isExecutiveWorklogTaskTerminal(task = {}) {
+  const status = normalizeWorklogTaskStatus(task?.status || "예정");
+  return Boolean(task?.done) || ["완료", "취소", "위임"].includes(status);
+}
+
+function getExecutiveWorklogTaskTerminalAncestor(task = {}, sourceDateKey = "", index = 0, visited = new Set()) {
+  const forkKey = String(task?.carryoverForkFrom || "").trim();
+  if (!forkKey || visited.has(forkKey)) return null;
+
+  const separatorIndex = forkKey.indexOf(":");
+  if (separatorIndex <= 0) return null;
+  const parentDateKey = forkKey.slice(0, separatorIndex);
+  const parentTaskId = forkKey.slice(separatorIndex + 1);
+  const parentLog = state.executiveWorklogs?.[parentDateKey];
+  const parentIndex = (parentLog?.tasks || []).findIndex((item) => String(item?.id || "") === parentTaskId);
+  if (parentIndex < 0) return null;
+
+  const parentTask = parentLog.tasks[parentIndex];
+  if (isExecutiveWorklogTaskTerminal(parentTask)) {
+    return { task: parentTask, sourceDateKey: parentDateKey, index: parentIndex };
+  }
+  const nextVisited = new Set(visited);
+  nextVisited.add(forkKey);
+  return getExecutiveWorklogTaskTerminalAncestor(parentTask, parentDateKey, parentIndex, nextVisited);
+}
+
+function reconcileExecutiveWorklogTerminalCarryovers() {
+  const repairedDateKeys = new Set();
+  state.executiveWorklogs ||= {};
+  Object.keys(state.executiveWorklogs).sort().forEach((dateKey) => {
+    const log = normalizeExecutiveWorklog(state.executiveWorklogs[dateKey], dateKey);
+    state.executiveWorklogs[dateKey] = log;
+    (log.tasks || []).forEach((task, index) => {
+      if (!isActiveTask(task)
+        || !String(task?.carryoverForkFrom || "").trim()
+        || isExecutiveWorklogTaskTerminal(task)
+        || !getExecutiveWorklogTaskTerminalAncestor(task, dateKey, index)) return;
+
+      // A carryover row is only a working copy of its origin. If the origin
+      // is later completed, cancelled, or delegated, the copied unfinished
+      // row must disappear instead of reviving the event on the next day.
+      removeExecutiveTaskLinkedSchedule(task, log);
+      log.tasks[index] = {
+        id: task.id || `executive-task-${dateKey}-${index}`,
+        priority: "?",
+        text: "",
+        status: "예정",
+        done: false,
+      };
+      log.updatedAt = new Date().toISOString();
+      repairedDateKeys.add(dateKey);
+    });
+  });
+  return [...repairedDateKeys];
+}
+
+function persistExecutiveWorklogCarryoverRepairs(dateKeys = []) {
+  if (!dateKeys.length) return;
+  writeStateToLocalStorage();
+  if (authState.applyingRemote) return;
+  dateKeys.forEach((dateKey) => scheduleRemoteSave(0, dateKey));
+}
+
+function saveExecutiveWorklogWithCarryoverRepair(options = {}) {
+  const repairedDateKeys = reconcileExecutiveWorklogTerminalCarryovers();
+  saveState(options);
+  if (authState.applyingRemote) return repairedDateKeys;
+  repairedDateKeys
+    .filter((dateKey) => dateKey !== getActiveDateKey())
+    .forEach((dateKey) => scheduleRemoteSave(0, dateKey));
+  return repairedDateKeys;
+}
+
 function getExecutiveWorklogTaskRefPriority(ref = {}, activeDateKey = getActiveDateKey()) {
   if (ref.sourceDateKey === activeDateKey) return 3;
   if (ref.isPostponedFromOtherDate) return 2;
@@ -1386,6 +1459,8 @@ function getExecutiveWorklogTaskRefs(log = getExecutiveWorklog(), activeDateKey 
   };
 
   (log.tasks || []).forEach((task, index) => {
+    if (!isExecutiveWorklogTaskTerminal(task)
+      && getExecutiveWorklogTaskTerminalAncestor(task, activeDateKey, index)) return;
     addRef({
       task,
       index,
@@ -6836,6 +6911,8 @@ function updateExecutiveWorklogTaskPriority(task, value) {
 function renderExecutiveWorklog() {
   const section = document.querySelector(".executive-personal-worklog");
   if (!section || !isRepresentativeProfile()) return;
+  const repairedCarryoverDateKeys = reconcileExecutiveWorklogTerminalCarryovers();
+  persistExecutiveWorklogCarryoverRepairs(repairedCarryoverDateKeys);
   const log = getExecutiveWorklog();
   const mode = state.executiveWorklogMode || "daily";
   const daily = document.getElementById("executivePersonalWorklogDaily");
@@ -6885,7 +6962,7 @@ function renderExecutiveWorklog() {
         task.status = task.done ? "완료" : "예정";
         syncExecutiveTaskTimeHintToSchedule(task, editableRef.log);
         editableRef.log.updatedAt = new Date().toISOString();
-        saveState({ fastSave: true });
+        saveExecutiveWorklogWithCarryoverRepair({ fastSave: true });
         renderExecutiveWorklog();
       });
     });
@@ -6908,7 +6985,7 @@ function renderExecutiveWorklog() {
         }
         syncExecutiveTaskTimeHintToSchedule(task, editableRef.log);
         editableRef.log.updatedAt = new Date().toISOString();
-        saveState({ fastSave: true });
+        saveExecutiveWorklogWithCarryoverRepair({ fastSave: true });
         renderExecutiveWorklog();
       });
     });

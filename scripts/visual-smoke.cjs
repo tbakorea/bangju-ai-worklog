@@ -3343,6 +3343,20 @@ async function checkPriorityCarryoverAndDateRules(browser) {
     const executiveDuplicateRefs = getExecutiveWorklogTaskRefs(getExecutiveWorklog(executiveActiveDate), executiveActiveDate)
       .filter((ref) => ref.task.text === "대표 이월 중복 방지")
       .map((ref) => ({ id: ref.task.id, sourceDateKey: ref.sourceDateKey, done: ref.task.done }));
+    state.executiveWorklogs[executiveSourceDate].tasks[0].status = "완료";
+    state.executiveWorklogs[executiveSourceDate].tasks[0].done = true;
+    state.executiveWorklogs[executiveActiveDate].tasks[0] = {
+      id: "executive-stale-copy",
+      priority: "A",
+      text: "대표 완료 후 남은 복제본",
+      status: "미완료",
+      done: false,
+      carryoverForkFrom: "2026-08-01:executive-root"
+    };
+    const executiveRepairedCarryoverDates = reconcileExecutiveWorklogTerminalCarryovers();
+    const executiveStaleCopy = state.executiveWorklogs[executiveActiveDate].tasks[0];
+    const executiveStaleCopyRefs = getExecutiveWorklogTaskRefs(getExecutiveWorklog(executiveActiveDate), executiveActiveDate)
+      .filter((ref) => ref.task.text === "대표 완료 후 남은 복제본");
     state.executiveWorklogs = originalExecutiveWorklogs;
     state.selectedDateKey = originalSelectedDateKey;
     todayKey = originalTodayKeyForExecutive;
@@ -3378,7 +3392,10 @@ async function checkPriorityCarryoverAndDateRules(browser) {
       at48HourDeadline: isWithinWorklogEditWindow("2026-08-01", new Date(2026, 7, 4, 0, 0)),
       olderDate: isWithinWorklogEditWindow("2026-07-31", new Date(2026, 7, 3, 9, 0)),
       futureDate: isWithinWorklogEditWindow("2026-08-10", new Date(2026, 7, 3, 15, 0)),
-      executiveDuplicateRefs
+      executiveDuplicateRefs,
+      executiveRepairedCarryoverDates,
+      executiveStaleCopyText: executiveStaleCopy.text,
+      executiveStaleCopyRefs: executiveStaleCopyRefs.length
     });
   })()`));
   const parsed = JSON.parse(metrics);
@@ -3434,6 +3451,12 @@ async function checkPriorityCarryoverAndDateRules(browser) {
     || parsed.executiveDuplicateRefs[0].sourceDateKey !== "2026-08-03"
     || !parsed.executiveDuplicateRefs[0].done) {
     fail("executive priority carryover should display only the latest task in its carryover lineage", metrics);
+  }
+  if (!parsed.executiveRepairedCarryoverDates.includes("2026-08-02")
+    || !parsed.executiveRepairedCarryoverDates.includes("2026-08-03")
+    || parsed.executiveStaleCopyText
+    || parsed.executiveStaleCopyRefs !== 0) {
+    fail("completed executive priorities must clear every unfinished carryover copy instead of returning the next day", metrics);
   }
   const employeeFutureMatrix = await page.evaluate(() => window.eval(`(() => {
     const futureDate1 = formatDateKey(new Date(parseDateKey(todayKey).getTime() + 86400000));
