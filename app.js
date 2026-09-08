@@ -8,7 +8,9 @@ const layoutModeStorageKey = "beyond-worklog-layout-mode";
 const globalViewModeStorageKey = "beyond-worklog-global-view-mode";
 const worklogLayoutStorageKey = "beyond-worklog-workspace-layout";
 const localAuthSignedOutKey = "beyond-worklog-auth-signed-out";
-const fitnessAiCoachingStorageKey = "beyond-fitness-ai-coaching-v1";
+// v2는 당일 업무 문장·시간·작성자까지 코칭 근거에 포함합니다.
+// 기존 일반 문구 캐시는 재사용하지 않아 보고서를 다시 열면 새 기준으로 생성됩니다.
+const fitnessAiCoachingStorageKey = "beyond-fitness-ai-coaching-v2";
 const productionAppUrl = "https://bangju-ai-worklog.vercel.app/";
 const supabaseConfig = {
   url: "https://zllpfaijahyfppivkxzu.supabase.co",
@@ -26697,18 +26699,30 @@ function getFitnessReportAiFingerprint(context = {}) {
 }
 
 function buildFitnessReportAiContext({ dateKey, isCenter, employee, sourceLog, logEntries, totals, classStats, manual, dagymSummary, attendanceWarnings = [] }) {
-  const taskRefs = logEntries.flatMap(({ log }) => getWorklogTaskRefs(log));
-  const tasks = taskRefs.map(({ task }) => ({
-    text: sanitizeFitnessCoachText(task.text),
-    status: task.done || task.status === "완료" ? "완료" : task.status || "미완료",
-  })).filter((task) => task.text).slice(0, 18);
+  const tasks = logEntries.flatMap(({ employee: itemEmployee, log }) => getWorklogTaskRefs(log).map(({ task }) => ({
+    writer: sanitizeFitnessCoachText(itemEmployee?.name || getEmployeeOwnLabel(itemEmployee) || "직원").slice(0, 40),
+    priority: ["A", "B", "C"].includes(String(task.priority || "")) ? task.priority : "",
+    text: sanitizeFitnessCoachText(task.text).slice(0, 240),
+    status: task.done || task.status === "완료" ? "완료" : normalizeWorklogTaskStatus(task.status || "미완료"),
+  }))).filter((task) => task.text).slice(0, 18);
   const scheduleTypes = {};
-  logEntries.forEach(({ log }) => (log.schedule || []).forEach((entry) => {
+  const scheduleEntries = [];
+  logEntries.forEach(({ employee: itemEmployee, log }) => (log.schedule || []).forEach((entry) => {
     const text = getScheduleEntryText(entry);
     if (!text) return;
     const type = inferScheduleType(text) || "업무";
     scheduleTypes[type] = (scheduleTypes[type] || 0) + 1;
+    scheduleEntries.push({
+      writer: sanitizeFitnessCoachText(itemEmployee?.name || getEmployeeOwnLabel(itemEmployee) || "직원").slice(0, 40),
+      time: String(entry.time || "").slice(0, 12),
+      type: sanitizeFitnessCoachText(type).slice(0, 40),
+      text: sanitizeFitnessCoachText(text).slice(0, 260),
+    });
   }));
+  const reportNotes = getFitnessReportRecordRows(logEntries, { isCenter, totals })
+    .map(sanitizeFitnessCoachText)
+    .filter(Boolean)
+    .slice(0, 8);
   const assignedMission = getAssignedMissionForEmployee(employee);
   const nightlyAnalysis = getDagymDailyAnalysis(dateKey);
   const snsContent = logEntries.map(({ employee: itemEmployee, log }) => {
@@ -26739,8 +26753,9 @@ function buildFitnessReportAiContext({ dateKey, isCenter, employee, sourceLog, l
       items: tasks,
     },
     scheduleSummary: {
-      total: Object.values(scheduleTypes).reduce((sum, count) => sum + count, 0),
+      total: scheduleEntries.length,
       types: scheduleTypes,
+      items: scheduleEntries.slice(0, 24),
     },
     performance: {
       paidPtToday: classStats.paid.today,
@@ -26779,10 +26794,7 @@ function buildFitnessReportAiContext({ dateKey, isCenter, employee, sourceLog, l
       managementDirection: nightlyAnalysis.coaching?.managementDirection || "",
     } : null,
     attendanceWarnings: attendanceWarnings.map((item) => item.message),
-    reportNotes: getFitnessReportRecordRows(logEntries, { isCenter, totals })
-      .map(sanitizeFitnessCoachText)
-      .filter(Boolean)
-      .slice(0, 8),
+    reportNotes,
     assignedMission: assignedMission?.visible ? sanitizeFitnessCoachText(assignedMission.text) : "",
     manual: {
       title: manual.title,
@@ -26805,28 +26817,61 @@ function getFitnessReportManualTemplate(employee = {}) {
 
 function getFitnessReportCoachingRows(model = {}) {
   if (model.aiCoaching) {
-    return [
+    const rows = [
       ["성과 하이라이트", model.aiCoaching.praise],
       ["피드백", model.aiCoaching.feedback],
       ["다음 행동", model.aiCoaching.nextAction],
       ["매뉴얼", model.aiCoaching.manualReminder],
     ];
+    const evidence = Array.isArray(model.aiCoaching.evidence)
+      ? model.aiCoaching.evidence.map((item) => String(item || "").trim()).filter(Boolean).slice(0, 3)
+      : [];
+    if (evidence.length) rows.push(["당일 근거", evidence.join(" · ")]);
+    return rows;
   }
-  const completed = model.aiContext?.taskSummary?.completed || 0;
-  const scheduleTotal = model.aiContext?.scheduleSummary?.total || 0;
-  const praise = completed
-    ? `우선업무 ${completed}건을 완료하며 오늘의 실행을 기록한 점이 좋습니다.`
-    : scheduleTotal
-      ? `시간별 일정 ${scheduleTotal}건을 기록해 업무 흐름을 남긴 점이 좋습니다.`
-      : "업무보고서를 열어 오늘의 실행을 점검한 태도가 좋습니다.";
-  const fallback = model.coaching || [];
-  const snsCoach = fallback.find(([title]) => title === "SNS 홍보")?.[1] || "";
+  const context = model.aiContext || {};
+  const tasks = Array.isArray(context.taskSummary?.items) ? context.taskSummary.items : [];
+  const schedules = Array.isArray(context.scheduleSummary?.items) ? context.scheduleSummary.items : [];
+  const notes = Array.isArray(context.reportNotes) ? context.reportNotes : [];
+  const completedTask = tasks.find((task) => task.status === "완료");
+  const openTask = tasks.find((task) => !["완료", "취소", "위임", "연기"].includes(task.status));
+  const classSchedule = schedules.find((entry) => /PT|수업|트레이닝/i.test(`${entry.type || ""} ${entry.text || ""}`));
+  const recordedSchedule = schedules[0];
+  const taskLabel = (task) => `${task?.writer ? `${task.writer} ` : ""}${task?.text || ""}`.trim();
+  const scheduleLabel = (entry) => `${entry?.writer ? `${entry.writer} ` : ""}${entry?.time ? `${entry.time} ` : ""}${entry?.text || ""}`.trim();
+  const praise = completedTask
+    ? `${taskLabel(completedTask)}를 완료로 기록해 실행 결과가 명확합니다.`
+    : recordedSchedule
+      ? `${scheduleLabel(recordedSchedule)}을 시간별로 남겨 오늘의 실행 흐름을 확인할 수 있습니다.`
+      : notes[0]
+        ? `${notes[0]}을 업무보고에 남겨 현장 기록의 출발점이 마련됐습니다.`
+        : "당일 업무를 기록하면 실행 결과와 다음 행동을 더 정확히 코칭할 수 있습니다.";
+  const feedback = openTask
+    ? `${taskLabel(openTask)}의 완료 기준과 결과를 업무보고에 한 줄로 남겨 다음 인수인계를 선명하게 하세요.`
+    : classSchedule
+      ? `${scheduleLabel(classSchedule)} 후 출석·노쇼·취소 결과를 확정해 수업 집계 오차를 막으세요.`
+      : notes[0]
+        ? `${notes[0]}의 후속 담당자와 기한을 정하면 기록이 실제 운영 조치로 이어집니다.`
+        : "업무 결과와 후속 조치를 함께 기록해 다음 근무자가 바로 이어받을 수 있게 하세요.";
+  const nextAction = classSchedule
+    ? `${scheduleLabel(classSchedule)} 종료 후 수업 상태를 확정하고 고객 후속 연락 필요 여부를 기록하세요.`
+    : openTask
+      ? `${taskLabel(openTask)}의 첫 실행 시간과 완료 근거를 오늘 일정 또는 업무보고에 남기세요.`
+      : recordedSchedule
+        ? `${scheduleLabel(recordedSchedule)}의 결과를 확인한 뒤 다음 행동 한 가지를 업무보고에 추가하세요.`
+        : "다음 근무의 첫 실행업무와 완료 기준을 우선업무에 정해두세요.";
   const manualLine = model.aiContext?.manual?.guidelines?.[0] || "직급별 매뉴얼의 핵심 기준을 다음 근무 전에 확인해주세요.";
+  const evidence = [
+    completedTask ? `완료: ${taskLabel(completedTask)}` : "",
+    classSchedule ? `수업: ${scheduleLabel(classSchedule)}` : recordedSchedule ? `일정: ${scheduleLabel(recordedSchedule)}` : "",
+    notes[0] ? `기록: ${notes[0]}` : "",
+  ].filter(Boolean).slice(0, 3);
   return [
     ["성과 하이라이트", praise],
-    ["피드백", snsCoach || fallback.find(([title]) => title === "우선업무")?.[1] || "업무 결과와 후속 조치를 한 줄 더 남겨주세요."],
-    ["다음 행동", snsCoach ? "블로그 원문 1건을 인스타그램 릴스·카드뉴스로 재가공하고 채널별 문의 반응을 기록하세요." : fallback.find(([title]) => title === "시간관리")?.[1] || "다음 근무의 첫 실행업무를 미리 정해주세요."],
+    ["피드백", feedback],
+    ["다음 행동", nextAction],
     ["매뉴얼", manualLine],
+    ...(evidence.length ? [["당일 근거", evidence.join(" · ")]] : []),
   ];
 }
 
