@@ -3357,6 +3357,19 @@ async function checkPriorityCarryoverAndDateRules(browser) {
     const executiveStaleCopy = state.executiveWorklogs[executiveActiveDate].tasks[0];
     const executiveStaleCopyRefs = getExecutiveWorklogTaskRefs(getExecutiveWorklog(executiveActiveDate), executiveActiveDate)
       .filter((ref) => ref.task.text === "대표 완료 후 남은 복제본");
+    const executiveLegacySourceDate = "2026-08-04";
+    const executiveLegacyActiveDate = "2026-08-05";
+    state.executiveWorklogs[executiveLegacySourceDate] = {
+      ...createExecutiveWorklog(executiveLegacySourceDate),
+      tasks: [{ id: "executive-legacy-source", priority: "B", text: "완료된 기존 형식 이월 업무", status: "완료", done: true }]
+    };
+    state.executiveWorklogs[executiveLegacyActiveDate] = {
+      ...createExecutiveWorklog(executiveLegacyActiveDate),
+      // 이전 형식은 carryoverForkFrom 없이 문구만 복제되어 있었습니다.
+      tasks: [{ id: "executive-legacy-copy", priority: "B", text: "완료된 기존 형식 이월 업무", status: "미완료", done: false }]
+    };
+    const executiveLegacyRepairedCarryoverDates = reconcileExecutiveWorklogTerminalCarryovers();
+    const executiveLegacyStaleCopy = state.executiveWorklogs[executiveLegacyActiveDate].tasks[0];
     state.executiveWorklogs = originalExecutiveWorklogs;
     state.selectedDateKey = originalSelectedDateKey;
     todayKey = originalTodayKeyForExecutive;
@@ -3395,7 +3408,9 @@ async function checkPriorityCarryoverAndDateRules(browser) {
       executiveDuplicateRefs,
       executiveRepairedCarryoverDates,
       executiveStaleCopyText: executiveStaleCopy.text,
-      executiveStaleCopyRefs: executiveStaleCopyRefs.length
+      executiveStaleCopyRefs: executiveStaleCopyRefs.length,
+      executiveLegacyRepairedCarryoverDates,
+      executiveLegacyStaleCopyText: executiveLegacyStaleCopy.text
     });
   })()`));
   const parsed = JSON.parse(metrics);
@@ -3457,6 +3472,10 @@ async function checkPriorityCarryoverAndDateRules(browser) {
     || parsed.executiveStaleCopyText
     || parsed.executiveStaleCopyRefs !== 0) {
     fail("completed executive priorities must clear every unfinished carryover copy instead of returning the next day", metrics);
+  }
+  if (!parsed.executiveLegacyRepairedCarryoverDates.includes("2026-08-05")
+    || parsed.executiveLegacyStaleCopyText) {
+    fail("legacy executive carryover copies without a lineage key must not revive completed priorities on the next day", metrics);
   }
   const employeeFutureMatrix = await page.evaluate(() => window.eval(`(() => {
     const futureDate1 = formatDateKey(new Date(parseDateKey(todayKey).getTime() + 86400000));

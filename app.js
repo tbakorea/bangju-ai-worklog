@@ -1388,6 +1388,30 @@ function getExecutiveWorklogTaskTerminalAncestor(task = {}, sourceDateKey = "", 
   return getExecutiveWorklogTaskTerminalAncestor(parentTask, parentDateKey, parentIndex, nextVisited);
 }
 
+function getExecutiveWorklogTaskCarryoverSignature(task = {}) {
+  const text = String(task?.text || "").replace(/\s+/g, " ").trim();
+  if (!text) return "";
+  return `${String(task?.priority || "?").trim() || "?"}::${text}`;
+}
+
+function getExecutiveLegacyTerminalCarryoverAncestor(task = {}, dateKey = "") {
+  // 초기에 생성된 대표 이월 행에는 carryoverForkFrom이 저장되지 않은 사례가
+  // 있습니다. 바로 전날의 동일 우선순위·동일 문구인 종료 업무만 대상으로
+  // 좁혀 보정해, 완료된 업무가 다음 날 새 업무처럼 되살아나는 일을 막습니다.
+  if (String(task?.carryoverForkFrom || "").trim() || isExecutiveWorklogTaskTerminal(task)) return null;
+  const signature = getExecutiveWorklogTaskCarryoverSignature(task);
+  if (!signature || !dateKey) return null;
+
+  const sourceDateKey = getPreviousCalendarDateKey(dateKey);
+  const sourceLog = state.executiveWorklogs?.[sourceDateKey];
+  const sourceIndex = (sourceLog?.tasks || []).findIndex((sourceTask) => (
+    isExecutiveWorklogTaskTerminal(sourceTask)
+    && getExecutiveWorklogTaskCarryoverSignature(sourceTask) === signature
+  ));
+  if (sourceIndex < 0) return null;
+  return { task: sourceLog.tasks[sourceIndex], sourceDateKey, index: sourceIndex, legacy: true };
+}
+
 function reconcileExecutiveWorklogTerminalCarryovers() {
   const repairedDateKeys = new Set();
   state.executiveWorklogs ||= {};
@@ -1395,14 +1419,14 @@ function reconcileExecutiveWorklogTerminalCarryovers() {
     const log = normalizeExecutiveWorklog(state.executiveWorklogs[dateKey], dateKey);
     state.executiveWorklogs[dateKey] = log;
     (log.tasks || []).forEach((task, index) => {
-      if (!isActiveTask(task)
-        || !String(task?.carryoverForkFrom || "").trim()
-        || isExecutiveWorklogTaskTerminal(task)
-        || !getExecutiveWorklogTaskTerminalAncestor(task, dateKey, index)) return;
+      const terminalAncestor = getExecutiveWorklogTaskTerminalAncestor(task, dateKey, index)
+        || getExecutiveLegacyTerminalCarryoverAncestor(task, dateKey);
+      if (!isActiveTask(task) || isExecutiveWorklogTaskTerminal(task) || !terminalAncestor) return;
 
       // A carryover row is only a working copy of its origin. If the origin
       // is later completed, cancelled, or delegated, the copied unfinished
-      // row must disappear instead of reviving the event on the next day.
+      // row (including legacy rows without a lineage key) must disappear
+      // instead of reviving the event on the next day.
       removeExecutiveTaskLinkedSchedule(task, log);
       log.tasks[index] = {
         id: task.id || `executive-task-${dateKey}-${index}`,
@@ -2781,8 +2805,12 @@ function renderWeatherWidgets(scope = activeView) {
     renderWeatherWidget("fitness", getActiveWeatherEmployee("fitness-log"));
   } else if (isGeneralEmployeeWorklogView(scope)) {
     renderWeatherWidget("worklog", getSelectedEmployee());
-  } else if (["worklog-overview", "control", "executive"].includes(scope)) {
+  } else if (["worklog-overview", "control"].includes(scope)) {
     ensureWeatherRecordsForConfiguredSites(dateKey);
+    renderRepresentativeSiteWeatherBoards(dateKey);
+  } else if (scope === "executive") {
+    const siteKey = getExecutiveWeatherSiteKey();
+    ensureWeatherRecordForSite(siteKey, getSiteWeatherAddress(siteKey), dateKey, { scope: "executive" });
     renderRepresentativeSiteWeatherBoards(dateKey);
   } else {
     return;
@@ -2791,7 +2819,7 @@ function renderWeatherWidgets(scope = activeView) {
   renderHistoricalWeatherBanners(dateKey);
 }
 
-function renderWeatherDateButton(button, employee, dateKey = getActiveDateKey(), preferredSiteKey = "") {
+function renderWeatherDateButton(button, employee, dateKey = getActiveDateKey(), preferredSiteKey = "", { requestWeather = false, scope = "" } = {}) {
   if (!button) return;
   const isToday = dateKey === todayKey;
   button.hidden = false;
@@ -2807,6 +2835,11 @@ function renderWeatherDateButton(button, employee, dateKey = getActiveDateKey(),
   }
   const siteKey = String(preferredSiteKey || getSiteWeatherKeyForEmployee(employee)).trim() || "기타";
   const address = getSiteWeatherAddress(siteKey);
+  // 대표 날짜 줄은 별도 날씨 위젯을 열지 않아도 항상 보입니다. 이 화면 자체가
+  // 주소 기반 조회를 시작하도록 해, 기기별 첫 진입에서 --°/--°로 멈추지 않게 합니다.
+  if (requestWeather && address && needsWeatherRefresh(getWeatherRecordForSite(siteKey, dateKey), dateKey)) {
+    ensureWeatherRecordForSite(siteKey, address, dateKey, { scope: scope || "date-chip" });
+  }
   const record = getWeatherRecordForSite(siteKey, dateKey);
   const requestKey = getWeatherCacheKey(siteKey, dateKey);
   const loading = Boolean(address && weatherRequestInFlight.has(requestKey));
@@ -2822,13 +2855,26 @@ function renderWeatherDateButton(button, employee, dateKey = getActiveDateKey(),
 }
 
 function renderWeatherDateButtons(dateKey = getActiveDateKey()) {
-  renderWeatherDateButton(document.getElementById("todayJumpButton"), getSelectedEmployee(), dateKey);
-  renderWeatherDateButton(document.getElementById("fitnessTodayButton"), getActiveWeatherEmployee("fitness-log"), dateKey);
+  renderWeatherDateButton(
+    document.getElementById("todayJumpButton"),
+    getSelectedEmployee(),
+    dateKey,
+    "",
+    { requestWeather: isGeneralEmployeeWorklogView(activeView), scope: "worklog" },
+  );
+  renderWeatherDateButton(
+    document.getElementById("fitnessTodayButton"),
+    getActiveWeatherEmployee("fitness-log"),
+    dateKey,
+    "",
+    { requestWeather: activeView === "fitness-log", scope: "fitness-log" },
+  );
   renderWeatherDateButton(
     document.getElementById("executiveTodayButton"),
     getActiveWeatherEmployee("executive"),
     dateKey,
     getExecutiveWeatherSiteKey(),
+    { requestWeather: activeView === "executive", scope: "executive" },
   );
 }
 
@@ -3015,12 +3061,21 @@ function getConfiguredWeatherSites() {
     .filter(({ address }) => address);
 }
 
+function ensureWeatherRecordForSite(siteKey = "", address = "", dateKey = getActiveDateKey(), { scope = "" } = {}) {
+  const requestKey = getWeatherCacheKey(siteKey, dateKey);
+  if (!address
+    || !needsWeatherRefresh(getWeatherRecordForSite(siteKey, dateKey), dateKey)
+    || weatherRequestInFlight.has(requestKey)
+    || weatherBatchAttempted.has(requestKey)
+    || !canAutomaticallyRequestWeather(requestKey)) return false;
+  weatherBatchAttempted.add(requestKey);
+  void requestWeatherForSite(siteKey, address, dateKey, { silent: true, scope });
+  return true;
+}
+
 function ensureWeatherRecordsForConfiguredSites(dateKey = getActiveDateKey()) {
   getConfiguredWeatherSites().forEach(({ siteKey, address }) => {
-    const requestKey = getWeatherCacheKey(siteKey, dateKey);
-    if (!needsWeatherRefresh(getWeatherRecordForSite(siteKey, dateKey), dateKey) || weatherRequestInFlight.has(requestKey) || weatherBatchAttempted.has(requestKey) || !canAutomaticallyRequestWeather(requestKey)) return;
-    weatherBatchAttempted.add(requestKey);
-    requestWeatherForSite(siteKey, address, dateKey, { silent: true, scope: "" });
+    ensureWeatherRecordForSite(siteKey, address, dateKey);
   });
 }
 
