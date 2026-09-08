@@ -5162,6 +5162,95 @@ function getRecentEmployeeWorkPattern(employee = {}, dateKey = getActiveDateKey(
   };
 }
 
+function getWorkHoursStartMinutes(workHours = "") {
+  const normalized = normalizeWorkHoursText(workHours);
+  const match = normalized.match(/^(\d{2}):(\d{2})\s*[-~]\s*(\d{2}):(\d{2})$/);
+  if (!match) return NaN;
+  return Number(match[1]) * 60 + Number(match[2]);
+}
+
+function isFitnessCoverageWindow(workHours = "") {
+  const normalized = normalizeWorkHoursText(workHours);
+  const match = normalized.match(/^(\d{2}):(\d{2})\s*[-~]\s*(\d{2}):(\d{2})$/);
+  if (!match) return false;
+  const start = Number(match[1]) * 60 + Number(match[2]);
+  const end = Number(match[3]) * 60 + Number(match[4]);
+  return Number.isFinite(start) && Number.isFinite(end) && end - start >= 16 * 60;
+}
+
+function getMedianTimeMinutes(values = []) {
+  const ordered = values.filter(Number.isFinite).slice().sort((left, right) => left - right);
+  if (!ordered.length) return NaN;
+  const middle = Math.floor(ordered.length / 2);
+  return ordered.length % 2 ? ordered[middle] : Math.round((ordered[middle - 1] + ordered[middle]) / 2);
+}
+
+function getRecentFitnessAttendanceStartPattern(employee = {}, dateKey = getActiveDateKey(), lookbackDays = 56) {
+  if (!isFitnessEmployeeRecord(employee)) return null;
+  const targetDate = parseDateKey(dateKey);
+  if (!targetDate || Number.isNaN(targetDate.getTime())) return null;
+  const targetWeekday = targetDate.getDay();
+  const sameWeekdayStarts = [];
+  const recentStarts = [];
+
+  for (let offset = 1; offset <= lookbackDays; offset += 1) {
+    const candidateDate = new Date(targetDate);
+    candidateDate.setDate(targetDate.getDate() - offset);
+    const candidateKey = formatDateKey(candidateDate);
+    const previousLog = getExistingEmployeeLogForAnalysis(employee, candidateKey);
+    const startMinutes = timeToMinutes(previousLog?.clockIn);
+    if (!Number.isFinite(startMinutes)) continue;
+    recentStarts.push(startMinutes);
+    if (candidateDate.getDay() === targetWeekday) sameWeekdayStarts.push(startMinutes);
+  }
+
+  // 동일 요일의 최근 실제 출근이 두 번 이상이면 그 중앙값을 직원의 그날 출근 기준으로 씁니다.
+  // 요일별 기록이 아직 부족할 때는 최근 출근시간이 안정적일 경우에만 보조 기준으로 사용합니다.
+  const sameWeekdayWindow = sameWeekdayStarts.slice(0, 8);
+  if (sameWeekdayWindow.length >= 2) {
+    return {
+      minutes: getMedianTimeMinutes(sameWeekdayWindow),
+      source: "recent-weekday-pattern",
+      samples: sameWeekdayWindow.length,
+    };
+  }
+  const recentWindow = recentStarts.slice(0, 8);
+  if (recentWindow.length >= 4) {
+    const earliest = Math.min(...recentWindow);
+    const latest = Math.max(...recentWindow);
+    if (latest - earliest <= 60) {
+      return {
+        minutes: getMedianTimeMinutes(recentWindow),
+        source: "recent-pattern",
+        samples: recentWindow.length,
+      };
+    }
+  }
+  return null;
+}
+
+function getAttendanceExpectedStart(employee = {}, log = {}, dateKey = getActiveDateKey()) {
+  const override = normalizeWorkHoursText(log?.workHoursOverride || "");
+  const overrideStart = getWorkHoursStartMinutes(override);
+  if (override && !isOffWorkHours(override) && Number.isFinite(overrideStart)) {
+    return { minutes: overrideStart, source: "daily-override", samples: 1 };
+  }
+
+  const scheduledHours = getOverviewScheduledWorkHours(employee, dateKey, log);
+  const scheduledStart = getWorkHoursStartMinutes(scheduledHours);
+  if (!isFitnessEmployeeRecord(employee)) {
+    return Number.isFinite(scheduledStart) ? { minutes: scheduledStart, source: "configured-hours", samples: 0 } : null;
+  }
+
+  const recentPattern = getRecentFitnessAttendanceStartPattern(employee, dateKey);
+  if (recentPattern && Number.isFinite(recentPattern.minutes)) return recentPattern;
+
+  // 06:00~24:00은 센터의 운영 범위이지 개인의 출근 약속이 아닙니다.
+  // 개인 패턴이 아직 모이지 않은 경우에는 이 범위만으로 지각/결석을 만들지 않습니다.
+  if (isFitnessCoverageWindow(scheduledHours)) return null;
+  return Number.isFinite(scheduledStart) ? { minutes: scheduledStart, source: "configured-hours", samples: 0 } : null;
+}
+
 function normalizeLaborLeaveRequest(request = {}) {
   const id = String(request.id || "").trim();
   const employeeId = String(request.employeeId || request.employee_id || "").trim();
@@ -5262,6 +5351,7 @@ function getOverviewWorkStatus(employee = {}, dayLog = {}, dateKey = getActiveDa
   const approvedLeave = getApprovedLeaveForDate(getEmployeeWorklogId(employee) || employee.id || "", dateKey);
   const approvedLeaveType = approvedLeave ? getLaborLeaveType(approvedLeave.leaveType) : null;
   const hours = getOverviewScheduledWorkHours(employee, dateKey, dayLog);
+  const expectedStart = getAttendanceExpectedStart(employee, dayLog, dateKey);
   const weeklyHours = getEffectiveWeeklyWorkHours(employee);
   const recentPattern = weeklyHours && typeof weeklyHours === "object" && Object.keys(weeklyHours).length
     ? null
@@ -5309,8 +5399,15 @@ function getOverviewWorkStatus(employee = {}, dayLog = {}, dateKey = getActiveDa
   const match = String(hours || "").match(/(\d{2}):(\d{2})\s*[-~]\s*(\d{2}):(\d{2})/);
   if (match) {
     const currentMinutes = now.getHours() * 60 + now.getMinutes();
-    const startMinutes = Number(match[1]) * 60 + Number(match[2]);
+    const startMinutes = Number.isFinite(expectedStart?.minutes)
+      ? expectedStart.minutes
+      : Number(match[1]) * 60 + Number(match[2]);
     const endMinutes = Number(match[3]) * 60 + Number(match[4]);
+    if (isFitnessEmployeeRecord(employee) && isFitnessCoverageWindow(hours) && !Number.isFinite(expectedStart?.minutes)) {
+      return hasWorklogRecord
+        ? { key: "working", label: "근무기록 있음", detail: "개인 출근 패턴 확인 중" }
+        : { key: "scheduled", label: "근무예정", detail: "개인 출근 패턴 확인 중" };
+    }
     if (currentMinutes < startMinutes) return { key: "scheduled", label: "근무예정", detail: hours };
     if (currentMinutes <= endMinutes) {
       return hasWorklogRecord
@@ -19612,6 +19709,7 @@ function getAttendanceStatusForLog(employee, log = getEmployeeLogForDate(employe
     return log.clockOut ? "휴가일 근무 완료" : "휴가일 근무";
   }
   const workHours = getOverviewScheduledWorkHours(employee, dateKey, log);
+  const expectedStart = getAttendanceExpectedStart(employee, log, dateKey);
   const decorate = (status) => leaveType ? `${leaveType.label} · ${status}` : status;
   if (isOffWorkHours(workHours)) {
     if (!log.clockIn && !log.clockOut) return decorate("휴무");
@@ -19619,10 +19717,10 @@ function getAttendanceStatusForLog(employee, log = getEmployeeLogForDate(employe
   }
   if (log.attendanceStatus === "조퇴") return decorate("조퇴");
   if (log.clockIn) {
-    const [start] = String(workHours).split("-");
-    const startMinutes = timeToMinutes(start);
     const inMinutes = timeToMinutes(log.clockIn);
-    const isLate = Number.isFinite(startMinutes) && Number.isFinite(inMinutes) && inMinutes > startMinutes + 5;
+    const isLate = Number.isFinite(expectedStart?.minutes)
+      && Number.isFinite(inMinutes)
+      && inMinutes > expectedStart.minutes + 5;
     if (isLate && log.attendanceStatus === "외출") return decorate("지각·외출");
     if (isLate) return decorate("지각");
     if (log.attendanceStatus === "외출") return decorate("외출");
@@ -19630,8 +19728,7 @@ function getAttendanceStatusForLog(employee, log = getEmployeeLogForDate(employe
   }
   const today = formatDateKey(now);
   const todayMinutes = now.getHours() * 60 + now.getMinutes();
-  const [start] = String(workHours).split("-");
-  const startMinutes = timeToMinutes(start);
+  const startMinutes = expectedStart?.minutes;
   if (dateKey > today) return decorate("예정");
   if (dateKey < today || (dateKey === today && Number.isFinite(startMinutes) && todayMinutes > startMinutes + 30)) return decorate("결석");
   return decorate("미기록");
@@ -19662,10 +19759,9 @@ function renderTodayContext() {
   const log = getSelectedLog();
   const entries = log.schedule || [];
   const tasks = log.tasks || [];
-  const attendance = state.attendance?.[getActiveDateKey()] || [];
   const completed = tasks.filter((task) => task.done || task.status === "완료").length;
   const support = [...tasks, ...entries].filter((entry) => entry.status === "지원필요" || entry.status === "보류").length;
-  const status = log.attendanceStatus || attendance.find((item) => item.employeeId === employee.id)?.status || "미기록";
+  const status = getAttendanceStatusForLog(employee, log, getActiveDateKey()) || "미기록";
   node.innerHTML = [
     ["직원", employee.name],
     ["소속", employee.org.split(" / ").at(-1)],
@@ -24369,13 +24465,14 @@ function renderReport() {
   const entries = (log.schedule || []).filter((entry) => getScheduleEntryText(entry));
   const attendance = state.attendance?.[getActiveDateKey()] || [];
   const employeeAttendance = attendance.find((item) => item.employeeId === employee.id);
+  const attendanceStatus = getAttendanceStatusForLog(employee, log, getActiveDateKey());
   const completed = tasks.filter((task) => task.done || task.status === "완료");
   const blocked = [...tasks, ...entries].filter((entry) => entry.status === "보류" || entry.status === "지원필요");
   document.getElementById("reportDraft").value = [
     `Bangju AI 직원 업무일지 (${getActiveDateKey()})`,
     `직원: ${employee.name} / ${employee.org} / ${employee.role}`,
     `출퇴근: ${log.clockIn || "미기록"} ~ ${log.clockOut || "미기록"}`,
-    `근태: ${employeeAttendance?.status || "미기록"}${employeeAttendance?.note ? ` · ${employeeAttendance.note}` : ""}`,
+    `근태: ${attendanceStatus || employeeAttendance?.status || "미기록"}${employeeAttendance?.note ? ` · ${employeeAttendance.note}` : ""}`,
     "",
     `1. 오늘의 우선업무: ${tasks.length}건`,
     ...priorityOptions.flatMap(([priority]) => tasks.filter((task) => task.priority === priority).map((task) => `- ${priority} ${task.text} (${task.status}${task.done ? ", 완료" : ""})`)),

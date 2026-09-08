@@ -1055,6 +1055,16 @@ check(
 );
 
 check(
+  "fitness lateness uses each employee's expected start instead of the center coverage window",
+  js.includes("function getRecentFitnessAttendanceStartPattern")
+    && js.includes('source: "recent-weekday-pattern"')
+    && js.includes("function getAttendanceExpectedStart")
+    && js.includes("isFitnessCoverageWindow(scheduledHours)")
+    && js.includes("expectedStart.minutes + 5"),
+  "fitness lateness must prefer each employee's recurring attendance pattern and must not treat a broad center operating range as a personal shift"
+);
+
+check(
   "schedule types are scoped by business site and role",
   js.includes("const scheduleTypeCatalog =")
     && js.includes('finance: ["입금/수납", "지급/출납", "자금계획", "은행/대출", "매입/매출", "채권/채무", "회계/전표", "결산/마감", "예산/손익", "세무/신고", "급여/4대보험", "증빙/법인카드"')
