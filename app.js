@@ -99,7 +99,9 @@ const taskPriorityOptions = ["?", "A", "B", "C", "진행중", "위임", "연기"
 const scheduleTypeCatalog = {
   fitness: ["유료PT", "무료PT", "고객/상담", "회원관리", "SNS 홍보", "마케팅활동", "영업/홍보", "시설/청결", "행정/정산", "오픈/마감", "휴게"],
   finance: ["입금/수납", "지급/출납", "자금계획", "은행/대출", "매입/매출", "채권/채무", "회계/전표", "결산/마감", "예산/손익", "세무/신고", "급여/4대보험", "증빙/법인카드", "계약/문서", "보고/결재", "휴게"],
-  project: ["고객/상담", "견적/계약", "설계/디자인", "발주/구매", "시공/현장", "품질/하자", "영업/홍보", "행정/정산", "휴게"],
+  // TBA·쇼룸·인테리어 업무는 고객 응대보다 실제 현장 흐름을 먼저 보이게 합니다.
+  // 기존 보고서의 "고객/상담" 일괄 표기는 자재·현장·운반 업무의 성격을 가렸습니다.
+  project: ["현장작업", "자재/재고", "제작/가공", "운반/이동", "견적/고객", "설계/디자인", "발주/구매", "품질/하자", "영업/홍보", "행정/정산", "휴게"],
   shared: ["입주/상담", "계약/수납", "공간/시설", "청소/점검", "고객/민원", "홍보/영업", "행정/보고", "오픈/마감", "휴게"],
   construction: ["공정/시공", "안전/점검", "품질/하자", "자재/발주", "인력/장비", "도면/설계", "기성/정산", "대관/보고", "휴게"],
   corporate: ["핵심업무", "고객/거래처", "계약/문서", "회의/협업", "영업/홍보", "운영/점검", "행정/정산", "보고/결재", "휴게"],
@@ -1519,23 +1521,18 @@ function getExecutiveWorklogTaskRefs(log = getExecutiveWorklog(), activeDateKey 
       const sourceLog = getExecutiveWorklog(dateKey);
       (sourceLog.tasks || []).forEach((task, index) => {
         const deletedFrom = String(task.carryoverDeletedFrom || "");
-        const rolloverDate = getWorklogTaskRolloverDate(task, dateKey);
-        const isPostponedHere = task.status === "연기"
-          && task.postponeDate === activeDateKey
-          && !hasExecutivePostponedTaskOccurrence(task, log)
-          && hasWorklogCarryoverDateArrived(activeDateKey);
         const isOpenCarryover = Boolean(
           isWorklogTaskDueForDate(task, dateKey, activeDateKey)
           && (!deletedFrom || deletedFrom > activeDateKey)
         );
-        if (isOpenCarryover || isPostponedHere) {
+        if (isOpenCarryover) {
           addRef({
             task,
             index,
             log: sourceLog,
             sourceDateKey: dateKey,
-            isCarryover: isOpenCarryover,
-            isPostponedFromOtherDate: task.status === "연기" && rolloverDate <= activeDateKey,
+            isCarryover: true,
+            isPostponedFromOtherDate: false,
           });
         }
       });
@@ -2122,15 +2119,62 @@ function getWorklogTaskRolloverDate(task = {}, sourceDateKey = "") {
 
 function isWorklogTaskDueForDate(task = {}, sourceDateKey = "", activeDateKey = getActiveDateKey()) {
   if (!hasWorklogCarryoverDateArrived(activeDateKey)) return false;
+  // 연기는 선택한 날짜에 별도 업무를 생성한다. 원본 연기 업무는 이후 날짜의
+  // 자동 이월 후보가 될 수 없으며, 그래야 완료·취소된 원본이 되살아나지 않는다.
+  const status = normalizeWorklogTaskStatus(task.status || "미완료");
+  if (status === "연기") return false;
   const rolloverDate = getWorklogTaskRolloverDate(task, sourceDateKey);
   if (!rolloverDate || rolloverDate >= activeDateKey) return false;
-  const status = normalizeWorklogTaskStatus(task.status || "미완료");
-  if (status === "연기") return Boolean(task.postponeDate && task.postponeDate < activeDateKey);
   return isWorklogTaskCarryoverEligible(task);
 }
 
+const worklogDelayDisplayThreshold = 3;
+
+function isWorklogDateKey(value = "") {
+  return /^\d{4}-\d{2}-\d{2}$/.test(String(value || ""));
+}
+
+function getWorklogTaskDelayOriginDate(task = {}, sourceDateKey = "") {
+  const carriedFrom = String(task?.carryoverSourceDate || "").trim();
+  return isWorklogDateKey(carriedFrom) ? carriedFrom : sourceDateKey;
+}
+
+function isWorklogTaskDelayWorkday(employeeId = "", dateKey = "") {
+  if (!employeeId || !isWorklogDateKey(dateKey)) return false;
+  // 승인된 휴가·병가·휴직일은 지연일수에 넣지 않는다. 반일·시간 단위 휴가도
+  // 업무를 미룬 책임으로 계산하지 않아야 실제 근태 기록과 충돌하지 않는다.
+  if (getApprovedLeaveForDate(employeeId, dateKey)) return false;
+  return !isOffWorkHours(getEmployeeWorkHours(employeeId, state?.profile, dateKey));
+}
+
+function getWorklogTaskDelayInfo(task = {}, sourceDateKey = "", activeDateKey = getActiveDateKey(), employeeId = "") {
+  if (!isWorklogTaskCarryoverEligible(task)) return { days: 0, visible: false, label: "", originDate: "" };
+  const originDate = getWorklogTaskDelayOriginDate(task, sourceDateKey);
+  if (!isWorklogDateKey(originDate) || !isWorklogDateKey(activeDateKey) || originDate >= activeDateKey) {
+    return { days: 0, visible: false, label: "", originDate };
+  }
+  const resolvedEmployeeId = String(employeeId || task?.employeeId || "").trim();
+  if (!resolvedEmployeeId) return { days: 0, visible: false, label: "", originDate };
+  let days = 0;
+  const cursor = parseDateKey(originDate);
+  const end = parseDateKey(activeDateKey);
+  cursor.setDate(cursor.getDate() + 1);
+  while (cursor < end) {
+    const dateKey = formatDateKey(cursor);
+    if (isWorklogTaskDelayWorkday(resolvedEmployeeId, dateKey)) days += 1;
+    cursor.setDate(cursor.getDate() + 1);
+  }
+  return {
+    days,
+    visible: days >= worklogDelayDisplayThreshold,
+    label: days >= worklogDelayDisplayThreshold ? `지연 ${days}일` : "",
+    originDate,
+  };
+}
+
 function removeWorklogPostponedTaskOccurrence(postponeId, keepDateKey = "") {
-  if (!postponeId) return;
+  if (!postponeId) return [];
+  const changedDateKeys = [];
   Object.entries(state.employeeLogs || {}).forEach(([dateKey, logsByEmployee]) => {
     if (dateKey === keepDateKey) return;
     Object.values(logsByEmployee || {}).forEach((log) => {
@@ -2139,8 +2183,17 @@ function removeWorklogPostponedTaskOccurrence(postponeId, keepDateKey = "") {
       if (nextTasks.length === log.tasks.length) return;
       log.tasks = nextTasks;
       normalizeEmployeeLogRows(log, dateKey);
+      log.updatedAt = new Date().toISOString();
+      if (!changedDateKeys.includes(dateKey)) changedDateKeys.push(dateKey);
     });
   });
+  if (changedDateKeys.length) {
+    writeStateToLocalStorage();
+    if (!authState.applyingRemote) {
+      changedDateKeys.forEach((dateKey) => scheduleRemoteSave(0, dateKey));
+    }
+  }
+  return changedDateKeys;
 }
 
 function hasWorklogPostponedTaskOccurrence(task = {}, targetLog = {}) {
@@ -2150,6 +2203,7 @@ function hasWorklogPostponedTaskOccurrence(task = {}, targetLog = {}) {
 
 function scheduleWorklogPostponedTask(task, sourceLog, targetDateKey, sourceDateKey = getActiveDateKey()) {
   if (!task || !sourceLog || !/^\d{4}-\d{2}-\d{2}$/.test(String(targetDateKey || ""))) return false;
+  if (targetDateKey <= sourceDateKey || !String(task.text || "").trim()) return false;
   const employeeId = String(sourceLog.employeeId || getEmployeeWorklogId(getSelectedEmployee()) || "").trim();
   if (!employeeId) return false;
 
@@ -2159,15 +2213,17 @@ function scheduleWorklogPostponedTask(task, sourceLog, targetDateKey, sourceDate
   task.postponeDate = targetDateKey;
   task.postponeId ||= `postpone-${task.id || Date.now()}-${Math.random().toString(16).slice(2)}`;
   task.carryoverDeletedFrom = targetDateKey;
+  sourceLog.updatedAt = new Date().toISOString();
 
   const targetLog = getEmployeeLogForDate(employeeId, targetDateKey);
-  const targetPriority = ["A", "B", "C"].includes(task.priority) ? task.priority : "A";
+  const targetPriority = ["A", "B", "C"].includes(task.priority) ? task.priority : "?";
   removeWorklogPostponedTaskOccurrence(task.postponeId, targetDateKey);
 
   let targetTask = targetLog.tasks.find((item) => item?.postponedFrom === task.postponeId);
   if (!targetTask && String(task.text || "").trim()) {
     targetTask = {
       ...createWorklogTask(targetPriority),
+      id: `${task.postponeId}-${targetDateKey}`,
       text: task.text.trim(),
       priority: targetPriority,
       status: "미완료",
@@ -2188,11 +2244,13 @@ function scheduleWorklogPostponedTask(task, sourceLog, targetDateKey, sourceDate
     targetTask.postponedSourceDate = sourceDateKey;
   }
   normalizeEmployeeLogRows(targetLog, targetDateKey);
+  targetLog.updatedAt = new Date().toISOString();
   return Boolean(targetTask);
 }
 
 function scheduleExecutiveWorklogPostponedTask(task, sourceLog, targetDateKey, sourceDateKey = getActiveDateKey()) {
   if (!task || !sourceLog || !/^\d{4}-\d{2}-\d{2}$/.test(String(targetDateKey || ""))) return false;
+  if (targetDateKey <= sourceDateKey || !String(task.text || "").trim()) return false;
   task.status = "연기";
   task.done = false;
   task.delegate = "";
@@ -2200,20 +2258,17 @@ function scheduleExecutiveWorklogPostponedTask(task, sourceLog, targetDateKey, s
   task.postponeDate = targetDateKey;
   task.postponeId ||= `executive-postpone-${task.id || Date.now()}-${Math.random().toString(16).slice(2)}`;
   task.carryoverDeletedFrom = targetDateKey;
-
-  // Same-day postponement only records the choice. A later date receives one
-  // durable copy of the task, so reopening the calendar never duplicates it.
-  if (targetDateKey === sourceDateKey) return true;
+  sourceLog.updatedAt = new Date().toISOString();
   const targetLog = getExecutiveWorklog(targetDateKey);
   removeExecutivePostponedTaskOccurrence(task.postponeId, targetDateKey);
   let targetTask = targetLog.tasks.find((item) => item?.postponedFrom === task.postponeId);
   const priority = ["A", "B", "C"].includes(task.priority) ? task.priority : "?";
   if (!targetTask && String(task.text || "").trim()) {
     targetTask = {
-      id: `executive-task-${targetDateKey}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+      id: `${task.postponeId}-${targetDateKey}`,
       priority,
       text: String(task.text).trim(),
-      status: "예정",
+      status: "미완료",
       done: false,
       postponedFrom: task.postponeId,
       postponedSourceDate: sourceDateKey,
@@ -2224,7 +2279,7 @@ function scheduleExecutiveWorklogPostponedTask(task, sourceLog, targetDateKey, s
   } else if (targetTask) {
     targetTask.text = String(task.text || "").trim();
     targetTask.priority = priority;
-    targetTask.status = "예정";
+    targetTask.status = "미완료";
     targetTask.done = false;
     targetTask.postponedSourceDate = sourceDateKey;
   }
@@ -2233,13 +2288,36 @@ function scheduleExecutiveWorklogPostponedTask(task, sourceLog, targetDateKey, s
 }
 
 function removeExecutivePostponedTaskOccurrence(postponeId, keepDateKey = "") {
-  if (!postponeId) return;
+  if (!postponeId) return [];
+  const changedDateKeys = [];
   Object.entries(state.executiveWorklogs || {}).forEach(([dateKey, log]) => {
     if (dateKey === keepDateKey || !Array.isArray(log?.tasks)) return;
     const nextTasks = log.tasks.filter((item) => item?.postponedFrom !== postponeId);
     if (nextTasks.length === log.tasks.length) return;
-    state.executiveWorklogs[dateKey] = normalizeExecutiveWorklog({ ...log, tasks: nextTasks }, dateKey);
+    state.executiveWorklogs[dateKey] = normalizeExecutiveWorklog({
+      ...log,
+      tasks: nextTasks,
+      updatedAt: new Date().toISOString(),
+    }, dateKey);
+    changedDateKeys.push(dateKey);
   });
+  if (changedDateKeys.length) {
+    writeStateToLocalStorage();
+    if (!authState.applyingRemote) {
+      changedDateKeys.forEach((dateKey) => scheduleRemoteSave(0, dateKey));
+    }
+  }
+  return changedDateKeys;
+}
+
+function persistPostponedTaskSelection(sourceDateKey, targetDateKey, { executive = false } = {}) {
+  // 연기 원본과 선택 날짜의 새 업무는 각각 다른 일자의 서버 레코드다.
+  // 화면 캐시 갱신에만 의존하지 않고 두 날짜를 즉시 원격 저장 큐에 넣는다.
+  if (executive) saveExecutiveWorklogWithCarryoverRepair({ fastSave: true });
+  else saveState({ fastSave: true });
+  if (authState.applyingRemote) return;
+  [...new Set([sourceDateKey, targetDateKey].filter((dateKey) => /^\d{4}-\d{2}-\d{2}$/.test(String(dateKey || ""))))]
+    .forEach((dateKey) => scheduleRemoteSave(0, dateKey));
 }
 
 function hasExecutivePostponedTaskOccurrence(task = {}, targetLog = {}) {
@@ -6954,7 +7032,7 @@ function renderExecutiveTaskDelegateControl(task, log, refIndex = -1) {
 
 function renderExecutiveTaskActionControl(task, refIndex = -1) {
   if (task.status !== "연기") return "";
-  const label = task.postponeDate ? formatShortDate(task.postponeDate) : "미정";
+  const label = task.postponeDate ? formatShortDate(task.postponeDate) : "날자";
   return `<button class="executive-task-postpone" type="button" data-executive-task-postpone="${refIndex}" aria-label="연기 날짜 선택">${escapeHtml(label)}</button>`;
 }
 
@@ -6962,7 +7040,10 @@ function updateExecutiveWorklogTaskPriority(task, value) {
   const actionValues = ["진행중", "위임", "연기", "취소"];
   const wasPostponed = task.status === "연기";
   if (actionValues.includes(value)) {
-    if (wasPostponed && value !== "연기") removeExecutivePostponedTaskOccurrence(task.postponeId);
+    // 연기 상태를 다시 선택하는 경우에도 기존 대상 업무를 정리하고 날짜를
+    // 다시 고르게 한다. 이전 날짜가 남아 있으면 '날자' 버튼이 아닌 이전
+    // 날짜가 보이거나 중복된 대상 업무가 생길 수 있다.
+    if (wasPostponed) removeExecutivePostponedTaskOccurrence(task.postponeId);
     task.status = value;
     task.done = false;
     if (!["A", "B", "C", "?"].includes(task.priority)) task.priority = "?";
@@ -6970,7 +7051,7 @@ function updateExecutiveWorklogTaskPriority(task, value) {
       task.delegate = "";
       task.delegatedToId = "";
     }
-    if (value !== "연기") task.postponeDate = "";
+    task.postponeDate = "";
     return;
   }
   if (wasPostponed) removeExecutivePostponedTaskOccurrence(task.postponeId);
@@ -9058,6 +9139,9 @@ function renderWorklogCalendar() {
   const year = calendarViewDate.getFullYear();
   const month = calendarViewDate.getMonth();
   const isPostponePicker = ["postpone", "executive-postpone"].includes(calendarPickerMode);
+  const postponeSourceDateKey = isPostponePicker
+    ? String(calendarPostponeContext?.sourceDateKey || getActiveDateKey())
+    : "";
   const selectedDateKey = isPostponePicker
     ? calendarPostponeTask?.postponeDate || getActiveDateKey()
     : getActiveDateKey();
@@ -9072,7 +9156,7 @@ function renderWorklogCalendar() {
         : calendarPickerMode === "control"
           ? `통합관제 ${formatFormalKoreanDate(getActiveDateKey())}`
           : formatKoreanDate(getActiveDateKey());
-  todayButton.textContent = isPostponePicker ? "오늘로 지정" : "오늘로 이동";
+  todayButton.textContent = "오늘로 이동";
   dayGrid.innerHTML = "";
   const firstDay = new Date(year, month, 1).getDay();
   const lastDate = new Date(year, month + 1, 0).getDate();
@@ -9085,7 +9169,11 @@ function renderWorklogCalendar() {
     const subLabels = [...meta.holidayLabels.slice(0, 1), meta.lunarLabel].filter(Boolean);
     const button = document.createElement("button");
     button.type = "button";
-    if (isDashboardCalendar && key > todayKey) button.disabled = true;
+    const isUnavailablePostponeDate = isPostponePicker
+      && postponeSourceDateKey
+      && key <= postponeSourceDateKey;
+    if ((isDashboardCalendar && key > todayKey) || isUnavailablePostponeDate) button.disabled = true;
+    if (isUnavailablePostponeDate) button.title = "연기일은 원래 업무일 이후 날짜로 선택하세요.";
     button.innerHTML = `
       <strong>${String(date)}</strong>
       ${subLabels.length ? `<small>${subLabels.map(escapeHtml).join(" · ")}</small>` : ""}
@@ -9134,26 +9222,44 @@ function renderWorklogCalendar() {
 function selectCalendarDate(dateKey) {
   if (calendarPickerMode === "postpone" && calendarPostponeTask) {
     const context = calendarPostponeContext || {};
-    scheduleWorklogPostponedTask(
+    const sourceDateKey = context.sourceDateKey || getActiveDateKey();
+    if (dateKey <= sourceDateKey) {
+      showAppToast("연기일은 원래 업무일 이후 날짜로 선택하세요.");
+      return;
+    }
+    const scheduled = scheduleWorklogPostponedTask(
       context.task || calendarPostponeTask,
       context.log || getSelectedLog(),
       dateKey,
-      context.sourceDateKey || getActiveDateKey(),
+      sourceDateKey,
     );
-    saveState();
+    if (!scheduled) {
+      showAppToast("내용을 입력한 업무만 날짜를 지정해 연기할 수 있습니다.");
+      return;
+    }
+    persistPostponedTaskSelection(sourceDateKey, dateKey);
     closeWorklogCalendar();
     renderEntries();
     return;
   }
   if (calendarPickerMode === "executive-postpone" && calendarPostponeTask) {
     const context = calendarPostponeContext || {};
-    scheduleExecutiveWorklogPostponedTask(
+    const sourceDateKey = context.sourceDateKey || getActiveDateKey();
+    if (dateKey <= sourceDateKey) {
+      showAppToast("연기일은 원래 업무일 이후 날짜로 선택하세요.");
+      return;
+    }
+    const scheduled = scheduleExecutiveWorklogPostponedTask(
       context.task || calendarPostponeTask,
       context.log || getExecutiveWorklog(),
       dateKey,
-      context.sourceDateKey || getActiveDateKey(),
+      sourceDateKey,
     );
-    saveState({ fastSave: true });
+    if (!scheduled) {
+      showAppToast("내용을 입력한 업무만 날짜를 지정해 연기할 수 있습니다.");
+      return;
+    }
+    persistPostponedTaskSelection(sourceDateKey, dateKey, { executive: true });
     closeWorklogCalendar();
     renderExecutiveWorklog();
     showAppToast(`${formatShortDate(dateKey)} 대표 우선업무에 연기 일정을 기록했습니다.`);
@@ -17529,23 +17635,18 @@ function getWorklogTaskRefs(log) {
       (sourceLog?.tasks || []).forEach((task, index) => {
         task.id ||= `task-${dateKey}-${index}`;
         const deletedFrom = String(task.carryoverDeletedFrom || "");
-        const rolloverDate = getWorklogTaskRolloverDate(task, dateKey);
-        const isPostponedHere = task.status === "연기"
-          && task.postponeDate === activeDateKey
-          && !hasWorklogPostponedTaskOccurrence(task, log)
-          && hasWorklogCarryoverDateArrived(activeDateKey);
         const isOpenCarryover = Boolean(
           isWorklogTaskDueForDate(task, dateKey, activeDateKey)
           && (!deletedFrom || deletedFrom > activeDateKey)
         );
-        if (isOpenCarryover || isPostponedHere) {
+        if (isOpenCarryover) {
           refs.push({
             task,
             index,
             log: sourceLog,
             sourceDateKey: dateKey,
-            isCarryover: isOpenCarryover,
-            isPostponedFromOtherDate: task.status === "연기" && rolloverDate <= activeDateKey,
+            isCarryover: true,
+            isPostponedFromOtherDate: false,
           });
         }
       });
@@ -17620,6 +17721,12 @@ function renderWorklogTaskRow(ref, currentLog, options = {}) {
   const marker = getWorklogTaskMarker(displayTask);
   const statusClass = getWorklogTaskStatusClass(displayTask);
   const priorityMissing = isWorklogTaskPriorityMissing(displayTask);
+  const delayInfo = getWorklogTaskDelayInfo(
+    displayTask,
+    sourceDateKey,
+    getActiveDateKey(),
+    log?.employeeId || currentLog?.employeeId
+  );
   row.className = `worklog-task-row task-row priority-${String(displayTask.priority || "?").toLowerCase()} marker-${marker} ${statusClass} ${displayTask.done ? "done" : ""} ${isCarryover ? "is-carryover" : ""} ${isPostponedFromOtherDate ? "is-postponed-in" : ""} ${priorityMissing ? "is-priority-missing" : ""}`;
   row.innerHTML = `
     <button class="task-cycle" type="button" aria-label="상태 변경: 완료, 진행중, 해제 순환">${getWorklogTaskMarkerLabel(displayTask)}</button>
@@ -17629,6 +17736,7 @@ function renderWorklogTaskRow(ref, currentLog, options = {}) {
       <input class="task-text-input" type="text" value="${escapeAttr(displayTask.text)}" placeholder="예: 14:30 거래처 미팅" aria-label="주요업무" title="시간을 함께 입력하면 시간별일정에 자동으로 표시됩니다" />
       ${renderTaskActionControl(displayTask, currentLog, viewName)}
       ${renderWorklogTaskTags(getWorklogTaskTags(displayTask))}
+      ${renderWorklogTaskDelayTag(delayInfo)}
       <span class="task-priority-warning" ${priorityMissing ? "" : "hidden"}>중요도 선택 필요</span>
       ${(isCarryover || isPostponedFromOtherDate) ? `<span class="task-origin-tag">${escapeHtml(formatShortDate(sourceDateKey))} 이월</span>` : ""}
     </div>
@@ -17660,7 +17768,10 @@ function renderWorklogTaskRow(ref, currentLog, options = {}) {
     }
     saveState({ input: true });
     updateTaskPriorityWarningState(row, editableRef.task, { log: editableRef.log });
-    updateTaskRowTags(row, editableRef.task);
+    updateTaskRowTags(row, editableRef.task, {
+      sourceDateKey: editableRef.sourceDateKey || getActiveDateKey(),
+      employeeId: editableRef.log?.employeeId || currentLog?.employeeId,
+    });
     scheduleInputRender("worklog-task-derived", () => {
       if (getSelectedLog() !== currentLog) return;
       renderWorklogSummary(currentLog);
@@ -17747,7 +17858,7 @@ function renderTaskActionControl(task, currentLog = getSelectedLog(), viewName =
     `;
   }
   if (task.status === "연기") {
-    const label = task.postponeDate ? formatShortDate(task.postponeDate) : "미정";
+    const label = task.postponeDate ? formatShortDate(task.postponeDate) : "날자";
     return `<button class="postpone-date-button task-action-control" type="button" aria-label="연기 날짜 선택">${escapeHtml(label)}</button>`;
   }
   return "";
@@ -17819,12 +17930,15 @@ function getPriorityValue(task) {
 function updateWorklogTaskPriority(task, value) {
   const wasPostponed = task.status === "연기";
   if (["진행중", "취소", "위임", "연기"].includes(value)) {
-    if (wasPostponed && value !== "연기") removeWorklogPostponedTaskOccurrence(task.postponeId);
+    // 기존 연기 대상이 있으면 같은 업무를 다시 연기하기 전에 지운다.
+    // 그 뒤 날짜를 비워 '날자' 버튼을 다시 표시하므로 한 원본당 한 대상만
+    // 유지된다.
+    if (wasPostponed) removeWorklogPostponedTaskOccurrence(task.postponeId);
     task.status = value;
     task.done = false;
     if (!["?", "A", "B", "C"].includes(task.priority)) task.priority = "?";
     if (value !== "위임") task.delegate = "";
-    if (value !== "연기") task.postponeDate = "";
+    task.postponeDate = "";
     return;
   }
   if (wasPostponed) removeWorklogPostponedTaskOccurrence(task.postponeId);
@@ -17892,15 +18006,31 @@ function renderWorklogTaskTags(tags) {
   return `<span class="task-link-tags">${tags.map((tag) => `<span>${escapeHtml(tag)}</span>`).join("")}</span>`;
 }
 
-function updateTaskRowTags(row, task) {
+function renderWorklogTaskDelayTag(delayInfo = {}) {
+  if (!delayInfo?.visible || !delayInfo.label) return "";
+  return `<span class="task-delay-tag" title="${escapeAttr(`${delayInfo.originDate} 업무가 실제 근무일 기준 ${delayInfo.days}일 지연되었습니다`)}">${escapeHtml(delayInfo.label)}</span>`;
+}
+
+function updateTaskRowTags(row, task, { sourceDateKey = "", employeeId = "" } = {}) {
   const cell = row.querySelector(".task-text-cell");
+  if (!cell) return;
   row.querySelector(".task-link-tags")?.remove();
+  row.querySelector(".task-delay-tag")?.remove();
   const tags = getWorklogTaskTags(task);
-  if (!tags.length) return;
-  const node = document.createElement("span");
-  node.className = "task-link-tags";
-  node.innerHTML = tags.map((tag) => `<span>${escapeHtml(tag)}</span>`).join("");
-  cell.appendChild(node);
+  if (tags.length) {
+    const node = document.createElement("span");
+    node.className = "task-link-tags";
+    node.innerHTML = tags.map((tag) => `<span>${escapeHtml(tag)}</span>`).join("");
+    cell.appendChild(node);
+  }
+  const delayInfo = getWorklogTaskDelayInfo(
+    task,
+    sourceDateKey || task?.carryoverSourceDate || getActiveDateKey(),
+    getActiveDateKey(),
+    employeeId || getSelectedLog()?.employeeId
+  );
+  const delayHtml = renderWorklogTaskDelayTag(delayInfo);
+  if (delayHtml) cell.insertAdjacentHTML("beforeend", delayHtml);
 }
 
 function getScheduleTypeCatalogKey(employee = getSelectedEmployee()) {
@@ -17936,15 +18066,18 @@ function inferScheduleType(text = "", options = allScheduleTypeOptions) {
   if (/정산/.test(text)) return choose("증빙/법인카드", choose("증빙/정산", choose("기성/정산", choose("행정/정산"))));
   if (/무료|체험|서비스|무상/.test(text) && /pt|p\/t|피티|수업|운동지도/i.test(text)) return choose("무료PT");
   if (/유료|정규|pt|p\/t|피티|수업|운동지도/i.test(text)) return choose("유료PT");
-  if (/견적|계약/.test(text)) return choose("견적/계약", choose("계약/수납", choose("계약/문서")));
+  if (/견적|계약/.test(text)) return choose("견적/고객", choose("견적/계약", choose("계약/수납", choose("계약/문서"))));
   if (/설계|도면|디자인/.test(text)) return choose("설계/디자인", choose("도면/설계"));
-  if (/발주|구매|자재/.test(text)) return choose("발주/구매", choose("자재/발주"));
+  if (options.includes("운반/이동") && /(?:자재|물품|장비|폐기물|시공품).*(?:픽업|운반|이동|배송|상하차|납품|출고|입고)|(?:픽업|운반|배송|상하차|납품).*(?:자재|물품|장비|폐기물|시공품)/.test(text)) return "운반/이동";
+  if (options.includes("자재/재고") && /재고|창고|소모품|물품|부자재|자재\s*(정리|관리|확인|조사|파악)/.test(text)) return "자재/재고";
+  if (options.includes("제작/가공") && /(?:벽판|패널|판넬|타일|욕실|가구|집기|목공|자재).*(?:제작|가공|조립|재단)|(?:제작|가공|조립|재단).*(?:벽판|패널|판넬|타일|욕실|가구|집기|목공|자재)/.test(text)) return "제작/가공";
+  if (/발주|구매|자재/.test(text)) return choose("발주/구매", choose("자재/재고", choose("자재/발주")));
   if (/안전|위험|점검/.test(text)) return choose("안전/점검", choose("운영/점검"));
-  if (/공정|시공|현장|공사/.test(text)) return choose("공정/시공", choose("시공/현장"));
+  if (/철거|도색|설치|보수|수리|시공|현장|공사|작업/.test(text)) return choose("현장작업", choose("공정/시공", choose("시공/현장")));
   if (/하자|품질/.test(text)) return choose("품질/하자");
   if (/입주|수납|공실|임대/.test(text)) return choose("입주/상담", choose("계약/수납"));
   if (/센터관리|센타관리|기구|시설|냉난방|조명|청소|세탁|쓰레기|샤워실|탈의실|정리|위생/.test(text)) return choose("시설/청결", choose("공간/시설", choose("청소/점검", choose("운영/점검"))));
-  if (/상담|회원|고객|문의|재등록|민원/.test(text)) return choose("고객/상담", choose("고객/민원", choose("고객/거래처")));
+  if (/상담|회원|고객|문의|재등록|민원/.test(text)) return choose("견적/고객", choose("고객/상담", choose("고객/민원", choose("고객/거래처"))));
   if (/인스타그램|인스타|instagram|블로그|blog|릴스|reels|숏폼|피드|게시물|콘텐츠|포스팅|카드뉴스|영상편집|sns/i.test(text)) return choose("SNS 홍보", choose("마케팅활동", choose("영업/홍보")));
   if (/마케팅|광고|캠페인|리뷰|이벤트|홍보물|전단|배너|플레이스|검색노출|seo/i.test(text)) return choose("마케팅활동", choose("영업/홍보", choose("홍보/영업")));
   if (/영업|홍보|마케팅|아웃바운드|전화|콜|체험권|매출/.test(text)) return choose("영업/홍보", choose("홍보/영업"));
@@ -17968,6 +18101,16 @@ function normalizeScheduleType(type = "업무", text = "") {
     무료PT: "무료PT",
     "무료P/T": "무료PT",
     고객관리: "고객/상담",
+    "현장 작업": "현장작업",
+    현장작업: "현장작업",
+    자재관리: "자재/재고",
+    재고관리: "자재/재고",
+    창고관리: "자재/재고",
+    자재재고: "자재/재고",
+    운반: "운반/이동",
+    이동: "운반/이동",
+    제작: "제작/가공",
+    가공: "제작/가공",
     "인스타/블로그": "SNS 홍보",
     인스타: "SNS 홍보",
     인스타그램: "SNS 홍보",

@@ -1058,7 +1058,7 @@ check(
   "schedule types are scoped by business site and role",
   js.includes("const scheduleTypeCatalog =")
     && js.includes('finance: ["입금/수납", "지급/출납", "자금계획", "은행/대출", "매입/매출", "채권/채무", "회계/전표", "결산/마감", "예산/손익", "세무/신고", "급여/4대보험", "증빙/법인카드"')
-    && js.includes('project: ["고객/상담", "견적/계약", "설계/디자인", "발주/구매", "시공/현장"')
+    && js.includes('project: ["현장작업", "자재/재고", "제작/가공", "운반/이동", "견적/고객", "설계/디자인", "발주/구매"')
     && js.includes('shared: ["입주/상담", "계약/수납", "공간/시설"')
     && js.includes('construction: ["공정/시공", "안전/점검", "품질/하자"')
     && /function getScheduleTypeCatalogKey[\s\S]{0,800}return "finance"/.test(js)

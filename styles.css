@@ -1967,6 +1967,19 @@ body[data-device-mode="narrow"] .os-mode-switch span[data-device-mode="narrow"] 
   white-space: nowrap;
 }
 
+.task-delay-tag {
+  flex: 0 0 auto;
+  border: 1px solid rgba(180, 57, 46, 0.26);
+  border-radius: 999px;
+  background: rgba(201, 50, 43, 0.08);
+  color: #a1322c;
+  padding: 3px 6px;
+  font-size: 10px;
+  font-weight: 950;
+  line-height: 1;
+  white-space: nowrap;
+}
+
 .task-text-cell {
   position: relative;
   display: flex;
@@ -2014,6 +2027,12 @@ body[data-device-mode="narrow"] .os-mode-switch span[data-device-mode="narrow"] 
   text-decoration-color: #c9322b;
   text-decoration-thickness: 2px;
   text-decoration-skip-ink: none;
+}
+
+/* 연기된 원본 업무도 글자는 읽기 쉽게 유지하고, 중앙의 붉은 선으로만 상태를 구분한다. */
+.task-row.status-postpone .task-text-input,
+.task-row.marker-postpone .task-text-input {
+  color: var(--ink);
 }
 
 .task-row.status-complete .task-text-cell::after,
@@ -8399,6 +8418,7 @@ textarea:focus-visible {
 }
 
 .task-origin-tag,
+.task-delay-tag,
 .task-link-tags span,
 .task-tag {
   border-radius: 0;
@@ -9035,7 +9055,8 @@ textarea:focus-visible {
 
   .task-link-tags span,
   .task-tag,
-  .task-origin-tag {
+  .task-origin-tag,
+  .task-delay-tag {
     min-height: 17px;
     padding: 2px 5px;
     font-size: 9px;
@@ -29145,7 +29166,8 @@ body[data-active-view="executive"] #executiveDateButton {
 .worklog-task-row.status-cancel .task-text-input,
 .executive-task-row.status-complete .executive-task-text-wrap input,
 .executive-task-row.status-delegate .executive-task-text-wrap input,
-.executive-task-row.status-cancel .executive-task-text-wrap input {
+.executive-task-row.status-cancel .executive-task-text-wrap input,
+.executive-task-row.status-postpone .executive-task-text-wrap input {
   color: #111b16 !important;
   text-decoration: none !important;
 }
@@ -29160,7 +29182,8 @@ body[data-active-view="executive"] #executiveDateButton {
 
 .executive-task-row.status-complete .executive-task-text-wrap::after,
 .executive-task-row.status-delegate .executive-task-text-wrap::after,
-.executive-task-row.status-cancel .executive-task-text-wrap::after {
+.executive-task-row.status-cancel .executive-task-text-wrap::after,
+.executive-task-row.status-postpone .executive-task-text-wrap::after {
   position: absolute;
   z-index: 1;
   top: 50%;

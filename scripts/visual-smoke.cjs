@@ -1351,6 +1351,10 @@ async function checkOverviewCommandBoard(browser) {
       },
       financeInference: inferScheduleType("세금계산서 신고", options(finance)),
       projectInference: inferScheduleType("욕실 시공 현장 확인", options(project)),
+      projectFieldInference: inferScheduleType("임시 난간대 철거, 다락 욕실 바닥 철거", options(project)),
+      projectStockInference: inferScheduleType("물품 창고 재고 정리", options(project)),
+      projectMoveInference: inferScheduleType("자재 픽업, 안양 이동", options(project)),
+      projectMealInference: inferScheduleType("중식", options(project)),
       sharedInference: inferScheduleType("신규 입주 상담", options(shared)),
       constructionInference: inferScheduleType("현장 안전 점검", scheduleTypeCatalog.construction),
       generalEditorConnected: /openWorklogScheduleEditor/.test(document.documentElement.innerHTML) || typeof openWorklogScheduleEditor === "function"
@@ -1361,7 +1365,7 @@ async function checkOverviewCommandBoard(browser) {
     || scheduleTypeCatalog.finance.includes("유료PT")
     || scheduleTypeCatalog.finance.includes("무료PT")
     || !["입금/수납", "지급/출납", "자금계획", "은행/대출", "매입/매출", "채권/채무", "회계/전표", "결산/마감", "예산/손익", "세무/신고", "급여/4대보험", "증빙/법인카드"].every((item) => scheduleTypeCatalog.finance.includes(item))
-    || !["견적/계약", "설계/디자인", "시공/현장"].every((item) => scheduleTypeCatalog.project.includes(item))
+    || !["현장작업", "자재/재고", "제작/가공", "운반/이동", "견적/고객", "설계/디자인", "발주/구매"].every((item) => scheduleTypeCatalog.project.includes(item))
     || !["입주/상담", "계약/수납", "공간/시설"].every((item) => scheduleTypeCatalog.shared.includes(item))
     || !["유료PT", "무료PT", "회원관리", "SNS 홍보", "마케팅활동"].every((item) => scheduleTypeCatalog.fitness.includes(item))
     || !["공정/시공", "안전/점검", "자재/발주"].every((item) => scheduleTypeCatalog.construction.includes(item))
@@ -1371,7 +1375,11 @@ async function checkOverviewCommandBoard(browser) {
     || scheduleTypeCatalog.cashPlanInference !== "자금계획"
     || scheduleTypeCatalog.receivableInference !== "채권/채무"
     || scheduleTypeCatalog.cardEvidenceInference !== "증빙/법인카드"
-    || scheduleTypeCatalog.projectInference !== "시공/현장"
+    || scheduleTypeCatalog.projectInference !== "현장작업"
+    || scheduleTypeCatalog.projectFieldInference !== "현장작업"
+    || scheduleTypeCatalog.projectStockInference !== "자재/재고"
+    || scheduleTypeCatalog.projectMoveInference !== "운반/이동"
+    || scheduleTypeCatalog.projectMealInference !== "휴게"
     || scheduleTypeCatalog.sharedInference !== "입주/상담"
     || scheduleTypeCatalog.constructionInference !== "안전/점검"
     || scheduleTypeCatalog.fitnessInstagramInference !== "SNS 홍보"
@@ -3238,8 +3246,7 @@ async function checkPriorityCarryoverAndDateRules(browser) {
     todayKey = "2026-08-09";
     const postponedBeforeDate = isWorklogTaskDueForDate(sourceLog.tasks[6], sourceDateKey, "2026-08-09");
     todayKey = "2026-08-10";
-    const postponedDateArrived = hasWorklogCarryoverDateArrived("2026-08-10")
-      && getWorklogTaskRolloverDate(sourceLog.tasks[6], sourceDateKey) === "2026-08-10";
+    const postponedDateArrived = isWorklogTaskDueForDate(sourceLog.tasks[6], sourceDateKey, "2026-08-10");
     const postponedFutureDay = isWorklogTaskDueForDate(sourceLog.tasks[6], sourceDateKey, "2026-08-11");
     todayKey = "2026-08-11";
     const postponedNextDayArrived = isWorklogTaskDueForDate(sourceLog.tasks[6], sourceDateKey, "2026-08-11");
@@ -3336,6 +3343,89 @@ async function checkPriorityCarryoverAndDateRules(browser) {
       showTaskStatusGuide(taskStatusGuideLabels[status] || status);
       return document.getElementById("taskStatusGuide")?.textContent || "";
     });
+
+    const postponedSelectionSourceDate = "2026-08-06";
+    const postponedSelectionTargetDate = "2026-08-09";
+    const postponedSelectionSourceLog = createEmployeeLog(employee, state.profile, postponedSelectionSourceDate);
+    const postponedSelectionTask = {
+      id: "postpone-selection-source",
+      priority: "B",
+      text: "날짜 선택 연기 업무",
+      status: "미완료",
+      done: false
+    };
+    postponedSelectionSourceLog.tasks = [postponedSelectionTask];
+    state.employeeLogs[postponedSelectionSourceDate] = { "bangju-finance-manager": postponedSelectionSourceLog };
+    updateWorklogTaskPriority(postponedSelectionTask, "연기");
+    const postponedSelectionLabel = renderTaskActionControl(postponedSelectionTask, postponedSelectionSourceLog).includes(">날자<");
+    const postponedSelectionRow = renderWorklogTaskRow({
+      task: postponedSelectionTask,
+      index: 0,
+      log: postponedSelectionSourceLog,
+      sourceDateKey: postponedSelectionSourceDate,
+      isCarryover: false,
+      isPostponedFromOtherDate: false
+    }, postponedSelectionSourceLog);
+    document.body.appendChild(postponedSelectionRow);
+    const postponedSelectionDecoration = getComputedStyle(postponedSelectionRow.querySelector(".task-text-input")).textDecorationLine;
+    const postponedSelectionScheduled = scheduleWorklogPostponedTask(
+      postponedSelectionTask,
+      postponedSelectionSourceLog,
+      postponedSelectionTargetDate,
+      postponedSelectionSourceDate
+    );
+    const postponedSelectionScheduledAgain = scheduleWorklogPostponedTask(
+      postponedSelectionTask,
+      postponedSelectionSourceLog,
+      postponedSelectionTargetDate,
+      postponedSelectionSourceDate
+    );
+    const postponedSelectionTargets = (getEmployeeLogForDate("bangju-finance-manager", postponedSelectionTargetDate).tasks || [])
+      .filter((task) => task?.postponedFrom === postponedSelectionTask.postponeId);
+    const postponedSelectionTarget = postponedSelectionTargets[0] || {};
+    const postponedSelectionAutoCarryover = isWorklogTaskDueForDate(
+      postponedSelectionTask,
+      postponedSelectionSourceDate,
+      postponedSelectionTargetDate
+    );
+    persistPostponedTaskSelection(postponedSelectionSourceDate, postponedSelectionTargetDate);
+    const postponedSelectionSourceQueued = Boolean(authState.saveTimers?.get(postponedSelectionSourceDate));
+    const postponedSelectionTargetQueued = Boolean(authState.saveTimers?.get(postponedSelectionTargetDate));
+    [postponedSelectionSourceDate, postponedSelectionTargetDate].forEach((dateKey) => {
+      const timer = authState.saveTimers?.get(dateKey);
+      if (timer) window.clearTimeout(timer);
+      authState.saveTimers?.delete(dateKey);
+    });
+    const originalLeaveRequests = state.laborLeaveRequests;
+    const delayTask = { id: "delay-day-task", priority: "A", text: "근무일 기준 지연 업무", status: "미완료", done: false };
+    const delayInfo = getWorklogTaskDelayInfo(delayTask, "2026-08-03", "2026-08-07", "bangju-finance-manager");
+    const terminalDelayInfo = getWorklogTaskDelayInfo(
+      { ...delayTask, status: "완료", done: true },
+      "2026-08-03",
+      "2026-08-07",
+      "bangju-finance-manager"
+    );
+    state.laborLeaveRequests = [
+      ...(Array.isArray(originalLeaveRequests) ? originalLeaveRequests : []),
+      {
+        id: "delay-day-approved-leave",
+        employeeId: "bangju-finance-manager",
+        startDate: "2026-08-05",
+        endDate: "2026-08-05",
+        status: "approved",
+        leaveType: "annual"
+      }
+    ];
+    const delayWithLeave = getWorklogTaskDelayInfo(delayTask, "2026-08-03", "2026-08-10", "bangju-finance-manager");
+    state.laborLeaveRequests = originalLeaveRequests;
+    const saturdayOnlyDelay = getWorklogTaskDelayInfo(
+      delayTask,
+      "2026-08-01",
+      "2026-08-29",
+      "fitness-weekday-info-idabin"
+    );
+    const delayTagHtml = renderWorklogTaskDelayTag(delayInfo);
+    postponedSelectionRow.remove();
     delegatedRow.remove();
     postponedPreviewRow.remove();
     const originalExecutiveWorklogs = state.executiveWorklogs;
@@ -3390,6 +3480,44 @@ async function checkPriorityCarryoverAndDateRules(browser) {
     };
     const executiveLegacyRepairedCarryoverDates = reconcileExecutiveWorklogTerminalCarryovers();
     const executiveLegacyStaleCopy = state.executiveWorklogs[executiveLegacyActiveDate].tasks[0];
+    const executivePostponeSourceDate = "2026-08-06";
+    const executivePostponeTargetDate = "2026-08-09";
+    const executivePostponeTask = { id: "executive-postpone-selection", priority: "C", text: "대표 날짜 선택 연기 업무", status: "미완료", done: false };
+    const executivePostponeSourceLog = {
+      ...createExecutiveWorklog(executivePostponeSourceDate),
+      tasks: [executivePostponeTask]
+    };
+    state.executiveWorklogs[executivePostponeSourceDate] = executivePostponeSourceLog;
+    updateExecutiveWorklogTaskPriority(executivePostponeTask, "연기");
+    const executivePostponeLabel = renderExecutiveTaskActionControl(executivePostponeTask, 0).includes(">날자<");
+    const executivePostponeScheduled = scheduleExecutiveWorklogPostponedTask(
+      executivePostponeTask,
+      executivePostponeSourceLog,
+      executivePostponeTargetDate,
+      executivePostponeSourceDate
+    );
+    const executivePostponeScheduledAgain = scheduleExecutiveWorklogPostponedTask(
+      executivePostponeTask,
+      executivePostponeSourceLog,
+      executivePostponeTargetDate,
+      executivePostponeSourceDate
+    );
+    const executivePostponeTargets = (getExecutiveWorklog(executivePostponeTargetDate).tasks || [])
+      .filter((task) => task?.postponedFrom === executivePostponeTask.postponeId);
+    const executivePostponeTarget = executivePostponeTargets[0] || {};
+    const executivePostponeAutoCarryover = isWorklogTaskDueForDate(
+      executivePostponeTask,
+      executivePostponeSourceDate,
+      executivePostponeTargetDate
+    );
+    persistPostponedTaskSelection(executivePostponeSourceDate, executivePostponeTargetDate, { executive: true });
+    const executivePostponeSourceQueued = Boolean(authState.saveTimers?.get(executivePostponeSourceDate));
+    const executivePostponeTargetQueued = Boolean(authState.saveTimers?.get(executivePostponeTargetDate));
+    [executivePostponeSourceDate, executivePostponeTargetDate].forEach((dateKey) => {
+      const timer = authState.saveTimers?.get(dateKey);
+      if (timer) window.clearTimeout(timer);
+      authState.saveTimers?.delete(dateKey);
+    });
     state.executiveWorklogs = originalExecutiveWorklogs;
     state.selectedDateKey = originalSelectedDateKey;
     todayKey = originalTodayKeyForExecutive;
@@ -3422,6 +3550,34 @@ async function checkPriorityCarryoverAndDateRules(browser) {
       postponedDateArrived,
       postponedFutureDay,
       postponedNextDayArrived,
+      postponedSelection: {
+        label: postponedSelectionLabel,
+        decoration: postponedSelectionDecoration,
+        scheduled: postponedSelectionScheduled,
+        scheduledAgain: postponedSelectionScheduledAgain,
+        sourceStatus: postponedSelectionTask.status,
+        sourcePriority: postponedSelectionTask.priority,
+        sourceDate: postponedSelectionTask.postponeDate,
+        targetCount: postponedSelectionTargets.length,
+        targetPriority: postponedSelectionTarget.priority,
+        targetStatus: postponedSelectionTarget.status,
+        targetDone: postponedSelectionTarget.done,
+        targetSourceDate: postponedSelectionTarget.postponedSourceDate,
+        autoCarryover: postponedSelectionAutoCarryover,
+        sourceQueued: postponedSelectionSourceQueued,
+        targetQueued: postponedSelectionTargetQueued
+      },
+      delay: {
+        days: delayInfo.days,
+        visible: delayInfo.visible,
+        label: delayInfo.label,
+        tagHtml: delayTagHtml,
+        terminalVisible: terminalDelayInfo.visible,
+        leaveDays: delayWithLeave.days,
+        leaveVisible: delayWithLeave.visible,
+        saturdayOnlyDays: saturdayOnlyDelay.days,
+        saturdayOnlyVisible: saturdayOnlyDelay.visible
+      },
       preInputReportTasks,
       postponedPreview,
       postponedMaterializedStatus: postponedMaterialized.status,
@@ -3435,7 +3591,23 @@ async function checkPriorityCarryoverAndDateRules(browser) {
       executiveStaleCopyText: executiveStaleCopy.text,
       executiveStaleCopyRefs: executiveStaleCopyRefs.length,
       executiveLegacyRepairedCarryoverDates,
-      executiveLegacyStaleCopyText: executiveLegacyStaleCopy.text
+      executiveLegacyStaleCopyText: executiveLegacyStaleCopy.text,
+      executivePostpone: {
+        label: executivePostponeLabel,
+        scheduled: executivePostponeScheduled,
+        scheduledAgain: executivePostponeScheduledAgain,
+        sourceStatus: executivePostponeTask.status,
+        sourcePriority: executivePostponeTask.priority,
+        sourceDate: executivePostponeTask.postponeDate,
+        targetCount: executivePostponeTargets.length,
+        targetPriority: executivePostponeTarget.priority,
+        targetStatus: executivePostponeTarget.status,
+        targetDone: executivePostponeTarget.done,
+        targetSourceDate: executivePostponeTarget.postponedSourceDate,
+        autoCarryover: executivePostponeAutoCarryover,
+        sourceQueued: executivePostponeSourceQueued,
+        targetQueued: executivePostponeTargetQueued
+      }
     });
   })()`));
   const parsed = JSON.parse(metrics);
@@ -3458,12 +3630,38 @@ async function checkPriorityCarryoverAndDateRules(browser) {
     fail("opening a daily report before the first input should include only arrived unresolved carryover work", metrics);
   }
   if (parsed.futureBeforeArrival || !parsed.nextDayArrived || parsed.postponedBeforeDate
-    || !parsed.postponedDateArrived || parsed.postponedFutureDay || !parsed.postponedNextDayArrived) {
-    fail("priority work should roll one reached day at a time and postponed work should start only on its chosen date", metrics);
+    || parsed.postponedDateArrived || parsed.postponedFutureDay || parsed.postponedNextDayArrived) {
+    fail("priority work should roll one reached day at a time while a postponed source never auto-rolls over", metrics);
   }
-  if (parsed.postponedPreview.hasPostponeStrike || parsed.postponedPreview.selectedValue === "연기"
-    || parsed.postponedMaterializedStatus !== "미완료" || parsed.postponedMaterializedDate) {
-    fail("postponed work should reopen as an unresolved event on its reached date", metrics);
+  if (!parsed.postponedPreview.hasPostponeStrike || parsed.postponedPreview.selectedValue !== "연기"
+    || parsed.postponedMaterializedStatus !== "연기" || parsed.postponedMaterializedDate !== "2026-08-10") {
+    fail("a postponed source should remain postponed and visibly struck through on its original date", metrics);
+  }
+  const postponeSelection = parsed.postponedSelection;
+  if (!postponeSelection.label || !postponeSelection.decoration.includes("line-through")
+    || !postponeSelection.scheduled || !postponeSelection.scheduledAgain
+    || postponeSelection.sourceStatus !== "연기" || postponeSelection.sourcePriority !== "B"
+    || postponeSelection.sourceDate !== "2026-08-09" || postponeSelection.targetCount !== 1
+    || postponeSelection.targetPriority !== "B" || postponeSelection.targetStatus !== "미완료"
+    || postponeSelection.targetDone || postponeSelection.targetSourceDate !== "2026-08-06"
+    || postponeSelection.autoCarryover || !postponeSelection.sourceQueued || !postponeSelection.targetQueued) {
+    fail("postponing must retain the struck-through source, create exactly one unfinished target with the original priority, and queue both dates for server persistence", metrics);
+  }
+  const delay = parsed.delay;
+  if (delay.days !== 3 || !delay.visible || delay.label !== "지연 3일"
+    || !delay.tagHtml.includes("task-delay-tag") || !delay.tagHtml.includes("지연 3일")
+    || delay.terminalVisible || delay.leaveDays !== 3 || !delay.leaveVisible
+    || delay.saturdayOnlyDays !== 3 || !delay.saturdayOnlyVisible) {
+    fail("delay labels should begin after three scheduled workdays, excluding approved leave and off-days while excluding terminal tasks", metrics);
+  }
+  const executivePostpone = parsed.executivePostpone;
+  if (!executivePostpone.label || !executivePostpone.scheduled || !executivePostpone.scheduledAgain
+    || executivePostpone.sourceStatus !== "연기" || executivePostpone.sourcePriority !== "C"
+    || executivePostpone.sourceDate !== "2026-08-09" || executivePostpone.targetCount !== 1
+    || executivePostpone.targetPriority !== "C" || executivePostpone.targetStatus !== "미완료"
+    || executivePostpone.targetDone || executivePostpone.targetSourceDate !== "2026-08-06"
+    || executivePostpone.autoCarryover || !executivePostpone.sourceQueued || !executivePostpone.targetQueued) {
+    fail("executive postponement must follow the same one-source, one-target, server-persisted rule", metrics);
   }
   if (parsed.sourceStatus !== "미완료" || parsed.sourceDeletedFrom !== "2026-08-03"
     || parsed.targetStatus !== "완료" || parsed.targetSourceDate !== "2026-08-02") {
@@ -3834,6 +4032,78 @@ async function checkCalendarAnnotations(browser) {
   if (!metrics.selectedAria.includes("음 6.10")) fail("calendar aria label should include lunar info", metrics.selectedAria);
   if (errors.length) fail("calendar page errors", errors.join(" | "));
   await page.close();
+}
+
+async function checkPostponeCalendarResponsiveBounds(browser) {
+  const viewports = [
+    { label: "iPhone", width: 390, height: 844, phone: true },
+    { label: "iPad", width: 1024, height: 768 },
+    { label: "desktop", width: 1440, height: 900 },
+  ];
+  for (const viewport of viewports) {
+    const { page, errors } = await openPage(browser, viewport);
+    await seedApprovedBangjuEmployee(page);
+    const sourceDateKey = "2026-08-06";
+    const targetDateKey = "2026-08-09";
+    const raw = await page.evaluate(({ sourceDateKey, targetDateKey, phone }) => window.eval(`(() => {
+      const employee = findEmployeeRecordById("bangju-finance-manager");
+      const log = createEmployeeLog(employee, state.profile, ${JSON.stringify(sourceDateKey)});
+      const task = {
+        id: "postpone-calendar-bounds",
+        priority: "C",
+        text: "반응형 연기 달력 검증",
+        status: "연기",
+        done: false,
+        postponeDate: ""
+      };
+      log.tasks = [task];
+      state.employeeLogs = {
+        ...state.employeeLogs,
+        [${JSON.stringify(sourceDateKey)}]: { "bangju-finance-manager": log }
+      };
+      state.selectedEmployeeId = "bangju-finance-manager";
+      state.selectedDateKey = ${JSON.stringify(sourceDateKey)};
+      if (${phone ? "true" : "false"}) {
+        document.body.dataset.layoutMode = "phone";
+        document.body.classList.add("physical-phone-device");
+      }
+      openPostponeCalendar(task, { log, sourceDateKey: ${JSON.stringify(sourceDateKey)} });
+      const popover = document.getElementById("worklogCalendarPopover");
+      const rect = popover.getBoundingClientRect();
+      const sourceButton = [...document.querySelectorAll("#calendarDayGrid button")]
+        .find((button) => button.getAttribute("aria-label")?.startsWith(formatKoreanDate(${JSON.stringify(sourceDateKey)})));
+      const before = {
+        visible: !popover.hidden,
+        inViewport: rect.left >= -1 && rect.top >= -1 && rect.right <= window.innerWidth + 1 && rect.bottom <= window.innerHeight + 1,
+        sourceDisabled: Boolean(sourceButton?.disabled),
+        title: document.getElementById("calendarSelectedLabel")?.textContent || "",
+      };
+      authState.applyingRemote = true;
+      selectCalendarDate(${JSON.stringify(targetDateKey)});
+      authState.applyingRemote = false;
+      const targetTasks = getEmployeeLogForDate("bangju-finance-manager", ${JSON.stringify(targetDateKey)}).tasks
+        .filter((candidate) => candidate.postponedFrom === task.postponeId);
+      return JSON.stringify({
+        before,
+        targetCount: targetTasks.length,
+        target: targetTasks[0] || {},
+      });
+    })()`), { sourceDateKey, targetDateKey, phone: Boolean(viewport.phone) });
+    await page.waitForTimeout(220);
+    const after = await page.evaluate(() => ({
+      hidden: document.getElementById("worklogCalendarPopover")?.hidden ?? false,
+      sourceStatus: state.employeeLogs?.["2026-08-06"]?.["bangju-finance-manager"]?.tasks?.[0]?.status || "",
+    }));
+    const metrics = JSON.parse(raw);
+    if (!metrics.before.visible || !metrics.before.inViewport || !metrics.before.sourceDisabled || !metrics.before.title.includes("연기일")) {
+      fail("postpone calendar should stay visible and within the viewport", `${viewport.label}: ${raw}`);
+    }
+    if (metrics.targetCount !== 1 || metrics.target.priority !== "C" || metrics.target.done || metrics.target.status !== "미완료" || after.sourceStatus !== "연기" || !after.hidden) {
+      fail("postpone calendar should create one unfinished target task and close", `${viewport.label}: ${JSON.stringify({ metrics, after })}`);
+    }
+    if (errors.length) fail("postpone calendar page errors", `${viewport.label}: ${errors.join(" | ")}`);
+    await page.close();
+  }
 }
 
 async function checkExecutiveManagementPage(browser) {
@@ -6510,6 +6780,7 @@ async function checkFitnessPaidPtCanonicalLedger(browser) {
     await checkScheduleBoundaryAndPriorityWarning(browser);
     await checkStaffDirectoryListAndDetail(browser);
     await checkCalendarAnnotations(browser);
+    await checkPostponeCalendarResponsiveBounds(browser);
   } finally {
     await browser.close();
   }
