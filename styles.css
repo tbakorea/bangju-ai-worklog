@@ -11678,6 +11678,45 @@ body.physical-phone-device .representative-analysis-body {
 .member-consent-form .member-consent-check { display: flex; align-items: center; gap: 6px; min-height: 36px; border: 1px solid var(--hardline); border-radius: 8px; background: rgba(255,255,255,.68); padding: 6px 8px; }
 .member-consent-form .member-consent-check input { width: 17px; height: 17px; }
 
+.member-outreach-summary {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.member-outreach-summary > p {
+  grid-column: 1 / -1;
+  margin: 0;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 850;
+}
+
+.member-outreach-summary article {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+  border: 1px solid var(--hardline);
+  border-radius: 9px;
+  background: rgba(255,255,255,.72);
+  padding: 7px 8px;
+}
+
+.member-outreach-summary article span,
+.member-outreach-summary article small {
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 9px;
+  font-weight: 900;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.member-outreach-summary article strong { color: var(--fitness-green); font-size: 18px; font-weight: 950; line-height: 1; }
+.member-outreach-summary article.is-attention { border-color: rgba(192, 130, 33, .35); background: rgba(255,248,224,.74); }
+.member-outreach-summary article.is-urgent { border-color: rgba(174, 61, 43, .36); background: rgba(255,239,232,.78); }
+.member-outreach-summary article.is-urgent strong { color: #9a332b; }
+
 .member-outreach-list { display: grid; gap: 6px; }
 .member-outreach-list > p { margin: 0; color: var(--muted); font-size: 12px; font-weight: 850; }
 .member-outreach-card { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 10px; align-items: center; border: 1px solid var(--hardline); border-radius: 10px; background: rgba(255,255,255,.72); padding: 8px 10px; }
@@ -11692,11 +11731,13 @@ body.physical-phone-device .representative-analysis-body {
 .member-outreach-actions button { min-height: 32px; font-size: 11px; }
 .member-outreach-actions button:first-child { background: #fffefa; color: var(--fitness-green); }
 .member-outreach-actions button:last-child { background: rgba(255,255,255,.7); color: #8a342d; }
+.member-outreach-actions .is-result { background: #e6f3ea; color: #14633f; border-color: rgba(20,99,63,.28); }
 .member-outreach-actions button:disabled { cursor: not-allowed; opacity: .45; }
 
 @media (max-width: 760px) {
   .member-consent-form { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .member-consent-form > button { grid-column: 1 / -1; }
+  .member-outreach-summary { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .member-outreach-card { grid-template-columns: 1fr; }
   .member-outreach-actions { justify-content: stretch; }
   .member-outreach-actions button { flex: 1; }
@@ -20152,6 +20193,18 @@ body[data-active-view="control"] .worklog-header .main-menu-popover {
   color: var(--fitness-green);
   padding: 3px 8px;
   font-weight: 950;
+}
+
+.executive-signal-list button {
+  justify-self: start;
+  min-height: 29px;
+  border: 1px solid rgba(15, 59, 46, 0.2);
+  border-radius: 999px;
+  background: var(--fitness-green);
+  color: #fff;
+  padding: 5px 10px;
+  font-size: 11px;
+  font-weight: 900;
 }
 
 .executive-orders-list article {

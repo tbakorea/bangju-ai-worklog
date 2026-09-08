@@ -7327,12 +7327,17 @@ function renderExecutiveManagement() {
   const issueRows = staffRows.filter((row) => row.aiSignal !== "정상");
   const absentRows = staffRows.filter((row) => row.aiSignal === "결석확인");
   const salesActions = fitnessOps.consultation + fitnessOps.snsPromotion + fitnessOps.outbound + fitnessOps.outsideSales;
+  const memberOutreach = getMemberOutreachSummary();
+  const memberFollowupCount = memberOutreach.openFollowups.length;
+  const memberOverdueCount = memberOutreach.overdue.length;
+  const revenueExecutionCount = salesActions + memberFollowupCount;
   const operatingScore = calculateOperatingScore();
   const missionQueue = getMissionProposalQueue(4);
   const pendingDecisionCount = [
     taskTotal && completedTotal < taskTotal,
     issueRows.length > 0,
     salesActions === 0,
+    memberOverdueCount > 0,
     siteRows.some((site) => site.status === "보류" || site.status === "준비"),
     missionQueue.length > 0,
   ].filter(Boolean).length;
@@ -7342,7 +7347,7 @@ function renderExecutiveManagement() {
     ["대표 지시", `${Math.max(0, taskTotal - completedTotal)}건`, "미완료·후속", "tasks", "미완료 업무와 대표 지시 대기 항목으로 이동합니다."],
     ["핵심 인력", `${issueRows.length}명`, absentRows.length ? `결석 ${absentRows.length}` : "성장/주의", "people", "근태, 태도, 역량 변화 신호로 이동합니다."],
     ["전략 사업장", `${siteRows.filter((site) => site.issueCount || site.status === "보류" || site.status === "준비").length}곳`, `${operatingScore}점`, "score", "사업장 전략 우선순위로 이동합니다."],
-    ["수익 행동", `${salesActions}건`, "영업·고객", "customer", "상담, 영업, 자금·수익 신호로 이동합니다."],
+    ["수익 행동", `${revenueExecutionCount}건`, memberOutreachState.loaded ? `영업 ${salesActions} · 후속 ${memberFollowupCount}` : "영업·고객", "customer", "상담, 영업, 동의 회원 후속 신호로 이동합니다."],
     ["주간 액션", `${fitnessOps.ptRegular + fitnessOps.ptOther}건`, "PT·운영", "pt", "이번 주 대표 경영 액션 보드로 이동합니다."],
   ];
   document.getElementById("executiveKpiGrid").innerHTML = kpis.map(([label, value, meta, target, title]) => `
@@ -7351,17 +7356,17 @@ function renderExecutiveManagement() {
     </button>
   `).join("");
 
-  const agenda = buildExecutiveAgenda({ staffRows, siteRows, fitnessOps, taskTotal, completedTotal, salesActions, operatingScore });
+  const agenda = buildExecutiveAgenda({ staffRows, siteRows, fitnessOps, taskTotal, completedTotal, salesActions, memberOutreach, operatingScore });
   const warnAgendaCount = agenda.filter((item) => item.level === "warn").length;
   setText("executiveAgendaSummary", warnAgendaCount ? `주의 ${warnAgendaCount}` : "정상");
   setText("executiveSiteSummary", `${siteRows.length}개 · 이슈 ${siteRows.reduce((sum, site) => sum + site.issueCount, 0)}`);
-  setText("executiveFinanceSummary", salesActions ? `고객행동 ${salesActions}` : "영업공백");
+  setText("executiveFinanceSummary", memberOutreachState.loaded ? `영업 ${salesActions} · 후속 ${memberFollowupCount}` : (salesActions ? `고객행동 ${salesActions}` : "영업공백"));
   setText("executivePeopleSummary", issueRows.length ? `신호 ${issueRows.length}` : "정상");
   setText("executiveOrdersSummary", `업무 ${Math.max(0, taskTotal - completedTotal)} · 미션 ${missionQueue.length}`);
   setText("executiveActionSummary", `PT ${fitnessOps.ptRegular + fitnessOps.ptOther} · 주간`);
   setExecutiveSectionAlert("intervention", warnAgendaCount > 0);
   setExecutiveSectionAlert("score", operatingScore < 75 || siteRows.some((site) => site.status === "보류" || site.status === "준비"));
-  setExecutiveSectionAlert("customer", salesActions === 0);
+  setExecutiveSectionAlert("customer", salesActions === 0 || memberOverdueCount > 0);
   setExecutiveSectionAlert("people", issueRows.length > 0);
   setExecutiveSectionAlert("tasks", Math.max(0, taskTotal - completedTotal) > 0);
   setExecutiveSectionAlert("pt", fitnessOps.ptFree > fitnessOps.ptRegular + fitnessOps.ptOther);
@@ -7384,11 +7389,19 @@ function renderExecutiveManagement() {
   }).join("");
 
   document.getElementById("executiveFinanceSignals").innerHTML = [
-    ["자금", "재무 업무일지에서 자금·입금·지출 태그를 매일 확인하고, 지급위험은 대표 결재로 올립니다.", "확인"],
-    ["매출", salesActions ? `피트니스 고객행동 ${salesActions}건이 기록됐습니다. 계약 후속업무를 추적하세요.` : "상담·아웃바운드·재등록 기록이 비어 있습니다. 오늘 영업 행동을 지정하세요.", salesActions ? "추적" : "개입"],
-    ["노무", laborControl.total ? `월 마감 준비 ${laborControl.ready}/${laborControl.total}명 · 보완 ${laborControl.issues}건입니다. 직원 원장, 업무일지, 출결, PT와 지급대장을 함께 확인하세요.` : "노무 대상 직원 원장을 먼저 확인하세요.", laborControl.issues ? "확인" : "월마감"],
-    ["수익", "사업장별 매출·원가·고정비 입력이 쌓이면 영업이익과 운영점수를 자동 산정합니다.", "구축"],
-  ].map(([title, text, tag]) => `<article><b>${escapeHtml(title)}</b><span>${escapeHtml(text)}</span><em>${escapeHtml(tag)}</em></article>`).join("");
+    { title: "자금", text: "재무 업무일지에서 자금·입금·지출 태그를 매일 확인하고, 지급위험은 대표 결재로 올립니다.", tag: "확인" },
+    {
+      title: "회원 후속",
+      text: memberOutreachState.loaded
+        ? `동의된 재가입 후보 ${memberOutreach.renewalCandidates.length}명 중 실행 대기 ${memberFollowupCount}건${memberOverdueCount ? `, 기한 경과 ${memberOverdueCount}건` : ""}입니다. 담당·기한·결과를 같은 흐름으로 확인하세요.`
+        : "동의된 재가입 후보와 후속 실행 현황을 불러오는 중입니다.",
+      tag: memberOverdueCount ? "즉시 확인" : memberFollowupCount ? "추적" : "대기",
+      action: "동의 회원 실행",
+    },
+    { title: "매출", text: salesActions ? `피트니스 고객행동 ${salesActions}건이 기록됐습니다. 계약 후속업무를 추적하세요.` : "상담·아웃바운드·재등록 기록이 비어 있습니다. 오늘 영업 행동을 지정하세요.", tag: salesActions ? "추적" : "개입" },
+    { title: "노무", text: laborControl.total ? `월 마감 준비 ${laborControl.ready}/${laborControl.total}명 · 보완 ${laborControl.issues}건입니다. 직원 원장, 업무일지, 출결, PT와 지급대장을 함께 확인하세요.` : "노무 대상 직원 원장을 먼저 확인하세요.", tag: laborControl.issues ? "확인" : "월마감" },
+    { title: "수익", text: "사업장별 매출·원가·고정비 입력이 쌓이면 영업이익과 운영점수를 자동 산정합니다.", tag: "구축" },
+  ].map((item) => `<article><b>${escapeHtml(item.title)}</b><span>${escapeHtml(item.text)}</span>${item.action ? `<button type="button" data-executive-member-outreach>${escapeHtml(item.action)}</button>` : ""}<em>${escapeHtml(item.tag)}</em></article>`).join("");
 
   document.getElementById("executivePeopleSignals").innerHTML = staffRows.slice(0, 8).map((row) => `
     <article data-signal="${escapeAttr(row.aiSignal)}">
@@ -7416,6 +7429,9 @@ function renderExecutiveManagement() {
     ["日", "대표 회고·AI 코칭 반영·주간 지시 작성"],
   ].map(([day, text]) => `<article><strong>${escapeHtml(day)}</strong><span>${escapeHtml(text)}</span></article>`).join("");
   setupExecutiveInteractions();
+  if (!memberOutreachState.loaded && !memberOutreachState.loading && canViewFitnessMemberCare()) {
+    void loadMemberOutreachCandidates();
+  }
 }
 
 function setText(id, value) {
@@ -7448,9 +7464,12 @@ function setupExecutiveInteractions() {
       else openExecutiveSection(sectionId);
     };
   });
+  document.querySelectorAll("[data-executive-member-outreach]").forEach((button) => {
+    button.onclick = () => { void openFitnessMemberOutreach(); };
+  });
 }
 
-function buildExecutiveAgenda({ staffRows, siteRows, fitnessOps, taskTotal, completedTotal, salesActions, operatingScore }) {
+function buildExecutiveAgenda({ staffRows, siteRows, fitnessOps, taskTotal, completedTotal, salesActions, memberOutreach = null, operatingScore }) {
   const agenda = [];
   if (operatingScore < 75) {
     agenda.push({ title: "운영점수 보강", text: `운영점수 ${operatingScore}점입니다. 업무입력, 출결, 사업장 상태 데이터를 먼저 채우세요.`, level: "warn" });
@@ -7471,8 +7490,10 @@ function buildExecutiveAgenda({ staffRows, siteRows, fitnessOps, taskTotal, comp
   });
   agenda.push({
     title: "매출 행동 지정",
-    text: salesActions ? `상담·영업 행동 ${salesActions}건입니다. 계약/재등록 후속업무가 업무일지에 이어지는지 확인하세요.` : "오늘 고객 접점 행동이 비어 있습니다. 상담, 아웃바운드, 재등록 후보 연락을 지정하세요.",
-    level: salesActions ? "ok" : "warn",
+    text: memberOutreachState.loaded
+      ? `${salesActions ? `상담·영업 ${salesActions}건` : "오늘 상담·영업 기록 없음"} · 동의 회원 후속 ${memberOutreach?.openFollowups?.length || 0}건${memberOutreach?.overdue?.length ? ` · 기한 경과 ${memberOutreach.overdue.length}건` : ""}입니다. 담당자·기한·결과를 확인하세요.`
+      : (salesActions ? `상담·영업 행동 ${salesActions}건입니다. 계약/재등록 후속업무가 업무일지에 이어지는지 확인하세요.` : "오늘 고객 접점 행동이 비어 있습니다. 상담, 아웃바운드, 재등록 후보 연락을 지정하세요."),
+    level: salesActions && !(memberOutreach?.overdue?.length) ? "ok" : "warn",
   });
   const holdSites = siteRows.filter((site) => site.status === "보류" || site.status === "준비");
   agenda.push({
@@ -15021,6 +15042,23 @@ function renderDagymOpsFields() {
 }
 
 const memberOutreachState = { loading: false, loaded: false, canManage: false, members: [] };
+const MEMBER_FOLLOWUP_OPEN_STATUSES = new Set(["pending", "assigned", "scheduled", "contacted"]);
+const MEMBER_FOLLOWUP_STATUS_LABELS = {
+  pending: "실행 대기",
+  assigned: "담당 배정",
+  scheduled: "연락 예약",
+  contacted: "연락 완료",
+  completed: "결과 확인",
+  failed: "실패",
+  cancelled: "취소",
+};
+const MEMBER_FOLLOWUP_TYPE_LABELS = {
+  renewal: "재가입 안내",
+  consultation: "상담 배정",
+  recontact: "재연락 예약",
+  retention: "유지관리",
+  "pt-followup": "PT 후속",
+};
 
 function memberOutreachHeaders() {
   return {
@@ -15029,9 +15067,63 @@ function memberOutreachHeaders() {
   };
 }
 
+function getMemberFollowupDateKey(followup = {}) {
+  return String(followup.dueOn || followup.dueAt || "").slice(0, 10);
+}
+
+function isMemberFollowupOpen(followup = {}) {
+  return MEMBER_FOLLOWUP_OPEN_STATUSES.has(String(followup.status || "pending"));
+}
+
+function getMemberFollowupLabel(followup = {}) {
+  return MEMBER_FOLLOWUP_STATUS_LABELS[String(followup.status || "pending")] || "확인 필요";
+}
+
+function getMemberFollowupTypeLabel(type = "") {
+  return MEMBER_FOLLOWUP_TYPE_LABELS[String(type || "")] || "회원 후속";
+}
+
+function getMemberOutreachSummary(referenceDate = getActiveDateKey()) {
+  const members = (memberOutreachState.members || []).filter((member) => member.status === "active" && member.marketingConsent);
+  const renewalCandidates = members.filter((member) => member.candidate?.days !== null && member.candidate.days <= 30);
+  const urgentCandidates = renewalCandidates.filter((member) => member.candidate?.days !== null && member.candidate.days <= 7);
+  const openFollowups = members.flatMap((member) => (Array.isArray(member.followups) ? member.followups : []).map((followup) => ({ ...followup, member }))).filter(isMemberFollowupOpen);
+  const dueToday = openFollowups.filter((followup) => getMemberFollowupDateKey(followup) === referenceDate);
+  const overdue = openFollowups.filter((followup) => {
+    const dueOn = getMemberFollowupDateKey(followup);
+    return dueOn && dueOn < referenceDate;
+  });
+  return { members, renewalCandidates, urgentCandidates, openFollowups, dueToday, overdue, referenceDate };
+}
+
+function renderMemberOutreachSummary() {
+  const node = document.getElementById("memberOutreachSummary");
+  if (!node) return;
+  if (memberOutreachState.loading) {
+    node.innerHTML = "<p>회원 후속 실행 현황을 계산하고 있습니다.</p>";
+    return;
+  }
+  if (!memberOutreachState.loaded) {
+    node.innerHTML = "<p>동의 회원 명부를 불러오면 후보와 후속 현황이 표시됩니다.</p>";
+    return;
+  }
+  const summary = getMemberOutreachSummary();
+  node.innerHTML = [
+    ["동의 후속 후보", `${summary.renewalCandidates.length}명`, `D-7 긴급 ${summary.urgentCandidates.length}명`, summary.urgentCandidates.length ? "attention" : "stable"],
+    ["실행 대기", `${summary.openFollowups.length}건`, `담당·기한이 기록된 후속업무`, summary.openFollowups.length ? "attention" : "stable"],
+    ["선택일 확인", `${summary.dueToday.length}건`, `${formatShortDate(summary.referenceDate)} 결과를 남기세요`, summary.dueToday.length ? "attention" : "stable"],
+    ["기한 경과", `${summary.overdue.length}건`, `미완료 후속업무 우선 정리`, summary.overdue.length ? "urgent" : "stable"],
+  ].map(([label, value, meta, tone]) => `
+    <article class="is-${escapeAttr(tone)}">
+      <span>${escapeHtml(label)}</span><strong>${escapeHtml(value)}</strong><small>${escapeHtml(meta)}</small>
+    </article>
+  `).join("");
+}
+
 function renderMemberOutreachList() {
   const list = document.getElementById("memberOutreachList");
   if (!list) return;
+  renderMemberOutreachSummary();
   if (memberOutreachState.loading) {
     list.innerHTML = "<p>동의 회원과 재가입 후보를 확인하고 있습니다.</p>";
     return;
@@ -15041,22 +15133,32 @@ function renderMemberOutreachList() {
     list.innerHTML = "<p>재가입 안내에 동의한 회원이 아직 없습니다.</p>";
     return;
   }
-  list.innerHTML = members.map((member) => `
+  list.innerHTML = members.map((member) => {
+    const openFollowups = (Array.isArray(member.followups) ? member.followups : [])
+      .filter(isMemberFollowupOpen)
+      .sort((left, right) => getMemberFollowupDateKey(left).localeCompare(getMemberFollowupDateKey(right)) || String(left.updatedAt || "").localeCompare(String(right.updatedAt || "")));
+    const activeFollowup = openFollowups[0];
+    const followupMeta = activeFollowup
+      ? `${getMemberFollowupTypeLabel(activeFollowup.actionType)} · ${getMemberFollowupLabel(activeFollowup)} · ${getMemberFollowupDateKey(activeFollowup) || "기한 미정"}`
+      : "후속업무 미생성";
+    return `
     <article class="member-outreach-card is-${escapeHtml(member.candidate?.priority || "normal")}">
       <div>
         <strong>${escapeHtml(member.name || "회원")} · ${escapeHtml(member.candidate?.label || "만료일 확인 필요")}</strong>
         <span>${escapeHtml(member.maskedPhone || "연락처 등록")} · ${escapeHtml(member.membershipExpiresOn || "만료일 미등록")}</span>
-        <small>${escapeHtml(member.assignedEmployeeId || "담당자 미배정")} · 재가입 안내 동의 완료</small>
+        <small>${escapeHtml(member.assignedEmployeeId || "담당자 미배정")} · ${escapeHtml(followupMeta)}</small>
       </div>
       <div class="member-outreach-actions">
         <button type="button" data-member-contact-reveal="${escapeHtml(member.id)}">연락처 확인</button>
         <button type="button" data-member-followup="${escapeHtml(member.id)}" data-followup-type="renewal" ${member.candidate?.days === null || member.candidate.days > 30 ? "disabled title=\"만료 30일 전부터 생성\"" : ""}>재가입 안내</button>
         <button type="button" data-member-followup="${escapeHtml(member.id)}" data-followup-type="consultation">상담 배정</button>
         <button type="button" data-member-followup="${escapeHtml(member.id)}" data-followup-type="recontact">재연락 예약</button>
+        ${activeFollowup ? `<button type="button" class="is-result" data-member-followup-complete="${escapeHtml(activeFollowup.id)}" data-member-name="${escapeHtml(member.name || "회원")}">결과 확인</button>` : ""}
         ${memberOutreachState.canManage ? `<button type="button" data-member-consent-withdraw="${escapeHtml(member.id)}">동의 철회</button>` : ""}
       </div>
     </article>
-  `).join("");
+  `;
+  }).join("");
 }
 
 async function loadMemberOutreachCandidates({ force = false } = {}) {
@@ -15076,8 +15178,23 @@ async function loadMemberOutreachCandidates({ force = false } = {}) {
   } finally {
     memberOutreachState.loading = false;
     renderMemberOutreachList();
-    if (memberOutreachState.loaded && activeView === "fitness-log" && getCurrentFitnessLogPage()?.type === "center") renderFitnessCenterDaily();
+    if (!memberOutreachState.loaded) return;
+    if (activeView === "fitness-log" && getCurrentFitnessLogPage()?.type === "center") renderFitnessCenterDaily();
+    if (activeView === "executive") renderExecutiveManagement();
   }
+}
+
+async function openFitnessMemberOutreach() {
+  if (!canViewFitnessMemberCare()) {
+    showAppToast("회원관리 권한이 필요합니다");
+    return;
+  }
+  setFitnessLogPage(0);
+  switchView("fitness-log");
+  await loadMemberOutreachCandidates();
+  window.setTimeout(() => {
+    document.getElementById("memberOutreachPanel")?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }, 120);
 }
 
 async function submitMemberConsent(event) {
@@ -15125,18 +15242,31 @@ async function submitMemberConsent(event) {
 async function handleMemberOutreachAction(event) {
   const revealButton = event.target.closest("[data-member-contact-reveal]");
   const queueButton = event.target.closest("[data-member-followup]");
+  const completeButton = event.target.closest("[data-member-followup-complete]");
   const withdrawButton = event.target.closest("[data-member-consent-withdraw]");
-  const button = revealButton || queueButton || withdrawButton;
+  const button = revealButton || queueButton || completeButton || withdrawButton;
   if (!button || !authState.session?.access_token) return;
   const memberId = revealButton?.dataset.memberContactReveal || queueButton?.dataset.memberFollowup || withdrawButton?.dataset.memberConsentWithdraw;
-  const action = revealButton ? "reveal" : queueButton ? "queue" : "withdraw";
+  const action = revealButton ? "reveal" : queueButton ? "queue" : completeButton ? "complete" : "withdraw";
+  const resultNote = completeButton
+    ? window.prompt(`${completeButton.dataset.memberName || "회원"} 후속 결과를 남겨주세요.`, "후속 확인 완료")
+    : null;
+  if (completeButton && resultNote === null) return;
   button.disabled = true;
   try {
-    const response = await fetch("/api/member-outreach", { method: "POST", headers: memberOutreachHeaders(), body: JSON.stringify({ action, memberId, actionType: queueButton?.dataset.followupType || "renewal", dueDate: getActiveDateKey() }) });
+    const response = await fetch("/api/member-outreach", { method: "POST", headers: memberOutreachHeaders(), body: JSON.stringify({ action, memberId, followupId: completeButton?.dataset.memberFollowupComplete, result: resultNote || "후속 확인 완료", actionType: queueButton?.dataset.followupType || "renewal", dueDate: getActiveDateKey() }) });
     const result = await response.json().catch(() => ({}));
     if (!response.ok || !result.ok) throw new Error(result.error || "후속 처리를 완료하지 못했습니다.");
     if (action === "reveal") showAppToast(`${result.contact.name} · ${result.contact.phone}`, 8000);
-    else if (action === "queue") showAppToast("담당 직원의 회원 후속업무를 생성했습니다");
+    else if (action === "queue") {
+      memberOutreachState.loaded = false;
+      await loadMemberOutreachCandidates({ force: true });
+      showAppToast("담당 직원의 회원 후속업무를 생성했습니다");
+    } else if (action === "complete") {
+      memberOutreachState.loaded = false;
+      await loadMemberOutreachCandidates({ force: true });
+      showAppToast("후속 결과를 기록했습니다");
+    }
     else {
       memberOutreachState.loaded = false;
       await loadMemberOutreachCandidates({ force: true });
@@ -15796,9 +15926,11 @@ function buildFitnessYesterdayBrief(dateKey = getActiveDateKey()) {
   const noShowRate = metrics.ptBookings ? Math.round((metrics.noShows / metrics.ptBookings) * 1000) / 10 : 0;
   const renewalCoverage = metrics.expiring ? Math.round((metrics.renewals / metrics.expiring) * 1000) / 10 : 0;
   const staff = getFitnessDayOpsTotal(sourceDateKey);
-  const consentMembers = (memberOutreachState.members || []).filter((member) => member.status === "active" && member.marketingConsent);
-  const renewalCandidates = consentMembers.filter((member) => member.candidate?.days !== null && member.candidate?.days <= 30);
-  const urgentCandidates = renewalCandidates.filter((member) => member.candidate?.days !== null && member.candidate.days <= 7);
+  const memberOutreach = getMemberOutreachSummary(dateKey);
+  const renewalCandidates = memberOutreach.renewalCandidates;
+  const urgentCandidates = memberOutreach.urgentCandidates;
+  const openFollowups = memberOutreach.openFollowups;
+  const overdueFollowups = memberOutreach.overdue;
   const renewalGap = Math.max(0, metrics.expiring - metrics.renewals);
   const conversionCount = metrics.newMembers + metrics.renewals;
   const conversionTarget = metrics.visits ? Math.max(2, Math.round(metrics.visits * 0.03)) : 0;
@@ -15813,7 +15945,7 @@ function buildFitnessYesterdayBrief(dateKey = getActiveDateKey()) {
     { label: "방문·신규", value: hasData ? `${metrics.visits}명 · ${metrics.newMembers}명` : "—", meta: `신규+재등록 ${conversionCount}건`, tone: hasData && conversionTarget > conversionCount ? "attention" : "normal" },
     { label: "PT 예약", value: hasData ? `${metrics.ptBookings}건` : "—", meta: `노쇼·취소 ${metrics.noShows}건 · ${noShowRate}%`, tone: metrics.noShows ? "attention" : "normal" },
     { label: "만료·재등록", value: hasData ? `${metrics.renewals}/${metrics.expiring}` : "—", meta: `대응률 ${renewalCoverage}%`, tone: renewalGap ? "attention" : "normal" },
-    { label: "동의 후속후보", value: memberCandidateText, meta: memberOutreachState.loaded ? `D-7 긴급 ${urgentCandidates.length}명` : "개인정보 동의 명부 확인", tone: urgentCandidates.length ? "attention" : "normal" },
+    { label: "동의 후속", value: memberOutreachState.loaded ? `${openFollowups.length}건` : memberCandidateText, meta: memberOutreachState.loaded ? `후보 ${renewalCandidates.length}명 · 기한경과 ${overdueFollowups.length}건` : "개인정보 동의 명부 확인", tone: urgentCandidates.length || overdueFollowups.length ? "attention" : "normal" },
   ];
   const actions = hasData ? [
     {
@@ -15821,8 +15953,8 @@ function buildFitnessYesterdayBrief(dateKey = getActiveDateKey()) {
       eyebrow: "11:00 · 인포",
       title: "만료회원 후속 분류",
       detail: renewalGap
-        ? `만료 ${metrics.expiring}명 중 미대응 ${renewalGap}명을 재가입·보류·재연락으로 분류하세요. 광고 수신 동의 후보는 ${memberCandidateText}이며, 동의 철회자는 자동 제외됩니다.`
-        : `재등록 대응률 ${renewalCoverage}%입니다. 완료 회원의 상담결과와 다음 연락일을 남겨 같은 회원에게 중복 연락하지 않도록 하세요.`,
+        ? `만료 ${metrics.expiring}명 중 미대응 ${renewalGap}명을 재가입·보류·재연락으로 분류하세요. 광고 수신 동의 후보는 ${memberCandidateText}, 실행 대기는 ${openFollowups.length}건${overdueFollowups.length ? `, 기한 경과는 ${overdueFollowups.length}건` : ""}입니다. 동의 철회자는 자동 제외됩니다.`
+        : `재등록 대응률 ${renewalCoverage}%입니다. 완료 회원의 상담결과와 다음 연락일을 남겨 같은 회원에게 중복 연락하지 않도록 하세요. 실행 대기 ${openFollowups.length}건${overdueFollowups.length ? `, 기한 경과 ${overdueFollowups.length}건` : ""}입니다.`,
       target: "member",
       actionLabel: "동의 후보 보기",
       tone: renewalGap ? "attention" : "stable",
@@ -15919,12 +16051,7 @@ function handleFitnessYesterdayBriefAction(event) {
   if (!button) return;
   const target = button.dataset.fitnessYesterdayTarget;
   if (target === "member") {
-    if (!canViewFitnessMemberCare()) {
-      showAppToast("회원관리 권한이 필요합니다");
-      return;
-    }
-    void loadMemberOutreachCandidates();
-    document.getElementById("memberOutreachPanel")?.scrollIntoView({ behavior: "smooth", block: "start" });
+    void openFitnessMemberOutreach();
     return;
   }
   document.getElementById("fitnessDailyGuidancePanel")?.scrollIntoView({ behavior: "smooth", block: "start" });
@@ -23822,9 +23949,10 @@ function buildFitnessRevenueGrowthPlan(dateKey = getActiveDateKey()) {
 function buildFitnessOperatingGrowthLoop(revenue, dateKey = getActiveDateKey()) {
   const dagym = getDagymOpsForDate(dateKey, { create: false });
   const analysis = getDagymDailyAnalysis(dateKey) || buildDagymDailyAnalysis(dateKey);
-  const outreachMembers = memberOutreachState.members || [];
-  const marketingMembers = outreachMembers.filter((member) => member.status === "active" && member.marketingConsent);
-  const renewalCandidates = marketingMembers.filter((member) => member.candidate?.days !== null && member.candidate?.days <= 30);
+  const memberOutreach = getMemberOutreachSummary(dateKey);
+  const renewalCandidates = memberOutreach.renewalCandidates;
+  const openFollowups = memberOutreach.openFollowups;
+  const overdueFollowups = memberOutreach.overdue;
   const employees = getFitnessCenterEmployees();
   const scheduled = employees.filter((employee) => {
     const log = getFitnessEmployeeLogForDate(employee, dateKey) || {};
@@ -23845,10 +23973,12 @@ function buildFitnessOperatingGrowthLoop(revenue, dateKey = getActiveDateKey()) 
       key: "member",
       eyebrow: "MEMBER · MARKETING",
       title: "회원관리와 재가입",
-      value: memberOutreachState.loaded ? `${renewalCandidates.length}명` : `${numberValue(dagym?.expiring)}명`,
-      meta: memberOutreachState.loaded ? `동의 후속후보 · 재등록 대응 ${renewalCoverage}%` : "동의 명부·만료대상 연결 대기",
-      action: "동의 회원만 재가입 안내·상담 배정·재연락 예약으로 연결합니다.",
-      tone: renewalCandidates.length || numberValue(dagym?.expiring) ? "attention" : "stable",
+      value: memberOutreachState.loaded ? `${renewalCandidates.length}/${openFollowups.length}` : `${numberValue(dagym?.expiring)}명`,
+      meta: memberOutreachState.loaded ? `후보/실행대기 · 재등록 대응 ${renewalCoverage}%${overdueFollowups.length ? ` · 기한경과 ${overdueFollowups.length}` : ""}` : "동의 명부·만료대상 연결 대기",
+      action: memberOutreachState.loaded
+        ? "동의 회원만 재가입 안내·상담 배정·재연락 예약 후 결과까지 기록합니다."
+        : "동의 회원 명부를 불러온 뒤 재가입 안내·상담 배정·재연락 예약으로 연결합니다.",
+      tone: overdueFollowups.length || renewalCandidates.length || numberValue(dagym?.expiring) ? "attention" : "stable",
       destination: "member",
     },
     {
@@ -29397,10 +29527,14 @@ document.getElementById("fitnessOperatingGrowthLoop")?.addEventListener("click",
     switchView("attendance");
     return;
   }
+  if (destination === "member") {
+    void openFitnessMemberOutreach();
+    return;
+  }
   setFitnessLogPage(0);
   switchView("fitness-log");
   window.setTimeout(() => {
-    const target = document.getElementById(destination === "member" ? "memberOutreachPanel" : "fitnessCenterDailyPanel");
+    const target = document.getElementById("fitnessCenterDailyPanel");
     target?.scrollIntoView({ behavior: "smooth", block: "start" });
   }, 160);
 });

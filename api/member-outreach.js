@@ -109,11 +109,12 @@ function isAssignedTo(access, assignedEmployeeId = "") {
 }
 
 async function listMembers(user, access) {
-  const [members, consents, contracts, sessions] = await Promise.all([
+  const [members, consents, contracts, sessions, followups] = await Promise.all([
     rest("fitness_members?select=id,center_key,name_ciphertext,phone_ciphertext,assigned_employee_id,status,updated_at&order=updated_at.desc&limit=500"),
     rest("member_consents?select=member_id,required_use_consent,marketing_consent,sms_consent,kakao_consent,app_push_consent,consent_source,consent_version,evidence_reference,consented_at,withdrawn_at"),
     rest("member_contracts?select=member_id,contract_type,expires_on,pt_remaining_count,status,updated_at&order=expires_on.desc.nullslast&limit=1500"),
     rest(`member_pt_sessions?scheduled_at=gte.${new Date(Date.now() - 86400000).toISOString()}&select=member_id,trainer_employee_id,scheduled_at,status,remaining_after&order=scheduled_at.asc&limit=500`),
+    rest("member_followups?select=id,member_id,action_type,priority,contact_due_on,contact_due_at,assigned_employee_id,status,reason,consultation_result,next_contact_at,updated_at&order=contact_due_at.desc&limit=1500"),
   ]);
   const consentByMember = new Map(consents.map((row) => [row.member_id, row]));
   const contractByMember = new Map();
@@ -122,6 +123,11 @@ async function listMembers(user, access) {
   sessions.forEach((row) => {
     if (!sessionsByMember.has(row.member_id)) sessionsByMember.set(row.member_id, []);
     sessionsByMember.get(row.member_id).push(row);
+  });
+  const followupsByMember = new Map();
+  followups.forEach((row) => {
+    if (!followupsByMember.has(row.member_id)) followupsByMember.set(row.member_id, []);
+    followupsByMember.get(row.member_id).push(row);
   });
   const visible = access.isManager ? members : members.filter((row) => isAssignedTo(access, row.assigned_employee_id));
   await audit(user.id, null, "list", "회원 후속관리 현황 확인", { count: visible.length, scope: access.isManager ? "all" : "assigned" });
@@ -146,6 +152,19 @@ async function listMembers(user, access) {
       status: row.status,
       candidate,
       ptSessions: access.isManager || access.isTrainer ? (sessionsByMember.get(row.id) || []) : [],
+      followups: (followupsByMember.get(row.id) || []).map((followup) => ({
+        id: followup.id,
+        actionType: followup.action_type,
+        priority: followup.priority,
+        dueOn: followup.contact_due_on,
+        dueAt: followup.contact_due_at,
+        assignedEmployeeId: followup.assigned_employee_id,
+        status: followup.status,
+        reason: followup.reason,
+        consultationResult: followup.consultation_result,
+        nextContactAt: followup.next_contact_at,
+        updatedAt: followup.updated_at,
+      })),
     };
   });
 }
@@ -284,6 +303,34 @@ async function queueFollowup(user, access, body) {
   return queued || { member_id: member.id, contact_due_at: contactDueAt, status: "pending" };
 }
 
+async function completeFollowup(user, access, body) {
+  const followupId = String(body.followupId || "").trim();
+  if (!followupId) throw new Error("완료할 후속업무를 찾지 못했습니다.");
+  const followups = await rest(`member_followups?id=eq.${encodeURIComponent(followupId)}&select=id,member_id,assigned_employee_id,status,action_type&limit=1`);
+  const followup = followups[0];
+  if (!followup) throw new Error("후속업무를 찾지 못했습니다.");
+  const members = await rest(`fitness_members?id=eq.${encodeURIComponent(followup.member_id)}&select=id,assigned_employee_id,status&limit=1`);
+  const member = members[0];
+  if (!member || member.status !== "active") throw new Error("활성 회원 정보가 아닙니다.");
+  if (!access.isManager && !isAssignedTo(access, member.assigned_employee_id) && !isAssignedTo(access, followup.assigned_employee_id)) {
+    throw new Error("배정받은 회원의 후속업무만 완료할 수 있습니다.");
+  }
+  if (["completed", "failed", "cancelled"].includes(followup.status)) return followup;
+  const now = new Date().toISOString();
+  const [completed] = await rest(`member_followups?id=eq.${encodeURIComponent(followup.id)}`, {
+    method: "PATCH",
+    headers: { Prefer: "return=representation" },
+    body: JSON.stringify({
+      status: "completed",
+      consultation_result: String(body.result || "후속 확인 완료").trim().slice(0, 500),
+      updated_by: user.id,
+      updated_at: now,
+    }),
+  });
+  await audit(user.id, member.id, "complete", "회원 후속업무 결과 확인", { followupId: followup.id, actionType: followup.action_type });
+  return completed || { ...followup, status: "completed" };
+}
+
 module.exports = async function handler(request, response) {
   response.setHeader("Access-Control-Allow-Origin", allowedOrigin(request));
   response.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
@@ -302,6 +349,7 @@ module.exports = async function handler(request, response) {
     if (action === "upsert") return response.status(200).json({ ok: true, id: await upsertMember(user, access, request.body || {}) });
     if (action === "reveal") return response.status(200).json({ ok: true, contact: await revealContact(user, access, request.body?.memberId, request.body?.channel) });
     if (action === "queue") return response.status(200).json({ ok: true, followup: await queueFollowup(user, access, request.body || {}) });
+    if (action === "complete") return response.status(200).json({ ok: true, followup: await completeFollowup(user, access, request.body || {}) });
     if (action === "withdraw") return response.status(200).json({ ok: true, withdrawn: await withdrawConsent(user, access, request.body?.memberId) });
     return response.status(400).json({ ok: false, error: "지원하지 않는 처리입니다." });
   } catch (error) {
