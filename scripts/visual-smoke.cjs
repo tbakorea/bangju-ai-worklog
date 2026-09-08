@@ -3258,6 +3258,26 @@ async function checkPriorityCarryoverAndDateRules(browser) {
     }));
     const refs = getWorklogTaskRefs(currentLog);
     const carryovers = refs.filter((ref) => ref.isCarryover);
+    const deleteCarryoverTask = {
+      id: "delete-carryover-task",
+      priority: "A",
+      text: "삭제 즉시 반영 이월 업무",
+      status: "미완료",
+      done: false
+    };
+    sourceLog.tasks.push(deleteCarryoverTask);
+    const deleteCarryoverRef = getWorklogTaskRefs(currentLog)
+      .find((ref) => ref.task.id === "delete-carryover-task");
+    const carryoverDeletePersisted = persistWorklogCarryoverDeletion(deleteCarryoverRef);
+    const carryoverDeleteStillVisible = getWorklogTaskRefs(currentLog)
+      .some((ref) => ref.task.id === "delete-carryover-task");
+    const carryoverDeleteSourceQueued = Boolean(authState.saveTimers?.get(sourceDateKey));
+    const carryoverDeleteActiveQueued = Boolean(authState.saveTimers?.get(activeDateKey));
+    [sourceDateKey, activeDateKey].forEach((dateKey) => {
+      const timer = authState.saveTimers?.get(dateKey);
+      if (timer) window.clearTimeout(timer);
+      authState.saveTimers?.delete(dateKey);
+    });
     const openRef = carryovers.find((ref) => ref.task.id === "open-task");
     const materialized = materializeWorklogCarryover(openRef, currentLog);
     cycleWorklogTaskStatus(materialized.task);
@@ -3375,6 +3395,11 @@ async function checkPriorityCarryoverAndDateRules(browser) {
     todayKey = originalTodayKeyForExecutive;
     return JSON.stringify({
       carryoverIds: carryovers.map((ref) => ref.task.id),
+      carryoverDeletePersisted,
+      carryoverDeleteMarker: deleteCarryoverTask.carryoverDeletedFrom || "",
+      carryoverDeleteStillVisible,
+      carryoverDeleteSourceQueued,
+      carryoverDeleteActiveQueued,
       sourceStatus: sourceLog.tasks[0].status,
       sourceDeletedFrom: sourceLog.tasks[0].carryoverDeletedFrom || "",
       targetStatus: materialized.task.status,
@@ -3416,6 +3441,13 @@ async function checkPriorityCarryoverAndDateRules(browser) {
   const parsed = JSON.parse(metrics);
   if (parsed.carryoverIds.join(",") !== "open-task,progress-task,spaced-progress-task") {
     fail("only unresolved priority tasks should carry into the next day", metrics);
+  }
+  if (!parsed.carryoverDeletePersisted
+    || parsed.carryoverDeleteMarker !== "2026-08-03"
+    || parsed.carryoverDeleteStillVisible
+    || !parsed.carryoverDeleteSourceQueued
+    || !parsed.carryoverDeleteActiveQueued) {
+    fail("deleting a carried priority must hide it immediately and persist both the source and active worklog dates", metrics);
   }
   const preInputReportTexts = parsed.preInputReportTasks.map((task) => task.text);
   if (!preInputReportTexts.includes("미처리 이월 업무")

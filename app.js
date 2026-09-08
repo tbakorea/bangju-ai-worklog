@@ -1459,6 +1459,24 @@ function saveExecutiveWorklogWithCarryoverRepair(options = {}) {
   return repairedDateKeys;
 }
 
+// A carryover is displayed from its original date's log.  Saving only the
+// currently viewed date hides it briefly, but the original record returns on
+// the next remote hydration.  Persist the deletion marker on that source date
+// as well so every device reaches the same result immediately.
+function persistWorklogCarryoverDeletion(ref = {}) {
+  const task = ref?.task;
+  if (!task) return false;
+  const activeDateKey = getActiveDateKey();
+  const sourceDateKey = String(ref.sourceDateKey || activeDateKey);
+  task.carryoverDeletedFrom = activeDateKey;
+  if (ref.log && typeof ref.log === "object") ref.log.updatedAt = new Date().toISOString();
+  saveState({ fastSave: true });
+  if (!authState.applyingRemote && sourceDateKey !== activeDateKey) {
+    scheduleRemoteSave(0, sourceDateKey);
+  }
+  return true;
+}
+
 function getExecutiveWorklogTaskRefPriority(ref = {}, activeDateKey = getActiveDateKey()) {
   if (ref.sourceDateKey === activeDateKey) return 3;
   if (ref.isPostponedFromOtherDate) return 2;
@@ -7122,9 +7140,9 @@ function renderExecutiveWorklog() {
           ? "이 날짜에 표시된 이월 우선업무를 삭제할까요? 원본 업무는 유지됩니다."
           : "이 우선업무를 삭제할까요? 연결된 시간별일정도 함께 삭제됩니다.")) return;
         if (ref.isCarryover || ref.isPostponedFromOtherDate) {
-          ref.task.carryoverDeletedFrom = getActiveDateKey();
-          saveState({ fastSave: true });
+          persistWorklogCarryoverDeletion(ref);
           renderExecutiveWorklog();
+          showAppToast("이 날짜의 이월 우선업무를 삭제했습니다.");
           return;
         }
         const removedTask = ref.task;
@@ -17666,9 +17684,13 @@ function renderWorklogTaskRow(ref, currentLog, options = {}) {
       ? "이 날짜에 표시된 이월 우선업무를 삭제할까요? 원본 업무는 유지됩니다."
       : "이 우선업무를 삭제할까요? 연결된 시간별일정도 함께 삭제됩니다.")) return;
     if (isCarryover || isPostponedFromOtherDate) {
-      task.carryoverDeletedFrom = getActiveDateKey();
-      saveState();
+      persistWorklogCarryoverDeletion({
+        task,
+        log,
+        sourceDateKey,
+      });
       renderEntries();
+      showAppToast("이 날짜의 이월 우선업무를 삭제했습니다.");
       return;
     }
     const beforeLog = cloneWorklogLogForAudit(log);
