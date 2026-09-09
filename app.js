@@ -939,6 +939,7 @@ const authState = {
   saveTimers: new Map(),
   remoteSnapshotInFlight: new Map(),
   remoteSnapshotQueued: new Set(),
+  remoteSaveAcknowledgedAt: new Map(),
   pendingApprovalCount: 0,
   pendingPasswordResetCount: 0,
   approvalRows: [],
@@ -949,7 +950,12 @@ const authState = {
   executiveWorklogTimer: null,
   visibleWorklogRefreshTimer: null,
   visibleWorklogLastCheckedAt: new Map(),
+  // 읽기 전용 원장을 실제로 서버에서 확인한 시각입니다. 빈 원장도
+  // 정상 응답일 수 있으므로, 화면 전환 때의 불필요한 재요청을 막되
+  // 실패한 요청은 이 기록에 남기지 않습니다.
+  visibleWorklogRemoteReadAt: new Map(),
   visibleWorklogFingerprints: new Map(),
+  visibleWorklogEmployeeRecords: new Map(),
   dagymPtScheduleMonthCache: new Map(),
   dagymSyncHealthCache: new Map(),
   dagymSyncHealthLoading: new Set(),
@@ -1852,21 +1858,66 @@ function getWorklogSaveStatusNode() {
   return document.getElementById(activeView === "fitness-log" ? "fitnessWorklogSaveStatus" : "worklogSaveStatus");
 }
 
+function getRemoteSaveAcknowledgementKey(dateKey = getActiveDateKey()) {
+  return `${authState.user?.id || "anonymous"}::${String(dateKey || getActiveDateKey())}`;
+}
+
+function markRemoteSaveAcknowledged(dateKey = getActiveDateKey(), savedAt = new Date().toISOString()) {
+  const timestamp = new Date(savedAt).getTime();
+  if (!Number.isFinite(timestamp)) return;
+  authState.remoteSaveAcknowledgedAt ||= new Map();
+  const key = getRemoteSaveAcknowledgementKey(dateKey);
+  const current = new Date(authState.remoteSaveAcknowledgedAt.get(key) || 0).getTime();
+  if (!Number.isFinite(current) || timestamp >= current) {
+    authState.remoteSaveAcknowledgedAt.set(key, new Date(timestamp).toISOString());
+  }
+}
+
+function getRemoteSaveAcknowledgedAt(dateKey = getActiveDateKey()) {
+  return authState.remoteSaveAcknowledgedAt?.get(getRemoteSaveAcknowledgementKey(dateKey)) || "";
+}
+
+function formatWorklogSyncTime(value = "") {
+  const date = new Date(value);
+  if (!Number.isFinite(date.getTime())) return "";
+  return `${String(date.getHours()).padStart(2, "0")}:${String(date.getMinutes()).padStart(2, "0")}`;
+}
+
+function getActiveWorklogSaveStatus() {
+  const dateKey = getActiveDateKey();
+  if (navigator.onLine === false) return "offline";
+  if (authState.saveTimers?.has(dateKey) || authState.remoteSnapshotInFlight?.has(dateKey) || authState.remoteSnapshotQueued?.has(dateKey)) return "saving";
+  const organization = state?.profile?.org || "(주)방주";
+  if (readRemoteSaveOutbox()[getRemoteOutboxEntryKey(dateKey, organization)]) return "queued";
+  return "saved";
+}
+
+function refreshWorklogSaveStatus() {
+  setWorklogSaveStatus(getActiveWorklogSaveStatus());
+}
+
 function setWorklogSaveStatus(status = "saved") {
   const node = getWorklogSaveStatusNode();
   if (!node) return;
+  const acknowledgedAt = getRemoteSaveAcknowledgedAt();
+  const acknowledgedTime = formatWorklogSyncTime(acknowledgedAt);
   const labelByStatus = {
     saving: "저장 중",
     local: "기기에 저장됨",
     queued: "동기화 대기",
     offline: "오프라인 보관됨",
-    saved: "저장됨",
+    // 좁은 휴대폰 제목 영역에서도 끊기지 않게, 성공 상태는 짧게 보이고
+    // 전체 서버 반영 시각은 title 속성으로 그대로 확인할 수 있게 합니다.
+    saved: acknowledgedTime ? `서버 ${acknowledgedTime}` : "대기 없음",
   };
   const shouldShow = Boolean(authState.user && isWorklogEditView() && canEditCurrentWorklog());
   node.hidden = !shouldShow;
   if (!shouldShow) return;
   node.textContent = labelByStatus[status] || labelByStatus.saved;
   node.dataset.saveStatus = Object.prototype.hasOwnProperty.call(labelByStatus, status) ? status : "saved";
+  node.title = status === "saved" && acknowledgedAt
+    ? `서버 반영 시각: ${new Date(acknowledgedAt).toLocaleString("ko-KR")}`
+    : node.textContent;
 }
 
 function readRemoteSaveOutbox() {
@@ -1972,7 +2023,7 @@ function queueRemoteSnapshotForRetry(dateKey = getActiveDateKey(), snapshot = bu
     savedAt: new Date().toISOString(),
   };
   writeRemoteSaveOutbox(outbox);
-  setWorklogSaveStatus(navigator.onLine === false ? "offline" : "queued");
+  refreshWorklogSaveStatus();
 }
 
 function removeRemoteSnapshotFromOutbox(dateKey = getActiveDateKey(), organization = state?.profile?.org || "(주)방주") {
@@ -11748,12 +11799,15 @@ function clearAuthRuntimeState() {
   authState.saveTimers = new Map();
   authState.remoteSnapshotInFlight = new Map();
   authState.remoteSnapshotQueued = new Set();
+  authState.remoteSaveAcknowledgedAt = new Map();
   clearInterval(authState.visibleWorklogsTimer);
   authState.visibleWorklogsTimer = null;
   clearInterval(authState.executiveWorklogTimer);
   authState.executiveWorklogTimer = null;
   authState.visibleWorklogLastCheckedAt = new Map();
+  authState.visibleWorklogRemoteReadAt = new Map();
   authState.visibleWorklogFingerprints = new Map();
+  authState.visibleWorklogEmployeeRecords = new Map();
   authState.dagymPtScheduleMonthCache = new Map();
   authState.dagymSyncHealthCache = new Map();
   authState.dagymSyncHealthLoading = new Set();
@@ -12230,14 +12284,15 @@ function buildRemoteSnapshot(dateKey = getActiveDateKey()) {
 
 async function upsertRemoteWorklogSnapshot({ dateKey, organization, snapshot }) {
   if (!supabaseClient || !authState.user) return { ok: false, error: new Error("로그인 후 동기화할 수 있습니다.") };
+  const savedAt = new Date().toISOString();
   const { error } = await supabaseClient.from("worklog_states").upsert({
     user_id: authState.user.id,
     log_date: dateKey,
     organization: organization || snapshot?.profile?.org || state.profile?.org || "(주)방주",
     state: snapshot,
-    updated_at: new Date().toISOString(),
+    updated_at: savedAt,
   }, { onConflict: "user_id,organization,log_date" });
-  return { ok: !error, error };
+  return { ok: !error, error, savedAt };
 }
 
 async function flushOfflineRemoteSaveQueue() {
@@ -12248,7 +12303,7 @@ async function flushOfflineRemoteSaveQueue() {
     .filter((entry) => entry.dateKey && entry.snapshot)
     .sort((left, right) => String(left.savedAt || "").localeCompare(String(right.savedAt || "")));
   if (!entries.length) return true;
-  setWorklogSaveStatus("saving");
+  refreshWorklogSaveStatus();
   try {
     for (const entry of entries) {
       // 오래된 오프라인 큐가 이미 다른 기기에서 수정된 대표 업무일지를 다시
@@ -12256,20 +12311,21 @@ async function flushOfflineRemoteSaveQueue() {
       const protectedEntry = await protectRepresentativeOutboxSnapshot(entry);
       const result = await upsertRemoteWorklogSnapshot(protectedEntry);
       if (!result.ok) {
-        setWorklogSaveStatus("queued");
+        refreshWorklogSaveStatus();
         return false;
       }
+      markRemoteSaveAcknowledged(protectedEntry.dateKey, result.savedAt);
       delete outbox[entry.id];
       writeRemoteSaveOutbox(outbox);
     }
-    setWorklogSaveStatus("saved");
+    refreshWorklogSaveStatus();
     return true;
   } catch {
     // A network exception is handled exactly like a failed response: keep the
     // newest local snapshot intact and retry only after the connection returns.
     if (Object.keys(outbox).length) {
       writeRemoteSaveOutbox(outbox);
-      setWorklogSaveStatus("queued");
+      refreshWorklogSaveStatus();
     }
     return false;
   }
@@ -12305,9 +12361,10 @@ async function saveRemoteSnapshot(dateKey = getActiveDateKey()) {
         return false;
       }
       removeRemoteSnapshotFromOutbox(key, organization);
+      markRemoteSaveAcknowledged(key, result.savedAt);
     } while (authState.remoteSnapshotQueued.has(key));
     renderAuthStatus();
-    setWorklogSaveStatus("saved");
+    refreshWorklogSaveStatus();
     return true;
   })();
   authState.remoteSnapshotInFlight.set(key, task);
@@ -12315,6 +12372,10 @@ async function saveRemoteSnapshot(dateKey = getActiveDateKey()) {
     return await task;
   } finally {
     authState.remoteSnapshotInFlight.delete(key);
+    // The request was still marked in-flight while its success/failure status
+    // was rendered above. Refresh after removing that marker so the active
+    // worklog immediately shows the final server-acknowledged or queued state.
+    if (key === getActiveDateKey()) refreshWorklogSaveStatus();
   }
 }
 
@@ -12419,6 +12480,10 @@ async function loadRemoteWorklogForActiveDate() {
   authState.applyingRemote = true;
   try {
     if (data?.state) {
+      // A successful read is also evidence that this device is looking at the
+      // server-held worklog, not only a browser cache. Keep that acknowledgement
+      // date-scoped so another day's pending retry never makes this log look stale.
+      markRemoteSaveAcknowledged(key, data.updated_at || new Date().toISOString());
       state.backupSettings = { ...(state.backupSettings || {}), ...(data.state.backupSettings || {}) };
       state.selectedEmployeeId = data.state.selectedEmployeeId || state.selectedEmployeeId;
       state.profile = { ...state.profile, ...(data.state.profile || {}) };
@@ -13272,6 +13337,7 @@ async function loadVisibleStaffWorklogsForDate(dateKey = getActiveDateKey()) {
     renderAuthStatus(`직원 업무일지 불러오기 대기: ${error.message}`);
     return false;
   }
+  markVisibleWorklogRemoteRead(dateKey);
   return mergeVisibleStaffWorklogStates(data || [], dateKey);
 }
 
@@ -13282,6 +13348,7 @@ async function loadCoworkerWorklogsForDate(dateKey = getActiveDateKey()) {
     renderAuthStatus(`동료 업무일지 불러오기 대기: ${error.message}`);
     return false;
   }
+  markVisibleWorklogRemoteRead(dateKey);
   return mergeVisibleStaffWorklogStates(data || [], dateKey);
 }
 
@@ -13292,12 +13359,56 @@ function hasLoadedWorklogContent(employeeId = "", dateKey = getActiveDateKey()) 
   return aliases.some((id) => hasSubmittableWorklogContent(logs[id] || {}));
 }
 
+function hasFreshVisibleWorklogEmployeeRecord(employeeId = "", dateKey = getActiveDateKey()) {
+  const employee = findEmployeeRecordById(employeeId) || { id: employeeId };
+  const canonicalId = getEmployeeWorklogId(employee) || String(employeeId || "").trim();
+  const record = authState.visibleWorklogEmployeeRecords?.get(dateKey);
+  if (!canonicalId || !record?.employeeIds?.has(canonicalId)) return false;
+  // 빈 업무일지도 원격에서 실제로 확인한 결과일 수 있습니다. 같은 화면을
+  // 오갈 때 그 결과를 즉시 다시 조회하지 않되, 짧은 뒤에는 최신 원장을
+  // 다시 확인할 수 있게 제한합니다.
+  return Date.now() - Number(record.checkedAt || 0) < 12 * 1000;
+}
+
+function markVisibleWorklogRemoteRead(dateKey = getActiveDateKey()) {
+  authState.visibleWorklogRemoteReadAt ||= new Map();
+  authState.visibleWorklogRemoteReadAt.set(dateKey, Date.now());
+}
+
+function hasVisibleWorklogRemoteReadSince(dateKey = getActiveDateKey(), startedAt = 0) {
+  return Number(authState.visibleWorklogRemoteReadAt?.get(dateKey) || 0) >= Number(startedAt || 0);
+}
+
+function markVisibleWorklogEmployeeRecord(employeeId = "", dateKey = getActiveDateKey()) {
+  const employee = findEmployeeRecordById(employeeId) || { id: employeeId };
+  const canonicalId = getEmployeeWorklogId(employee) || String(employeeId || "").trim();
+  if (!canonicalId) return;
+  authState.visibleWorklogEmployeeRecords ||= new Map();
+  const record = authState.visibleWorklogEmployeeRecords.get(dateKey) || {
+    employeeIds: new Set(),
+    checkedAt: 0,
+  };
+  record.employeeIds ||= new Set();
+  record.employeeIds.add(canonicalId);
+  record.checkedAt = Date.now();
+  authState.visibleWorklogEmployeeRecords.set(dateKey, record);
+}
+
 async function hydrateReadonlyWorklogOnDemand(employeeId = "", view = activeView) {
-  if (!employeeId || !authState.user || hasLoadedWorklogContent(employeeId)) return false;
+  if (!employeeId || !authState.user || hasLoadedWorklogContent(employeeId) || hasFreshVisibleWorklogEmployeeRecord(employeeId)) return false;
+  const dateKey = getActiveDateKey();
+  const requestStartedAt = Date.now();
   renderAuthStatus("동료 업무일지를 최신 상태로 확인 중입니다.");
   const changed = canAccessAllWorklogs()
-    ? await loadVisibleStaffWorklogsForDate(getActiveDateKey())
-    : await loadCoworkerWorklogsForDate(getActiveDateKey());
+    ? await loadVisibleStaffWorklogsForDate(dateKey)
+    : await loadCoworkerWorklogsForDate(dateKey);
+  // 서버가 정상 응답했지만 해당 날짜에 아직 작성본이 없는 직원도 있습니다.
+  // 이 경우만 짧게 확인 표시를 남겨, 동료 탭을 반복해서 눌러도 요청이
+  // 누적되지 않게 합니다. 실패 응답은 기록하지 않아 다음 시도에서 바로
+  // 재확인할 수 있습니다.
+  if (hasVisibleWorklogRemoteReadSince(dateKey, requestStartedAt)) {
+    markVisibleWorklogEmployeeRecord(employeeId, dateKey);
+  }
   if (changed) {
     normalizeState();
     if (view === activeView) renderEntries();
@@ -13537,6 +13648,7 @@ function getVisibleWorklogRowsFingerprint(rows = [], dateKey = getActiveDateKey(
     row?.user_id || "",
     row?.updated_at || "",
     row?.state?.ownerEmployeeId || "",
+    row?.state?.ownerWorklogVersion || "",
     row?.state?.ownerWorklog?.updatedAt || "",
   ].join(":"))
     .sort()
@@ -13545,10 +13657,15 @@ function getVisibleWorklogRowsFingerprint(rows = [], dateKey = getActiveDateKey(
 
 function mergeVisibleStaffWorklogStates(rows = [], dateKey = getActiveDateKey()) {
   const fingerprint = getVisibleWorklogRowsFingerprint(rows, dateKey);
-  if (authState.visibleWorklogFingerprints?.get(dateKey) === fingerprint) return false;
+  if (authState.visibleWorklogFingerprints?.get(dateKey) === fingerprint) {
+    const previousRecord = authState.visibleWorklogEmployeeRecords?.get(dateKey);
+    if (previousRecord) previousRecord.checkedAt = Date.now();
+    return false;
+  }
   state.employeeLogs ||= {};
   state.employeeLogs[dateKey] ||= {};
   const candidatesByEmployee = new Map();
+  const visibleEmployeeIds = new Set();
   const coworkerDirectory = new Map((authState.coworkerEmployees || []).map((employee) => [getEmployeeWorklogId(employee), employee]));
   [...rows].forEach((row) => {
     const remoteState = row?.state || {};
@@ -13560,6 +13677,7 @@ function mergeVisibleStaffWorklogStates(rows = [], dateKey = getActiveDateKey())
     const employeeId = getEmployeeWorklogId(employee);
     if (!employeeId) return;
     coworkerDirectory.set(employeeId, employee);
+    visibleEmployeeIds.add(employeeId);
 
     const logs = remoteState.employeeLogs?.[dateKey] || {};
     const candidateIds = [...new Set([
@@ -13629,6 +13747,11 @@ function mergeVisibleStaffWorklogStates(rows = [], dateKey = getActiveDateKey())
   authState.coworkerEmployees = [...coworkerDirectory.values()];
   authState.visibleWorklogFingerprints ||= new Map();
   authState.visibleWorklogFingerprints.set(dateKey, fingerprint);
+  authState.visibleWorklogEmployeeRecords ||= new Map();
+  authState.visibleWorklogEmployeeRecords.set(dateKey, {
+    employeeIds: visibleEmployeeIds,
+    checkedAt: Date.now(),
+  });
   return true;
 }
 
@@ -14062,7 +14185,7 @@ function renderEntries() {
   if (activeView === "fitness-log") {
     renderFitnessWorklog();
     refreshCurrentTimeIndicators();
-    setWorklogSaveStatus(Object.keys(readRemoteSaveOutbox()).length ? "queued" : "saved");
+    refreshWorklogSaveStatus();
     return;
   }
 
@@ -14082,7 +14205,7 @@ function renderEntries() {
   refreshCurrentTimeIndicators();
   applyMobileDayFocusMode();
   applyCurrentWorklogPermissionState();
-  setWorklogSaveStatus(Object.keys(readRemoteSaveOutbox()).length ? "queued" : "saved");
+  refreshWorklogSaveStatus();
 }
 
 function renderWorklogToday(log = getSelectedLog()) {
@@ -28820,7 +28943,7 @@ window.addEventListener("pagehide", () => {
 window.addEventListener("offline", () => setWorklogSaveStatus("offline"));
 window.addEventListener("online", () => {
   if (!authState.user) return;
-  setWorklogSaveStatus("saving");
+  refreshWorklogSaveStatus();
   flushOfflineRemoteSaveQueue().then(() => flushPendingRemoteSaves());
 });
 document.addEventListener("visibilitychange", () => {

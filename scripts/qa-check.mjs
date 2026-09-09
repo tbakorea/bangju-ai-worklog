@@ -453,6 +453,19 @@ check(
 );
 
 check(
+  "worklog save status is scoped to the active date and acknowledges the server response",
+  js.includes("function markRemoteSaveAcknowledged")
+    && js.includes("function getActiveWorklogSaveStatus")
+    && js.includes("authState.saveTimers?.has(dateKey)")
+    && js.includes("readRemoteSaveOutbox()[getRemoteOutboxEntryKey(dateKey, organization)]")
+    && js.includes('saved: acknowledgedTime ? `서버 ${acknowledgedTime}` : "대기 없음"')
+    && !js.includes('Object.keys(readRemoteSaveOutbox()).length ? "queued" : "saved"')
+    && /async function saveRemoteSnapshot[\s\S]{0,5000}remoteSnapshotInFlight\.delete\(key\);[\s\S]{0,320}refreshWorklogSaveStatus\(\)/.test(js)
+    && /function clearAuthRuntimeState\(\)[\s\S]{0,1100}remoteSaveAcknowledgedAt = new Map\(\)/.test(js),
+  "a pending write for another date must not mislabel this page, and a saved label must follow a server acknowledgement"
+);
+
+check(
   "priority work carries over only after each date arrives",
   /function normalizeWorklogTaskStatus[\s\S]{0,260}\["진행", "진행중", "처리중"\]/.test(js)
     && /function isWorklogTaskCarryoverEligible[\s\S]{0,420}isInProgress[\s\S]{0,220}!\["완료", "취소", "위임", "연기"\]\.includes\(status\)/.test(js)
@@ -782,6 +795,13 @@ check(
     && /#view-today \.worklog-sticky-context \{[\s\S]{0,120}position: sticky/.test(css)
     && js.includes("ownerWorklogVersion: 2")
     && /const hasAuthoritativeOwnerWorklog = hasOwnerWorklogObject[\s\S]{0,320}candidateLogs\.find\(hasSubmittableWorklogContent\)/.test(js)
+    && js.includes("visibleWorklogEmployeeRecords: new Map()")
+    && js.includes("visibleWorklogRemoteReadAt: new Map()")
+    && js.includes("function hasFreshVisibleWorklogEmployeeRecord")
+    && js.includes("function markVisibleWorklogRemoteRead")
+    && js.includes("function hasVisibleWorklogRemoteReadSince")
+    && /if \(hasVisibleWorklogRemoteReadSince\(dateKey, requestStartedAt\)\) \{[\s\S]{0,180}markVisibleWorklogEmployeeRecord\(employeeId, dateKey\)/.test(js)
+    && js.includes("row?.state?.ownerWorklogVersion || \"\"")
     && js.includes("function hydrateReadonlyWorklogOnDemand")
     && js.includes("await hydrateReadonlyWorklogOnDemand(employeeId, activeView)")
     && /activeView === "fitness-log" \|\| isGeneralEmployeeWorklogView\(activeView\)\) renderEntries\(\)/.test(js)
