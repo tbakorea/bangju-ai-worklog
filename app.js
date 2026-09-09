@@ -1514,8 +1514,9 @@ function getExecutiveWorklogTaskRefs(log = getExecutiveWorklog(), activeDateKey 
   };
 
   (log.tasks || []).forEach((task, index) => {
-    if (!isExecutiveWorklogTaskTerminal(task)
-      && getExecutiveWorklogTaskTerminalAncestor(task, activeDateKey, index)) return;
+    const terminalAncestor = getExecutiveWorklogTaskTerminalAncestor(task, activeDateKey, index)
+      || getExecutiveLegacyTerminalCarryoverAncestor(task, activeDateKey);
+    if (!isExecutiveWorklogTaskTerminal(task) && terminalAncestor) return;
     addRef({
       task,
       index,
@@ -12311,6 +12312,32 @@ function mergeRemoteExecutiveWorklogs(remoteWorklogs = {}, sourceUpdatedAt = "")
   return changed;
 }
 
+// 날짜별로 분리 저장된 대표 업무일지는 현재 날짜만 읽으면 전날 종료 업무를
+// 판별할 수 없습니다. 바로 전날 원장을 함께 읽어, 이전에 생성된 이월 사본도
+// 완료·취소·위임 뒤에는 새 업무처럼 다시 나타나지 않게 합니다.
+async function loadRemoteExecutiveCarryoverContext(dateKey = getActiveDateKey()) {
+  if (!supabaseClient || !authState.user || !isRepresentativeProfile()) return false;
+  const previousDateKey = getPreviousCalendarDateKey(dateKey);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(previousDateKey)) return false;
+
+  const { data, error } = await supabaseClient
+    .from("worklog_states")
+    .select("state,updated_at")
+    .eq("user_id", authState.user.id)
+    .eq("log_date", previousDateKey)
+    .order("updated_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (error) {
+    console.warn("Executive carryover context deferred", error);
+    return false;
+  }
+
+  const remoteLog = data?.state?.executiveWorklogs?.[previousDateKey];
+  if (!remoteLog) return false;
+  return mergeRemoteExecutiveWorklogs({ [previousDateKey]: remoteLog }, data.updated_at || "");
+}
+
 async function protectRepresentativeOutboxSnapshot(entry = {}) {
   if (!isRepresentativeProfile() || !entry?.snapshot?.executiveWorklogs || !supabaseClient || !authState.user) return entry;
   const { data, error } = await supabaseClient
@@ -12612,6 +12639,9 @@ async function loadRemoteWorklogForActiveDate() {
     const [, sharedWeatherRows] = await Promise.all([
       loadLatestRemoteSiteWeatherSettings(),
       loadSharedSiteWeatherSettings(),
+      isRepresentativeProfile()
+        ? loadRemoteExecutiveCarryoverContext(key)
+        : Promise.resolve(false),
     ]);
     if (Array.isArray(sharedWeatherRows)) await publishRepresentativeSiteWeatherSettings(sharedWeatherRows);
     if (canAccessAllWorklogs()) await loadVisibleStaffWorklogsForDate(key);
@@ -12660,6 +12690,7 @@ async function refreshRemoteExecutiveWorklogForActiveDate(options = {}) {
   if (!options.force && authState.executiveWorklogFingerprints.get(dateKey) === fingerprint) return false;
   authState.executiveWorklogFingerprints.set(dateKey, fingerprint);
   if (!remoteLog) return false;
+  await loadRemoteExecutiveCarryoverContext(dateKey);
   authState.applyingRemote = true;
   try {
     const changed = mergeRemoteExecutiveWorklogs({ [dateKey]: remoteLog }, data.updated_at || "");
