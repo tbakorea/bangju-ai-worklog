@@ -1690,6 +1690,47 @@ async function checkOverviewCommandBoard(browser) {
   if (isomiTodaySync !== "이소미 오늘 실제업무") {
     fail("representative overview should prefer Isomi's canonical owner worklog over a newer legacy duplicate", isomiTodaySync);
   }
+  const choiheejinCanonicalSync = await page.evaluate(() => window.eval(`(() => {
+    const dateKey = "2026-09-08";
+    authState.user = { id: "owner-user", email: "j3010@ymail.com" };
+    authState.approvalRows = [
+      { id: "choiheejin-current-user", email: "choiheejin-current@example.com", name: "최희진", org: "(주)방주", role: "재무과장", approval_status: "approved" }
+    ];
+    authState.approvalRowsLoaded = true;
+    state.employeeLogs[dateKey] = {};
+    const employee = { id: "bangju-finance-manager", name: "최희진", org: "(주)방주", role: "재무과장" };
+    const currentLog = createEmployeeLog(employee, {}, dateKey);
+    currentLog.tasks[0].text = "최희진 본인 원장 업무";
+    const staleLog = createEmployeeLog(employee, {}, dateKey);
+    staleLog.tasks[0].text = "대표 화면에 남은 과거 복제 업무";
+    mergeVisibleStaffWorklogStates([
+      {
+        user_id: "choiheejin-legacy-user",
+        updated_at: "2026-09-08T10:10:00.000Z",
+        state: {
+          profile: { name: "최희진", org: "(주)방주", role: "재무과장" },
+          ownerEmployeeId: "bangju-finance-manager",
+          ownerWorklog: staleLog,
+          employeeLogs: { [dateKey]: { "profile-user": staleLog } }
+        }
+      },
+      {
+        user_id: "choiheejin-current-user",
+        updated_at: "2026-09-08T10:00:00.000Z",
+        state: {
+          profile: { name: "최희진", org: "(주)방주", role: "재무과장" },
+          ownerEmployeeId: "bangju-finance-manager",
+          ownerWorklogVersion: 2,
+          ownerWorklog: currentLog,
+          employeeLogs: { [dateKey]: { "bangju-finance-manager": currentLog } }
+        }
+      }
+    ], dateKey);
+    return state.employeeLogs[dateKey]?.["bangju-finance-manager"]?.tasks?.[0]?.text || "";
+  })()`));
+  if (choiheejinCanonicalSync !== "최희진 본인 원장 업무") {
+    fail("representative view must prefer Choi Hee-jin's versioned employee worklog over a newer legacy duplicate", choiheejinCanonicalSync);
+  }
   const localUnsyncedProtection = await page.evaluate(() => window.eval(`(() => {
     const dateKey = "2026-08-05";
     authState.user = { id: "isomi-current-user", email: "isomi-current@example.com" };

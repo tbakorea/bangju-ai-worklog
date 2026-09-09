@@ -13603,12 +13603,22 @@ function mergeVisibleStaffWorklogStates(rows = [], dateKey = getActiveDateKey())
         || candidateLogs[0];
     if (!employeeLog) return;
     const directOwner = remoteState.ownerEmployeeId === employeeId;
-    const candidate = { row, employeeId, employeeLog, directOwner };
+    const candidate = {
+      row,
+      employeeId,
+      employeeLog,
+      directOwner,
+      // 직원이 직접 저장한 버전 2 원장은 해당 직원의 실제 편집본입니다.
+      // 같은 직원으로 잘못 매핑된 과거 계정·복제 원장이 더 늦게 저장되어도
+      // 대표 열람에서는 이 원장을 항상 먼저 선택해야 합니다.
+      authoritativeOwner: hasAuthoritativeOwnerWorklog && Number(remoteState.ownerWorklogVersion || 0) >= 2,
+    };
     candidatesByEmployee.set(employeeId, [...(candidatesByEmployee.get(employeeId) || []), candidate]);
   });
   candidatesByEmployee.forEach((candidates, employeeId) => {
     const selected = candidates.sort((a, b) => (
-      Number(b.directOwner) - Number(a.directOwner)
+      Number(b.authoritativeOwner) - Number(a.authoritativeOwner)
+      || Number(b.directOwner) - Number(a.directOwner)
       || String(b.row?.updated_at || "").localeCompare(String(a.row?.updated_at || ""))
     ))[0];
     state.employeeLogs[dateKey][employeeId] = {
