@@ -3,7 +3,11 @@ const remoteSaveOutboxStorageKey = "beyond-worklog-remote-save-outbox-v1";
 // A tiny, current-worklog draft is written immediately while the full state is
 // still saved on an idle callback. This keeps typing responsive without making
 // a refresh in the first few hundred milliseconds lose the last field edit.
-const inputDraftStorageKey = "beyond-worklog-input-draft-v1";
+// v1 held one browser-wide draft, which could be restored after another
+// employee signed in on a shared device. v2 scopes drafts to user, employee
+// and date, then restores them only after that user's server state is loaded.
+const legacyInputDraftStorageKey = "beyond-worklog-input-draft-v1";
+const inputDraftStorageKey = "beyond-worklog-input-drafts-v2";
 const layoutModeStorageKey = "beyond-worklog-layout-mode";
 const globalViewModeStorageKey = "beyond-worklog-global-view-mode";
 const worklogLayoutStorageKey = "beyond-worklog-workspace-layout";
@@ -1028,7 +1032,6 @@ const weatherRetryBaseMs = 30 * 1000;
 function loadState() {
   try {
     const saved = JSON.parse(localStorage.getItem(storageKey)) || createState();
-    restoreInputDraftIntoState(saved);
     saved.selectedDateKey = todayKey;
     return saved;
   } catch {
@@ -1929,30 +1932,68 @@ function readRemoteSaveOutbox() {
   }
 }
 
-function readInputDraft() {
+function getInputDraftScopeKey({ userId = authState.user?.id, employeeId = getCurrentWorklogEmployeeId(), dateKey = getActiveDateKey() } = {}) {
+  const resolvedUserId = String(userId || "").trim();
+  const resolvedEmployeeId = String(employeeId || "").trim();
+  const resolvedDateKey = String(dateKey || "").trim();
+  if (!resolvedUserId || !resolvedEmployeeId || !/^\d{4}-\d{2}-\d{2}$/.test(resolvedDateKey)) return "";
+  return `${resolvedUserId}::${resolvedEmployeeId}::${resolvedDateKey}`;
+}
+
+function readInputDraftStore() {
   try {
-    const draft = JSON.parse(localStorage.getItem(inputDraftStorageKey) || "null");
+    const drafts = JSON.parse(localStorage.getItem(inputDraftStorageKey) || "{}");
+    return drafts && typeof drafts === "object" && !Array.isArray(drafts) ? drafts : {};
+  } catch {
+    return {};
+  }
+}
+
+function writeInputDraftStore(drafts = {}) {
+  const retained = Object.entries(drafts || {})
+    .filter(([scopeKey, draft]) => Boolean(scopeKey) && draft && typeof draft === "object" && draft.dateKey && draft.employeeId && draft.userId && draft.log)
+    .sort(([, left], [, right]) => String(right.savedAt || "").localeCompare(String(left.savedAt || "")))
+    .slice(0, 18);
+  try {
+    localStorage.setItem(inputDraftStorageKey, JSON.stringify(Object.fromEntries(retained)));
+  } catch {
+    // Browser storage limits must never interrupt the current keystroke.
+  }
+}
+
+function readInputDraft(options = {}) {
+  const scopeKey = options.scopeKey || getInputDraftScopeKey(options);
+  if (!scopeKey) return null;
+  const draft = readInputDraftStore()[scopeKey];
+  return draft && typeof draft === "object" ? draft : null;
+}
+
+function readLegacyInputDraft() {
+  try {
+    const draft = JSON.parse(localStorage.getItem(legacyInputDraftStorageKey) || "null");
     return draft && typeof draft === "object" ? draft : null;
   } catch {
     return null;
   }
 }
 
-function restoreInputDraftIntoState(targetState = {}) {
-  const draft = readInputDraft();
-  if (!draft?.dateKey || !draft?.employeeId || !draft?.log || typeof draft.log !== "object") return false;
+function isRestorableInputDraft(draft = {}) {
+  if (!draft?.dateKey || !draft?.employeeId || !draft?.userId || !draft?.log || typeof draft.log !== "object") return false;
   const savedAt = new Date(draft.savedAt || 0).getTime();
-  // Never revive an abandoned browser draft indefinitely. A normal local save
-  // removes it; this is only the crash/refresh safety net.
-  if (!Number.isFinite(savedAt) || Date.now() - savedAt > 14 * 24 * 60 * 60 * 1000) {
-    localStorage.removeItem(inputDraftStorageKey);
-    return false;
-  }
+  // Never revive an abandoned browser draft indefinitely. This is only the
+  // crash/refresh safety net, not a second long-term worklog store.
+  if (!Number.isFinite(savedAt) || Date.now() - savedAt > 14 * 24 * 60 * 60 * 1000) return false;
+  return /^\d{4}-\d{2}-\d{2}$/.test(String(draft.dateKey || ""));
+}
+
+function mergeInputDraftIntoState(targetState = {}, draft = {}) {
+  if (!isRestorableInputDraft(draft)) return false;
+  const savedAt = new Date(draft.savedAt || 0).getTime();
   targetState.employeeLogs ||= {};
   targetState.employeeLogs[draft.dateKey] ||= {};
   const existing = targetState.employeeLogs[draft.dateKey][draft.employeeId];
   const existingUpdatedAt = new Date(existing?.updatedAt || 0).getTime();
-  if (existing && Number.isFinite(existingUpdatedAt) && existingUpdatedAt > savedAt) return false;
+  if (existing && Number.isFinite(existingUpdatedAt) && existingUpdatedAt >= savedAt) return false;
   targetState.employeeLogs[draft.dateKey][draft.employeeId] = {
     ...(existing || {}),
     ...draft.log,
@@ -1962,37 +2003,86 @@ function restoreInputDraftIntoState(targetState = {}) {
   return true;
 }
 
+function migrateLegacyInputDraftForCurrentUser() {
+  const legacy = readLegacyInputDraft();
+  const userId = String(authState.user?.id || "").trim();
+  const employeeId = getProfileMappedEmployeeId() || "profile-user";
+  if (!legacy || !userId || !employeeId || legacy.employeeId !== employeeId || !legacy.dateKey || !legacy.log) return null;
+  const draft = { ...legacy, userId };
+  if (!isRestorableInputDraft(draft)) return null;
+  const scopeKey = getInputDraftScopeKey(draft);
+  if (!scopeKey) return null;
+  const drafts = readInputDraftStore();
+  if (!drafts[scopeKey] || String(drafts[scopeKey].savedAt || "") < String(draft.savedAt || "")) {
+    drafts[scopeKey] = draft;
+    writeInputDraftStore(drafts);
+  }
+  try {
+    localStorage.removeItem(legacyInputDraftStorageKey);
+  } catch {
+    // The scoped draft is already safely retained. Leaving a legacy copy is harmless.
+  }
+  return draft;
+}
+
+function restoreOwnedInputDraftsIntoState(targetState = {}, { migrateLegacy = false } = {}) {
+  const userId = String(authState.user?.id || "").trim();
+  const employeeId = getProfileMappedEmployeeId() || "profile-user";
+  if (!userId || !employeeId) return 0;
+  if (migrateLegacy) migrateLegacyInputDraftForCurrentUser();
+  const drafts = readInputDraftStore();
+  const scopedDrafts = Object.values(drafts)
+    .filter((draft) => draft?.userId === userId && draft?.employeeId === employeeId)
+    .sort((left, right) => String(left.savedAt || "").localeCompare(String(right.savedAt || "")));
+  let restored = 0;
+  scopedDrafts.forEach((draft) => {
+    if (mergeInputDraftIntoState(targetState, draft)) restored += 1;
+  });
+  let changed = false;
+  Object.entries(drafts).forEach(([scopeKey, draft]) => {
+    if (draft?.userId === userId && draft?.employeeId === employeeId && !isRestorableInputDraft(draft)) {
+      delete drafts[scopeKey];
+      changed = true;
+    }
+  });
+  if (changed) writeInputDraftStore(drafts);
+  return restored;
+}
+
 function persistCurrentInputDraft() {
   if (!authState.user || !isWorklogEditView() || !canEditCurrentWorklog()) return false;
   const dateKey = getActiveDateKey();
   const employeeId = getCurrentWorklogEmployeeId();
-  if (!employeeId || !/^\d{4}-\d{2}-\d{2}$/.test(String(dateKey || ""))) return false;
+  const userId = String(authState.user.id || "").trim();
+  const scopeKey = getInputDraftScopeKey({ userId, employeeId, dateKey });
+  if (!scopeKey) return false;
   const log = getEmployeeLogForDate(employeeId, dateKey);
   if (!log) return false;
   const savedAt = new Date().toISOString();
-  try {
-    localStorage.setItem(inputDraftStorageKey, JSON.stringify({
-      dateKey,
-      employeeId,
-      log: { ...log, employeeId, updatedAt: savedAt },
-      savedAt,
-    }));
-    return true;
-  } catch {
-    // Browser storage limits must never interrupt the current keystroke.
-    return false;
-  }
+  const drafts = readInputDraftStore();
+  drafts[scopeKey] = {
+    userId,
+    dateKey,
+    employeeId,
+    log: { ...log, employeeId, updatedAt: savedAt },
+    savedAt,
+  };
+  writeInputDraftStore(drafts);
+  return true;
 }
 
-function clearPersistedInputDraft() {
-  const draft = readInputDraft();
+function clearAcknowledgedInputDraft(snapshot = {}, dateKey = getActiveDateKey()) {
+  const employeeId = String(snapshot?.ownerEmployeeId || getProfileMappedEmployeeId() || "profile-user").trim();
+  const draft = readInputDraft({ employeeId, dateKey });
   if (!draft) return;
-  if (draft.dateKey !== getActiveDateKey() || draft.employeeId !== getCurrentWorklogEmployeeId()) return;
-  try {
-    localStorage.removeItem(inputDraftStorageKey);
-  } catch {
-    // Nothing else is required: the complete state has already been saved.
-  }
+  const snapshotUpdatedAt = new Date(snapshot?.ownerWorklog?.updatedAt || 0).getTime();
+  const draftSavedAt = new Date(draft.savedAt || 0).getTime();
+  // A keystroke can happen during an in-flight upload. Preserve that newer
+  // draft for the queued upload instead of silently dropping it.
+  if (!Number.isFinite(snapshotUpdatedAt) || !Number.isFinite(draftSavedAt) || draftSavedAt > snapshotUpdatedAt) return;
+  const drafts = readInputDraftStore();
+  delete drafts[getInputDraftScopeKey({ employeeId, dateKey })];
+  writeInputDraftStore(drafts);
 }
 
 function writeRemoteSaveOutbox(outbox = {}) {
@@ -2039,7 +2129,6 @@ function writeStateToLocalStorage() {
   normalizeProfilePlacementForAuth();
   markOwnedWorklogUpdated();
   localStorage.setItem(storageKey, JSON.stringify(state));
-  clearPersistedInputDraft();
   setWorklogSaveStatus("local");
 }
 
@@ -12117,6 +12206,15 @@ async function applySession(session) {
   switchView(initialLandingView, { skipRemoteRefresh: true });
   renderAuthStatus("업무기록을 최신 상태로 불러오는 중입니다.");
   await loadRemoteWorklogForActiveDate();
+  // 서버 원장을 먼저 병합한 뒤, 같은 로그인 계정·직원·날짜에만 속하는
+  // 최신 임시 입력을 복구합니다. 공용 기기에서 다른 직원 초안이 보이는
+  // 문제를 막으면서, 새로고침 직전의 입력은 다음 동기화에 포함합니다.
+  const restoredDrafts = restoreOwnedInputDraftsIntoState(state, { migrateLegacy: true });
+  if (restoredDrafts) {
+    normalizeState();
+    writeStateToLocalStorage();
+    showAppToast("작성 중이던 업무기록을 안전하게 복구했습니다");
+  }
   await saveRemoteProfile();
   await flushOfflineRemoteSaveQueue();
   scheduleRemoteSave(0);
@@ -12315,6 +12413,7 @@ async function flushOfflineRemoteSaveQueue() {
         return false;
       }
       markRemoteSaveAcknowledged(protectedEntry.dateKey, result.savedAt);
+      clearAcknowledgedInputDraft(protectedEntry.snapshot, protectedEntry.dateKey);
       delete outbox[entry.id];
       writeRemoteSaveOutbox(outbox);
     }
@@ -12362,6 +12461,7 @@ async function saveRemoteSnapshot(dateKey = getActiveDateKey()) {
       }
       removeRemoteSnapshotFromOutbox(key, organization);
       markRemoteSaveAcknowledged(key, result.savedAt);
+      clearAcknowledgedInputDraft(snapshot, key);
     } while (authState.remoteSnapshotQueued.has(key));
     renderAuthStatus();
     refreshWorklogSaveStatus();

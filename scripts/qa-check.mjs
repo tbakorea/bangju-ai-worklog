@@ -466,6 +466,26 @@ check(
 );
 
 check(
+  "input drafts are isolated by authenticated user, employee and date",
+  js.includes('const inputDraftStorageKey = "beyond-worklog-input-drafts-v2"')
+    && js.includes("function getInputDraftScopeKey")
+    && js.includes("${resolvedUserId}::${resolvedEmployeeId}::${resolvedDateKey}")
+    && js.includes("function restoreOwnedInputDraftsIntoState")
+    && js.includes("draft?.userId === userId && draft?.employeeId === employeeId"),
+  "a shared device must never restore one employee's unfinished input into another employee's worklog"
+);
+
+check(
+  "input drafts are restored after remote load and cleared only after server acknowledgement",
+  !/function loadState\(\)\s*\{[\s\S]{0,300}restoreOwnedInputDraftsIntoState/.test(js)
+    && js.includes("const restoredDrafts = restoreOwnedInputDraftsIntoState(state, { migrateLegacy: true });")
+    && js.includes("clearAcknowledgedInputDraft(snapshot, key)")
+    && js.includes("clearAcknowledgedInputDraft(protectedEntry.snapshot, protectedEntry.dateKey)")
+    && !js.includes("clearPersistedInputDraft()"),
+  "a refresh recovery draft must survive local saves and only be removed after its matching server snapshot succeeds"
+);
+
+check(
   "priority work carries over only after each date arrives",
   /function normalizeWorklogTaskStatus[\s\S]{0,260}\["진행", "진행중", "처리중"\]/.test(js)
     && /function isWorklogTaskCarryoverEligible[\s\S]{0,420}isInProgress[\s\S]{0,220}!\["완료", "취소", "위임", "연기"\]\.includes\(status\)/.test(js)
