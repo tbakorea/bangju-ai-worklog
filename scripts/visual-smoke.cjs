@@ -3298,12 +3298,25 @@ async function checkPriorityCarryoverAndDateRules(browser) {
       [sourceDateKey]: { "bangju-finance-manager": sourceLog },
       [activeDateKey]: { "bangju-finance-manager": currentLog }
     };
-    const preInputReport = buildWorklogDailyReportModel(employee, currentLog, activeDateKey);
+    const preInputReport = buildWorklogDailyReportModel({ employee, log: currentLog, dateKey: activeDateKey });
     const preInputReportTasks = preInputReport.tasks.map((task) => ({
       text: task.text,
       detail: task.detail,
       carryoverSourceDate: task.carryoverSourceDate
     }));
+    currentLog.tasks = [{
+      id: "daily-direct-task",
+      priority: "A",
+      text: "오늘 직접 작성한 업무",
+      status: "미완료",
+      done: false
+    }];
+    const dailyInputReport = buildWorklogDailyReportModel({ employee, log: currentLog, dateKey: activeDateKey });
+    const dailyInputReportTasks = dailyInputReport.tasks.map((task) => ({
+      text: task.text,
+      carryoverSourceDate: task.carryoverSourceDate
+    }));
+    currentLog.tasks = [];
     const refs = getWorklogTaskRefs(currentLog);
     const carryovers = refs.filter((ref) => ref.isCarryover);
     const deleteCarryoverTask = {
@@ -3624,6 +3637,7 @@ async function checkPriorityCarryoverAndDateRules(browser) {
         saturdayOnlyVisible: saturdayOnlyDelay.visible
       },
       preInputReportTasks,
+      dailyInputReportTasks,
       postponedPreview,
       postponedMaterializedStatus: postponedMaterialized.status,
       postponedMaterializedDate: postponedMaterialized.postponeDate,
@@ -3674,6 +3688,11 @@ async function checkPriorityCarryoverAndDateRules(browser) {
     || preInputReportTexts.some((text) => ["완료 업무", "취소 업무", "위임 업무", "연기 업무"].includes(text))
     || parsed.preInputReportTasks.some((task) => task.carryoverSourceDate !== "2026-08-02" || !task.detail.includes("이월"))) {
     fail("opening a daily report before the first input should include only arrived unresolved carryover work", metrics);
+  }
+  if (parsed.dailyInputReportTasks.length !== 1
+    || parsed.dailyInputReportTasks[0]?.text !== "오늘 직접 작성한 업무"
+    || parsed.dailyInputReportTasks[0]?.carryoverSourceDate) {
+    fail("a report with daily task input must not append historical carryover tasks", metrics);
   }
   if (parsed.futureBeforeArrival || !parsed.nextDayArrived || parsed.postponedBeforeDate
     || parsed.postponedDateArrived || parsed.postponedFutureDay || parsed.postponedNextDayArrived) {

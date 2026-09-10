@@ -406,15 +406,16 @@ check(
 );
 
 check(
-  "worklog reports include arrived carryover tasks before first daily input",
+  "worklog reports keep the employee's daily list intact and include carryover only before first input",
   js.includes("function getReportArchiveTaskRefs")
     && /function getEmployeeWorklogTaskRefs[\s\S]{0,1500}isWorklogTaskDueForDate\(task, dateKey, activeDateKey\)/.test(js)
     && /function getEmployeeWorklogTaskRefs[\s\S]{0,1700}!deletedFrom \|\| deletedFrom > activeDateKey/.test(js)
-    && /function getReportArchiveTaskRefs[\s\S]{0,600}getEmployeeWorklogTaskRefs\(employee, dateKey, log\)/.test(js)
+    && /function getReportArchiveTaskRefs[\s\S]{0,500}const hasCurrentDailyEntries/.test(js)
+    && /function getReportArchiveTaskRefs[\s\S]{0,900}if \(hasCurrentDailyEntries\)[\s\S]{0,900}getEmployeeWorklogTaskRefs\(employee, dateKey, log\)/.test(js)
     && js.includes("const tasks = getReportArchiveTasks(log, { employee, dateKey });")
     && js.includes("reportCarryoverSourceDate")
     && js.includes("carryoverDetail"),
-  "opening today's report before typing must use the same arrived-date and completion rules as the visible task ledger"
+  "a representative report must match an employee's daily list, while a pre-input report still uses arrived carryover rules"
 );
 
 check(

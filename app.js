@@ -24956,8 +24956,23 @@ function getReportArchiveTaskText(task = {}) {
 }
 
 function getReportArchiveTaskRefs(employee = {}, dateKey = getActiveDateKey(), log = {}) {
-  // 보고서의 우선업무도 본인 업무일지 화면과 하나의 이월·정렬 로직을 쓴다.
-  // 이중 구현을 없애면 대표 열람과 직원 화면이 서로 달라지는 것을 막을 수 있다.
+  // 당일 기록이 생긴 뒤의 보고서는 그 날 직원이 확정해 둔 목록만 보여준다.
+  // 그렇지 않으면 과거 미완료 항목을 매번 덧붙여 대표 열람 보고서가
+  // 직원 본인의 당일 보고서보다 길어지는 문제가 생긴다.
+  const hasCurrentDailyEntries = (log.tasks || []).some((task) => getReportArchiveTaskText(task));
+  if (hasCurrentDailyEntries) {
+    return (log.tasks || []).map((task, index) => ({
+      task,
+      index,
+      log,
+      sourceDateKey: String(dateKey || getActiveDateKey()),
+      isCarryover: false,
+      isPostponedFromOtherDate: false,
+    }));
+  }
+
+  // 아직 당일 입력 전이면, 직원 업무일지와 같은 기준으로 도래한 이월 업무만
+  // 미리 보여준다. 이 경우에만 과거 원본의 이월 표시를 유지한다.
   return getEmployeeWorklogTaskRefs(employee, dateKey, log);
 }
 
