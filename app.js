@@ -24969,26 +24969,23 @@ function getReportArchiveTaskRefs(employee = {}, dateKey = getActiveDateKey(), l
     .filter(([sourceDateKey]) => sourceDateKey < dateKey)
     .sort(([dateA], [dateB]) => dateA.localeCompare(dateB))
     .forEach(([sourceDateKey]) => {
-      const sourceLog = getExistingEmployeeLogForAnalysis(employee, sourceDateKey)
-        || state.employeeLogs?.[sourceDateKey]?.[employeeId];
+      // 대표 열람 보고서도 직원 업무일지와 같은 정본 슬롯만 사용한다.
+      // 분석용 별칭 탐색을 섞으면 이전 ID나 다른 이력이 합쳐져 직원 화면과
+      // 다른 목록이 만들어질 수 있다.
+      const sourceLog = state.employeeLogs?.[sourceDateKey]?.[employeeId];
       (sourceLog?.tasks || []).forEach((task, index) => {
         const deletedFrom = String(task.carryoverDeletedFrom || "");
-        const rolloverDate = getWorklogTaskRolloverDate(task, sourceDateKey);
-        const isPostponedHere = task.status === "연기"
-          && task.postponeDate === dateKey
-          && !hasWorklogPostponedTaskOccurrence(task, log)
-          && hasWorklogCarryoverDateArrived(dateKey);
         const isOpenCarryover = Boolean(
           isWorklogTaskDueForDate(task, sourceDateKey, dateKey)
           && (!deletedFrom || deletedFrom > dateKey)
         );
-        if (!isOpenCarryover && !isPostponedHere) return;
+        if (!isOpenCarryover) return;
         refs.push({
           task,
           index,
           sourceDateKey,
-          isCarryover: isOpenCarryover,
-          isPostponedFromOtherDate: task.status === "연기" && rolloverDate <= dateKey,
+          isCarryover: true,
+          isPostponedFromOtherDate: false,
         });
       });
     });

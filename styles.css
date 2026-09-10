@@ -14198,6 +14198,12 @@ body.physical-phone-device #view-fitness-log .fitness-log-schedule-panel .fitnes
   gap: 8px;
 }
 
+.worklog-report-sheet > header {
+  position: relative;
+  min-width: 0;
+  padding-right: 50px;
+}
+
 .worklog-report-sheet > header strong {
   display: block;
   color: var(--fitness-green);
@@ -14232,9 +14238,19 @@ body.physical-phone-device #view-fitness-log .fitness-log-schedule-panel .fitnes
 }
 
 #worklogReportCloseButton {
+  position: absolute;
+  top: 0;
+  right: 0;
+  z-index: 4;
+  display: grid;
   width: 38px;
   min-width: 38px;
+  min-height: 38px;
+  place-items: center;
   padding: 0;
+  border-radius: 999px;
+  background: var(--paper, #fffef9);
+  box-shadow: 0 2px 8px rgba(12, 48, 35, 0.16);
   font-size: 20px;
 }
 
@@ -14907,7 +14923,7 @@ body.physical-phone-device #view-fitness-log .fitness-log-schedule-panel .fitnes
 
 @media (max-width: 760px) {
   .worklog-report-sheet {
-    inset: auto 10px max(10px, env(safe-area-inset-bottom));
+    inset: max(8px, env(safe-area-inset-top)) 10px max(10px, env(safe-area-inset-bottom));
     left: 10px;
     width: auto;
     height: min(94dvh, 1000px);
@@ -14922,6 +14938,24 @@ body.physical-phone-device #view-fitness-log .fitness-log-schedule-panel .fitnes
   .worklog-report-preview {
     overflow: hidden auto;
     padding: 8px;
+  }
+
+  .worklog-report-sheet > header {
+    position: sticky;
+    top: 0;
+    z-index: 5;
+    min-height: 46px;
+    padding-right: 58px;
+    background: var(--paper, #fffef9);
+  }
+
+  #worklogReportCloseButton {
+    top: 0;
+    right: 0;
+    width: 46px;
+    min-width: 46px;
+    min-height: 46px;
+    font-size: 26px;
   }
 
   .worklog-daily-report-page {
