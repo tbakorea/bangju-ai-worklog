@@ -408,8 +408,9 @@ check(
 check(
   "worklog reports include arrived carryover tasks before first daily input",
   js.includes("function getReportArchiveTaskRefs")
-    && /function getReportArchiveTaskRefs[\s\S]{0,1500}isWorklogTaskDueForDate\(task, sourceDateKey, dateKey\)/.test(js)
-    && /function getReportArchiveTaskRefs[\s\S]{0,1700}!deletedFrom \|\| deletedFrom > dateKey/.test(js)
+    && /function getEmployeeWorklogTaskRefs[\s\S]{0,1500}isWorklogTaskDueForDate\(task, dateKey, activeDateKey\)/.test(js)
+    && /function getEmployeeWorklogTaskRefs[\s\S]{0,1700}!deletedFrom \|\| deletedFrom > activeDateKey/.test(js)
+    && /function getReportArchiveTaskRefs[\s\S]{0,600}getEmployeeWorklogTaskRefs\(employee, dateKey, log\)/.test(js)
     && js.includes("const tasks = getReportArchiveTasks(log, { employee, dateKey });")
     && js.includes("reportCarryoverSourceDate")
     && js.includes("carryoverDetail"),

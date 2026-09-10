@@ -18106,9 +18106,9 @@ function updateTaskPriorityWarningState(row, task, { announce = false, log = get
   return missing;
 }
 
-function getWorklogTaskRefs(log) {
-  const activeDateKey = getActiveDateKey();
-  const employeeId = String(log?.employeeId || getEmployeeWorklogId(getSelectedEmployee()) || "").trim();
+function getEmployeeWorklogTaskRefs(employee = {}, dateKey = getActiveDateKey(), log = {}) {
+  const activeDateKey = String(dateKey || getActiveDateKey());
+  const employeeId = String(log?.employeeId || getEmployeeWorklogId(employee) || "").trim();
   const refs = (log.tasks || []).map((task, index) => ({
     task,
     index,
@@ -18764,6 +18764,10 @@ function renderWorklogAppointments(log) {
     if (index > 0 && log.schedule[index - 1]?.mergeDown) return;
     list.appendChild(renderAppointmentRow(entry, log, "worklog"));
   });
+}
+
+function getWorklogTaskRefs(log) {
+  return getEmployeeWorklogTaskRefs(getSelectedEmployee(), getActiveDateKey(), log);
 }
 
 function renderFitnessAppointments(log) {
@@ -24930,17 +24934,12 @@ function getReportArchiveEmployees(siteId = "all") {
 
 function getReportArchiveEmployeeLog(employee, dateKey) {
   const employeeId = getEmployeeWorklogId(employee);
-  const logsByEmployee = state.employeeLogs?.[dateKey] || {};
-  const aliases = getEmployeeWorklogAliases(employee);
-  const candidates = aliases.map((id) => logsByEmployee[id]).filter(Boolean);
   const fitnessLog = getReportArchiveSiteId(employee) === "fitness"
     ? getFitnessEmployeeLogForDate(employee, dateKey)
     : null;
-  const stored = fitnessLog
-    || candidates.find(hasSubmittableWorklogContent)
-    || candidates[0]
-    || logsByEmployee[employeeId]
-    || null;
+  // 대표 열람 보고서도 직원 본인 화면과 똑같은 정본 업무일지 해석을 사용한다.
+  // 과거 별칭이나 보조 후보를 별도로 고르면 서로 다른 업무가 섞일 수 있다.
+  const stored = fitnessLog || getEmployeeLogForDate(employeeId, dateKey);
   const log = stored
     ? cloneWorklogLogForAudit(stored)
     : createEmployeeLog({ ...employee, id: employeeId }, state.profile, dateKey);
@@ -24957,45 +24956,9 @@ function getReportArchiveTaskText(task = {}) {
 }
 
 function getReportArchiveTaskRefs(employee = {}, dateKey = getActiveDateKey(), log = {}) {
-  const employeeId = getEmployeeWorklogId(employee) || String(log?.employeeId || "").trim();
-  const refs = (log.tasks || []).map((task, index) => ({
-    task,
-    index,
-    sourceDateKey: dateKey,
-    isCarryover: false,
-    isPostponedFromOtherDate: false,
-  }));
-  Object.entries(state.employeeLogs || {})
-    .filter(([sourceDateKey]) => sourceDateKey < dateKey)
-    .sort(([dateA], [dateB]) => dateA.localeCompare(dateB))
-    .forEach(([sourceDateKey]) => {
-      // 대표 열람 보고서도 직원 업무일지와 같은 정본 슬롯만 사용한다.
-      // 분석용 별칭 탐색을 섞으면 이전 ID나 다른 이력이 합쳐져 직원 화면과
-      // 다른 목록이 만들어질 수 있다.
-      const sourceLog = state.employeeLogs?.[sourceDateKey]?.[employeeId];
-      (sourceLog?.tasks || []).forEach((task, index) => {
-        const deletedFrom = String(task.carryoverDeletedFrom || "");
-        const isOpenCarryover = Boolean(
-          isWorklogTaskDueForDate(task, sourceDateKey, dateKey)
-          && (!deletedFrom || deletedFrom > dateKey)
-        );
-        if (!isOpenCarryover) return;
-        refs.push({
-          task,
-          index,
-          sourceDateKey,
-          isCarryover: true,
-          isPostponedFromOtherDate: false,
-        });
-      });
-    });
-  return refs.sort((a, b) => {
-    const activeA = isActiveTask(a.task);
-    const activeB = isActiveTask(b.task);
-    const orderA = getPrioritySortValue(a.task.priority);
-    const orderB = getPrioritySortValue(b.task.priority);
-    return Number(activeB) - Number(activeA) || orderA - orderB || a.index - b.index;
-  });
+  // 보고서의 우선업무도 본인 업무일지 화면과 하나의 이월·정렬 로직을 쓴다.
+  // 이중 구현을 없애면 대표 열람과 직원 화면이 서로 달라지는 것을 막을 수 있다.
+  return getEmployeeWorklogTaskRefs(employee, dateKey, log);
 }
 
 function getReportArchiveTasks(log, options = {}) {
