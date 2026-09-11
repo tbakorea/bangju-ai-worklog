@@ -12740,17 +12740,77 @@ function getDagymTrainerIdentityNames(employee = {}) {
   ].map(normalizeDagymTrainerName).filter(Boolean))];
 }
 
+function getDagymFitnessEmployeeByWorklogId(employeeId = "") {
+  const targetId = String(employeeId || "").trim();
+  if (!targetId) return null;
+  return getEmployeeOptions().find((employee) => (
+    isFitnessEmployeeRecord(employee)
+    && getEmployeeWorklogId(employee) === targetId
+  )) || null;
+}
+
 function resolveDagymTrainerEmployeeId(row = {}) {
   const trainerName = normalizeDagymTrainerName(row.trainer_name);
-  if (!trainerName) return "";
+  const directId = String(row.trainer_employee_id || "").trim();
+  const directEmployee = getDagymFitnessEmployeeByWorklogId(directId);
+  // 다짐의 강사 ID는 외부 시스템 ID일 수도 있습니다. 이름이 한 명의 피트니스
+  // 직원과 명확히 일치하면 외부 ID 때문에 투사를 막지 않습니다. 단, 업무일지의
+  // 실제 직원 ID가 다른 사람을 가리키는 경우에는 이름·수업이 섞이지 않도록 차단합니다.
+  if (!trainerName) return directEmployee ? directId : "";
   const matches = getEmployeeOptions()
     .filter(isFitnessEmployeeRecord)
     .filter((employee) => getDagymTrainerIdentityNames(employee).includes(trainerName));
   if (matches.length !== 1) return "";
   const matchedId = getEmployeeWorklogId(matches[0]);
-  const directId = String(row.trainer_employee_id || "").trim();
-  if (directId && directId !== matchedId) return "";
+  if (directEmployee && directId !== matchedId) return "";
   return matchedId;
+}
+
+function isDagymScheduleReminderTrainer(employee = {}) {
+  const reminderNames = new Set(["박주홍", "홍현규"].map(normalizeDagymTrainerName));
+  return getDagymTrainerIdentityNames(employee).some((name) => reminderNames.has(name));
+}
+
+function getDagymScheduleReminderContext(page = getCurrentFitnessLogPage()) {
+  const dateKey = getActiveDateKey();
+  const todayKey = getDagymScheduleKstParts(new Date()).dateKey;
+  const employee = page?.employee || findEmployeeRecordById(page?.id);
+  const ownEmployeeId = getProfileMappedEmployeeId();
+  if (
+    page?.type !== "employee"
+    || isRepresentativeProfile()
+    || !employee
+    || page.id !== ownEmployeeId
+    || dateKey < todayKey
+    || !isDagymScheduleReminderTrainer(employee)
+  ) return null;
+
+  const cached = authState.dagymPtScheduleMonthCache.get(dateKey.slice(0, 7));
+  if (!Array.isArray(cached?.rows)) return null;
+  const hasScheduledClass = cached.rows.some((row) => (
+    row?.active !== false
+    && resolveDagymTrainerEmployeeId(row) === page.id
+    && getDagymScheduleKstParts(row.scheduled_at).dateKey === dateKey
+  ));
+  return { dateKey, employee, hasScheduledClass };
+}
+
+function renderFitnessDagymScheduleWarning(page = getCurrentFitnessLogPage()) {
+  const panel = document.getElementById("fitnessDagymScheduleWarning");
+  if (!panel) return;
+  const context = getDagymScheduleReminderContext(page);
+  if (!context || context.hasScheduledClass) {
+    panel.hidden = true;
+    panel.innerHTML = "";
+    return;
+  }
+  const subject = context.dateKey === getDagymScheduleKstParts(new Date()).dateKey ? "오늘" : formatCompactDate(context.dateKey);
+  panel.hidden = false;
+  panel.innerHTML = `<header>
+    <span>DA GYM · PT SCHEDULE</span>
+    <strong>수업 시간표 확인 필요</strong>
+  </header>
+  <p><b>${escapeHtml(getEmployeeOwnLabel(context.employee))}</b>님의 ${escapeHtml(subject)} 다짐 시간표에 등록된 수업이 없습니다. 예정 수업이 있다면 다짐에서 수업 시간표를 등록·확인해주세요. 등록 후 이 업무일지의 시간별 일정에 자동 반영됩니다.</p>`;
 }
 
 function isDagymScheduleProjectionEligible(row = {}, dateKey = getActiveDateKey(), now = new Date()) {
@@ -14381,6 +14441,7 @@ function renderFitnessWorklog(log = getSelectedLog()) {
   renderWorklogEditLockBanner("fitness");
   document.getElementById("fitnessCenterDailyPanel").hidden = !isCenter;
   renderFitnessPersonalMonthSummary(page, isCenter);
+  renderFitnessDagymScheduleWarning(page);
   renderFitnessDailyGuidance(page, isCenter);
   document.querySelector(".fitness-log-task-panel")?.toggleAttribute("hidden", isCenter);
   document.querySelector(".fitness-log-schedule-panel")?.toggleAttribute("hidden", isCenter);

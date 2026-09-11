@@ -6594,6 +6594,7 @@ async function checkDagymTrainerScheduleProjection(browser) {
     const rows = [
       { id: "dagym-manager-future", trainer_name: "센터장 박주홍", trainer_employee_id: "beyond-fitness-manager", scheduled_at: tomorrowKey + "T09:00:00+09:00", session_type: "paid", status: "scheduled", active: true },
       { id: "dagym-trainer-future", trainer_name: "홍트 코치님", trainer_employee_id: "fitness-trainer-1", scheduled_at: tomorrowKey + "T10:00:00+09:00", session_type: "free", status: "scheduled", active: true },
+      { id: "dagym-external-id", trainer_name: "박주홍 센터장", trainer_employee_id: "dagym-instructor-park-opaque", scheduled_at: tomorrowKey + "T12:00:00+09:00", session_type: "paid", status: "scheduled", active: true },
       { id: "dagym-past", trainer_name: "박주홍", trainer_employee_id: "beyond-fitness-manager", scheduled_at: yesterdayKey + "T09:00:00+09:00", session_type: "paid", status: "scheduled", active: true },
       { id: "dagym-conflict", trainer_name: "박주홍", trainer_employee_id: "fitness-trainer-1", scheduled_at: tomorrowKey + "T11:00:00+09:00", session_type: "paid", status: "scheduled", active: true }
     ];
@@ -6612,13 +6613,73 @@ async function checkDagymTrainerScheduleProjection(browser) {
     trainer.nickname = previousNickname;
     return metrics;
   })()`));
-  if (result.managerFuture.join("|") !== "dagym-manager-future"
+  if (result.managerFuture.join("|") !== "dagym-external-id|dagym-manager-future"
     || result.trainerFuture.join("|") !== "dagym-trainer-future"
     || result.managerPast.length
     || result.trainerPast.length) {
     fail("DaGym monthly lessons should map exact trainer names and nicknames only to future owner worklogs", JSON.stringify(result));
   }
   if (errors.length) fail("DaGym trainer schedule projection page errors", errors.join(" | "));
+  await page.close();
+}
+
+async function checkDagymTrainerScheduleMissingWarning(browser) {
+  const { page, errors } = await openPage(browser, { width: 390, height: 844 });
+  const raw = await page.evaluate(() => window.eval(`(() => {
+    const dateKey = getDagymScheduleKstParts(new Date()).dateKey;
+    const monthKey = dateKey.slice(0, 7);
+    authState.user = { id: "dagym-warning-qa", email: "" };
+    state.profile = {
+      ...state.profile,
+      authUserId: "dagym-warning-qa",
+      email: "",
+      org: "(주)비욘드컴퍼니",
+      workplace: "비욘드 피트니스",
+      role: "센터장",
+      name: "박주홍",
+      nickname: "박주홍",
+      approvalStatus: "approved"
+    };
+    state.selectedDateKey = dateKey;
+    state.fitnessWritableEmployeeId = "beyond-fitness-manager";
+    state.selectedEmployeeId = "beyond-fitness-manager";
+    state.fitnessLogPageId = "beyond-fitness-manager";
+    authState.dagymPtScheduleMonthCache.set(monthKey, { rows: [], loadedAt: Date.now() });
+    renderFitnessDagymScheduleWarning(getCurrentFitnessLogPage());
+    const warning = document.getElementById("fitnessDagymScheduleWarning");
+    const missingWarning = !warning.hidden && warning.textContent.includes("수업 시간표 확인 필요");
+
+    authState.dagymPtScheduleMonthCache.set(monthKey, {
+      rows: [{
+        id: "dagym-warning-registered",
+        trainer_name: "박주홍 센터장",
+        trainer_employee_id: "dagym-opaque-park-id",
+        scheduled_at: dateKey + "T09:00:00+09:00",
+        active: true
+      }],
+      loadedAt: Date.now()
+    });
+    renderFitnessDagymScheduleWarning(getCurrentFitnessLogPage());
+    const registeredScheduleHidesWarning = warning.hidden;
+
+    authState.user = { id: "dagym-warning-representative", email: "j3010@ymail.com" };
+    state.profile = {
+      ...state.profile,
+      authUserId: "dagym-warning-representative",
+      email: "j3010@ymail.com",
+      role: "대표",
+      name: "대표"
+    };
+    authState.dagymPtScheduleMonthCache.set(monthKey, { rows: [], loadedAt: Date.now() });
+    renderFitnessDagymScheduleWarning(getCurrentFitnessLogPage());
+    const representativeViewHidesWarning = warning.hidden;
+    return JSON.stringify({ missingWarning, registeredScheduleHidesWarning, representativeViewHidesWarning });
+  })()`));
+  const result = JSON.parse(raw);
+  if (!result.missingWarning || !result.registeredScheduleHidesWarning || !result.representativeViewHidesWarning) {
+    fail("DaGym missing schedule warning should target only the trainer's own worklog and disappear after schedule registration", raw);
+  }
+  if (errors.length) fail("DaGym missing schedule warning page errors", errors.join(" | "));
   await page.close();
 }
 
@@ -6826,6 +6887,7 @@ async function checkFitnessPaidPtCanonicalLedger(browser) {
     await checkDagymPreviousDayGuidanceFlow(browser);
     await checkDagymDirectReportImport(browser);
     await checkDagymTrainerScheduleProjection(browser);
+    await checkDagymTrainerScheduleMissingWarning(browser);
     await checkFitnessPaidPtCanonicalLedger(browser);
     await checkFitnessRosterHoursAndCompactTotals(browser);
     await checkLaborLeaveWorkflow(browser);

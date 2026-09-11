@@ -11939,6 +11939,56 @@ body.physical-phone-device .representative-analysis-body {
   display: none;
 }
 
+.fitness-dagym-schedule-warning {
+  order: 2;
+  display: grid;
+  gap: 5px;
+  border: 1px solid rgba(171, 109, 20, 0.35);
+  border-left: 5px solid #c17a19;
+  border-radius: 14px;
+  background: linear-gradient(135deg, rgba(255, 241, 207, 0.96), rgba(255, 253, 247, 0.96));
+  color: #5d431a;
+  padding: 10px 12px;
+  box-shadow: 0 8px 18px rgba(112, 72, 16, 0.07);
+}
+
+.fitness-dagym-schedule-warning[hidden] {
+  display: none;
+}
+
+.fitness-dagym-schedule-warning header {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;
+}
+
+.fitness-dagym-schedule-warning header span {
+  color: #9a6519;
+  font-size: 9px;
+  font-weight: 950;
+  letter-spacing: 0.11em;
+  white-space: nowrap;
+}
+
+.fitness-dagym-schedule-warning header strong {
+  color: #694813;
+  font-size: 14px;
+  font-weight: 950;
+}
+
+.fitness-dagym-schedule-warning p {
+  margin: 0;
+  color: #6b542a;
+  font-size: 12px;
+  font-weight: 750;
+  line-height: 1.48;
+}
+
+.fitness-dagym-schedule-warning p b {
+  color: #4e3510;
+}
+
 .fitness-daily-guidance-panel > header {
   display: flex;
   justify-content: space-between;
@@ -13172,6 +13222,30 @@ body[data-layout-mode="phone"] .fitness-daily-guidance-panel {
   gap: 7px;
   border-radius: 16px;
   padding: 9px;
+}
+
+body[data-layout-mode="phone"] .fitness-dagym-schedule-warning {
+  gap: 4px;
+  border-radius: 12px;
+  padding: 8px 9px;
+}
+
+body[data-layout-mode="phone"] .fitness-dagym-schedule-warning header {
+  align-items: center;
+  gap: 6px;
+}
+
+body[data-layout-mode="phone"] .fitness-dagym-schedule-warning header span {
+  font-size: 8px;
+}
+
+body[data-layout-mode="phone"] .fitness-dagym-schedule-warning header strong {
+  font-size: 13px;
+}
+
+body[data-layout-mode="phone"] .fitness-dagym-schedule-warning p {
+  font-size: 11px;
+  line-height: 1.42;
 }
 
 body[data-layout-mode="phone"] .fitness-daily-guidance-panel > header {
