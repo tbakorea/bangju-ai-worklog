@@ -3538,6 +3538,38 @@ async function checkPriorityCarryoverAndDateRules(browser) {
     ).filter((ref) => ref.task.text === "완료된 기존 형식 이월 업무");
     const executiveLegacyRepairedCarryoverDates = reconcileExecutiveWorklogTerminalCarryovers();
     const executiveLegacyStaleCopy = state.executiveWorklogs[executiveLegacyActiveDate].tasks[0];
+    const executiveTerminalSourceDate = "2026-08-10";
+    const executiveTerminalCopyDate = "2026-08-11";
+    const executiveTerminalActiveDate = "2026-08-12";
+    state.executiveWorklogs[executiveTerminalSourceDate] = {
+      ...createExecutiveWorklog(executiveTerminalSourceDate),
+      tasks: [{ id: "executive-terminal-root", priority: "A", text: "완료한 이월 업무 재생성 방지", status: "미완료", done: false }]
+    };
+    state.executiveWorklogs[executiveTerminalCopyDate] = {
+      ...createExecutiveWorklog(executiveTerminalCopyDate),
+      tasks: [{ id: "executive-terminal-copy", priority: "A", text: "완료한 이월 업무 재생성 방지", status: "완료", done: true, carryoverForkFrom: "2026-08-10:executive-terminal-root" }]
+    };
+    state.executiveWorklogs[executiveTerminalActiveDate] = createExecutiveWorklog(executiveTerminalActiveDate);
+    const executiveTerminalDescendantRefs = getExecutiveWorklogTaskRefs(
+      getExecutiveWorklog(executiveTerminalActiveDate),
+      executiveTerminalActiveDate
+    ).filter((ref) => ref.task.text === "완료한 이월 업무 재생성 방지");
+    const executiveDeletionInvariantLog = {
+      ...createExecutiveWorklog("2026-08-13"),
+      tasks: [
+        { id: "executive-delete-before", priority: "A", text: "삭제 전 완료 업무", status: "완료", done: true },
+        { id: "executive-delete-target", priority: "A", text: "삭제 대상 업무", status: "미완료", done: false },
+        { id: "executive-delete-after", priority: "B", text: "삭제 후 완료 업무", status: "완료", done: true }
+      ]
+    };
+    clearExecutiveWorklogTaskAt(executiveDeletionInvariantLog, 1, "2026-08-13");
+    const executiveDeletionInvariant = {
+      beforeDone: executiveDeletionInvariantLog.tasks[0].done,
+      clearedText: executiveDeletionInvariantLog.tasks[1].text,
+      replacementId: executiveDeletionInvariantLog.tasks[1].id,
+      afterDone: executiveDeletionInvariantLog.tasks[2].done,
+      afterId: executiveDeletionInvariantLog.tasks[2].id
+    };
     const executivePostponeSourceDate = "2026-08-06";
     const executivePostponeTargetDate = "2026-08-09";
     const executivePostponeTask = { id: "executive-postpone-selection", priority: "C", text: "대표 날짜 선택 연기 업무", status: "미완료", done: false };
@@ -3652,6 +3684,8 @@ async function checkPriorityCarryoverAndDateRules(browser) {
       executiveLegacyRepairedCarryoverDates,
       executiveLegacyRefsBeforeRepair: executiveLegacyRefsBeforeRepair.length,
       executiveLegacyStaleCopyText: executiveLegacyStaleCopy.text,
+      executiveTerminalDescendantRefs: executiveTerminalDescendantRefs.length,
+      executiveDeletionInvariant,
       executivePostpone: {
         label: executivePostponeLabel,
         scheduled: executivePostponeScheduled,
@@ -3772,6 +3806,16 @@ async function checkPriorityCarryoverAndDateRules(browser) {
     || !parsed.executiveLegacyRepairedCarryoverDates.includes("2026-08-05")
     || parsed.executiveLegacyStaleCopyText) {
     fail("legacy executive carryover copies without a lineage key must not revive completed priorities on the next day", metrics);
+  }
+  if (parsed.executiveTerminalDescendantRefs !== 0) {
+    fail("a task completed on an earlier carryover copy must not be recreated from its original source on the following day", metrics);
+  }
+  if (!parsed.executiveDeletionInvariant.beforeDone
+    || parsed.executiveDeletionInvariant.clearedText
+    || parsed.executiveDeletionInvariant.replacementId === "executive-delete-target"
+    || !parsed.executiveDeletionInvariant.afterDone
+    || parsed.executiveDeletionInvariant.afterId !== "executive-delete-after") {
+    fail("deleting an executive task must only clear its own row without changing neighboring completion states", metrics);
   }
   const employeeFutureMatrix = await page.evaluate(() => window.eval(`(() => {
     const futureDate1 = formatDateKey(new Date(parseDateKey(todayKey).getTime() + 86400000));

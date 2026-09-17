@@ -1275,16 +1275,40 @@ function createEmployeeLog(employee = employees[0], profile = defaultProfile, da
   };
 }
 
+function createExecutiveBlankTask(dateKey = todayKey, index = 0) {
+  return {
+    // A replacement row receives a new identity.  Keeping a deleted task's
+    // identifier lets an already-rendered handler update the wrong task after
+    // a re-render or a delayed remote save.
+    id: `executive-task-${dateKey}-${index}-${Math.random().toString(36).slice(2, 7)}`,
+    priority: "?",
+    text: "",
+    status: "예정",
+    done: false,
+  };
+}
+
+function getExecutiveWorklogTaskIndex(log = {}, task = {}, fallbackIndex = -1) {
+  const tasks = Array.isArray(log?.tasks) ? log.tasks : [];
+  const taskId = String(task?.id || "").trim();
+  if (taskId) {
+    const matchedIndex = tasks.findIndex((item) => String(item?.id || "") === taskId);
+    if (matchedIndex >= 0) return matchedIndex;
+  }
+  if (Number.isInteger(fallbackIndex) && tasks[fallbackIndex] === task) return fallbackIndex;
+  return tasks.indexOf(task);
+}
+
+function clearExecutiveWorklogTaskAt(log = {}, index = -1, dateKey = getActiveDateKey()) {
+  if (!Array.isArray(log?.tasks) || index < 0 || index >= log.tasks.length) return false;
+  log.tasks[index] = createExecutiveBlankTask(dateKey, index);
+  return true;
+}
+
 function createExecutiveWorklog(dateKey = todayKey) {
   return {
     dateKey,
-    tasks: Array.from({ length: 3 }, (_, index) => ({
-      id: `executive-task-${dateKey}-${index}`,
-      priority: "?",
-      text: "",
-      status: "예정",
-      done: false,
-    })),
+    tasks: Array.from({ length: 3 }, (_, index) => createExecutiveBlankTask(dateKey, index)),
     schedule: getExecutiveScheduleTimes().map((time) => ({ time, text: "", status: "예정" })),
     memo: "",
     updatedAt: "",
@@ -1317,15 +1341,7 @@ function normalizeExecutiveWorklog(log = {}, dateKey = getActiveDateKey()) {
     carryoverForkFrom: String(task.carryoverForkFrom || ""),
     carryoverSourceDate: String(task.carryoverSourceDate || ""),
   }));
-  while (tasks.length < 3) {
-    tasks.push({
-      id: `executive-task-${dateKey}-${tasks.length}-${Math.random().toString(36).slice(2, 7)}`,
-      priority: "?",
-      text: "",
-      status: "예정",
-      done: false,
-    });
-  }
+  while (tasks.length < 3) tasks.push(createExecutiveBlankTask(dateKey, tasks.length));
   const scheduleByTime = new Map(scheduleRows.map((entry) => [String(entry.time || ""), entry]));
   const defaultScheduleTimes = new Set(fallback.schedule.map((row) => row.time));
   const schedule = fallback.schedule.map((row) => {
@@ -1401,6 +1417,19 @@ function getExecutiveWorklogTaskTerminalAncestor(task = {}, sourceDateKey = "", 
   return getExecutiveWorklogTaskTerminalAncestor(parentTask, parentDateKey, parentIndex, nextVisited);
 }
 
+function hasExecutiveWorklogTaskTerminalDescendant(task = {}, sourceDateKey = "", index = 0, beforeDateKey = getActiveDateKey()) {
+  const lineageKey = getExecutiveWorklogTaskLineageKey(task, sourceDateKey, index);
+  if (!lineageKey || !sourceDateKey || !beforeDateKey) return false;
+  return Object.entries(state.executiveWorklogs || {}).some(([candidateDateKey, candidateLog]) => (
+    candidateDateKey > sourceDateKey
+    && candidateDateKey < beforeDateKey
+    && (candidateLog?.tasks || []).some((candidateTask, candidateIndex) => (
+      isExecutiveWorklogTaskTerminal(candidateTask)
+      && getExecutiveWorklogTaskLineageKey(candidateTask, candidateDateKey, candidateIndex) === lineageKey
+    ))
+  ));
+}
+
 function getExecutiveWorklogTaskCarryoverSignature(task = {}) {
   const text = String(task?.text || "").replace(/\s+/g, " ").trim();
   if (!text) return "";
@@ -1411,18 +1440,45 @@ function getExecutiveLegacyTerminalCarryoverAncestor(task = {}, dateKey = "") {
   // 초기에 생성된 대표 이월 행에는 carryoverForkFrom이 저장되지 않은 사례가
   // 있습니다. 바로 전날의 동일 우선순위·동일 문구인 종료 업무만 대상으로
   // 좁혀 보정해, 완료된 업무가 다음 날 새 업무처럼 되살아나는 일을 막습니다.
-  if (String(task?.carryoverForkFrom || "").trim() || isExecutiveWorklogTaskTerminal(task)) return null;
+  if (isExecutiveWorklogTaskTerminal(task)) return null;
   const signature = getExecutiveWorklogTaskCarryoverSignature(task);
   if (!signature || !dateKey) return null;
 
-  const sourceDateKey = getPreviousCalendarDateKey(dateKey);
-  const sourceLog = state.executiveWorklogs?.[sourceDateKey];
-  const sourceIndex = (sourceLog?.tasks || []).findIndex((sourceTask) => (
-    isExecutiveWorklogTaskTerminal(sourceTask)
-    && getExecutiveWorklogTaskCarryoverSignature(sourceTask) === signature
-  ));
-  if (sourceIndex < 0) return null;
-  return { task: sourceLog.tasks[sourceIndex], sourceDateKey, index: sourceIndex, legacy: true };
+  const candidateDateKeys = [];
+  const addCandidate = (value) => {
+    const candidate = String(value || "").trim();
+    if (/^\d{4}-\d{2}-\d{2}$/.test(candidate) && candidate < dateKey && !candidateDateKeys.includes(candidate)) {
+      candidateDateKeys.push(candidate);
+    }
+  };
+  const forkKey = String(task?.carryoverForkFrom || "").trim();
+  if (forkKey.includes(":")) addCandidate(forkKey.slice(0, forkKey.indexOf(":")));
+  addCandidate(task?.carryoverSourceDate);
+  addCandidate(getPreviousCalendarDateKey(dateKey));
+
+  // Older in-place carryovers occasionally have a broken source task ID. In
+  // that case, follow only their explicitly marked lineage back through prior
+  // executive logs. This prevents a completed source task from being revived
+  // as an unfinished task on a later date without guessing across unrelated
+  // newly-created tasks.
+  if (forkKey || String(task?.carryoverSourceDate || "").trim()) {
+    Object.keys(state.executiveWorklogs || {})
+      .filter((candidate) => candidate < dateKey)
+      .sort((left, right) => right.localeCompare(left))
+      .forEach(addCandidate);
+  }
+
+  for (const sourceDateKey of candidateDateKeys) {
+    const sourceLog = state.executiveWorklogs?.[sourceDateKey];
+    const sourceIndex = (sourceLog?.tasks || []).findIndex((sourceTask) => (
+      isExecutiveWorklogTaskTerminal(sourceTask)
+      && getExecutiveWorklogTaskCarryoverSignature(sourceTask) === signature
+    ));
+    if (sourceIndex >= 0) {
+      return { task: sourceLog.tasks[sourceIndex], sourceDateKey, index: sourceIndex, legacy: true };
+    }
+  }
+  return null;
 }
 
 function reconcileExecutiveWorklogTerminalCarryovers() {
@@ -1441,13 +1497,7 @@ function reconcileExecutiveWorklogTerminalCarryovers() {
       // row (including legacy rows without a lineage key) must disappear
       // instead of reviving the event on the next day.
       removeExecutiveTaskLinkedSchedule(task, log);
-      log.tasks[index] = {
-        id: task.id || `executive-task-${dateKey}-${index}`,
-        priority: "?",
-        text: "",
-        status: "예정",
-        done: false,
-      };
+      clearExecutiveWorklogTaskAt(log, index, dateKey);
       log.updatedAt = new Date().toISOString();
       repairedDateKeys.add(dateKey);
     });
@@ -1476,14 +1526,18 @@ function saveExecutiveWorklogWithCarryoverRepair(options = {}) {
 // currently viewed date hides it briefly, but the original record returns on
 // the next remote hydration.  Persist the deletion marker on that source date
 // as well so every device reaches the same result immediately.
-function persistWorklogCarryoverDeletion(ref = {}) {
+function persistWorklogCarryoverDeletion(ref = {}, { executive = false } = {}) {
   const task = ref?.task;
   if (!task) return false;
   const activeDateKey = getActiveDateKey();
   const sourceDateKey = String(ref.sourceDateKey || activeDateKey);
   task.carryoverDeletedFrom = activeDateKey;
   if (ref.log && typeof ref.log === "object") ref.log.updatedAt = new Date().toISOString();
-  saveState({ fastSave: true });
+  // Employee and executive worklogs share the display-level carryover
+  // deletion marker, but only the executive board needs its cross-date
+  // carryover reconciliation before saving.
+  if (executive) saveExecutiveWorklogWithCarryoverRepair({ fastSave: true });
+  else saveState({ fastSave: true });
   if (!authState.applyingRemote && sourceDateKey !== activeDateKey) {
     scheduleRemoteSave(0, sourceDateKey);
   }
@@ -1536,6 +1590,11 @@ function getExecutiveWorklogTaskRefs(log = getExecutiveWorklog(), activeDateKey 
         const isOpenCarryover = Boolean(
           isWorklogTaskDueForDate(task, dateKey, activeDateKey)
           && (!deletedFrom || deletedFrom > activeDateKey)
+          // A task may have been completed on an in-place copy created on an
+          // earlier day. That completion is authoritative for the original
+          // lineage as well; otherwise the original source is picked up again
+          // here and incorrectly reappears on the following day.
+          && !hasExecutiveWorklogTaskTerminalDescendant(task, dateKey, index, activeDateKey)
         );
         if (isOpenCarryover) {
           addRef({
@@ -2435,11 +2494,16 @@ function removeExecutivePostponedTaskOccurrence(postponeId, keepDateKey = "") {
   const changedDateKeys = [];
   Object.entries(state.executiveWorklogs || {}).forEach(([dateKey, log]) => {
     if (dateKey === keepDateKey || !Array.isArray(log?.tasks)) return;
-    const nextTasks = log.tasks.filter((item) => item?.postponedFrom !== postponeId);
-    if (nextTasks.length === log.tasks.length) return;
+    const occurrenceIndexes = log.tasks
+      .map((item, index) => (item?.postponedFrom === postponeId ? index : -1))
+      .filter((index) => index >= 0);
+    if (!occurrenceIndexes.length) return;
+    occurrenceIndexes.forEach((index) => {
+      removeExecutiveTaskLinkedSchedule(log.tasks[index], log);
+      clearExecutiveWorklogTaskAt(log, index, dateKey);
+    });
     state.executiveWorklogs[dateKey] = normalizeExecutiveWorklog({
       ...log,
-      tasks: nextTasks,
       updatedAt: new Date().toISOString(),
     }, dateKey);
     changedDateKeys.push(dateKey);
@@ -7461,26 +7525,30 @@ function renderExecutiveWorklog() {
           ? "이 날짜에 표시된 이월 우선업무를 삭제할까요? 원본 업무는 유지됩니다."
           : "이 우선업무를 삭제할까요? 연결된 시간별일정도 함께 삭제됩니다.")) return;
         if (ref.isCarryover || ref.isPostponedFromOtherDate) {
-          persistWorklogCarryoverDeletion(ref);
+          persistWorklogCarryoverDeletion(ref, { executive: true });
           renderExecutiveWorklog();
           showAppToast("이 날짜의 이월 우선업무를 삭제했습니다.");
           return;
         }
-        const removedTask = ref.task;
-        removeExecutivePostponedTaskOccurrence(removedTask.postponeId);
-        removeExecutiveTaskLinkedSchedule(removedTask, log);
-        log.tasks.splice(ref.index, 1);
-        while (log.tasks.length < 3) {
-          log.tasks.push({
-            id: `executive-task-${Date.now()}-${log.tasks.length}-${Math.random().toString(36).slice(2, 7)}`,
-            priority: "?",
-            text: "",
-            status: "예정",
-            done: false,
-          });
+        const targetLog = ref.log || log;
+        const targetDateKey = String(ref.sourceDateKey || targetLog?.dateKey || getActiveDateKey());
+        const targetIndex = getExecutiveWorklogTaskIndex(targetLog, ref.task, ref.index);
+        if (targetIndex < 0) {
+          // The row was already replaced by a remote/local update.  Never use
+          // the rendered index to remove a different task after that update.
+          renderExecutiveWorklog();
+          showAppToast("이미 변경된 업무입니다. 최신 목록을 표시했습니다.");
+          return;
         }
-        log.updatedAt = new Date().toISOString();
-        saveState({ fastSave: true });
+        const removedTask = targetLog.tasks[targetIndex];
+        removeExecutivePostponedTaskOccurrence(removedTask.postponeId);
+        removeExecutiveTaskLinkedSchedule(removedTask, targetLog);
+        clearExecutiveWorklogTaskAt(targetLog, targetIndex, targetDateKey);
+        targetLog.updatedAt = new Date().toISOString();
+        // Keep completion, deletion, and carryover reconciliation in one
+        // persistence path. This prevents a stale child copy from restoring
+        // an event after the current row was deleted.
+        saveExecutiveWorklogWithCarryoverRepair({ fastSave: true });
         renderExecutiveWorklog();
       });
     });
