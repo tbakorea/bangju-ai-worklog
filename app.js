@@ -1529,7 +1529,6 @@ function saveExecutiveWorklogWithCarryoverRepair(options = {}) {
 function persistWorklogCarryoverDeletion(ref = {}, { executive = false } = {}) {
   const task = ref?.task;
   if (!task) return false;
-  const activeDateKey = getActiveDateKey();
   const sourceDateKey = String(ref.sourceDateKey || activeDateKey);
   task.carryoverDeletedFrom = activeDateKey;
   if (ref.log && typeof ref.log === "object") ref.log.updatedAt = new Date().toISOString();
@@ -1542,6 +1541,76 @@ function persistWorklogCarryoverDeletion(ref = {}, { executive = false } = {}) {
     scheduleRemoteSave(0, sourceDateKey);
   }
   return true;
+}
+
+// Representative priorities can be materialized into the date being viewed so
+// they can be edited like a normal row.  That means an on-screen row is not
+// always the original event: it can be a same-date fork of an older event.
+// Keep the source lineage's one-day hide marker in sync as well, otherwise a
+// subsequent remote hydration can restore the original event immediately.
+function markExecutiveWorklogCarryoverLineageHiddenForDate(ref = {}, activeDateKey = getActiveDateKey()) {
+  const sourceDateKey = String(ref?.sourceDateKey || activeDateKey);
+  const lineageKey = getExecutiveWorklogTaskLineageKey(ref?.task, sourceDateKey, ref?.index);
+  if (!lineageKey) return [];
+
+  const changedDateKeys = [];
+  Object.entries(state.executiveWorklogs || {}).forEach(([dateKey, sourceLog]) => {
+    if (dateKey >= activeDateKey || !Array.isArray(sourceLog?.tasks)) return;
+    let changed = false;
+    sourceLog.tasks.forEach((task, index) => {
+      if (getExecutiveWorklogTaskLineageKey(task, dateKey, index) !== lineageKey
+        || !isWorklogTaskDueForDate(task, dateKey, activeDateKey)
+        || String(task.carryoverDeletedFrom || "") === activeDateKey) return;
+      task.carryoverDeletedFrom = activeDateKey;
+      changed = true;
+    });
+    if (changed) {
+      sourceLog.updatedAt = new Date().toISOString();
+      changedDateKeys.push(dateKey);
+    }
+  });
+  return changedDateKeys;
+}
+
+function saveExecutiveWorklogTaskRemoval(changedDateKeys = []) {
+  const repairedDateKeys = saveExecutiveWorklogWithCarryoverRepair({ fastSave: true }) || [];
+  if (authState.applyingRemote) return;
+  new Set([...changedDateKeys, ...repairedDateKeys, getActiveDateKey()])
+    .forEach((dateKey) => scheduleRemoteSave(0, dateKey));
+}
+
+function removeExecutiveWorklogTaskRef(ref = {}, currentLog = getExecutiveWorklog()) {
+  if (!ref?.task) return { ok: false, reason: "missing-task" };
+  const activeDateKey = getActiveDateKey();
+  const targetLog = ref.log || currentLog;
+  const targetDateKey = String(ref.sourceDateKey || targetLog?.dateKey || activeDateKey);
+  const targetIndex = getExecutiveWorklogTaskIndex(targetLog, ref.task, ref.index);
+  const isMaterializedCarryover = Boolean(
+    ref.isCarryover
+    || ref.isPostponedFromOtherDate
+    || targetDateKey !== activeDateKey
+    || String(ref.task.carryoverForkFrom || "").trim()
+  );
+  const changedDateKeys = isMaterializedCarryover
+    ? markExecutiveWorklogCarryoverLineageHiddenForDate(ref, activeDateKey)
+    : [];
+
+  // A projected carryover has no row in the current date's saved log.  Its
+  // source marker is the deletion.  A materialized fork does have a row here,
+  // so clear that exact row too; never fall back to a rendered index.
+  if (targetDateKey === activeDateKey) {
+    if (targetIndex < 0) return { ok: false, reason: "stale-row" };
+    const removedTask = targetLog.tasks[targetIndex];
+    removeExecutivePostponedTaskOccurrence(removedTask.postponeId);
+    removeExecutiveTaskLinkedSchedule(removedTask, targetLog);
+    clearExecutiveWorklogTaskAt(targetLog, targetIndex, targetDateKey);
+    targetLog.updatedAt = new Date().toISOString();
+    changedDateKeys.push(targetDateKey);
+  }
+
+  if (!changedDateKeys.length) return { ok: false, reason: "no-change" };
+  saveExecutiveWorklogTaskRemoval(changedDateKeys);
+  return { ok: true, changedDateKeys: [...new Set(changedDateKeys)] };
 }
 
 function getExecutiveWorklogTaskRefPriority(ref = {}, activeDateKey = getActiveDateKey()) {
@@ -1653,7 +1722,16 @@ function materializeExecutiveWorklogCarryover(ref, currentLog = getExecutiveWork
       targetIndex = currentLog.tasks.length - 1;
     }
   }
-  ref.task.carryoverDeletedFrom = getActiveDateKey();
+  const sourceDateKey = String(ref.sourceDateKey || activeDateKey);
+  const sourceWasMarked = String(ref.task.carryoverDeletedFrom || "") === activeDateKey;
+  ref.task.carryoverDeletedFrom = activeDateKey;
+  if (!sourceWasMarked && ref.log && sourceDateKey !== activeDateKey) {
+    ref.log.updatedAt = new Date().toISOString();
+    // The source and active worklog use date-scoped server snapshots.  Queue
+    // the source immediately so an edit on its local fork cannot be undone by
+    // a later hydration from the still-open source task.
+    if (!authState.applyingRemote) scheduleRemoteSave(0, sourceDateKey);
+  }
   currentLog.updatedAt = new Date().toISOString();
   return {
     task: currentLog.tasks[targetIndex],
@@ -7524,32 +7602,17 @@ function renderExecutiveWorklog() {
         if (!ref || !confirmWorklogEventDeletion(ref.isCarryover || ref.isPostponedFromOtherDate
           ? "이 날짜에 표시된 이월 우선업무를 삭제할까요? 원본 업무는 유지됩니다."
           : "이 우선업무를 삭제할까요? 연결된 시간별일정도 함께 삭제됩니다.")) return;
-        if (ref.isCarryover || ref.isPostponedFromOtherDate) {
-          persistWorklogCarryoverDeletion(ref, { executive: true });
-          renderExecutiveWorklog();
-          showAppToast("이 날짜의 이월 우선업무를 삭제했습니다.");
-          return;
-        }
-        const targetLog = ref.log || log;
-        const targetDateKey = String(ref.sourceDateKey || targetLog?.dateKey || getActiveDateKey());
-        const targetIndex = getExecutiveWorklogTaskIndex(targetLog, ref.task, ref.index);
-        if (targetIndex < 0) {
-          // The row was already replaced by a remote/local update.  Never use
-          // the rendered index to remove a different task after that update.
-          renderExecutiveWorklog();
-          showAppToast("이미 변경된 업무입니다. 최신 목록을 표시했습니다.");
-          return;
-        }
-        const removedTask = targetLog.tasks[targetIndex];
-        removeExecutivePostponedTaskOccurrence(removedTask.postponeId);
-        removeExecutiveTaskLinkedSchedule(removedTask, targetLog);
-        clearExecutiveWorklogTaskAt(targetLog, targetIndex, targetDateKey);
-        targetLog.updatedAt = new Date().toISOString();
-        // Keep completion, deletion, and carryover reconciliation in one
-        // persistence path. This prevents a stale child copy from restoring
-        // an event after the current row was deleted.
-        saveExecutiveWorklogWithCarryoverRepair({ fastSave: true });
+        const result = removeExecutiveWorklogTaskRef(ref, log);
         renderExecutiveWorklog();
+        if (!result.ok) {
+          showAppToast(result.reason === "stale-row"
+            ? "이미 변경된 업무입니다. 최신 목록을 표시했습니다."
+            : "삭제할 업무를 찾지 못했습니다. 최신 목록을 표시했습니다.");
+          return;
+        }
+        showAppToast(ref.isCarryover || ref.isPostponedFromOtherDate || ref.task?.carryoverForkFrom
+          ? "이 날짜의 이월 우선업무를 삭제했습니다."
+          : "우선업무를 삭제했습니다.");
       });
     });
   }

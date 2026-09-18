@@ -3570,6 +3570,44 @@ async function checkPriorityCarryoverAndDateRules(browser) {
       afterDone: executiveDeletionInvariantLog.tasks[2].done,
       afterId: executiveDeletionInvariantLog.tasks[2].id
     };
+    // A representative can delete a carryover after it has been materialized
+    // into the current date. The local fork and its original source must both
+    // be persisted; otherwise the source is restored on the next hydration.
+    const executiveCarryoverDeleteSourceDate = "2026-08-14";
+    const executiveCarryoverDeleteActiveDate = "2026-08-15";
+    state.executiveWorklogs[executiveCarryoverDeleteSourceDate] = {
+      ...createExecutiveWorklog(executiveCarryoverDeleteSourceDate),
+      tasks: [{ id: "executive-carryover-delete-root", priority: "A", text: "대표 이월 삭제 서버 반영", status: "미완료", done: false }]
+    };
+    state.executiveWorklogs[executiveCarryoverDeleteActiveDate] = {
+      ...createExecutiveWorklog(executiveCarryoverDeleteActiveDate),
+      tasks: [{ id: "executive-carryover-delete-copy", priority: "A", text: "대표 이월 삭제 서버 반영", status: "미완료", done: false, carryoverForkFrom: "2026-08-14:executive-carryover-delete-root", carryoverSourceDate: "2026-08-14" }]
+    };
+    state.selectedDateKey = executiveCarryoverDeleteActiveDate;
+    todayKey = executiveCarryoverDeleteActiveDate;
+    const executiveCarryoverDeleteRef = getExecutiveWorklogTaskRefs(
+      getExecutiveWorklog(executiveCarryoverDeleteActiveDate),
+      executiveCarryoverDeleteActiveDate
+    ).find((ref) => ref.task.id === "executive-carryover-delete-copy");
+    const executiveCarryoverDeleteResult = removeExecutiveWorklogTaskRef(
+      executiveCarryoverDeleteRef,
+      getExecutiveWorklog(executiveCarryoverDeleteActiveDate)
+    );
+    const executiveCarryoverDeleteSourceTask = state.executiveWorklogs[executiveCarryoverDeleteSourceDate].tasks[0];
+    const executiveCarryoverDeleteCurrentTask = state.executiveWorklogs[executiveCarryoverDeleteActiveDate].tasks[0];
+    const executiveCarryoverDeleteRefs = getExecutiveWorklogTaskRefs(
+      getExecutiveWorklog(executiveCarryoverDeleteActiveDate),
+      executiveCarryoverDeleteActiveDate
+    ).filter((ref) => ref.task.text === "대표 이월 삭제 서버 반영");
+    const executiveCarryoverDeleteSourceQueued = Boolean(authState.saveTimers?.get(executiveCarryoverDeleteSourceDate));
+    const executiveCarryoverDeleteActiveQueued = Boolean(authState.saveTimers?.get(executiveCarryoverDeleteActiveDate));
+    [executiveCarryoverDeleteSourceDate, executiveCarryoverDeleteActiveDate].forEach((dateKey) => {
+      const timer = authState.saveTimers?.get(dateKey);
+      if (timer) window.clearTimeout(timer);
+      authState.saveTimers?.delete(dateKey);
+    });
+    state.selectedDateKey = executiveActiveDate;
+    todayKey = executiveActiveDate;
     const executivePostponeSourceDate = "2026-08-06";
     const executivePostponeTargetDate = "2026-08-09";
     const executivePostponeTask = { id: "executive-postpone-selection", priority: "C", text: "대표 날짜 선택 연기 업무", status: "미완료", done: false };
@@ -3686,6 +3724,14 @@ async function checkPriorityCarryoverAndDateRules(browser) {
       executiveLegacyStaleCopyText: executiveLegacyStaleCopy.text,
       executiveTerminalDescendantRefs: executiveTerminalDescendantRefs.length,
       executiveDeletionInvariant,
+      executiveCarryoverDeletion: {
+        ok: executiveCarryoverDeleteResult.ok,
+        sourceMarker: executiveCarryoverDeleteSourceTask.carryoverDeletedFrom || "",
+        currentText: executiveCarryoverDeleteCurrentTask.text,
+        remainingRefs: executiveCarryoverDeleteRefs.length,
+        sourceQueued: executiveCarryoverDeleteSourceQueued,
+        activeQueued: executiveCarryoverDeleteActiveQueued
+      },
       executivePostpone: {
         label: executivePostponeLabel,
         scheduled: executivePostponeScheduled,
@@ -3816,6 +3862,14 @@ async function checkPriorityCarryoverAndDateRules(browser) {
     || !parsed.executiveDeletionInvariant.afterDone
     || parsed.executiveDeletionInvariant.afterId !== "executive-delete-after") {
     fail("deleting an executive task must only clear its own row without changing neighboring completion states", metrics);
+  }
+  if (!parsed.executiveCarryoverDeletion.ok
+    || parsed.executiveCarryoverDeletion.sourceMarker !== "2026-08-15"
+    || parsed.executiveCarryoverDeletion.currentText
+    || parsed.executiveCarryoverDeletion.remainingRefs !== 0
+    || !parsed.executiveCarryoverDeletion.sourceQueued
+    || !parsed.executiveCarryoverDeletion.activeQueued) {
+    fail("deleting a materialized executive carryover must clear the current fork and persist its hidden source lineage", metrics);
   }
   const employeeFutureMatrix = await page.evaluate(() => window.eval(`(() => {
     const futureDate1 = formatDateKey(new Date(parseDateKey(todayKey).getTime() + 86400000));
