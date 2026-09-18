@@ -6022,6 +6022,13 @@ function getRepresentativeAnalysisHistoricalDateKeys(endDateKey = getActiveDateK
     .sort();
 }
 
+function getRepresentativeAnalysisPeriodDays(startDateKey = "", endDateKey = "") {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(startDateKey) || !/^\d{4}-\d{2}-\d{2}$/.test(endDateKey)) return 0;
+  const start = parseDateKey(startDateKey);
+  const end = parseDateKey(endDateKey);
+  return Math.max(0, Math.round((end.getTime() - start.getTime()) / 86400000) + 1);
+}
+
 function buildRepresentativeEmployeeAnalysis(employee = {}, endDateKey = getActiveDateKey(), options = {}) {
   const requestedDateKeys = Array.isArray(options.dateKeys) ? options.dateKeys : [];
   const dateKeys = requestedDateKeys.length
@@ -6144,12 +6151,27 @@ function buildRepresentativeEmployeeAnalysis(employee = {}, endDateKey = getActi
   if (taskTotal && completionRate < 0.6) attention.push(`우선업무 완료율 ${Math.round(completionRate * 100)}%로 미완료 원인을 확인하세요.`);
   if (worklogDays >= 3 && reportRate < 0.5) attention.push("업무보고·회고 기록을 보강하면 역량 분석 정확도가 높아집니다.");
   if (!attention.length) attention.push("최근 기록에서 즉시 확인할 근태·실행 위험 신호가 없습니다.");
-  const periodStart = dateKeys[0]?.slice(5).replace("-", ".") || "";
-  const periodEnd = dateKeys.at(-1)?.slice(5).replace("-", ".") || "";
+  const periodStartDateKey = dateKeys[0] || "";
+  const periodEndDateKey = dateKeys.at(-1) || "";
+  const periodStart = periodStartDateKey.slice(5).replace("-", ".");
+  const periodEnd = periodEndDateKey.slice(5).replace("-", ".");
+  const followUpRequired = Boolean(
+    missingAttendanceDays
+    || lateDays
+    || earlyDays
+    || absentDays
+    || (scheduledDays >= 3 && worklogRate < 0.7)
+    || (taskTotal && completionRate < 0.6)
+    || (worklogDays >= 3 && reportRate < 0.5)
+  );
   return {
     employee,
     trackProfile,
-    periodLabel: `${periodStart}–${periodEnd}`,
+    periodStartDateKey,
+    periodEndDateKey,
+    periodDays: getRepresentativeAnalysisPeriodDays(periodStartDateKey, periodEndDateKey),
+    sourceDateCount: dateKeys.length,
+    periodLabel: periodStart && periodEnd ? `${periodStart}–${periodEnd}` : "저장 기록 축적 중",
     scheduledDays,
     evidenceDays,
     attendanceDays,
@@ -6172,6 +6194,10 @@ function buildRepresentativeEmployeeAnalysis(employee = {}, endDateKey = getActi
     punctualityRate,
     worklogRate,
     completionRate,
+    scheduleRate,
+    reportRate,
+    learningRate,
+    roleRate,
     competencyScores,
     overallScore,
     strongest,
@@ -6180,6 +6206,7 @@ function buildRepresentativeEmployeeAnalysis(employee = {}, endDateKey = getActi
     executionTrendAvailable,
     executionTrendDelta,
     attention: attention.slice(0, 2),
+    followUpRequired,
     confidenceLabel: evidenceDays >= 8 ? "분석 가능" : evidenceDays >= 3 ? "추세 확인" : "자료 축적 중",
     rows,
   };
@@ -6290,9 +6317,13 @@ function getRepresentativeEmployeeReportNote(analysis = {}) {
 
 function buildRepresentativeEmployeeA4Brief(analysis = {}, monthlyEvidence = {}, endDateKey = getActiveDateKey()) {
   const totals = monthlyEvidence.totals || {};
-  const periodStart = representativeEmployeeReportStartDate.replaceAll("-", ".");
-  const periodEnd = String(endDateKey || getActiveDateKey()).replaceAll("-", ".");
+  const periodStart = String(analysis.periodStartDateKey || representativeEmployeeReportStartDate).replaceAll("-", ".");
+  const periodEnd = String(analysis.periodEndDateKey || endDateKey || getActiveDateKey()).replaceAll("-", ".");
   const completionRate = analysis.taskTotal ? `${Math.round(analysis.completionRate * 100)}%` : "기록 없음";
+  const attendanceRate = analysis.scheduledDays ? `${analysis.attendanceDays}/${analysis.scheduledDays}일` : "근무예정 기록 없음";
+  const evidenceScope = analysis.periodDays
+    ? `${periodStart}–${periodEnd} (${analysis.periodDays}일 범위, 저장일 ${analysis.sourceDateCount || 0}일 · 개인 근거 ${analysis.evidenceDays || 0}일)`
+    : "저장된 업무기록을 축적 중입니다.";
   const trend = analysis.executionTrendAvailable
     ? `${analysis.executionTrendDelta >= 0 ? "최근 실행 흐름이 상승" : "최근 실행 흐름을 점검"}하고 있습니다(${Math.abs(Math.round(analysis.executionTrendDelta))}점 차이).`
     : "최근 비교에 필요한 기록을 더 축적 중입니다.";
@@ -6303,19 +6334,77 @@ function buildRepresentativeEmployeeA4Brief(analysis = {}, monthlyEvidence = {},
     ? `업무일지 ${analysis.worklogDays}일, 보고·회고 ${analysis.reportDays}일, 시간표 기록 ${analysis.scheduleDays}일이 남아 있습니다.`
     : "업무일지·시간표·보고 기록을 함께 남기면 분석의 정확도가 높아집니다.";
   const monthlyPerformance = numberValue(totals.taskTotal)
-    ? `8월 1일 이후 누적 업무 ${numberValue(totals.taskTotal)}건 · 완료 ${numberValue(totals.completedTotal)}건 · 역할 수행 근거 ${numberValue(totals.roleEvidenceDays)}일입니다.`
-    : "8월 1일 이후 해당 직원의 저장된 업무기록을 확인 중입니다.";
+    ? `저장 범위 누적 업무 ${numberValue(totals.taskTotal)}건 · 완료 ${numberValue(totals.completedTotal)}건 · 역할 수행 근거 ${numberValue(totals.roleEvidenceDays)}일입니다.`
+    : "해당 직원의 저장된 업무기록을 확인 중입니다.";
+  const attendance = analysis.scheduledDays
+    ? `근무예정·기록 기준 출결 ${attendanceRate}, 미기록 ${analysis.missingAttendanceDays}일입니다. 지각·조퇴·결근은 실제 근무시간과 사유를 대조해 확인합니다.`
+    : "근무예정 또는 출결 기록이 충분하지 않아 근태 평가는 보류합니다.";
   const growth = `학습·개선 표현 ${analysis.learningDays}일, 제안·개선 기록 ${analysis.initiativeDays}일입니다. ${trend}`;
   const collaboration = `협업·지원·인수인계 기록 ${analysis.collaborationDays}일, 책임·마감 확인 기록 ${analysis.responsibilityDays}일입니다.`;
   return {
-    periodLabel: `${periodStart}–${periodEnd}`,
+    periodLabel: evidenceScope,
     monthlyPerformance,
     performance,
+    attendance,
     recordQuality,
     growth,
     collaboration,
+    safeReview: "인성·열정·충성도·잠재력은 업무기록만으로 판정하지 않습니다. 사실 확인과 본인·관리자 면담을 함께 반영합니다.",
     managementPrompt: analysis.attention?.[0] || "업무 난이도·지원 필요·현장 상황을 본인과 면담으로 함께 확인하세요.",
   };
+}
+
+function buildRepresentativeEmployeeSiteSummary(entries = []) {
+  return entries.reduce((summary, entry) => {
+    const analysis = entry.analysis || {};
+    summary.employeeCount += 1;
+    summary.evidenceDays += numberValue(analysis.evidenceDays);
+    summary.scheduledDays += numberValue(analysis.scheduledDays);
+    summary.attendanceDays += numberValue(analysis.attendanceDays);
+    summary.worklogDays += numberValue(analysis.worklogDays);
+    summary.taskTotal += numberValue(analysis.taskTotal);
+    summary.completedTotal += numberValue(analysis.completedTotal);
+    summary.followUpCount += analysis.followUpRequired ? 1 : 0;
+    return summary;
+  }, {
+    employeeCount: 0,
+    evidenceDays: 0,
+    scheduledDays: 0,
+    attendanceDays: 0,
+    worklogDays: 0,
+    taskTotal: 0,
+    completedTotal: 0,
+    followUpCount: 0,
+  });
+}
+
+function getRepresentativeEmployeeFollowUpPriority(analysis = {}) {
+  if (numberValue(analysis.absentDays) || numberValue(analysis.missingAttendanceDays)) return 1;
+  if (numberValue(analysis.lateDays) || numberValue(analysis.earlyDays)) return 2;
+  if (numberValue(analysis.taskTotal) >= 3 && numberValue(analysis.completionRate) < 0.6) return 3;
+  if (numberValue(analysis.worklogDays) >= 3 && numberValue(analysis.reportRate) < 0.5) return 4;
+  if (numberValue(analysis.worklogRate) < 0.7) return 5;
+  return 9;
+}
+
+function buildRepresentativeEmployeeFollowUpQueue(entries = [], limit = 3) {
+  return entries
+    .filter((entry) => entry?.analysis?.followUpRequired)
+    .map((entry) => {
+      const analysis = entry.analysis || {};
+      return {
+        ...entry,
+        priority: getRepresentativeEmployeeFollowUpPriority(analysis),
+        reason: String(analysis.attention?.[0] || "업무기록과 실제 현장 상황을 함께 확인하세요."),
+      };
+    })
+    .sort((left, right) => left.priority - right.priority
+      || numberValue(right.analysis?.evidenceDays) - numberValue(left.analysis?.evidenceDays)
+      || String(getEmployeeAdminLabel(left.employee) || left.employee?.name || "").localeCompare(
+        String(getEmployeeAdminLabel(right.employee) || right.employee?.name || ""),
+        "ko",
+      ))
+    .slice(0, Math.max(1, numberValue(limit) || 3));
 }
 
 function renderRepresentativeEmployeePortfolioReport(viewName = activeView, selectedEmployee = null, options = {}) {
@@ -6333,13 +6422,14 @@ function renderRepresentativeEmployeePortfolioReport(viewName = activeView, sele
     entries: entries.filter((entry) => entry.group.id === group.id),
   })).filter(({ entries: groupEntries }) => groupEntries.length);
   const percentage = (value) => `${Math.round(value * 100)}%`;
+  const followUpQueue = buildRepresentativeEmployeeFollowUpQueue(entries, 3);
   return `
     <section class="representative-portfolio-report" aria-label="전체 직원 직무·근태·성장 지원 리포트">
       <header class="representative-portfolio-head">
         <div>
           <span>Worklog Evidence Report</span>
           <strong>전체 직원 직무·근태·성장 지원 리포트</strong>
-          <small>2026.08.01 이후 저장된 업무일지·출결 기록 기준 · ${escapeHtml(scopeLabel)}</small>
+          <small>직원별 저장된 업무일지·출결 기록 기준 · 실제 관찰 기간은 개인 A4 요약에 표시 · ${escapeHtml(scopeLabel)}</small>
         </div>
         <div class="representative-portfolio-summary" aria-label="리포트 데이터 범위">
           <span>직원 <b>${entries.length}명</b></span>
@@ -6348,6 +6438,33 @@ function renderRepresentativeEmployeePortfolioReport(viewName = activeView, sele
         </div>
       </header>
       <p class="representative-portfolio-disclaimer">이 리포트는 업무기록에 보이는 사실과 성장 지원 질문을 정리합니다. 성격·인성·잠재력 또는 인사결정은 자동으로 판정하지 않습니다. 인성·열정·충성도는 업무기록만으로 자동 판정하지 않으며, 관리자 면담과 본인 확인을 거쳐야 합니다.</p>
+      <section class="representative-portfolio-action-queue" aria-label="대표 확인 우선순위">
+        <header>
+          <div>
+            <span>Executive Follow-up</span>
+            <strong>대표 확인 우선순위</strong>
+          </div>
+          <em>업무기록 근거만으로 정리 · 확인 후 조치</em>
+        </header>
+        <div class="representative-portfolio-action-items">
+          ${followUpQueue.length ? followUpQueue.map((entry, index) => {
+            const employeeName = getEmployeeAdminLabel(entry.employee) || entry.employee?.name || "직원";
+            const roleLabel = [entry.group?.title, entry.employee?.position || entry.employee?.role]
+              .filter((value, itemIndex, list) => value && list.indexOf(value) === itemIndex)
+              .join(" · ");
+            return `
+              <article data-priority="${entry.priority}">
+                <b>${String(index + 1).padStart(2, "0")}</b>
+                <div>
+                  <strong>${escapeHtml(employeeName)}</strong>
+                  <span>${escapeHtml(entry.reason)}</span>
+                </div>
+                <em>${escapeHtml(roleLabel || "소속 확인")} · 근거 ${entry.analysis.evidenceDays}일</em>
+              </article>
+            `;
+          }).join("") : `<p class="representative-portfolio-action-empty">현재 저장된 업무기록에서 즉시 대표 확인이 필요한 반복 신호가 없습니다.</p>`}
+        </div>
+      </section>
       <div class="representative-portfolio-groups">
         ${grouped.map(({ group, entries: groupEntries }) => `
           <section class="representative-portfolio-group" aria-label="${escapeAttr(group.title)} 직원 리포트">
@@ -6355,6 +6472,21 @@ function renderRepresentativeEmployeePortfolioReport(viewName = activeView, sele
               <strong>${escapeHtml(group.title)}</strong>
               <span>${groupEntries.length}명 · 역할순</span>
             </header>
+            ${(() => {
+              const siteSummary = buildRepresentativeEmployeeSiteSummary(groupEntries);
+              const siteCompletion = siteSummary.taskTotal
+                ? `${siteSummary.completedTotal}/${siteSummary.taskTotal}`
+                : "기록 없음";
+              return `
+                <div class="representative-portfolio-site-summary" aria-label="${escapeAttr(group.title)} 사업장 기록 요약">
+                  <span><b>직원</b>${siteSummary.employeeCount}명</span>
+                  <span><b>근태 기록</b>${siteSummary.attendanceDays}/${siteSummary.scheduledDays}</span>
+                  <span><b>업무 완료</b>${siteCompletion}</span>
+                  <span><b>업무일지</b>${siteSummary.worklogDays}일</span>
+                  <span data-tone="followup"><b>확인 필요</b>${siteSummary.followUpCount}명</span>
+                </div>
+              `;
+            })()}
             <div class="representative-portfolio-grid">
               ${groupEntries.map(({ employeeId, employee, analysis, monthlyEvidence }) => {
                 const employeeName = getEmployeeAdminLabel(employee) || employee.name || "직원";
@@ -6428,11 +6560,14 @@ function renderRepresentativeEmployeePortfolioReport(viewName = activeView, sele
                         <strong>${escapeHtml(a4Brief.periodLabel)} 기록 기준</strong>
                       </header>
                       <div>
+                        <article data-tone="scope"><span>평가·검토 범위</span><p>${escapeHtml(a4Brief.periodLabel)}</p></article>
                         <article><span>누적 실적</span><p>${escapeHtml(a4Brief.monthlyPerformance)}</p></article>
                         <article><span>업무 성과</span><p>${escapeHtml(a4Brief.performance)}</p></article>
+                        <article><span>근태 기록</span><p>${escapeHtml(a4Brief.attendance)}</p></article>
                         <article><span>기록 품질</span><p>${escapeHtml(a4Brief.recordQuality)}</p></article>
                         <article><span>성장·개선</span><p>${escapeHtml(a4Brief.growth)}</p></article>
                         <article><span>협업·책임</span><p>${escapeHtml(a4Brief.collaboration)}</p></article>
+                        <article data-tone="safe"><span>인성·잠재력 확인 원칙</span><p>${escapeHtml(a4Brief.safeReview)}</p></article>
                         <article data-tone="manager"><span>대표 면담 확인</span><p>${escapeHtml(a4Brief.managementPrompt)}</p></article>
                       </div>
                     </section>
