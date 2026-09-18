@@ -22,7 +22,7 @@
           <option value="executive">오늘</option>
           <option value="worklog">업무</option>
           <option value="control">운영</option>
-          <option value="staff">사람</option>
+          <option value="staff">직원</option>
           <option value="report">알림</option>
         </select>
         <div class="header-actions">
@@ -42,19 +42,26 @@
           <button id="settingsGearButton" type="button" aria-haspopup="menu" aria-expanded="false" aria-label="메뉴 열기" title="전체 메뉴">메뉴</button>
         </div>
         <div class="main-menu-popover" id="mainMenuPopover" role="menu" hidden>
-          <span class="main-menu-section-label">핵심 메뉴</span>
-          <button class="main-menu-primary" type="button" data-menu-view="executive"><strong>오늘</strong><small>브리핑·판단·지시</small></button>
-          <button class="main-menu-primary" type="button" data-menu-view="worklog"><strong>업무</strong><small>업무일지·공통일정</small></button>
-          <button class="main-menu-primary" type="button" data-menu-view="control"><strong>운영</strong><small>사업장·현황·신호</small></button>
-          <button class="main-menu-primary" type="button" data-menu-view="staff"><strong>사람</strong><small>직원·권한·성장</small></button>
-          <button class="main-menu-primary" type="button" data-menu-view="report"><strong>알림</strong><small>보고·공지·업무전달</small></button>
-          <span class="main-menu-section-label main-menu-tool-label">전문 도구</span>
-          <button class="main-menu-tool" type="button" data-menu-view="attendance"><strong>노무</strong><small>근태·휴가·월마감</small></button>
-          <button class="main-menu-tool" type="button" data-menu-view="ai"><strong>성장·코칭</strong><small>매뉴얼·AI 미션</small></button>
-          <button class="main-menu-tool" type="button" data-menu-view="premium"><strong>AI 진단</strong><small>운영 품질·수익 신호</small></button>
-          <button class="main-menu-tool" type="button" data-menu-view="settings"><strong>설정</strong><small>내 정보·앱 환경</small></button>
-          <button class="main-menu-tool" type="button" data-menu-action="approval"><strong>승인함</strong><small>처리할 요청 <span id="menuApprovalBadge" class="menu-approval-badge" hidden>0</span></small></button>
-          <button class="main-menu-tool" type="button" data-menu-view="auth"><strong>로그인/직원등록</strong><small>계정 전환</small></button>
+        <div class="main-menu-core" id="mainMenuCore" role="group" aria-label="핵심 메뉴">
+            <span class="main-menu-section-label">핵심 메뉴</span>
+            <button class="main-menu-primary" type="button" data-menu-view="executive"><strong>오늘</strong><small>브리핑·판단·지시</small></button>
+            <button class="main-menu-primary" type="button" data-menu-view="worklog"><strong>업무</strong><small>업무일지·공통일정</small></button>
+            <button class="main-menu-primary" type="button" data-menu-view="control"><strong>운영</strong><small>사업장·현황·신호</small></button>
+            <button class="main-menu-primary" type="button" data-menu-view="staff"><strong>직원</strong><small>직원·권한·성장</small></button>
+          </div>
+          <button class="main-menu-more-toggle" id="mainMenuMoreToggle" type="button" data-menu-action="toggle-more-menu" aria-controls="mainMenuMorePanel" aria-expanded="false">
+            <span><strong>더보기</strong><small>보고 · 노무 · 코칭 · 설정</small></span><b aria-hidden="true">⌄</b>
+          </button>
+        <div class="main-menu-more-panel" id="mainMenuMorePanel" role="group" aria-label="더보기 메뉴" hidden>
+            <span class="main-menu-section-label main-menu-tool-label">더보기</span>
+            <button class="main-menu-tool" type="button" data-menu-view="report"><strong>알림·보고</strong><small>보고·공지·업무전달</small></button>
+            <button class="main-menu-tool" type="button" data-menu-view="attendance"><strong>노무·휴가</strong><small>근태·휴가·월마감</small></button>
+            <button class="main-menu-tool" type="button" data-menu-view="ai"><strong>성장·코칭</strong><small>매뉴얼·AI 미션</small></button>
+            <button class="main-menu-tool" type="button" data-menu-view="premium"><strong>AI 운영진단</strong><small>운영 품질·수익 신호</small></button>
+            <button class="main-menu-tool" type="button" data-menu-view="settings"><strong>설정</strong><small>내 정보·앱 환경</small></button>
+            <button class="main-menu-tool" type="button" data-menu-action="approval"><strong>승인함</strong><small>처리할 요청 <span id="menuApprovalBadge" class="menu-approval-badge" hidden>0</span></small></button>
+            <button class="main-menu-tool" type="button" data-menu-view="auth"><strong>로그인/직원등록</strong><small>계정 전환</small></button>
+          </div>
         </div>
         <div class="attendance-popover" id="attendancePopover" role="dialog" aria-label="출결 시간 선택" hidden>
           <div class="attendance-popover-actions">
@@ -97,8 +104,7 @@
         <button type="button" data-view="executive">오늘</button>
         <button class="is-active" type="button" data-view="worklog">업무</button>
         <button type="button" data-view="control">운영</button>
-        <button type="button" data-view="staff">사람</button>
-        <button type="button" data-view="report">알림</button>
+        <button type="button" data-view="staff">직원</button>
       </nav>
 
       <div class="worklog-calendar-backdrop" id="worklogCalendarBackdrop" hidden></div>
@@ -929,7 +935,7 @@
         <div class="staff-master-hero">
           <div>
             <p>Employee Master</p>
-            <h2>사람</h2>
+            <h2>직원</h2>
             <span>직원 원장 하나에서 권한·근태·성장·승인을 연결합니다.</span>
           </div>
           <button type="button" id="staffOpenApprovalButton">승인요청</button>

@@ -10130,7 +10130,7 @@ function getGlobalHeaderTitle(view = activeView, personLabel = "") {
   if (view === "bangju-log" || view === "today") return `${getGeneralWorklogTitle(view)} · ${personLabel}`;
   if (view === "fitness") return "비욘드 피트니스 OS";
   if (view === "attendance") return "노무";
-  if (view === "staff") return "사람";
+  if (view === "staff") return "직원";
   if (view === "organization") return "조직";
   if (view === "premium") return "AI 운영진단";
   if (view === "ai") return canAccessManualCoachingAdmin() ? "성장·코칭" : "나의 성장";
@@ -11973,7 +11973,7 @@ function renderMainMenuVisibility() {
   }
   if (laborButton) {
     const scope = canAccessAllLabor() ? "전 직원 근태·휴가" : hasProfilePermission("laborSite") ? "소속 근태·휴가" : "나의 근태·휴가";
-    setMainMenuButtonCopy(laborButton, "노무", scope);
+    setMainMenuButtonCopy(laborButton, "노무·휴가", scope);
   }
   const viewAccess = {
     executive: () => isRepresentativeProfile() || hasProfilePermission("executiveRoom"),
@@ -12010,9 +12010,23 @@ function renderMainMenuVisibility() {
     if (item.value === "worklog") item.textContent = isRepresentativeProfile() ? "전직원 업무일지" : "업무";
   });
   document.querySelectorAll("#mainMenuPopover [data-menu-action]").forEach((item) => {
-    if (isExplicitlySignedOut() && !item.dataset.menuView) item.hidden = true;
+    if (isExplicitlySignedOut() && !item.dataset.menuView && item.dataset.menuAction !== "toggle-more-menu") item.hidden = true;
   });
   renderApprovalNotification();
+
+  const core = document.getElementById("mainMenuCore");
+  const moreToggle = document.getElementById("mainMenuMoreToggle");
+  const morePanel = document.getElementById("mainMenuMorePanel");
+  const hasVisibleCore = Boolean(core && [...core.querySelectorAll("[data-menu-view]")].some((item) => !item.hidden));
+  const hasVisibleMore = Boolean(morePanel && [...morePanel.querySelectorAll("button")].some((item) => !item.hidden));
+  if (core) core.hidden = !hasVisibleCore;
+  if (isExplicitlySignedOut()) {
+    if (moreToggle) moreToggle.hidden = true;
+    if (morePanel) morePanel.hidden = false;
+  } else {
+    if (moreToggle) moreToggle.hidden = !hasVisibleMore;
+    if (!hasVisibleMore) setMainMenuMoreExpanded(false);
+  }
 }
 
 let globalCommandVisibleItems = [];
@@ -12023,13 +12037,13 @@ function getGlobalCommandItems() {
     { id: "today", group: "핵심", label: "오늘", meta: "브리핑·판단·지시", view: "executive", visible: isRepresentativeProfile() || hasProfilePermission("executiveRoom") },
     { id: "worklog", group: "핵심", label: "업무", meta: canAccessWorklogOverview() ? "직원 업무일지와 공통일정" : "나의 업무일지와 공통일정", view: "worklog", visible: isKnownLoggedInProfile() },
     { id: "operations", group: "핵심", label: "운영", meta: "사업장 현황과 이상 신호", view: "control", visible: canAccessControlTower() },
-    { id: "people", group: "핵심", label: "사람", meta: "직원·권한·성장", view: "staff", visible: canAccessStaffSection() },
-    { id: "activity", group: "핵심", label: "알림·보고", meta: "승인·공지·보고서", view: "report", visible: isKnownLoggedInProfile() },
-    { id: "labor", group: "전문 도구", label: "노무·휴가", meta: "근태·휴가·월마감", view: "attendance", visible: canOpenLaborSection() },
-    { id: "growth", group: "전문 도구", label: "성장·코칭", meta: "역할 매뉴얼과 AI 미션", view: "ai", visible: isKnownLoggedInProfile() },
-    { id: "diagnosis", group: "전문 도구", label: "AI 운영진단", meta: "운영 품질과 수익 신호", view: "premium", visible: canAccessPremiumOperations() },
-    { id: "settings", group: "도구", label: "설정", meta: "내 정보와 앱 환경", view: "settings", visible: isKnownLoggedInProfile() },
-    { id: "approval", group: "처리함", label: "승인함", meta: `${authState.pendingApprovalCount || 0}건 처리 대기`, action: "approval", visible: canShowApprovalMenu() },
+    { id: "people", group: "핵심", label: "직원", meta: "직원·권한·성장", view: "staff", visible: canAccessStaffSection() },
+    { id: "activity", group: "더보기", label: "알림·보고", meta: "승인·공지·보고서", view: "report", visible: isKnownLoggedInProfile() },
+    { id: "labor", group: "더보기", label: "노무·휴가", meta: "근태·휴가·월마감", view: "attendance", visible: canOpenLaborSection() },
+    { id: "growth", group: "더보기", label: "성장·코칭", meta: "역할 매뉴얼과 AI 미션", view: "ai", visible: isKnownLoggedInProfile() },
+    { id: "diagnosis", group: "더보기", label: "AI 운영진단", meta: "운영 품질과 수익 신호", view: "premium", visible: canAccessPremiumOperations() },
+    { id: "settings", group: "더보기", label: "설정", meta: "내 정보와 앱 환경", view: "settings", visible: isKnownLoggedInProfile() },
+    { id: "approval", group: "더보기", label: "승인함", meta: `${authState.pendingApprovalCount || 0}건 처리 대기`, action: "approval", visible: canShowApprovalMenu() },
   ].filter((item) => item.visible);
 
   if (canAccessWorklogOverview()) {
@@ -29264,6 +29278,16 @@ function dockMainMenuPopoverToTrigger(trigger = null) {
   if (host && popover.parentElement !== host) host.appendChild(popover);
 }
 
+function setMainMenuMoreExpanded(expanded = false) {
+  const toggle = document.getElementById("mainMenuMoreToggle");
+  const panel = document.getElementById("mainMenuMorePanel");
+  if (!toggle || !panel) return;
+  const isOpen = Boolean(expanded && !toggle.hidden);
+  panel.hidden = !isOpen;
+  toggle.setAttribute("aria-expanded", String(isOpen));
+  toggle.classList.toggle("is-expanded", isOpen);
+}
+
 function toggleMainMenuPopover(trigger = null) {
   const popover = document.getElementById("mainMenuPopover");
   const button = document.getElementById("settingsGearButton");
@@ -29272,7 +29296,10 @@ function toggleMainMenuPopover(trigger = null) {
   if (!popover) return;
   dockMainMenuPopoverToTrigger(trigger);
   const willOpen = popover.hidden;
-  if (willOpen) renderMainMenuAuthButton();
+  if (willOpen) {
+    renderMainMenuAuthButton();
+    if (!isExplicitlySignedOut()) setMainMenuMoreExpanded(false);
+  }
   popover.hidden = !willOpen;
   button?.setAttribute("aria-expanded", String(willOpen));
   executiveButton?.setAttribute("aria-expanded", String(willOpen));
@@ -29290,6 +29317,7 @@ function closeMainMenuPopover() {
   const executiveButton = document.getElementById("executiveMenuButton");
   const controlButton = document.getElementById("controlTowerMenuButton");
   if (!popover || popover.hidden) return;
+  setMainMenuMoreExpanded(false);
   popover.hidden = true;
   button?.setAttribute("aria-expanded", "false");
   executiveButton?.setAttribute("aria-expanded", "false");
@@ -29558,6 +29586,12 @@ document.querySelectorAll("[data-menu-view]").forEach((button) => {
 document.querySelector("[data-menu-action='approval']")?.addEventListener("click", () => {
   closeMainMenuPopover();
   openApprovalManagement();
+});
+document.querySelector("[data-menu-action='toggle-more-menu']")?.addEventListener("click", (event) => {
+  event.preventDefault();
+  event.stopPropagation();
+  const button = event.currentTarget;
+  setMainMenuMoreExpanded(button.getAttribute("aria-expanded") !== "true");
 });
 document.addEventListener("click", (event) => {
   if (event.target.closest("[data-staff-open-labor-workspace]")) {

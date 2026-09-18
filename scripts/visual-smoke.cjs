@@ -1597,7 +1597,9 @@ async function checkOverviewCommandBoard(browser) {
     || !overviewDetailMetrics.staffReportTabVisible
     || !overviewDetailMetrics.staffReportText.includes("성격·인성·잠재력 또는 인사결정은 자동으로 판정하지 않습니다")
     || !overviewDetailMetrics.staffReportText.includes("월별 업무실적·성과")
-    || !overviewDetailMetrics.staffReportText.includes("2026.08.01 이후 저장된 업무일지·출결 기록 기준")
+    // Evidence periods are calculated from the records that actually exist;
+    // they must not be pinned to a historical start date in the smoke test.
+    || !/(?:\d{4}\.\d{2}\.\d{2}\s*이후\s*저장된 업무일지·출결 기록 기준|저장일\s*\d+일\s*·\s*개인 근거\s*\d+일\)\s*기록 기준)/.test(overviewDetailMetrics.staffReportText)
     || !overviewDetailMetrics.staffReportText.includes("직원 운영·성장 리포트")
     || !overviewDetailMetrics.staffReportText.includes("대표 면담 확인")
     || !overviewDetailMetrics.staffReportText.includes("자동 판정 제외")
@@ -2077,7 +2079,7 @@ async function checkDelegatedPermissionMenus(browser) {
       normalizeState();
       renderMainMenuAuthButton();
       return [...document.querySelectorAll("#mainMenuPopover button")]
-        .filter((button) => !button.hidden)
+        .filter((button) => !button.hidden && button.dataset.menuAction !== "toggle-more-menu")
         .map((button) => button.textContent.replace(/\\s+/g, " ").trim());
     };
     const worklogAll = run({ worklogAll: true });
@@ -2088,7 +2090,7 @@ async function checkDelegatedPermissionMenus(browser) {
     normalizeState();
     renderMainMenuAuthButton();
     const pinnedAccount = [...document.querySelectorAll("#mainMenuPopover button")]
-      .filter((button) => !button.hidden)
+      .filter((button) => !button.hidden && button.dataset.menuAction !== "toggle-more-menu")
       .map((button) => button.textContent.replace(/\\s+/g, " ").trim());
     authState.user = { id: "delegated-menu-user", email: "delegated@example.com" };
     state.profile.permissions = {};
@@ -2140,16 +2142,16 @@ async function checkDelegatedPermissionMenus(browser) {
   })()`));
   const parsed = JSON.parse(matrix);
   if (!parsed.worklogAll.some((label) => label.startsWith("업무") && label.includes("전 직원 업무일지"))
-    || parsed.worklogAll.some((label) => label.startsWith("사람") || label.startsWith("노무") || label.startsWith("승인함") || label.startsWith("운영"))) {
+    || parsed.worklogAll.some((label) => label.startsWith("직원") || label.startsWith("노무") || label.startsWith("승인함") || label.startsWith("운영"))) {
     fail("worklogAll delegation should build only the proportional all-worklog menu", matrix);
   }
-  if (!parsed.staffOnly.some((label) => label.startsWith("사람"))
+  if (!parsed.staffOnly.some((label) => label.startsWith("직원"))
     || parsed.staffOnly.some((label) => label.includes("전 직원 업무일지") || label.startsWith("노무") || label.startsWith("승인함"))) {
     fail("staffManage delegation should expose staff without unrelated labor or approval menus", matrix);
   }
   if (!parsed.laborApproval.some((label) => label.startsWith("노무") && label.includes("소속 근태·휴가"))
     || !parsed.laborApproval.some((label) => label.startsWith("승인함"))
-    || parsed.laborApproval.some((label) => label.startsWith("사람"))) {
+    || parsed.laborApproval.some((label) => label.startsWith("직원"))) {
     fail("laborSite and staffApproval should expose labor and approval independently", matrix);
   }
   if (!parsed.pinnedAccount.some((label) => label.startsWith("업무") && label.includes("전 직원 업무일지"))) {

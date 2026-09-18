@@ -922,7 +922,7 @@ check(
   "premium AI operating OS exists",
   html.includes('id="view-premium"')
     && html.includes('data-menu-view="premium"')
-    && html.includes('<strong>AI 진단</strong>')
+    && html.includes('<strong>AI 운영진단</strong>')
     && /function buildPremiumOperatingModel\(\)/.test(js)
     && /function renderPremiumOperatingSystem\(\)/.test(js)
     && /renderPremiumOperatingSystem\(\)/.test(js)
@@ -999,10 +999,12 @@ check(
 check(
   "menu sections use consolidated labels",
   html.includes('data-menu-view="ai"><strong>성장·코칭</strong>')
-    && html.includes('data-menu-view="report"><strong>알림</strong>')
-    && html.includes('data-menu-view="attendance"><strong>노무</strong>')
+    && html.includes('data-menu-view="report"><strong>알림·보고</strong>')
+    && html.includes('data-menu-view="attendance"><strong>노무·휴가</strong>')
+    && html.includes('id="mainMenuMoreToggle"')
+    && html.includes('id="mainMenuMorePanel"')
     && html.includes('id="globalCommandPalette"'),
-  "growth support and report/community should be named as consolidated destinations"
+  "specialist tools should be grouped behind the explicit 더보기 destination"
 );
 
 check(
