@@ -178,7 +178,7 @@ function buildEmployees() {
     { id: "beyond-shared-manager", name: "추소영", nickname: "추소영", email: "l9900820@naver.com", org: "(주)비욘드컴퍼니", workplace: "공유사업부", role: "매니저", employmentType: "직원", workHours: "09:00-18:00", workDays: [1, 2, 3, 4, 5], permissions: ["own_worklog", "own_labor"], status: "approved" },
     { id: "fitness-manager", name: "박주홍", nickname: "박주홍", email: activeFitnessManagerEmail, org: "(주)비욘드컴퍼니 / 비욘드 피트니스", workplace: "비욘드 피트니스", role: "센터장", employmentType: "직원", workHours: "06:00-24:00", workDays: [0, 1, 2, 3, 4, 5, 6], permissions: ["workplace_worklogs_read", "own_labor"], status: "approved" },
     { id: "fitness-trainer-hong", name: "홍현규", nickname: "홍현규", email: "gusrd1005@gmail.com", org: "(주)비욘드컴퍼니 / 비욘드 피트니스", workplace: "비욘드 피트니스", role: "트레이너", employmentType: "프리랜서", workHours: "06:00-24:00", workDays: [0, 1, 2, 3, 4, 5, 6], permissions: ["own_worklog", "own_labor"], status: "approved" },
-    { id: "bangju-finance-kimkyunghee", name: "김경희", nickname: "김경희", email: "kimkyunghee@example.com", org: "(주)방주", workplace: "재무", role: "차장", employmentType: "직원", workHours: "08:30-17:30", workDays: [1, 2, 3, 4, 5], permissions: ["own_worklog", "own_labor"], status: "approved" },
+    { id: "bangju-finance-kimkyunghee", name: "김경희", nickname: "김경희", email: "onse2@naver.com", org: "(주)방주", workplace: "재무", role: "차장", employmentType: "직원", workHours: "08:30-17:30", workDays: [1, 2, 3, 4, 5], permissions: ["own_worklog", "own_labor"], status: "approved" },
     { id: "fitness-info-idabin", name: "이다빈", nickname: "이다빈", email: "dlekqls89@naver.com", org: "(주)비욘드컴퍼니 / 비욘드 피트니스", workplace: "비욘드 피트니스", role: "인포데스크", employmentType: "직원", workHours: "10:00-18:00", workDays: [1, 2, 3, 4, 5], permissions: ["own_worklog", "own_labor"], status: "approved" },
     { id: "fitness-info-kimyoungchae", name: "김영채", nickname: "김영채", email: "yckim1558@naver.com", org: "(주)비욘드컴퍼니 / 비욘드 피트니스", workplace: "비욘드 피트니스", role: "인포", employmentType: "직원", workHours: "10:00-18:00", workDays: [1, 2, 3, 4, 5], permissions: ["own_worklog", "own_labor"], status: "approved" },
     { id: "fitness-info-shinsemin", name: "신세민", nickname: "신세민", email: "tpals2990@naver.com", org: "(주)비욘드컴퍼니 / 비욘드 피트니스", workplace: "비욘드 피트니스", role: "인포", employmentType: "직원", workHours: "10:00-18:00", workDays: [1, 2, 3, 4, 5], permissions: ["own_worklog", "own_labor"], status: "approved" },
@@ -220,7 +220,7 @@ function buildEmployees() {
 const employees = buildEmployees();
 const activeEmployees = collapseByEmail(employees).filter(isActiveOperationalEmployee).slice(0, 100);
 const ceo = activeEmployees.find((employee) => normalizeEmail(employee.email) === "j3010@ymail.com");
-const kimKyunghee = activeEmployees.find((employee) => normalizeEmail(employee.email) === "kimkyunghee@example.com");
+const kimKyunghee = activeEmployees.find((employee) => normalizeEmail(employee.email) === "onse2@naver.com");
 const kimSungmin = activeEmployees.find((employee) => normalizeEmail(employee.email) === "tbakorea@gmail.com");
 const parkJuhong = activeEmployees.find((employee) => normalizeEmail(employee.email) === activeFitnessManagerEmail);
 const bangjuFinanceManager = activeEmployees.find((employee) => employee.id === "bangju-finance-manager");
@@ -319,7 +319,7 @@ assert(!fitnessRoster.some((employee) => !isFitnessOrg(employee)), "fitness cent
 
 const deviceAProfile = { ...kimKyunghee, workplace: "재무", updatedAt: 1 };
 const deviceBProfile = { ...kimKyunghee, workplace: "비욘드 피트니스", updatedAt: 0 };
-const canonicalKimKyunghee = collapseByEmail([deviceBProfile, deviceAProfile]).find((employee) => normalizeEmail(employee.email) === "kimkyunghee@example.com");
+const canonicalKimKyunghee = collapseByEmail([deviceBProfile, deviceAProfile]).find((employee) => normalizeEmail(employee.email) === "onse2@naver.com");
 assert(canonicalKimKyunghee.workplace === "재무", "same-email profile should not diverge by device; newest canonical profile wins");
 assert(canReadWorklog(ceo, kimKyunghee), "CEO should read every employee worklog");
 assert(canReadWorklog(kimSungmin, parkJuhong), "Beyond Company manager should read Beyond Fitness worklogs");

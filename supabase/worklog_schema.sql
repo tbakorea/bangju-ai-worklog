@@ -1134,6 +1134,66 @@ on public.site_weather_settings for delete
 to authenticated
 using (public.is_profile_approver());
 
+
+-- 퇴사자 기록은 대표 및 직원관리 권한을 가진 관리자만 조회합니다.
+create or replace function public.can_view_staff_archive()
+returns boolean language sql stable security definer set search_path = public
+as $$
+  select auth.uid() is not null and (
+    public.is_representative_profile() or exists (
+      select 1 from public.profiles p where p.id = auth.uid()
+      and p.approval_status = 'approved'
+      and case when p.permissions ? 'staffManage' then p.permissions->>'staffManage' = 'true'
+        else p.access_preset in ('executive_delegate', 'operations_admin') end
+    )
+  );
+$$;
+
+create or replace function public.can_read_staff_history(target_user uuid)
+returns boolean language sql stable security definer set search_path = public
+as $$
+  select not exists (
+    select 1 from public.profiles p where p.id = target_user
+    and p.worklog_status = 'resigned'
+    and (p.worklog_excluded_from is null or p.worklog_excluded_from <= (now() at time zone 'Asia/Seoul')::date)
+  ) or public.can_view_staff_archive();
+$$;
+revoke all on function public.can_view_staff_archive() from public, anon;
+revoke all on function public.can_read_staff_history(uuid) from public, anon;
+grant execute on function public.can_view_staff_archive() to authenticated;
+grant execute on function public.can_read_staff_history(uuid) to authenticated;
+
+drop policy if exists profiles_archive_read_guard on public.profiles;
+create policy profiles_archive_read_guard on public.profiles as restrictive for select to authenticated
+using (public.can_read_staff_history(id));
+drop policy if exists worklogs_archive_read_guard on public.worklog_states;
+create policy worklogs_archive_read_guard on public.worklog_states as restrictive for select to authenticated
+using (public.can_read_staff_history(user_id));
+
+create or replace function public.get_archived_staff_worklogs(target_user uuid)
+returns table (log_date date, organization text, worklog jsonb)
+language plpgsql stable security definer set search_path = public
+as $$
+begin
+  if not public.can_view_staff_archive() then
+    raise exception 'staff archive requires staff management access';
+  end if;
+  if not exists (select 1 from public.profiles p where p.id = target_user
+    and p.worklog_status = 'resigned'
+    and (p.worklog_excluded_from is null or p.worklog_excluded_from <= (now() at time zone 'Asia/Seoul')::date)) then
+    raise exception 'target is not an archived employee';
+  end if;
+  return query select w.log_date, w.organization,
+    coalesce(w.state->'ownerWorklog',
+      w.state->'employeeLogs'->to_char(w.log_date, 'YYYY-MM-DD')->(w.state->>'ownerEmployeeId'),
+      w.state->'employeeLogs'->to_char(w.log_date, 'YYYY-MM-DD')->'profile-user', '{}'::jsonb)
+    from public.worklog_states w where w.user_id = target_user
+    order by w.log_date desc;
+end;
+$$;
+revoke all on function public.get_archived_staff_worklogs(uuid) from public, anon;
+grant execute on function public.get_archived_staff_worklogs(uuid) to authenticated;
+
 create or replace function public.get_visible_worklog_states(target_date date)
 returns table (
   user_id uuid,
@@ -1169,7 +1229,8 @@ begin
     ) as state,
     w.updated_at
   from public.worklog_states w
-  where w.log_date = target_date
+  where public.can_read_staff_history(w.user_id)
+    and w.log_date = target_date
     and w.user_id <> auth.uid()
   order by w.updated_at desc
   limit 500;
@@ -1230,7 +1291,8 @@ begin
     w.updated_at
   from public.worklog_states w
   join public.profiles colleague on colleague.id = w.user_id
-  where w.log_date = target_date
+  where public.can_read_staff_history(w.user_id)
+    and w.log_date = target_date
     and w.user_id <> auth.uid()
     and coalesce(colleague.approval_status, 'pending') = 'approved'
     and (
@@ -2178,3 +2240,18 @@ revoke all on function public.dagym_ceo_report_metric(text, text, boolean) from 
 revoke all on function public.rotate_dagym_ceo_ingest_token() from public, anon, authenticated;
 revoke all on function public.ingest_dagym_ceo_report(text, text, date, timestamptz) from public;
 grant execute on function public.ingest_dagym_ceo_report(text, text, date, timestamptz) to anon, authenticated;
+
+
+create table if not exists public.account_merge_audits (
+  merge_key text primary key,
+  source_user_id uuid not null,
+  target_user_id uuid not null,
+  source_profile jsonb not null,
+  source_worklogs jsonb not null,
+  merged_at timestamptz not null default now()
+);
+alter table public.account_merge_audits enable row level security;
+drop policy if exists account_merge_audits_admin_read on public.account_merge_audits;
+create policy account_merge_audits_admin_read on public.account_merge_audits for select to authenticated using (public.can_view_staff_archive());
+revoke all on public.account_merge_audits from anon, authenticated;
+grant select on public.account_merge_audits to authenticated;

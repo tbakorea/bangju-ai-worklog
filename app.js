@@ -397,6 +397,12 @@ const defaultProfile = {
 };
 
 const profilePlacementOverrides = {
+  "onse2@naver.com": {
+    org: "(주)방주", workplace: "재무", role: "차장", name: "김경희", nickname: "김경희",
+    primaryWork: "재무", secondaryWork: "자금·회계·지출 관리", employmentType: "직원",
+    workHours: "08:30-17:30", weeklyWorkHours: bangjuFinanceWeekdayWorkHours,
+    accessPreset: "employee", permissions: {}, mappedEmployeeId: "bangju-finance-kimkyunghee",
+  },
   "gusrd1005@gmail.com": {
     org: "(주)비욘드컴퍼니 / 비욘드 피트니스",
     workplace: "비욘드 피트니스",
@@ -677,7 +683,7 @@ const fitnessManualTemplates = {
 const employees = [
   { id: "bangju-finance-manager", name: "강정훈", org: "(주)방주", role: "상무이사", primaryWork: "경영관리, 자금, 회계, 보고" },
   { id: "bangju-finance-assistant", name: "이소미", org: "(주)방주", role: "대리", primaryWork: "지출, 정산, 문서" },
-  { id: "bangju-finance-kimkyunghee", name: "김경희", nickname: "김경희", org: "(주)방주", workplace: "재무", role: "차장", workHours: "08:30-17:30", weeklyWorkHours: bangjuFinanceWeekdayWorkHours, primaryWork: "재무", secondaryWork: "자금·회계·지출 관리", employmentType: "직원" },
+  { id: "bangju-finance-kimkyunghee", name: "김경희", nickname: "김경희", email: "onse2@naver.com", org: "(주)방주", workplace: "재무", role: "차장", workHours: "08:30-17:30", weeklyWorkHours: bangjuFinanceWeekdayWorkHours, primaryWork: "재무", secondaryWork: "자금·회계·지출 관리", employmentType: "직원" },
   { id: "construction-finance-assistant", name: "비제이 재무 예비", org: "(주)비제이종합건설", role: "예비", primaryWork: "건설현장 지출, 정산, 노무자료" },
   { id: "bangju-spare-1", name: "방주 예비", org: "(주)방주", role: "예비", primaryWork: "공통 지원" },
   { id: "beyond-fitness-manager", name: "박주홍", nickname: "센터장", org: "(주)비욘드컴퍼니 / 비욘드 피트니스", role: "센터장", workHours: "06:00-24:00", weeklyWorkHours: fitnessManagerWeeklyWorkHours, primaryWork: "운영총괄, PT 수업" },
@@ -1797,7 +1803,7 @@ function normalizeState() {
     : "daily";
   state.fitnessLogPage = Number.isFinite(Number(state.fitnessLogPage)) ? Number(state.fitnessLogPage) : 1;
   state.fitnessLogPageId = String(state.fitnessLogPageId || "");
-  state.staffMasterTab = ["staff-list", "approval", "permission", "manual", "growth", "employee-report"].includes(state.staffMasterTab)
+  state.staffMasterTab = ["staff-list", "staff-archive", "approval", "permission", "manual", "growth", "employee-report"].includes(state.staffMasterTab)
     ? state.staffMasterTab
     : "staff-list";
   state.staffMasterSite ||= "all";
@@ -2782,18 +2788,28 @@ function getEmployeeWorklogParticipation(employee = {}, dateKey = getActiveDateK
   if (isWorklogParticipationDateKey(excludedFrom) && validDate < excludedFrom) {
     return { status, label: `${label} 예정`, participating: true, phase: "scheduled", excludedFrom, excludedUntil };
   }
-  if (isWorklogParticipationDateKey(excludedUntil) && validDate >= excludedUntil) {
+  if (status !== "resigned" && isWorklogParticipationDateKey(excludedUntil) && validDate >= excludedUntil) {
     return { status, label: "복귀", participating: true, phase: "returned", excludedFrom, excludedUntil };
   }
   return { status, label, participating: false, phase: "excluded", excludedFrom, excludedUntil };
 }
 
 function isEmployeeWorklogParticipantOnDate(employee = {}, dateKey = getActiveDateKey()) {
-  return getEmployeeWorklogParticipation(employee, dateKey).participating;
+  return !isArchivedStaffEmployee(employee) && getEmployeeWorklogParticipation(employee, dateKey).participating;
+}
+
+function canViewStaffArchive() {
+  return !isExplicitlySignedOut() && (isRepresentativeProfile() || hasProfilePermission("staffManage"));
+}
+
+function isArchivedStaffEmployee(employee = {}) {
+  const status = normalizeWorklogParticipationStatus(employee.worklogStatus || employee.worklog_status);
+  const from = employee.worklogExcludedFrom || employee.worklog_excluded_from || "";
+  return status === "resigned" && (!isWorklogParticipationDateKey(from) || from <= todayKey);
 }
 
 function getEmployeeOptions(options = {}) {
-  const rows = getStaffDirectoryEmployees();
+  const rows = getStaffDirectoryEmployees().filter((employee) => !isArchivedStaffEmployee(employee));
   if (!options.worklogParticipantsOnly) return rows;
   return rows.filter((employee) => isEmployeeWorklogParticipantOnDate(employee, options.dateKey || getActiveDateKey()));
 }
@@ -5356,6 +5372,7 @@ function getOverviewGroupEmployeeEntries(group) {
   const seen = new Set();
   return source
     .filter(isAssignedWorklogEmployee)
+    .filter((employee) => !isArchivedStaffEmployee(employee))
     .filter((employee) => !isRepresentativeWorklogEmployee(employee))
     .map((employee) => ({ employeeId: getEmployeeWorklogId(employee), employee }))
     .filter(({ employeeId }) => {
@@ -23246,6 +23263,7 @@ function getStaffDirectoryEmployees() {
   const merged = new Map();
   const add = (employee, priority = 0) => {
     if (!isAssignedWorklogEmployee(employee)) return;
+    if (normalizeEmailValue(employee.email) === "projch@naver.com") return;
     employee = applyStaffDirectoryOverride(employee);
     const email = String(employee.email || "").trim().toLowerCase();
     const id = String(employee.id || "").trim();
@@ -23286,6 +23304,7 @@ function getStaffDirectoryEmployees() {
 
   return [...merged.values()]
     .map((entry) => entry.employee)
+    .filter((employee) => !isArchivedStaffEmployee(employee) || canViewStaffArchive())
     .sort((a, b) => getStaffSortKey(a).localeCompare(getStaffSortKey(b), "ko"));
 }
 
@@ -23646,6 +23665,7 @@ function getManualTemplateForEmployee(employee) {
 
 const staffMasterTabs = [
   ["staff-list", "직원명부", "소속·직함·권한 원장"],
+  ["staff-archive", "퇴사자 보관", "과거 업무일지·직원 기록"],
   ["approval", "승인요청", "직원등록·정보변경 검토"],
   ["permission", "권한관리", "메뉴·사업장 접근 통제"],
   ["manual", "역할 매뉴얼", "직함별 업무 기준"],
@@ -23655,7 +23675,8 @@ const staffMasterTabs = [
 
 function getVisibleStaffMasterTabs() {
   return staffMasterTabs.filter(([key]) => (
-    (key !== "approval" || canShowApprovalMenu())
+    (key !== "staff-archive" || canViewStaffArchive())
+    && (key !== "approval" || canShowApprovalMenu())
     && (key !== "employee-report" || isRepresentativeProfile())
   ));
 }
@@ -23756,13 +23777,13 @@ function renderStaffMasterStats(rows = []) {
   `;
 }
 
-function renderStaffMasterTable(rows = []) {
+function renderStaffMasterTable(rows = [], archived = false) {
   return `
     <section class="staff-master-panel">
       <header>
         <div>
           <span>Master Data</span>
-          <h3>전체 직원 명부</h3>
+          <h3>${archived ? "퇴사자 보관" : "전체 직원 명부"}</h3>
         </div>
         <p class="staff-master-hint">직원 원장과 과거 기록은 보존하면서, 대표가 업무일지 대상·제외 사유·복귀일을 한 명씩 관리합니다.</p>
       </header>
@@ -23782,7 +23803,7 @@ function renderStaffMasterTable(rows = []) {
                   <td><b>${escapeHtml(row.access.role)}</b><span>${escapeHtml(row.access.worklog)} · ${escapeHtml(row.access.labor)}</span></td>
                   <td>${escapeHtml(row.workHours || defaultProfile.workHours)}</td>
                   <td>${escapeHtml(`${row.completed}/${row.tasks.length || 0}`)}</td>
-                  <td><button type="button" class="staff-detail-open" data-staff-detail-id="${escapeAttr(row.id)}">열기</button></td>
+                  <td>${archived ? `<button type="button" class="staff-detail-open" data-staff-archive-id="${escapeAttr(row.id)}">과거 기록</button>` : `<button type="button" class="staff-detail-open" data-staff-detail-id="${escapeAttr(row.id)}">열기</button>`}</td>
                 </tr>
               `).join("")}
             </tbody>
@@ -23937,6 +23958,7 @@ function renderStaffEmployeeReport() {
 
 function renderStaffMasterActivePanel(rows = []) {
   const tab = normalizeStaffMasterTab(state.staffMasterTab);
+  if (tab === "staff-archive") return canViewStaffArchive() ? renderStaffMasterTable(rows, true) : "";
   if (tab === "approval") return renderStaffApprovalFocus(rows);
   if (tab === "permission") return renderStaffPermissionFocus(rows);
   if (tab === "manual") return renderStaffManualFocus(rows);
@@ -23962,8 +23984,10 @@ function renderStaffMaster() {
     `;
     return;
   }
-  const rows = getEmployeeMasterRows();
   state.staffMasterTab = normalizeStaffMasterTab(state.staffMasterTab);
+  const rows = getEmployeeMasterRows().filter((row) => state.staffMasterTab === "staff-archive"
+    ? canViewStaffArchive() && isArchivedStaffEmployee(row)
+    : !isArchivedStaffEmployee(row));
   state.staffMasterSite ||= "all";
   if (!getStaffMasterSites(rows).some((site) => site.key === state.staffMasterSite)) state.staffMasterSite = "all";
   const filteredRows = getFilteredStaffRows(rows);
@@ -24477,6 +24501,7 @@ function renderStaffDetailModal(row) {
 }
 
 function openStaffDetail(employeeId) {
+  if (!canAccessStaffSection()) return;
   const row = getEmployeeMasterRows().find((item) => item.id === employeeId);
   if (!row) return;
   document.getElementById("staffDetailOverlay")?.remove();
@@ -24485,6 +24510,38 @@ function openStaffDetail(employeeId) {
   overlay.innerHTML = renderStaffDetailModal(row);
   document.body.appendChild(overlay);
   overlay.querySelector(".staff-detail-card")?.focus?.();
+}
+
+async function openArchivedStaffWorklogs(employeeId) {
+  if (!canViewStaffArchive()) return;
+  const employee = getEmployeeMasterRows().find((row) => row.id === employeeId && isArchivedStaffEmployee(row));
+  if (!employee) return;
+  closeStaffDetail();
+  const overlay = document.createElement("div");
+  overlay.id = "staffDetailOverlay";
+  overlay.innerHTML = `<div class="staff-detail-backdrop" data-staff-detail-close><article class="staff-detail-card" role="dialog" aria-modal="true" aria-label="퇴사자 과거 기록"><button type="button" class="staff-detail-close" data-staff-detail-close aria-label="닫기">×</button><header><h3>${escapeHtml(employee.name)} · 퇴사자 과거 기록</h3><p>열람 전용 · 기록은 보존됩니다.</p></header><div data-archive-content>기록을 불러오는 중입니다.</div></article></div>`;
+  document.body.appendChild(overlay);
+  const content = overlay.querySelector("[data-archive-content]");
+  try {
+    let rows;
+    if (employee.sourceProfileId && supabaseClient && authState.user) {
+      const result = await supabaseClient.rpc("get_archived_staff_worklogs", { target_user: employee.sourceProfileId });
+      if (result.error) throw result.error;
+      rows = result.data || [];
+    } else {
+      const id = getEmployeeWorklogId(employee);
+      rows = Object.entries(state.employeeLogs || {}).filter(([, logs]) => logs[id]).map(([log_date, logs]) => ({ log_date, worklog: logs[id] }));
+    }
+    if (!canViewStaffArchive() || !overlay.isConnected) return;
+    content.innerHTML = rows.length ? rows.sort((a, b) => String(b.log_date).localeCompare(String(a.log_date))).map((row) => {
+      const log = row.worklog || {};
+      const tasks = (log.tasks || []).filter((task) => task.text?.trim()).map((task) => `<li>${escapeHtml(task.text)} · ${escapeHtml(task.status || "")}</li>`).join("");
+      const schedule = (log.schedule || []).flatMap((entry) => entry.items?.length ? entry.items.map((item) => `${entry.time || ""} ${item.text || ""}`) : [entry.text ? `${entry.time || ""} ${entry.text}` : ""]).filter(Boolean);
+      return `<section class="staff-detail-section"><strong>${escapeHtml(row.log_date)}</strong><ul>${tasks}</ul>${schedule.map((line) => `<p>${escapeHtml(line)}</p>`).join("")}${log.report ? `<p>${escapeHtml(log.report)}</p>` : ""}</section>`;
+    }).join("") : "보관된 업무일지가 없습니다.";
+  } catch (error) {
+    if (overlay.isConnected) content.textContent = "보관 기록을 불러오지 못했습니다. 연결 또는 관리자 권한을 확인해주세요.";
+  }
 }
 
 function closeStaffDetail() {
@@ -29741,6 +29798,11 @@ document.getElementById("staffMasterGrid")?.addEventListener("click", (event) =>
   const permissionButton = event.target.closest("[data-staff-permission-open]");
   if (permissionButton) {
     openStaffPermissionModal(permissionButton.dataset.staffPermissionOpen);
+    return;
+  }
+  const archiveButton = event.target.closest("[data-staff-archive-id]");
+  if (archiveButton) {
+    void openArchivedStaffWorklogs(archiveButton.dataset.staffArchiveId);
     return;
   }
   const detailButton = event.target.closest("[data-staff-detail-id]");

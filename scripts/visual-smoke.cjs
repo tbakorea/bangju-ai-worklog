@@ -1251,7 +1251,7 @@ async function checkOverviewCommandBoard(browser) {
       ["fitness-weekday-info-idabin", "이다빈", "(주)방주 / 비욘드 피트니스 지사", "인포데스크", "idabin@example.com"],
       ["fitness-info-kimyoungchae", "김영채", "(주)방주 / 비욘드 피트니스 지사", "인포데스크", "yckim1558@naver.com"],
       ["fitness-info-shinsemin", "신세민", "(주)방주 / 비욘드 피트니스 지사", "인포데스크", "tpals2990@naver.com"],
-      ["bangju-finance-kimkyunghee", "김경희", "(주)방주", "차장", "kimkyunghee@example.com"],
+      ["bangju-finance-kimkyunghee", "김경희", "(주)방주", "차장", "onse2@naver.com"],
       ["beyond-company-leader", "김성민", "(주)비욘드컴퍼니", "실장", "ksm@example.com"],
       ["beyond-shared-manager", "추소영", "(주)비욘드컴퍼니 / 공유사업부", "공유사업부 매니저", "choo@example.com"]
     ];
@@ -2457,7 +2457,7 @@ async function checkReassignedFinanceEmployeeCanEditOwnProfileWorklog(browser) {
       selectedEmployeeId: "beyond-fitness-manager",
       fitnessWritableEmployeeId: "beyond-fitness-manager",
       profile: {
-        email: "kimkyunghee@example.com",
+        email: "onse2@naver.com",
         role: "차장",
         name: "김경희",
         nickname: "김경희",
@@ -2480,7 +2480,7 @@ async function checkReassignedFinanceEmployeeCanEditOwnProfileWorklog(browser) {
     document.body.dataset.layoutMode = "phone";
     document.body.dataset.viewMode = "ceo";
     window.eval(`
-      authState.user = { id: "kim-kyunghee", email: "kimkyunghee@example.com" };
+      authState.user = { id: "kim-kyunghee", email: "onse2@naver.com" };
       normalizeState();
       switchView(getInitialLandingView());
     `);
@@ -3947,7 +3947,7 @@ async function checkStaffDirectoryListAndDetail(browser) {
       authState.approvalRows = [
         {
           id: "kimkyunghee-profile",
-          email: "kimkyunghee@example.com",
+          email: "onse2@naver.com",
           name: "김경희",
           org: "(주)방주",
           role: "직원",
@@ -4020,7 +4020,7 @@ async function checkStaffDirectoryListAndDetail(browser) {
       activeView: document.body.dataset.activeView,
       rows,
       isomiCount: rows.filter((text) => text.includes("이소미")).length,
-      hasKimKyunghee: rows.some((text) => text.includes("김경희") && text.includes("kimkyunghee@example.com") && text.includes("재무")),
+      hasKimKyunghee: rows.some((text) => text.includes("김경희") && text.includes("onse2@naver.com") && text.includes("재무")),
       hasKim: rows.some((text) => text.includes("김성민") && text.includes("(주)비욘드컴퍼니")),
       hasChoo: rows.some((text) => text.includes("추소영") && text.includes("(주)비욘드컴퍼니")),
       hasGenericBeyondLeader: rows.some((text) => text.includes("비욘드 실장") && !text.includes("김성민")),
@@ -6939,12 +6939,59 @@ async function checkFitnessPaidPtCanonicalLedger(browser) {
   await page.close();
 }
 
+async function checkRetiredStaffArchiveAndCanonicalKim(browser) {
+  for (const viewport of [{ width: 390, height: 844 }, { width: 820, height: 1180 }, { width: 1440, height: 1000 }]) {
+    const { page, errors } = await openPage(browser, viewport);
+    const metrics = await page.evaluate(() => window.eval(`(() => {
+      authState.user = { id: "archive-owner", email: "j3010@ymail.com" };
+      state.profile = { ...defaultProfile, name: "대표", role: "대표", email: "j3010@ymail.com", approvalStatus: "approved" };
+      authState.approvalRows = [
+        { id: "kim-current", email: "onse2@naver.com", name: "김경희", org: "(주)방주", workplace: "재무", role: "차장", approval_status: "approved" },
+        { id: "kim-duplicate", email: "projch@naver.com", name: "김경희", org: "(주)방주", workplace: "재무", role: "직원", approval_status: "approved" },
+        { id: "archive-former", email: "former@example.com", name: "퇴사확인", org: "(주)방주", role: "직원", approval_status: "approved", worklog_status: "resigned", worklog_excluded_from: "2026-01-01", worklog_excluded_until: "2026-01-02" }
+      ];
+      state.staffMasterTab = "staff-archive";
+      state.staffMasterSite = "all";
+      switchView("staff");
+      renderStaffMaster();
+      const directory = getStaffDirectoryEmployees();
+      const former = directory.find(e => e.name === "퇴사확인");
+      const result = {
+        kimCount: directory.filter(e => e.name === "김경희").length,
+        kimEmail: directory.find(e => e.name === "김경희")?.email,
+        hiddenCurrent: !getEmployeeOptions().some(e => e.name === "퇴사확인"),
+        preserved: Boolean(former),
+        stillResigned: !getEmployeeWorklogParticipation(former, todayKey).participating,
+        archiveVisible: canViewStaffArchive() && document.getElementById("staffMasterGrid").textContent.includes("퇴사확인"),
+        archiveButton: Boolean(document.querySelector("[data-staff-archive-id]")),
+        overflow: document.documentElement.scrollWidth - window.innerWidth
+      };
+      state.staffMasterTab = "staff-list";
+      renderStaffMaster();
+      result.hiddenCurrentDirectory = !document.getElementById("staffMasterGrid").textContent.includes("퇴사확인");
+      authState.user = { id: "archive-manager", email: "manager@example.com" };
+      state.profile = { ...defaultProfile, name: "관리자", role: "직원", email: "manager@example.com", accessPreset: "operations_admin", permissions: {}, approvalStatus: "approved" };
+      result.managerAllowed = canViewStaffArchive() && getVisibleStaffMasterTabs().some(([key]) => key === "staff-archive");
+      authState.user = { id: "archive-employee", email: "ordinary@example.com" };
+      state.profile = { ...defaultProfile, name: "직원", role: "직원", email: "ordinary@example.com", accessPreset: "employee", permissions: {}, approvalStatus: "approved" };
+      result.employeeDenied = !canViewStaffArchive() && !getVisibleStaffMasterTabs().some(([key]) => key === "staff-archive");
+      return result;
+    })()`));
+    if (metrics.kimCount !== 1 || metrics.kimEmail !== "onse2@naver.com" || !metrics.hiddenCurrent || !metrics.preserved || !metrics.stillResigned || !metrics.archiveVisible || !metrics.archiveButton || !metrics.hiddenCurrentDirectory || !metrics.employeeDenied || !metrics.managerAllowed || metrics.overflow > 2) {
+      fail("retired staff archive and canonical Kim identity", JSON.stringify({ viewport, ...metrics }));
+    }
+    if (errors.length) fail("archive page errors", errors.join(" | "));
+    await page.close();
+  }
+}
+
 (async () => {
   const browser = await chromium.launch({
     headless: true,
     ...(localChrome ? { executablePath: localChrome } : {}),
   });
   try {
+    await checkRetiredStaffArchiveAndCanonicalKim(browser);
     await checkTabletRepresentativeWorklogChrome(browser);
     await checkDesktopEmployeeWorklog(browser);
     await checkPhoneWorklog(browser);
