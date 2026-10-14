@@ -9864,7 +9864,10 @@ function getGeneralWorklogTitle(view = activeView) {
 }
 
 function getRecommendedPermissionPresetForProfile(profile = {}) {
-  const email = String(authState.user?.email || profile.email || "").trim().toLowerCase();
+  // 승인 화면의 권한 추천은 현재 로그인한 승인자가 아니라 신청자 본인의
+  // 프로필을 기준으로 계산해야 합니다. 그렇지 않으면 대표가 승인할 때
+  // 일반직원에게도 대표 권한이 표시될 수 있습니다.
+  const email = String(profile.email || authState.user?.email || "").trim().toLowerCase();
   const roleText = `${profile.role || ""} ${profile.primaryWork || ""} ${profile.nickname || ""}`;
   if (controlTowerEmails.has(email)) return "owner";
   const overridePreset = getProfilePlacementOverride(email)?.accessPreset;
@@ -10963,8 +10966,24 @@ async function updateProfileRowWithSchemaFallback(id, payload = {}, client = sup
   let lastError = null;
   const removedColumns = [];
   for (let attempt = 0; attempt < 8; attempt += 1) {
-    const { error } = await client.from("profiles").update(nextPayload).eq("id", id);
-    if (!error) return { error: null, payload: nextPayload, removedColumns };
+    // RLS 정책으로 갱신 대상이 0건이 된 경우에도 PostgREST는 오류 없이
+    // 응답할 수 있습니다. 승인/권한 변경을 성공으로 오인하지 않도록
+    // 반드시 갱신된 행을 반환받아 확인합니다.
+    const { data, error } = await client
+      .from("profiles")
+      .update(nextPayload)
+      .eq("id", id)
+      .select("id, approval_status, approved_by, approved_at")
+      .maybeSingle();
+    if (!error && data?.id) return { error: null, data, payload: nextPayload, removedColumns };
+    if (!error) {
+      return {
+        error: new Error("저장 결과를 확인하지 못했습니다. 승인 권한 또는 로그인 상태를 확인해주세요."),
+        data: null,
+        payload: nextPayload,
+        removedColumns,
+      };
+    }
     lastError = error;
     const missingColumn = getMissingSchemaColumnFromError(error);
     if (!missingColumn || !Object.prototype.hasOwnProperty.call(nextPayload, missingColumn)) {
@@ -11293,7 +11312,10 @@ function collectApprovalCardPayload(id) {
   });
   const accessSelect = card.querySelector("[data-approval-access-preset]");
   if (accessSelect) {
-    payload.approval_note = mergeApprovalAccessNote(payload.approval_note || "", accessSelect.value);
+    const permissionSet = buildPermissionSet(accessSelect.value);
+    payload.access_preset = permissionSet.presetKey;
+    payload.permissions = { ...permissionSet.permissions };
+    payload.approval_note = mergeApprovalAccessNote(payload.approval_note || "", permissionSet.presetKey);
   }
   return payload;
 }
@@ -11368,12 +11390,17 @@ async function updateApprovalRequest(id, action) {
     payload.approved_by = authState.user.id;
     payload.approved_at = new Date().toISOString();
   }
-  const { error } = await updateProfileRowWithSchemaFallback(id, payload);
+  const { error, data: savedRow } = await updateProfileRowWithSchemaFallback(id, payload);
   if (error) {
     alert(`승인요청 처리 실패: ${error.message}`);
     return;
   }
-  const nextRow = { ...row, ...payload };
+  if (action === "approve" && savedRow?.approval_status !== "approved") {
+    alert("승인 결과를 확인하지 못했습니다. 목록을 새로고침한 뒤 다시 시도해주세요.");
+    await loadApprovalRequests({ repair: false });
+    return;
+  }
+  const nextRow = { ...row, ...payload, ...savedRow };
   authState.approvalRows = (authState.approvalRows || []).map((item) => (
     String(item.id) === String(id) ? nextRow : item
   ));
