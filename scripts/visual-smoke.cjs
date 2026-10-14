@@ -1251,7 +1251,7 @@ async function checkOverviewCommandBoard(browser) {
       ["fitness-weekday-info-idabin", "이다빈", "(주)방주 / 비욘드 피트니스 지사", "인포데스크", "idabin@example.com"],
       ["fitness-info-kimyoungchae", "김영채", "(주)방주 / 비욘드 피트니스 지사", "인포데스크", "yckim1558@naver.com"],
       ["fitness-info-shinsemin", "신세민", "(주)방주 / 비욘드 피트니스 지사", "인포데스크", "tpals2990@naver.com"],
-      ["fitness-weekday-info", "홍길동", "(주)방주 / 비욘드 피트니스 지사", "인포데스크", "projch@naver.com"],
+      ["bangju-finance-kimkyunghee", "김경희", "(주)방주", "직원", "projch@naver.com"],
       ["beyond-company-leader", "김성민", "(주)비욘드컴퍼니", "실장", "ksm@example.com"],
       ["beyond-shared-manager", "추소영", "(주)비욘드컴퍼니 / 공유사업부", "공유사업부 매니저", "choo@example.com"]
     ];
@@ -2258,7 +2258,7 @@ async function checkKimSungminBeyondFitnessReadScope(browser) {
     || !parsed.permissionKeys.includes("worklogSite") || !parsed.permissionKeys.includes("fitnessStaffRead")) {
     fail("Kim Sungmin account should receive only the Beyond Fitness worklog read scope", metrics);
   }
-  if (parsed.activeView !== "worklog-overview") fail("Kim Sungmin account should land on the permitted company worklog overview", metrics);
+  if (parsed.activeView !== "beyond-log") fail("Kim Sungmin account should land on his own Beyond company worklog", metrics);
   if (parsed.selectedEmployeeId !== "beyond-company-leader" || parsed.ownEditableEmployeeId !== "beyond-company-leader") {
     fail("Kim Sungmin account should be mapped to the Beyond company leader sheet", metrics);
   }
@@ -2447,7 +2447,7 @@ async function checkBeyondCompanyPeerWorklogSharing(browser) {
   }
 }
 
-async function checkUnmappedEmployeeDoesNotInheritFitnessManager(browser) {
+async function checkReassignedFinanceEmployeeCanEditOwnProfileWorklog(browser) {
   const page = await browser.newPage({ viewport: { width: 390, height: 844 } });
   const errors = [];
   page.on("pageerror", (error) => errors.push(error.message));
@@ -2459,11 +2459,13 @@ async function checkUnmappedEmployeeDoesNotInheritFitnessManager(browser) {
       profile: {
         email: "projch@naver.com",
         role: "직원",
-        name: "홍길동",
-        nickname: "홍길동",
+        name: "김경희",
+        nickname: "김경희",
         org: "(주)방주",
-        workplace: "본사",
-        primaryWork: "기획/관리",
+        workplace: "재무",
+        primaryWork: "재무",
+        secondaryWork: "자금·회계·지출 관리",
+        workHours: "08:30-17:30",
         approvalStatus: "approved",
         accessPreset: "employee",
         permissions: {},
@@ -2478,7 +2480,7 @@ async function checkUnmappedEmployeeDoesNotInheritFitnessManager(browser) {
     document.body.dataset.layoutMode = "phone";
     document.body.dataset.viewMode = "ceo";
     window.eval(`
-      authState.user = { id: "hong-gildong", email: "projch@naver.com" };
+      authState.user = { id: "kim-kyunghee", email: "projch@naver.com" };
       normalizeState();
       switchView(getInitialLandingView());
     `);
@@ -2490,101 +2492,49 @@ async function checkUnmappedEmployeeDoesNotInheritFitnessManager(browser) {
     representative: isRepresentativeProfile(),
     ownEditableEmployeeId: getOwnEditableEmployeeIdForView(activeView),
     selectedEmployee: getEmployeeAdminLabel(getSelectedEmployee()),
+    workplace: getSelectedEmployee().workplace,
+    weeklyWorkHours: getSelectedEmployee().weeklyWorkHours,
     header: document.querySelector("#globalHeaderTitle")?.textContent?.trim() || "",
     identityBadge: document.querySelector("#worklogIdentityBadge")?.textContent?.trim() || "",
     lockBanner: document.querySelector("#worklogEditLockBanner")?.textContent?.trim() || "",
     lockHidden: document.querySelector("#worklogEditLockBanner")?.hidden ?? true
   })`));
   const parsed = JSON.parse(metrics);
-  if (parsed.representative) fail("fitness info employee should not become representative", metrics);
-  if (parsed.activeView !== "fitness-log") fail("Hong profile should land on fitness worklog", metrics);
-  if (parsed.selectedEmployeeId !== "fitness-weekday-info" || parsed.ownEditableEmployeeId !== "fitness-weekday-info") {
-    fail("Hong profile should use the weekday fitness info worklog slot", metrics);
+  if (parsed.representative) fail("reassigned finance employee should not become representative", metrics);
+  if (parsed.activeView !== "bangju-log") fail("Kim Kyoung-hee profile should land on Bangju worklog", metrics);
+  if (parsed.selectedEmployeeId !== "bangju-finance-kimkyunghee" || parsed.ownEditableEmployeeId !== "bangju-finance-kimkyunghee") {
+    fail("Kim Kyoung-hee profile should use the Bangju finance worklog slot", metrics);
   }
-  if (/박주홍|센터장|beyond-fitness-manager/.test(`${parsed.selectedEmployee} ${parsed.header} ${parsed.identityBadge} ${parsed.lockBanner}`)) {
-    fail("Hong profile inherited fitness manager label", metrics);
+  if (/박주홍|센터장|beyond-fitness-manager|홍길동|피트니스|인포/.test(`${parsed.selectedEmployee} ${parsed.header} ${parsed.identityBadge} ${parsed.lockBanner}`)) {
+    fail("Kim Kyoung-hee profile inherited legacy fitness identity", metrics);
   }
-  if (!/홍길동/.test(`${parsed.selectedEmployee} ${parsed.header} ${parsed.identityBadge}`)) {
-    fail("Hong profile identity should be visible on own worklog", metrics);
+  if (!/김경희/.test(`${parsed.selectedEmployee} ${parsed.header} ${parsed.identityBadge}`)) {
+    fail("Kim Kyoung-hee profile identity should be visible on own worklog", metrics);
   }
-  if (!/피트니스/.test(`${parsed.header} ${parsed.identityBadge}`) || !/인포/.test(`${parsed.header} ${parsed.identityBadge}`)) {
-    fail("worklog identity badge should show fitness affiliation and info role", metrics);
+  if (!/방주/.test(`${parsed.header} ${parsed.identityBadge}`) || parsed.workplace !== "재무") {
+    fail("worklog should show Bangju identity and retain the finance workplace", metrics);
   }
   if (!parsed.lockHidden && /열람 전용|본인 업무일지만/.test(parsed.lockBanner)) {
-    fail("own fitness worklog should not show readonly banner", metrics);
+    fail("own Bangju finance worklog should not show readonly banner", metrics);
   }
-  await page.fill("#fitnessTaskBoard .task-text-input", "홍길동 업무 입력 저장 확인");
-  await page.waitForTimeout(350);
+  await page.fill("#worklogTaskBoard .task-text-input", "김경희 재무 업무 입력 저장 확인");
+  await page.waitForFunction(() => {
+    const snapshot = JSON.parse(localStorage.getItem("beyond-worklog-state-v1") || "{}");
+    return snapshot.employeeLogs?.[snapshot.selectedDateKey]?.["bangju-finance-kimkyunghee"]?.tasks?.[0]?.text === "김경희 재무 업무 입력 저장 확인";
+  });
   const saveMetrics = await page.evaluate(() => window.eval(`JSON.stringify({
-    disabled: document.querySelector("#fitnessTaskBoard .task-text-input")?.disabled ?? true,
-    value: document.querySelector("#fitnessTaskBoard .task-text-input")?.value || "",
+    disabled: document.querySelector("#worklogTaskBoard .task-text-input")?.disabled ?? true,
+    value: document.querySelector("#worklogTaskBoard .task-text-input")?.value || "",
     selectedDateKey: state.selectedDateKey,
-    savedText: state.employeeLogs?.[state.selectedDateKey]?.["fitness-weekday-info"]?.tasks?.[0]?.text || "",
-    storageText: JSON.parse(localStorage.getItem("beyond-worklog-state-v1") || "{}").employeeLogs?.[state.selectedDateKey]?.["fitness-weekday-info"]?.tasks?.[0]?.text || ""
+    savedText: state.employeeLogs?.[state.selectedDateKey]?.["bangju-finance-kimkyunghee"]?.tasks?.[0]?.text || "",
+    storageText: JSON.parse(localStorage.getItem("beyond-worklog-state-v1") || "{}").employeeLogs?.[state.selectedDateKey]?.["bangju-finance-kimkyunghee"]?.tasks?.[0]?.text || ""
   })`));
   const saved = JSON.parse(saveMetrics);
-  if (saved.disabled) fail("Hong own fitness worklog input should be enabled", saveMetrics);
-  if (saved.value !== "홍길동 업무 입력 저장 확인" || saved.savedText !== saved.value || saved.storageText !== saved.value) {
-    fail("Hong own fitness worklog input should persist to weekday info log", saveMetrics);
+  if (saved.disabled) fail("Kim Kyoung-hee own finance worklog input should be enabled", saveMetrics);
+  if (saved.value !== "김경희 재무 업무 입력 저장 확인" || saved.savedText !== saved.value || saved.storageText !== saved.value) {
+    fail("Kim Kyoung-hee own finance worklog input should persist to finance worklog", saveMetrics);
   }
-  const coworkerMetrics = await page.evaluate(() => window.eval(`(() => {
-    const dateKey = "2026-08-02";
-    state.selectedDateKey = dateKey;
-    state.employeeLogs[dateKey] = {};
-    const kimLog = createEmployeeLog({
-      id: "profile-user",
-      name: "김영채",
-      email: "yckim1558@naver.com",
-      org: "(주)방주 / 비욘드 피트니스 지사",
-      workplace: "비욘드 피트니스",
-      role: "인포데스크"
-    }, {}, dateKey);
-    kimLog.tasks[0].text = "김영채 8월2일 동료 공유 업무";
-    kimLog.schedule[0].text = "일요일 센터 오픈 점검";
-    mergeVisibleStaffWorklogStates([{
-      user_id: "kimyoungchae-auth",
-      updated_at: "2026-08-02T18:30:00.000Z",
-      state: {
-        profile: {
-          name: "김영채",
-          email: "yckim1558@naver.com",
-          org: "(주)방주 / 비욘드 피트니스 지사",
-          workplace: "비욘드 피트니스",
-          role: "인포데스크",
-          approvalStatus: "approved"
-        },
-        ownerEmployeeId: "fitness-info-kimyoungchae",
-        ownerWorklog: kimLog,
-        employeeLogs: { [dateKey]: { "profile-user": kimLog } }
-      }
-    }], dateKey);
-    normalizeState();
-    const pages = getFitnessLogPages();
-    const kimPageIndex = pages.findIndex((page) => page.employee?.name === "김영채");
-    state.fitnessLogPage = kimPageIndex;
-    state.selectedEmployeeId = pages[kimPageIndex]?.id || "";
-    renderEntries();
-    return JSON.stringify({
-      kimPageIndex,
-      pageType: document.querySelector("#view-fitness-log")?.dataset.fitnessPageType || "",
-      permission: document.querySelector("#view-fitness-log")?.dataset.fitnessPermission || "",
-      taskText: document.querySelector("#fitnessTaskBoard .task-text-input")?.value || "",
-      scheduleText: document.querySelector("#fitnessAppointmentList .fitness-appointment-summary")?.textContent?.trim() || "",
-      taskDisabled: document.querySelector("#fitnessTaskBoard .task-text-input")?.disabled ?? false,
-      remoteLoadIncludesCoworkers: String(loadRemoteWorklogForActiveDate).includes("loadCoworkerWorklogsForDate")
-    });
-  })()`));
-  const coworker = JSON.parse(coworkerMetrics);
-  if (coworker.kimPageIndex < 0
-    || coworker.pageType !== "coworker"
-    || coworker.permission !== "readonly"
-    || coworker.taskText !== "김영채 8월2일 동료 공유 업무"
-    || !coworker.scheduleText.includes("일요일 센터 오픈 점검")
-    || !coworker.taskDisabled
-    || !coworker.remoteLoadIncludesCoworkers) {
-    fail("Hong coworker view should load Kim Young-chae's August 2 remote worklog as read-only", coworkerMetrics);
-  }
-  if (errors.length) fail("Hong fitness identity regression page errors", errors.join(" | "));
+  if (errors.length) fail("Kim Kyoung-hee finance identity regression page errors", errors.join(" | "));
   await page.close();
 }
 
@@ -2676,7 +2626,10 @@ async function checkUnclassifiedFitnessEmployeeCanEditOwnProfileWorklog(browser)
   await page.click("#fitnessCoachingCloseButton");
   await page.waitForTimeout(180);
   await page.fill("#fitnessTaskBoard .task-text-input", "신세민 업무 입력 저장 확인");
-  await page.waitForTimeout(350);
+  await page.waitForFunction(() => {
+    const snapshot = JSON.parse(localStorage.getItem("beyond-worklog-state-v1") || "{}");
+    return snapshot.employeeLogs?.[snapshot.selectedDateKey]?.["fitness-info-shinsemin"]?.tasks?.[0]?.text === "신세민 업무 입력 저장 확인";
+  });
   const saveMetrics = await page.evaluate(() => window.eval(`JSON.stringify({
     disabled: document.querySelector("#fitnessTaskBoard .task-text-input")?.disabled ?? true,
     value: document.querySelector("#fitnessTaskBoard .task-text-input")?.value || "",
@@ -3092,7 +3045,10 @@ async function checkFitnessTrainerCanEditOwnWorklog(browser) {
   });
   await page.waitForTimeout(350);
   await page.fill("#fitnessTaskBoard .task-text-input", "홍현규 트레이너 업무 입력 저장 확인");
-  await page.waitForTimeout(300);
+  await page.waitForFunction(() => {
+    const snapshot = JSON.parse(localStorage.getItem("beyond-worklog-state-v1") || "{}");
+    return snapshot.employeeLogs?.[snapshot.selectedDateKey]?.["fitness-trainer-1"]?.tasks?.[0]?.text === "홍현규 트레이너 업무 입력 저장 확인";
+  });
   const metrics = await page.evaluate(() => window.eval(`JSON.stringify({
     activeView: document.body.dataset.activeView,
     selectedEmployeeId: state.selectedEmployeeId,
@@ -3990,14 +3946,15 @@ async function checkStaffDirectoryListAndDetail(browser) {
       authState.user = { id: "owner-user", email: "j3010@ymail.com" };
       authState.approvalRows = [
         {
-          id: "hong-profile",
+          id: "kimkyunghee-profile",
           email: "projch@naver.com",
-          name: "홍길동",
-          org: "(주)방주 / 비욘드 피트니스 지사",
-          role: "인포데스크",
-          workplace: "비욘드 피트니스",
-          primary_work: "고객응대, 센터관리",
-          work_hours: "16:00-20:00",
+          name: "김경희",
+          org: "(주)방주",
+          role: "직원",
+          workplace: "재무",
+          primary_work: "재무",
+          secondary_work: "자금·회계·지출 관리",
+          work_hours: "08:30-17:30",
           employment_type: "직원",
           approval_status: "approved",
           updated_at: "2026-07-27T09:00:00.000Z"
@@ -4063,7 +4020,7 @@ async function checkStaffDirectoryListAndDetail(browser) {
       activeView: document.body.dataset.activeView,
       rows,
       isomiCount: rows.filter((text) => text.includes("이소미")).length,
-      hasHong: rows.some((text) => text.includes("홍길동") && text.includes("projch@naver.com")),
+      hasKimKyunghee: rows.some((text) => text.includes("김경희") && text.includes("projch@naver.com") && text.includes("재무")),
       hasKim: rows.some((text) => text.includes("김성민") && text.includes("(주)비욘드컴퍼니")),
       hasChoo: rows.some((text) => text.includes("추소영") && text.includes("(주)비욘드컴퍼니")),
       hasGenericBeyondLeader: rows.some((text) => text.includes("비욘드 실장") && !text.includes("김성민")),
@@ -4074,7 +4031,7 @@ async function checkStaffDirectoryListAndDetail(browser) {
   if (metrics.activeView !== "staff") fail("staff directory active view mismatch", metrics.activeView);
   if (metrics.firstPanelTitle !== "전체 직원 명부") fail("staff directory should show master list first", metrics.firstPanelTitle);
   if (metrics.isomiCount !== 1) fail("staff directory should not duplicate Isomi", JSON.stringify(metrics.rows));
-  if (!metrics.hasHong) fail("staff directory should include approved Hong profile", JSON.stringify(metrics.rows));
+  if (!metrics.hasKimKyunghee) fail("staff directory should include approved Kim Kyoung-hee finance profile", JSON.stringify(metrics.rows));
   if (!metrics.hasKim || !metrics.hasChoo) fail("staff directory should include approved Beyond Company employees", JSON.stringify(metrics.rows));
   if (metrics.hasGenericBeyondLeader || metrics.hasGenericSharedManager) fail("staff directory should replace generic Beyond slots with approved people", JSON.stringify(metrics.rows));
 
@@ -5161,7 +5118,7 @@ async function checkFitnessCenterReportConfirmation(browser) {
     || !reportState.commandText.includes("계약 성과")
     || !reportState.commandText.includes("회원 전환")
     || !reportState.commandText.includes("즉시 확인")
-    || !reportState.commandText.includes("2/6")
+    || !reportState.commandText.includes("2/4")
     || reportState.commandKpiCount !== 4
     || reportState.commandActionCount !== 3
     || reportState.monthlyLegendCount !== 2
@@ -5346,6 +5303,14 @@ async function checkRealDeviceRegressionLayouts(browser) {
       document.body.dataset.viewMode = "ceo";
       window.switchView?.(targetView);
     }, item.view);
+    // The control KPI grid is rendered on demand. Visit it once before checking
+    // that the labor desk remains connected to the command board.
+    if (item.view === "attendance") {
+      await page.evaluate(() => {
+        window.switchView?.("control");
+        window.switchView?.("attendance");
+      });
+    }
     await page.waitForTimeout(350);
 
     const metrics = await page.evaluate(() => {
@@ -5503,7 +5468,10 @@ async function checkFitnessNewEmployeeRegistrationFlow(browser) {
       dialogs.push(dialog.message());
       await dialog.accept();
     });
-    await page.route("https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2", async (route) => {
+    // The production page pins a version and requests the UMD bundle below
+    // the package root. Intercept every Supabase CDN variant so this test
+    // exercises the intended RPC path instead of the live client.
+    await page.route(/https:\/\/cdn\.jsdelivr\.net\/npm\/@supabase\/supabase-js@2(?:\.[^/]*)?\/dist\/umd\/supabase\.js/, async (route) => {
       await route.fulfill({
         contentType: "application/javascript",
         body: `
@@ -5511,6 +5479,8 @@ async function checkFitnessNewEmployeeRegistrationFlow(browser) {
             createClient() {
               return {
                 rpc(name, payload) {
+                  window.__rpcCalls = window.__rpcCalls || [];
+                  window.__rpcCalls.push({ name, payload });
                   window.__lastRpc = { name, payload };
                   if (name === "check_registration_email") {
                     return Promise.resolve({ data: { exists: false, profileExists: false, authExists: false }, error: null });
@@ -5599,12 +5569,14 @@ async function checkFitnessNewEmployeeRegistrationFlow(browser) {
       status: document.querySelector("#emailCheckStatus")?.dataset.status || "",
       text: document.querySelector("#emailCheckStatus")?.textContent?.trim() || "",
       rpc: window.__lastRpc,
+      rpcCalls: window.__rpcCalls || [],
     }));
     if (emailCheck.status !== "available" || !emailCheck.text.includes("사용 가능한")) {
       fail("email duplicate check should approve unused email", `${viewport.label}: ${JSON.stringify(emailCheck)}`);
     }
-    if (emailCheck.rpc?.name !== "check_registration_email" || emailCheck.rpc?.payload?.email_to_check !== "newfitness@example.com") {
-      fail("email duplicate check did not call the expected RPC", `${viewport.label}: ${JSON.stringify(emailCheck.rpc)}`);
+    const emailDuplicateRpc = emailCheck.rpcCalls.find((call) => call?.name === "check_registration_email");
+    if (!emailDuplicateRpc || emailDuplicateRpc.payload?.email_to_check !== "newfitness@example.com") {
+      fail("email duplicate check did not call the expected RPC", `${viewport.label}: ${JSON.stringify(emailCheck.rpcCalls)}`);
     }
 
     await page.fill('[data-profile-field="name"]', "비욘드신입");
@@ -5722,7 +5694,10 @@ async function checkSiteWeatherAndGeneralDailyReport(browser) {
     const employee = getSelectedEmployee();
     const archive = buildEmployeeArchiveReport(employee, todayKey);
     const pastUrl = buildWeatherRequestUrl({ latitude: 35.5, longitude: 129.3 }, "2026-07-31");
-    const futureUrl = buildWeatherRequestUrl({ latitude: 35.5, longitude: 129.3 }, "2026-08-31");
+    const futureDate = new Date(`${todayKey}T00:00:00+09:00`);
+    futureDate.setDate(futureDate.getDate() + 1);
+    const futureDateKey = futureDate.toLocaleDateString("en-CA", { timeZone: "Asia/Seoul" });
+    const futureUrl = buildWeatherRequestUrl({ latitude: 35.5, longitude: 129.3 }, futureDateKey);
     const todayUrl = buildWeatherRequestUrl({ latitude: 35.5, longitude: 129.3 }, todayKey);
     const weatherExpression = formatWeatherSummary({ weatherCode: 2, temperatureMin: 21, temperatureMax: 29 }, { compact: true });
     const ulsanRegion = getWeatherRegionCoordinates("울산광역시 남구 옥동 123");
@@ -5757,7 +5732,7 @@ async function checkSiteWeatherAndGeneralDailyReport(browser) {
       previewOverflow: preview.scrollHeight - preview.clientHeight,
       archiveHasDesignedReport: archive.html.includes("worklog-daily-report-page"),
       pastUsesArchive: pastUrl.includes("archive-api.open-meteo.com") && pastUrl.includes("start_date=2026-07-31"),
-      futureUsesForecast: pastUrl !== futureUrl && futureUrl.includes("api.open-meteo.com/v1/forecast") && futureUrl.includes("start_date=2026-08-31"),
+      futureUsesForecast: pastUrl !== futureUrl && futureUrl.includes("api.open-meteo.com/v1/forecast") && futureUrl.includes(`start_date=${futureDateKey}`),
       todayUsesBeyondWeatherRange: todayUrl.includes("daily=temperature_2m_max,temperature_2m_min") && todayUrl.includes("forecast_days=1"),
       weatherExpression,
       beyondWorkRegionCoordinates: {
@@ -5874,7 +5849,9 @@ async function checkSiteWeatherAndGeneralDailyReport(browser) {
       worklogWeatherText: document.getElementById("worklogPulseText")?.textContent?.replace(/\s+/g, " ").trim() || "",
       fitnessHistorical: document.getElementById("fitnessCoachingTicker")?.classList.contains("is-historical-weather") || false,
     };
-    state.selectedDateKey = "2026-08-31";
+    const futureSelectedDate = new Date(`${todayKey}T00:00:00+09:00`);
+    futureSelectedDate.setDate(futureSelectedDate.getDate() + 1);
+    state.selectedDateKey = futureSelectedDate.toLocaleDateString("en-CA", { timeZone: "Asia/Seoul" });
     renderEntries();
     const future = {
       todayText: document.getElementById("todayJumpButton")?.textContent?.trim() || "",
@@ -5955,7 +5932,7 @@ async function checkApprovalRepairRevealsPendingFitnessSignup(browser) {
   const page = await browser.newPage({ viewport: { width: 390, height: 844 } });
   const errors = [];
   page.on("pageerror", (error) => errors.push(error.message));
-  await page.route("https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2", async (route) => {
+  await page.route(/https:\/\/cdn\.jsdelivr\.net\/npm\/@supabase\/supabase-js@2(?:\.[^/]*)?\/dist\/umd\/supabase\.js/, async (route) => {
     await route.fulfill({
       contentType: "application/javascript",
       body: `
@@ -6012,9 +5989,11 @@ async function checkApprovalRepairRevealsPendingFitnessSignup(browser) {
                     select() { return this; },
                     eq() { return this; },
                     in() { return this; },
-                    order() {
-                      if (table === "profiles") return Promise.resolve({ data: repaired ? [hongTrainerRow, ownerRow] : [ownerRow], error: null });
-                      return Promise.resolve({ data: [], error: null });
+                    order() { return this; },
+                    limit() { return this; },
+                    then(resolve, reject) {
+                      if (table === "profiles") return Promise.resolve({ data: repaired ? [hongTrainerRow, ownerRow] : [ownerRow], error: null }).then(resolve, reject);
+                      return Promise.resolve({ data: [], error: null }).then(resolve, reject);
                     },
                     update() { return this; },
                     maybeSingle: () => Promise.resolve({ data: null, error: null }),
@@ -6081,7 +6060,7 @@ async function checkApprovalRepairMissingRpcFallsBack(browser) {
   const page = await browser.newPage({ viewport: { width: 390, height: 844 } });
   const errors = [];
   page.on("pageerror", (error) => errors.push(error.message));
-  await page.route("https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2", async (route) => {
+  await page.route(/https:\/\/cdn\.jsdelivr\.net\/npm\/@supabase\/supabase-js@2(?:\.[^/]*)?\/dist\/umd\/supabase\.js/, async (route) => {
     await route.fulfill({
       contentType: "application/javascript",
       body: `
@@ -6142,9 +6121,11 @@ async function checkApprovalRepairMissingRpcFallsBack(browser) {
                     select() { return this; },
                     eq() { return this; },
                     in() { return this; },
-                    order() {
-                      if (table === "profiles") return Promise.resolve({ data: [pendingRow, ownerRow], error: null });
-                      return Promise.resolve({ data: [], error: null });
+                    order() { return this; },
+                    limit() { return this; },
+                    then(resolve, reject) {
+                      if (table === "profiles") return Promise.resolve({ data: [pendingRow, ownerRow], error: null }).then(resolve, reject);
+                      return Promise.resolve({ data: [], error: null }).then(resolve, reject);
                     },
                     update() { return this; },
                     maybeSingle: () => Promise.resolve({ data: null, error: null }),
@@ -6728,11 +6709,11 @@ async function checkDagymTrainerScheduleMissingWarning(browser) {
   const raw = await page.evaluate(() => window.eval(`(() => {
     const dateKey = getDagymScheduleKstParts(new Date()).dateKey;
     const monthKey = dateKey.slice(0, 7);
-    authState.user = { id: "dagym-warning-qa", email: "" };
+    authState.user = { id: "dagym-warning-qa", email: "pjhong0@naver.com" };
     state.profile = {
       ...state.profile,
       authUserId: "dagym-warning-qa",
-      email: "",
+      email: "pjhong0@naver.com",
       org: "(주)비욘드컴퍼니",
       workplace: "비욘드 피트니스",
       role: "센터장",
@@ -6997,7 +6978,7 @@ async function checkFitnessPaidPtCanonicalLedger(browser) {
     await checkDelegatedPermissionMenus(browser);
     await checkKimSungminBeyondFitnessReadScope(browser);
     await checkBeyondCompanyPeerWorklogSharing(browser);
-    await checkUnmappedEmployeeDoesNotInheritFitnessManager(browser);
+    await checkReassignedFinanceEmployeeCanEditOwnProfileWorklog(browser);
     await checkUnclassifiedFitnessEmployeeCanEditOwnProfileWorklog(browser);
     await checkFitnessTrainerCanEditOwnWorklog(browser);
     await checkFitnessManagerCanEditOwnWorklog(browser);

@@ -315,6 +315,13 @@ const fitnessManagerWeeklyWorkHours = Object.freeze({
 // 빈 승인 프로필도 이 기준을 상속해 휴무일을 결근·미기록으로 오인하지 않게 합니다.
 const fitnessSaturdayInfoWeeklyWorkHours = Object.freeze({ sat: "16:00-20:00" });
 const fitnessSundayInfoWeeklyWorkHours = Object.freeze({ sun: "10:00-18:00" });
+const bangjuFinanceWeekdayWorkHours = Object.freeze({
+  mon: "08:30-17:30",
+  tue: "08:30-17:30",
+  wed: "08:30-17:30",
+  thu: "08:30-17:30",
+  fri: "08:30-17:30",
+});
 const laborLeaveTypes = Object.freeze([
   ["annual", "연차", "full"],
   ["morning-half", "오전 반차", "morning"],
@@ -420,18 +427,19 @@ const profilePlacementOverrides = {
     mappedEmployeeId: "beyond-fitness-manager",
   },
   "projch@naver.com": {
-    org: "(주)비욘드컴퍼니 / 비욘드 피트니스",
-    workplace: "비욘드 피트니스",
-    role: "인포데스크",
-    name: "홍길동",
-    nickname: "홍길동",
-    primaryWork: "고객응대, 센터관리",
-    secondaryWork: "운영 지원",
+    org: "(주)방주",
+    workplace: "재무",
+    role: "직원",
+    name: "김경희",
+    nickname: "김경희",
+    primaryWork: "재무",
+    secondaryWork: "자금·회계·지출 관리",
     employmentType: "직원",
-    workHours: "16:00-20:00",
+    workHours: "08:30-17:30",
+    weeklyWorkHours: bangjuFinanceWeekdayWorkHours,
     accessPreset: "employee",
     permissions: {},
-    mappedEmployeeId: "fitness-weekday-info",
+    mappedEmployeeId: "bangju-finance-kimkyunghee",
   },
   "tbakorea@gmail.com": {
     org: "(주)비욘드컴퍼니",
@@ -684,6 +692,7 @@ const fitnessManualTemplates = {
 const employees = [
   { id: "bangju-finance-manager", name: "재무과장", org: "(주)방주", role: "재무과장", primaryWork: "자금, 회계, 보고" },
   { id: "bangju-finance-assistant", name: "이소미", org: "(주)방주", role: "재무 대리", primaryWork: "지출, 정산, 문서" },
+  { id: "bangju-finance-kimkyunghee", name: "김경희", nickname: "김경희", email: "projch@naver.com", org: "(주)방주", workplace: "재무", role: "직원", workHours: "08:30-17:30", weeklyWorkHours: bangjuFinanceWeekdayWorkHours, primaryWork: "재무", secondaryWork: "자금·회계·지출 관리", employmentType: "직원" },
   { id: "construction-finance-assistant", name: "비제이 재무 예비", org: "(주)비제이종합건설", role: "예비", primaryWork: "건설현장 지출, 정산, 노무자료" },
   { id: "bangju-spare-1", name: "방주 예비", org: "(주)방주", role: "예비", primaryWork: "공통 지원" },
   { id: "beyond-fitness-manager", name: "박주홍", nickname: "센터장", org: "(주)비욘드컴퍼니 / 비욘드 피트니스", role: "센터장", workHours: "06:00-24:00", weeklyWorkHours: fitnessManagerWeeklyWorkHours, primaryWork: "운영총괄, PT 수업" },
@@ -701,7 +710,7 @@ const employees = [
 ];
 const fitnessEmployeeIds = ["beyond-fitness-manager", "fitness-trainer-1", "fitness-weekday-info", "fitness-weekday-info-idabin", "fitness-info-kimyoungchae", "fitness-info-shinsemin", "fitness-saturday-info", "fitness-sunday-info", "fitness-spare-1"];
 const fitnessPlaceholderEmployeeIds = new Set(["fitness-weekday-info", "fitness-saturday-info", "fitness-sunday-info", "fitness-spare-1"]);
-const bangjuWorklogEmployeeIds = ["bangju-finance-manager", "bangju-finance-assistant", "construction-finance-assistant", "bangju-spare-1"];
+const bangjuWorklogEmployeeIds = ["bangju-finance-manager", "bangju-finance-assistant", "bangju-finance-kimkyunghee", "construction-finance-assistant", "bangju-spare-1"];
 const beyondWorklogEmployeeIds = ["beyond-company-leader", "beyond-shared-manager", "beyond-spare-1"];
 
 function hasConfiguredWeeklyWorkHours(value = {}) {
@@ -3269,7 +3278,22 @@ function getHistoricalWeatherBannerMarkup(record, siteKey = "") {
 }
 
 function renderHistoricalWeatherBanners(dateKey = getActiveDateKey()) {
-  if (dateKey >= todayKey) return;
+  if (dateKey >= todayKey) {
+    // 과거 날짜를 본 뒤 오늘·미래로 이동하면 숨겨진 피트니스 코칭 배너에도
+    // 과거 날씨 상태가 남아 있을 수 있습니다. 다음 렌더링 전 상태를 해제해
+    // 날짜 이동과 화면 전환 모두에서 현재 코칭을 정상적으로 보여줍니다.
+    const worklogPulse = document.getElementById("worklogPulse");
+    const fitnessTicker = document.getElementById("fitnessCoachingTicker");
+    if (worklogPulse) {
+      worklogPulse.classList.remove("is-historical-weather");
+      worklogPulse.disabled = false;
+    }
+    if (fitnessTicker) {
+      fitnessTicker.classList.remove("is-historical-weather");
+      fitnessTicker.disabled = false;
+    }
+    return;
+  }
   const worklogEmployee = getSelectedEmployee();
   const worklogSiteKey = getSiteWeatherKeyForEmployee(worklogEmployee);
   const worklogRecord = getWeatherRecordForSite(worklogSiteKey, dateKey);
@@ -13067,8 +13091,10 @@ function resolveDagymTrainerEmployeeId(row = {}) {
   const matches = getEmployeeOptions()
     .filter(isFitnessEmployeeRecord)
     .filter((employee) => getDagymTrainerIdentityNames(employee).includes(trainerName));
-  if (matches.length !== 1) return "";
-  const matchedId = getEmployeeWorklogId(matches[0]);
+  // 기본 명부와 로그인 프로필이 같은 업무일지를 가리키면 한 직원으로 봅니다.
+  const matchedIds = [...new Set(matches.map(getEmployeeWorklogId).filter(Boolean))];
+  if (matchedIds.length !== 1) return "";
+  const matchedId = matchedIds[0];
   if (directEmployee && directId !== matchedId) return "";
   return matchedId;
 }

@@ -183,7 +183,7 @@ check(
   "DaGym lessons project only to one exact trainer and upcoming worklog slots",
   js.includes("function normalizeDagymTrainerName")
     && js.includes("function getDagymTrainerIdentityNames")
-    && /function resolveDagymTrainerEmployeeId[\s\S]{0,700}filter\(isFitnessEmployeeRecord\)[\s\S]{0,350}getDagymTrainerIdentityNames\(employee\)\.includes\(trainerName\)[\s\S]{0,220}matches\.length !== 1[\s\S]{0,220}directId !== matchedId/.test(js)
+    && /function resolveDagymTrainerEmployeeId[\s\S]{0,700}filter\(isFitnessEmployeeRecord\)[\s\S]{0,350}getDagymTrainerIdentityNames\(employee\)\.includes\(trainerName\)[\s\S]{0,450}matchedIds\.length !== 1[\s\S]{0,220}directId !== matchedId/.test(js)
     && /function isDagymScheduleProjectionEligible[\s\S]{0,520}dateKey < nowParts\.dateKey[\s\S]{0,220}timeToMinutes\(scheduleParts\.time\) >= timeToMinutes\(nowParts\.time\)/.test(js)
     && /function applyDagymPtScheduleRows[\s\S]{0,420}if \(dateKey < todayKey\) return 0;/.test(js)
     && /function applyDagymPtScheduleMonth[\s\S]{0,620}dateKey >= todayKey[\s\S]{0,220}applyDagymPtScheduleRows\(rows, dateKey\)/.test(js)
