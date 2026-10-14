@@ -1251,7 +1251,7 @@ async function checkOverviewCommandBoard(browser) {
       ["fitness-weekday-info-idabin", "이다빈", "(주)방주 / 비욘드 피트니스 지사", "인포데스크", "idabin@example.com"],
       ["fitness-info-kimyoungchae", "김영채", "(주)방주 / 비욘드 피트니스 지사", "인포데스크", "yckim1558@naver.com"],
       ["fitness-info-shinsemin", "신세민", "(주)방주 / 비욘드 피트니스 지사", "인포데스크", "tpals2990@naver.com"],
-      ["bangju-finance-kimkyunghee", "김경희", "(주)방주", "직원", "projch@naver.com"],
+      ["bangju-finance-kimkyunghee", "김경희", "(주)방주", "차장", "kimkyunghee@example.com"],
       ["beyond-company-leader", "김성민", "(주)비욘드컴퍼니", "실장", "ksm@example.com"],
       ["beyond-shared-manager", "추소영", "(주)비욘드컴퍼니 / 공유사업부", "공유사업부 매니저", "choo@example.com"]
     ];
@@ -2457,8 +2457,8 @@ async function checkReassignedFinanceEmployeeCanEditOwnProfileWorklog(browser) {
       selectedEmployeeId: "beyond-fitness-manager",
       fitnessWritableEmployeeId: "beyond-fitness-manager",
       profile: {
-        email: "projch@naver.com",
-        role: "직원",
+        email: "kimkyunghee@example.com",
+        role: "차장",
         name: "김경희",
         nickname: "김경희",
         org: "(주)방주",
@@ -2480,7 +2480,7 @@ async function checkReassignedFinanceEmployeeCanEditOwnProfileWorklog(browser) {
     document.body.dataset.layoutMode = "phone";
     document.body.dataset.viewMode = "ceo";
     window.eval(`
-      authState.user = { id: "kim-kyunghee", email: "projch@naver.com" };
+      authState.user = { id: "kim-kyunghee", email: "kimkyunghee@example.com" };
       normalizeState();
       switchView(getInitialLandingView());
     `);
@@ -3947,7 +3947,7 @@ async function checkStaffDirectoryListAndDetail(browser) {
       authState.approvalRows = [
         {
           id: "kimkyunghee-profile",
-          email: "projch@naver.com",
+          email: "kimkyunghee@example.com",
           name: "김경희",
           org: "(주)방주",
           role: "직원",
@@ -4020,7 +4020,7 @@ async function checkStaffDirectoryListAndDetail(browser) {
       activeView: document.body.dataset.activeView,
       rows,
       isomiCount: rows.filter((text) => text.includes("이소미")).length,
-      hasKimKyunghee: rows.some((text) => text.includes("김경희") && text.includes("projch@naver.com") && text.includes("재무")),
+      hasKimKyunghee: rows.some((text) => text.includes("김경희") && text.includes("kimkyunghee@example.com") && text.includes("재무")),
       hasKim: rows.some((text) => text.includes("김성민") && text.includes("(주)비욘드컴퍼니")),
       hasChoo: rows.some((text) => text.includes("추소영") && text.includes("(주)비욘드컴퍼니")),
       hasGenericBeyondLeader: rows.some((text) => text.includes("비욘드 실장") && !text.includes("김성민")),

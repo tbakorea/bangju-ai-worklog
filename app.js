@@ -261,15 +261,15 @@ const organizationPlacementOptions = {
   "(주)방주": {
     workplaces: ["재무", "기타"],
     rolesByWorkplace: {
-      "재무": ["부장", "과장", "대리"],
-      "기타": ["이사"],
+      "재무": ["상무이사", "부장", "차장", "과장", "대리"],
+      "기타": ["상무이사", "이사", "차장"],
     },
   },
   "(주)비제이종합건설": {
     workplaces: ["동천체육관 현장", "옥동 더헤이븐빌 신축현장", "기타"],
     rolesByWorkplace: {
-      "동천체육관 현장": ["소장", "이사", "부장", "과장", "반장"],
-      "옥동 더헤이븐빌 신축현장": ["소장", "이사", "부장", "과장", "반장"],
+      "동천체육관 현장": ["소장", "이사", "부장", "차장", "과장", "반장"],
+      "옥동 더헤이븐빌 신축현장": ["소장", "이사", "부장", "차장", "과장", "반장"],
       "기타": [],
     },
   },
@@ -280,13 +280,13 @@ const organizationPlacementOptions = {
       "공유사업부 : 워크베이스": ["매니저"],
       "공유사업부 : 워크박스": ["매니저"],
       "TBA studio": ["실장"],
-      "기타": ["이사", "부장", "과장", "본부장", "팀장"],
+      "기타": ["이사", "부장", "차장", "과장", "본부장", "팀장"],
     },
   },
   "기타": {
     workplaces: ["기타"],
     rolesByWorkplace: {
-      "기타": ["대표", "이사", "부장", "과장", "대리", "직원", "기타"],
+      "기타": ["대표", "이사", "부장", "차장", "과장", "대리", "직원", "기타"],
     },
   },
 };
@@ -425,21 +425,6 @@ const profilePlacementOverrides = {
     accessPreset: "site_manager",
     permissions: {},
     mappedEmployeeId: "beyond-fitness-manager",
-  },
-  "projch@naver.com": {
-    org: "(주)방주",
-    workplace: "재무",
-    role: "직원",
-    name: "김경희",
-    nickname: "김경희",
-    primaryWork: "재무",
-    secondaryWork: "자금·회계·지출 관리",
-    employmentType: "직원",
-    workHours: "08:30-17:30",
-    weeklyWorkHours: bangjuFinanceWeekdayWorkHours,
-    accessPreset: "employee",
-    permissions: {},
-    mappedEmployeeId: "bangju-finance-kimkyunghee",
   },
   "tbakorea@gmail.com": {
     org: "(주)비욘드컴퍼니",
@@ -690,9 +675,9 @@ const fitnessManualTemplates = {
   },
 };
 const employees = [
-  { id: "bangju-finance-manager", name: "재무과장", org: "(주)방주", role: "재무과장", primaryWork: "자금, 회계, 보고" },
-  { id: "bangju-finance-assistant", name: "이소미", org: "(주)방주", role: "재무 대리", primaryWork: "지출, 정산, 문서" },
-  { id: "bangju-finance-kimkyunghee", name: "김경희", nickname: "김경희", email: "projch@naver.com", org: "(주)방주", workplace: "재무", role: "직원", workHours: "08:30-17:30", weeklyWorkHours: bangjuFinanceWeekdayWorkHours, primaryWork: "재무", secondaryWork: "자금·회계·지출 관리", employmentType: "직원" },
+  { id: "bangju-finance-manager", name: "강정훈", org: "(주)방주", role: "상무이사", primaryWork: "경영관리, 자금, 회계, 보고" },
+  { id: "bangju-finance-assistant", name: "이소미", org: "(주)방주", role: "대리", primaryWork: "지출, 정산, 문서" },
+  { id: "bangju-finance-kimkyunghee", name: "김경희", nickname: "김경희", org: "(주)방주", workplace: "재무", role: "차장", workHours: "08:30-17:30", weeklyWorkHours: bangjuFinanceWeekdayWorkHours, primaryWork: "재무", secondaryWork: "자금·회계·지출 관리", employmentType: "직원" },
   { id: "construction-finance-assistant", name: "비제이 재무 예비", org: "(주)비제이종합건설", role: "예비", primaryWork: "건설현장 지출, 정산, 노무자료" },
   { id: "bangju-spare-1", name: "방주 예비", org: "(주)방주", role: "예비", primaryWork: "공통 지원" },
   { id: "beyond-fitness-manager", name: "박주홍", nickname: "센터장", org: "(주)비욘드컴퍼니 / 비욘드 피트니스", role: "센터장", workHours: "06:00-24:00", weeklyWorkHours: fitnessManagerWeeklyWorkHours, primaryWork: "운영총괄, PT 수업" },
@@ -1202,7 +1187,7 @@ function createState() {
     attendance: {
       [todayKey]: [
         { employeeId: "beyond-fitness-manager", org: "(주)비욘드컴퍼니 / 비욘드 피트니스", role: "센터장", name: "박주홍", status: "정상", note: "" },
-        { employeeId: "bangju-finance-manager", org: "(주)방주", role: "재무과장", name: "재무과장", status: "정상", note: "" },
+        { employeeId: "bangju-finance-manager", org: "(주)방주", role: "상무이사", name: "강정훈", status: "정상", note: "" },
         { employeeId: "beyond-company-leader", org: "(주)비욘드컴퍼니", role: "실장", name: "비욘드 실장", status: "정상", note: "" },
       ],
     },
@@ -4245,6 +4230,8 @@ function getProfileMappedEmployeeId(profile = state.profile || {}) {
   // 대표 대행은 직원 계정입니다. 실제 대표만 개인 업무일지 슬롯에서 제외합니다.
   if (controlTowerEmails.has(email) || /^(대표|owner|ceo)$/.test(role)) return "";
   if (/이소미/.test(source) || (!/비제이|종합건설|건설|bj|construction/.test(source) && /재무\s*대리|finance\s*assistant/.test(source))) return "bangju-finance-assistant";
+  if (/김경희/.test(source) && /방주/.test(source)) return "bangju-finance-kimkyunghee";
+  if (/강정훈/.test(source) && /방주/.test(source)) return "bangju-finance-manager";
   if (/재무\s*과장|finance\s*manager/.test(source)) return "bangju-finance-manager";
   if (isActiveFitnessManagerEmail(email) || (!email && (/박주홍/.test(source) || /센터장|피트니스.*총괄|fitness.*manager/.test(source)))) return "beyond-fitness-manager";
   if (/홍현규|트레이너|trainer|pt|피티/.test(source)) return "fitness-trainer-1";
