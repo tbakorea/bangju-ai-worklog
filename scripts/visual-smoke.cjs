@@ -1171,7 +1171,7 @@ async function checkOverviewCommandBoard(browser) {
   if (!/비욘드 피트니스/.test(fitnessFilter.siteText)) fail("overview fitness scope missing fitness label");
   if (!fitnessFilter.centerSheets) fail("overview fitness scope should start with center operations sheet", JSON.stringify(fitnessFilter));
   if (!fitnessFilter.firstCardIsCenter) fail("overview fitness center status should be the first card", JSON.stringify(fitnessFilter));
-  if (fitnessFilter.employeeOrder.join("|") !== "센터장 박주홍|트레이너 홍현규|인포데스크 신세민|인포데스크 이다빈|인포데스크 김영채") {
+  if (fitnessFilter.employeeOrder.join("|") !== "센터장 박주홍|인포데스크 신세민|인포데스크 이다빈") {
     fail("overview fitness employees should follow the fixed operating order", JSON.stringify(fitnessFilter.employeeOrder));
   }
   if (!fitnessFilter.rosterCards) fail("overview fitness center sheet should show fitness roster cards", JSON.stringify(fitnessFilter));
@@ -1300,7 +1300,7 @@ async function checkOverviewCommandBoard(browser) {
       const errors = [];
       if (log.tasks?.[0]?.text !== expectedTask) errors.push(expectedId + ":task");
       if (!(log.schedule || []).some((entry) => String(entry.text || "").includes(expectedSchedule))) errors.push(expectedId + ":schedule");
-      if (!overviewIds.includes(expectedId)) errors.push(expectedId + ":overview-id");
+      if (!["fitness-trainer-1", "fitness-info-kimyoungchae"].includes(expectedId) && !overviewIds.includes(expectedId)) errors.push(expectedId + ":overview-id");
       return errors;
     });
     return JSON.stringify({ failures, overviewIds });
@@ -1445,7 +1445,7 @@ async function checkOverviewCommandBoard(browser) {
   })()`));
   const overviewProjectionMetrics = JSON.parse(overviewProjection);
   if (!overviewProjectionMetrics.kpiText.includes("업무일지")
-    || !overviewProjectionMetrics.kpiText.match(/[1-9][0-9]*\/10/)
+    || !overviewProjectionMetrics.kpiText.match(/[1-9][0-9]*\/9/)
     || overviewProjectionMetrics.taskRows !== 3
     || overviewProjectionMetrics.scheduleRows !== 3) {
     fail("representative overview should count any written worklog and keep empty previews compact", overviewProjection);
@@ -4976,7 +4976,7 @@ async function checkFitnessCenterReportConfirmation(browser) {
       fail("fitness center roster should only show assigned fitness staff", `${label} leaked into ${JSON.stringify(before.centerRows)}`);
     }
   });
-  ["박주홍", "홍현규", "이다빈"].forEach((label) => {
+  ["박주홍", "이다빈"].forEach((label) => {
     if (!before.centerRows.some((row) => row.includes(label))) {
       fail("fitness center roster should include active fitness staff", `${label} missing from ${JSON.stringify(before.centerRows)}`);
     }
@@ -7052,6 +7052,9 @@ async function checkRetiredFitnessRosterFallbacks(browser) {
     authState.user={id:"qa-viewer",email:"viewer@example.com"};
     state.profile={...defaultProfile,name:"검증직원",email:"viewer@example.com",role:"직원",org:"(주)비욘드컴퍼니",workplace:"비욘드 피트니스",approvalStatus:"approved",accessPreset:"employee",permissions:{}};
     const ids=["fitness-trainer-1","fitness-info-kimyoungchae"];
+    authState.approvalRows=[]; authState.coworkerEmployees=[];
+    const fallbackNames=getFitnessEmployees().map(e=>e.name);
+    if (fallbackNames.includes("홍현규") || fallbackNames.includes("김영채")) throw new Error("Retired default roster visible without directory data");
     authState.approvalRows=ids.map((id,i)=>{ const e=employees.find(e=>e.id===id); return {id:"retired-"+i,name:e.name,email:e.email,org:e.org,workplace:"비욘드 피트니스",role:e.role,approval_status:"approved",worklog_status:"resigned",worklog_excluded_from:"2026-01-01"}; });
     state.employeeLogs[todayKey]={};
     ids.forEach(id=>{const e=employees.find(e=>e.id===id);state.employeeLogs[todayKey][id]={name:e.name,role:e.role,org:e.org,schedule:[],tasks:[]};});

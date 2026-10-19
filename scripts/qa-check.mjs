@@ -315,7 +315,7 @@ const missingPopoverTargets = unique(menuPopoverTargets.filter((target) => !view
 check("popover menu targets resolve to views", missingPopoverTargets.length === 0, missingPopoverTargets.join(", "));
 
 const localAssets = findAll(/(?:href|src)="\.\/([^"]+)"/g, html);
-const missingAssets = unique(localAssets.filter((asset) => !existsSync(join(root, asset))));
+const missingAssets = unique(localAssets.filter((asset) => !existsSync(join(root, asset.split(/[?#]/)[0]))));
 check("local assets referenced by HTML exist", missingAssets.length === 0, missingAssets.join(", "));
 
 check(
