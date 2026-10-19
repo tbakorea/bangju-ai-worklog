@@ -242,10 +242,12 @@ check(
     && css.includes(".fitness-paper-warning-banner")
 );
 check(
-  "fitness report uses a polished achievement coaching label",
-  js.includes('["성과 하이라이트", model.aiCoaching.praise]')
-    && js.includes('["성과 하이라이트", praise]')
-    && !js.includes('["칭찬", model.aiCoaching.praise]')
+  "fitness report provides rotating practical operating tips",
+  js.includes('function getFitnessOperationsTip')
+    && js.includes('["운영 노하우", model.aiCoaching.praise]')
+    && js.includes('["실무 팁", tip.tip]')
+    && js.includes('coachingStyle: "fitness-operations-v1"')
+    && js.includes("운영 매뉴얼·실무 팁")
 );
 check(
   "personal fitness report connects the prior-day DaGym brief to auditable employee missions",

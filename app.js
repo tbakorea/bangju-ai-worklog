@@ -27560,6 +27560,10 @@ function buildFitnessReportAiContext({ dateKey, isCenter, employee, sourceLog, l
     };
   }).filter(Boolean).slice(0, 8);
   return {
+    coachingStyle: "fitness-operations-v1",
+    operationsTip: (({ topic, title, knowhow, tip, action, check }) => ({ topic, title, knowhow, tip, action, check }))(
+      getFitnessOperationsTip({ dateKey, employee, taskSummary: { items: tasks }, scheduleSummary: { items: scheduleEntries }, reportNotes })
+    ),
     dateKey,
     reportType: isCenter ? "센터 운영 취합" : "개인 업무보고",
     employee: isCenter ? { name: "센터 전체", role: "운영 취합" } : {
@@ -27635,64 +27639,49 @@ function getFitnessReportManualTemplate(employee = {}) {
   return { key: "manager", template: fitnessManualTemplates.manager };
 }
 
+const fitnessOperationsTips = [
+  { topic: "청결", roles: ["frontDesk", "cleaning", "facility"], match: /청소|청결|웨이트존|수건|세탁|정리|시설.환경/, title: "구역별 마감", knowhow: "청소는 구역별 담당과 확인 순서를 정하면 바쁜 시간에도 빠뜨리는 곳을 줄일 수 있습니다.", tip: "웨이트존·탈의실·수건 수거 구역을 나누고, 회원 동선이 겹치지 않는 순서로 정리하세요.", action: "다음 근무 시작 전에 담당 구역 한 곳을 점검하고, 남은 조치는 인수인계하세요.", check: "바닥 물기·방치 물품·사용한 수건이 남았는지 구역별로 확인하세요." },
+  { topic: "청결", roles: ["frontDesk", "cleaning", "facility"], match: /청소|청결|수건|세탁|정리|시설.환경/, title: "수건 흐름 관리", knowhow: "깨끗한 수건과 사용한 수건의 보관·이동 동선을 구분하면 재오염과 재고 혼선을 줄일 수 있습니다.", tip: "수거함과 보충 위치를 분리하고, 피크시간 전에 보충할 수건을 확인하세요.", action: "수건 수거함 상태와 비치 수량을 살펴 다음 보충 담당자를 정하세요.", check: "오염 수건 혼입 여부와 부족한 구역을 확인하고, 세탁·보관은 제품 및 센터 기준을 따르세요." },
+  { topic: "청결", roles: ["frontDesk", "cleaning", "facility"], match: /청소|청결|웨이트존|기구|정리|시설.환경/, title: "정리와 점검 분리", knowhow: "기구 주변 정리와 기구 이상 점검을 따로 확인하면 청소 완료를 안전 점검 완료로 착각하지 않습니다.", tip: "정리 후 손잡이·패드·주변 통로를 확인하고, 이상 징후는 사용 중지 표시 후 관리자에게 전달하세요.", action: "자주 사용하는 기구 한 구역을 골라 정리 상태와 이상 유무를 각각 확인하세요.", check: "청소 완료 여부와 고장·파손 전달 여부를 별도로 표시하세요. 임의 수리는 하지 않습니다." },
+  { topic: "시설", roles: ["manager", "facility"], match: /고장|파손|점검|수리|시설/, title: "고장 전달의 세 가지", knowhow: "고장 보고에는 위치·증상·현재 조치를 함께 남겨야 관리자가 우선순위를 정하기 쉽습니다.", tip: "기구명만 쓰기보다 발생 위치, 관찰한 증상, 사용 중지 표시 여부를 구분해 전달하세요.", action: "미해결 시설 건 한 개의 담당자와 다음 확인 시점을 정하세요.", check: "완료는 수리 접수와 구분하고, 재사용은 담당자의 확인 후 진행하세요." },
+  { topic: "시설", roles: ["manager", "facility", "frontDesk"], match: /오픈|마감|시설|점검/, title: "오픈·마감 인수인계", knowhow: "오픈 담당자는 전날의 미해결 사항부터 확인해야 같은 문제가 다음 근무로 반복되지 않습니다.", tip: "오픈 전 미해결 시설 건, 회원 요청, 준비물 부족을 먼저 확인하세요.", action: "미해결 건을 ‘누가·언제·무엇을 확인할지’ 한 줄로 정리하세요.", check: "확인 담당자와 처리 결과가 연결됐는지 마감 때 대조하세요." },
+  { topic: "회원응대", roles: ["frontDesk", "manager"], match: /회원|응대|인포|문의|불편/, title: "요청을 다음 조치로 연결", knowhow: "회원 요청은 접수만으로 끝내지 않고 다음 안내 시점을 정해두면 재문의 때도 일관되게 응대할 수 있습니다.", tip: "요청 내용·처리 담당·다음 안내 시점을 짧게 정리하고, 확정되지 않은 처리는 약속하지 마세요.", action: "미처리 요청 한 건의 진행 상황을 확인해 회원에게 안내할 내용을 준비하세요.", check: "일반 업무일지에는 민감한 회원정보를 적지 않고 필요한 내용만 남기세요." },
+  { topic: "회원응대", roles: ["frontDesk", "sales"], match: /회원|응대|인포|문의|상담/, title: "문의 목적부터 확인", knowhow: "문의 초기에 이용 목적과 방문 가능 시간을 확인하면 상품 설명을 길게 반복하는 일을 줄일 수 있습니다.", tip: "설명 전에 이용 목적·희망 시간·관심 서비스를 묻고 확인된 조건에 맞춰 안내하세요.", action: "다음 문의에는 회원의 질문을 한 문장으로 확인한 뒤 안내를 시작하세요.", check: "가격·이용 조건은 센터의 현재 안내 기준과 일치하는지 확인하세요." },
+  { topic: "상담·재등록", roles: ["sales", "manager", "frontDesk"], match: /상담|재등록|만료|계약|영업/, title: "후속 상담의 기준", knowhow: "상담 후속 연락은 같은 안내를 반복하기보다 회원이 결정하지 못한 질문을 해결하는 데 초점을 맞춥니다.", tip: "이용 목적과 남은 질문을 정리하고, 연락 가능 여부와 약속한 시점에 맞춰 후속 안내하세요.", action: "후속 상담 한 건을 골라 다음에 답할 질문과 담당자를 정하세요.", check: "진행 상태는 상담·예약·계약을 구분하고 성과를 중복 집계하지 마세요." },
+  { topic: "상담·재등록", roles: ["sales", "manager", "trainer"], match: /상담|재등록|만료|계약/, title: "재등록은 이용 경험 확인부터", knowhow: "재등록 안내 전에 이용 경험과 불편 사항을 확인하면 회원에게 필요한 선택지를 설명하기 쉽습니다.", tip: "이용 경험을 먼저 듣고, 확인되지 않은 효과나 혜택으로 결정을 재촉하지 마세요.", action: "예정된 재등록 상담에서 확인할 질문 한 가지를 준비하세요.", check: "안내 조건과 회원의 의사를 확인하고, 미결정 건은 계약으로 집계하지 않습니다." },
+  { topic: "수업운영", roles: ["trainer", "manager"], match: /PT|수업|트레이닝|노쇼/i, title: "수업 상태와 후속 안내", knowhow: "예약과 실제 수업 결과를 구분해야 출석·취소·노쇼 집계와 후속 안내가 어긋나지 않습니다.", tip: "종료 후 실제 결과를 확인해 상태를 확정하고, 변경된 약속은 다음 담당자에게 전달하세요.", action: "미확정 수업 한 건이 있는지 확인하고 후속 연락 필요 여부를 구분하세요.", check: "유료 PT와 무료 PT를 구분하고, 수업 상태는 확인된 결과로만 기록하세요." },
+  { topic: "수업운영", roles: ["trainer"], match: /PT|수업|트레이닝/i, title: "수업 사이 인수인계", knowhow: "수업 사이에는 공간과 준비물을 정리해 다음 수업의 대기 시간을 줄일 수 있습니다.", tip: "사용한 도구를 제자리에 두고 다음 예약과 공간 사용이 겹치는지 확인하세요.", action: "다음 수업 전 필요한 준비물과 공간 상태를 미리 확인하세요.", check: "회원 상담의 민감한 내용은 공용 업무일지에 노출하지 않습니다." },
+  { topic: "홍보", roles: ["marketing", "manager", "frontDesk"], match: /SNS|홍보|블로그|인스타|마케팅/i, title: "게시물에서 문의까지", knowhow: "센터 홍보는 게시 건수뿐 아니라 회원이 다음 행동을 이해할 수 있는지도 확인해야 합니다.", tip: "게시물마다 대상·제공 정보·문의 방법을 하나씩 분명히 적으세요.", action: "다음 게시물의 문의 방법과 운영시간 안내가 맞는지 확인하세요.", check: "사진 사용 동의와 공개 가능한 정보만 사용하고, 실제 확인한 문의 반응을 따로 기록하세요." },
+  { topic: "운영관리", roles: ["manager"], match: /취합|운영|인수인계|마감/, title: "마감 전에 미해결 건 정리", knowhow: "마감 취합은 작성량보다 미해결 문제의 담당자와 다음 조치가 정해졌는지를 먼저 살피는 데 도움이 됩니다.", tip: "시설·회원 요청·예약 변경을 나누고 미해결 건에 담당자와 확인 시점을 붙이세요.", action: "다음 근무자가 먼저 확인할 한 건을 인수인계에 올리세요.", check: "문제를 접수한 상태와 실제 처리 완료를 구분하세요." },
+];
+
+function getFitnessOperationsTip(context = {}) {
+  const items = [...(context.taskSummary?.items || []), ...(context.scheduleSummary?.items || [])];
+  const text = [...items.map(item => item.text || ""), ...(context.reportNotes || [])].join(" ");
+  const role = getFitnessReportManualTemplate(context.employee || {}).key;
+  const relevant = fitnessOperationsTips.filter(tip => tip.match.test(text));
+  const byRole = fitnessOperationsTips.filter(tip => tip.roles.includes(role));
+  const pool = relevant.length ? relevant : byRole;
+  const date = /^\d{4}-\d{2}-\d{2}$/.test(context.dateKey || "") ? context.dateKey : todayKey;
+  const day = Math.floor(Date.parse(`${date}T00:00:00Z`) / 86400000);
+  const employeeSeed = [...String(context.employee?.name || context.employee?.role || "")].reduce((sum, char) => sum + char.codePointAt(0), 0);
+  return pool[(day + employeeSeed) % pool.length];
+}
+
 function getFitnessReportCoachingRows(model = {}) {
   if (model.aiCoaching) {
     const rows = [
-      ["성과 하이라이트", model.aiCoaching.praise],
-      ["피드백", model.aiCoaching.feedback],
-      ["다음 행동", model.aiCoaching.nextAction],
-      ["매뉴얼", model.aiCoaching.manualReminder],
+      ["운영 노하우", model.aiCoaching.praise],
+      ["실무 팁", model.aiCoaching.feedback],
+      ["다음 근무 실행", model.aiCoaching.nextAction],
+      ["확인 기준", model.aiCoaching.manualReminder],
     ];
-    const evidence = Array.isArray(model.aiCoaching.evidence)
-      ? model.aiCoaching.evidence.map((item) => String(item || "").trim()).filter(Boolean).slice(0, 3)
-      : [];
-    if (evidence.length) rows.push(["당일 근거", evidence.join(" · ")]);
+    const evidence = Array.isArray(model.aiCoaching.evidence) ? model.aiCoaching.evidence.map(item => String(item || "").trim()).filter(Boolean).slice(0, 1) : [];
+    if (evidence.length) rows.push(["적용 근거", evidence.join(" · ")]);
     return rows;
   }
-  const context = model.aiContext || {};
-  const tasks = Array.isArray(context.taskSummary?.items) ? context.taskSummary.items : [];
-  const schedules = Array.isArray(context.scheduleSummary?.items) ? context.scheduleSummary.items : [];
-  const notes = Array.isArray(context.reportNotes) ? context.reportNotes : [];
-  const completedTask = tasks.find((task) => task.status === "완료");
-  const openTask = tasks.find((task) => !["완료", "취소", "위임", "연기"].includes(task.status));
-  const classSchedule = schedules.find((entry) => /PT|수업|트레이닝/i.test(`${entry.type || ""} ${entry.text || ""}`));
-  const recordedSchedule = schedules[0];
-  const taskLabel = (task) => `${task?.writer ? `${task.writer} ` : ""}${task?.text || ""}`.trim();
-  const scheduleLabel = (entry) => `${entry?.writer ? `${entry.writer} ` : ""}${entry?.time ? `${entry.time} ` : ""}${entry?.text || ""}`.trim();
-  const praise = completedTask
-    ? `${taskLabel(completedTask)}를 완료로 기록해 실행 결과가 명확합니다.`
-    : recordedSchedule
-      ? `${scheduleLabel(recordedSchedule)}을 시간별로 남겨 오늘의 실행 흐름을 확인할 수 있습니다.`
-      : notes[0]
-        ? `${notes[0]}을 업무보고에 남겨 현장 기록의 출발점이 마련됐습니다.`
-        : "당일 업무를 기록하면 실행 결과와 다음 행동을 더 정확히 코칭할 수 있습니다.";
-  const feedback = openTask
-    ? `${taskLabel(openTask)}의 완료 기준과 결과를 업무보고에 한 줄로 남겨 다음 인수인계를 선명하게 하세요.`
-    : classSchedule
-      ? `${scheduleLabel(classSchedule)} 후 출석·노쇼·취소 결과를 확정해 수업 집계 오차를 막으세요.`
-      : notes[0]
-        ? `${notes[0]}의 후속 담당자와 기한을 정하면 기록이 실제 운영 조치로 이어집니다.`
-        : "업무 결과와 후속 조치를 함께 기록해 다음 근무자가 바로 이어받을 수 있게 하세요.";
-  const nextAction = classSchedule
-    ? `${scheduleLabel(classSchedule)} 종료 후 수업 상태를 확정하고 고객 후속 연락 필요 여부를 기록하세요.`
-    : openTask
-      ? `${taskLabel(openTask)}의 첫 실행 시간과 완료 근거를 오늘 일정 또는 업무보고에 남기세요.`
-      : recordedSchedule
-        ? `${scheduleLabel(recordedSchedule)}의 결과를 확인한 뒤 다음 행동 한 가지를 업무보고에 추가하세요.`
-        : "다음 근무의 첫 실행업무와 완료 기준을 우선업무에 정해두세요.";
-  const manualLine = model.aiContext?.manual?.guidelines?.[0] || "직급별 매뉴얼의 핵심 기준을 다음 근무 전에 확인해주세요.";
-  const evidence = [
-    completedTask ? `완료: ${taskLabel(completedTask)}` : "",
-    classSchedule ? `수업: ${scheduleLabel(classSchedule)}` : recordedSchedule ? `일정: ${scheduleLabel(recordedSchedule)}` : "",
-    notes[0] ? `기록: ${notes[0]}` : "",
-  ].filter(Boolean).slice(0, 3);
-  return [
-    ["성과 하이라이트", praise],
-    ["피드백", feedback],
-    ["다음 행동", nextAction],
-    ["매뉴얼", manualLine],
-    ...(evidence.length ? [["당일 근거", evidence.join(" · ")]] : []),
-  ];
+  const tip = getFitnessOperationsTip(model.aiContext || { dateKey: model.dateKey, employee: model.employee });
+  return [["운영 노하우", `${tip.topic} · ${tip.title}. ${tip.knowhow}`], ["실무 팁", tip.tip], ["다음 근무 실행", tip.action], ["확인 기준", tip.check]];
 }
 
 const fitnessDagymReportFields = [
@@ -28261,7 +28250,7 @@ function renderFitnessReportTemplate(model = buildFitnessReportModel()) {
           ${getFitnessReportIssueRowsHtml(model)}
         </div>
         ${model.aiEnabled ? `<div>
-          <h3>AI 코칭 · ${model.aiCoaching ? "ChatGPT" : "기본 코칭"}</h3>
+          <h3>운영 매뉴얼·실무 팁${model.aiCoaching ? " · AI 맞춤" : ""}</h3>
           ${getFitnessReportCoachingRows(model).map(([title, text]) => `<p><b>${escapeHtml(title)}</b><span>${escapeHtml(text)}</span></p>`).join("")}
         </div>` : ""}
       </section>
@@ -28285,10 +28274,10 @@ function setFitnessReportAiStatus(stateName = "ready") {
   const status = document.getElementById("fitnessReportAiStatus");
   if (!status) return;
   const labels = {
-    ready: "AI 코칭 자동 반영",
-    cached: "AI 코칭 반영 완료",
-    loading: "AI 코칭 자동 생성 중…",
-    unavailable: "기본 코칭 자동 반영",
+    ready: "운영 팁 자동 반영",
+    cached: "맞춤 운영 팁 반영 완료",
+    loading: "맞춤 운영 팁 생성 중…",
+    unavailable: "직무별 운영 팁 반영",
   };
   status.textContent = labels[stateName] || labels.ready;
   status.dataset.aiState = stateName;

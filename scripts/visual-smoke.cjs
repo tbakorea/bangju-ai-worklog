@@ -7045,12 +7045,34 @@ async function checkRetiredStaffArchiveAndCanonicalKim(browser) {
   }
 }
 
+async function checkFitnessOperationsTips(browser) {
+  for (const viewport of [{ width: 390, height: 844 }, { width: 820, height: 1180 }, { width: 1440, height: 1000 }]) {
+    const { page, errors } = await openPage(browser, viewport);
+    const result = await page.evaluate(() => window.eval(`(() => {
+      const context = { dateKey: "2026-10-19", employee: { name: "신세민", role: "직원", primaryWork: "청소" }, taskSummary: { items: [{ text: "웨이트존 청소, 수건 정리" }] } };
+      const first = getFitnessOperationsTip(context);
+      const same = getFitnessOperationsTip(context);
+      const next = getFitnessOperationsTip({ ...context, dateKey: "2026-10-20" });
+      const rows = getFitnessReportCoachingRows({ aiContext: context });
+      const roles = ["센터장", "인포", "트레이너", "상담", "마케팅", "시설", "청소"];
+      const allRoles = roles.every(role => Boolean(getFitnessOperationsTip({ dateKey: context.dateKey, employee: { role } })?.check));
+      return { stable: first.title === same.title, rotates: first.title !== next.title, relevant: first.topic === "청결", allRoles, labels: rows.map(row => row[0]), complete: rows.every(row => row[1]) };
+    })()`));
+    if (!result.stable || !result.rotates || !result.relevant || !result.allRoles || !result.complete || result.labels.join(",") !== "운영 노하우,실무 팁,다음 근무 실행,확인 기준" || errors.length) {
+      fail("Fitness operations tips regression", JSON.stringify({ viewport, result, errors }));
+    }
+    await page.close();
+  }
+  console.log("Fitness operations tips passed: context, daily rotation, role fallback, report rows");
+}
+
 (async () => {
   const browser = await chromium.launch({
     headless: true,
     ...(localChrome ? { executablePath: localChrome } : {}),
   });
   try {
+    await checkFitnessOperationsTips(browser);
     await checkStaffParticipationManagement(browser);
     await checkRetiredStaffArchiveAndCanonicalKim(browser);
     await checkTabletRepresentativeWorklogChrome(browser);
