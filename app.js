@@ -3647,6 +3647,11 @@ function refreshWeatherForScope(scope = activeView) {
 function getFitnessEmployees() {
   const profile = state.profile || {};
   const merged = new Map();
+  // Staff master exclusions must also suppress static roster slots and old log identities.
+  const directory = getStaffDirectoryEmployees({ includeArchived: true });
+  const excludedRosterKeys = new Set(directory
+    .filter((employee) => !isEmployeeWorklogParticipantOnDate(employee, getActiveDateKey()))
+    .map((employee) => getFitnessEmployeeRosterMergeKey(employee, normalizeEmailValue(employee.email || ""), getFitnessRosterSlotId(employee))));
   const add = (employee, priority = 0) => {
     if (!isVisibleFitnessRosterEmployee(employee)) return;
     const normalized = normalizeFitnessEmployeeForWorklog(employee);
@@ -3655,6 +3660,7 @@ function getFitnessEmployees() {
     if (isRetiredFitnessManagerIdentity(normalized)) return;
     const rosterSlot = getFitnessRosterSlotId(normalized);
     const key = getFitnessEmployeeRosterMergeKey(normalized, emailKey, rosterSlot);
+    if (excludedRosterKeys.has(key)) return;
     const current = merged.get(key);
     if (!current || current.priority <= priority) merged.set(key, { employee: normalized, priority });
   };
@@ -3663,7 +3669,7 @@ function getFitnessEmployees() {
     .map((id) => employees.find((employee) => employee.id === id))
     .forEach((employee) => add(employee, 10));
 
-  getStaffDirectoryEmployees()
+  directory
     .filter(isFitnessEmployeeRecord)
     .forEach((employee) => add(employee, 30));
 
@@ -14189,6 +14195,10 @@ function getVisibleWorklogRowsFingerprint(rows = [], dateKey = getActiveDateKey(
     row?.state?.ownerEmployeeId || "",
     row?.state?.ownerWorklogVersion || "",
     row?.state?.ownerWorklog?.updatedAt || "",
+    row?.state?.profile?.worklogStatus || "",
+    row?.state?.profile?.worklogParticipationMode || "",
+    row?.state?.profile?.worklogExcludedFrom || "",
+    row?.state?.profile?.worklogExcludedUntil || "",
   ].join(":"))
     .sort()
     .join("|")}`;
@@ -23271,7 +23281,7 @@ function getEmployeeMasterRows() {
   });
 }
 
-function getStaffDirectoryEmployees() {
+function getStaffDirectoryEmployees(options = {}) {
   const merged = new Map();
   const add = (employee, priority = 0) => {
     if (!isAssignedWorklogEmployee(employee)) return;
@@ -23316,7 +23326,7 @@ function getStaffDirectoryEmployees() {
 
   return [...merged.values()]
     .map((entry) => entry.employee)
-    .filter((employee) => !isArchivedStaffEmployee(employee) || canViewStaffArchive())
+    .filter((employee) => !isArchivedStaffEmployee(employee) || options.includeArchived || canViewStaffArchive())
     .sort((a, b) => getStaffSortKey(a).localeCompare(getStaffSortKey(b), "ko"));
 }
 

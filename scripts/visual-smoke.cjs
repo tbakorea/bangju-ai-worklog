@@ -7045,6 +7045,32 @@ async function checkRetiredStaffArchiveAndCanonicalKim(browser) {
   }
 }
 
+async function checkRetiredFitnessRosterFallbacks(browser) {
+  for (const viewport of [{ width: 390, height: 844 }, { width: 820, height: 1180 }, { width: 1440, height: 1000 }]) {
+  const { page } = await openPage(browser, viewport);
+  const result = await page.evaluate(() => window.eval(`(() => {
+    authState.user={id:"qa-viewer",email:"viewer@example.com"};
+    state.profile={...defaultProfile,name:"검증직원",email:"viewer@example.com",role:"직원",org:"(주)비욘드컴퍼니",workplace:"비욘드 피트니스",approvalStatus:"approved",accessPreset:"employee",permissions:{}};
+    const ids=["fitness-trainer-1","fitness-info-kimyoungchae"];
+    authState.approvalRows=ids.map((id,i)=>{ const e=employees.find(e=>e.id===id); return {id:"retired-"+i,name:e.name,email:e.email,org:e.org,workplace:"비욘드 피트니스",role:e.role,approval_status:"approved",worklog_status:"resigned",worklog_excluded_from:"2026-01-01"}; });
+    state.employeeLogs[todayKey]={};
+    ids.forEach(id=>{const e=employees.find(e=>e.id===id);state.employeeLogs[todayKey][id]={name:e.name,role:e.role,org:e.org,schedule:[],tasks:[]};});
+    const before=JSON.stringify(state.employeeLogs);
+    const employeeNames=getFitnessEmployees().map(e=>e.name);
+    const centerNames=getFitnessCenterEmployees().map(e=>e.name);
+    const preserved=before===JSON.stringify(state.employeeLogs);
+    state.profile.accessPreset="operations_admin";state.profile.permissions={staffManage:true};
+    const archives=getStaffDirectoryEmployees().filter(isArchivedStaffEmployee).map(e=>e.name);
+    return {employeeNames,centerNames,preserved,archives};
+  })()`));
+  for (const name of ["홍현규","김영채"]) {
+    if(result.employeeNames.includes(name)||result.centerNames.includes(name)||!result.archives.includes(name)||!result.preserved) fail("Retired fitness fallback suppression",JSON.stringify(result));
+  }
+  await page.close();
+  }
+  console.log("Retired fitness roster fallback regression passed");
+}
+
 async function checkFitnessOperationsTips(browser) {
   for (const viewport of [{ width: 390, height: 844 }, { width: 820, height: 1180 }, { width: 1440, height: 1000 }]) {
     const { page, errors } = await openPage(browser, viewport);
@@ -7072,6 +7098,7 @@ async function checkFitnessOperationsTips(browser) {
     ...(localChrome ? { executablePath: localChrome } : {}),
   });
   try {
+    await checkRetiredFitnessRosterFallbacks(browser);
     await checkFitnessOperationsTips(browser);
     await checkStaffParticipationManagement(browser);
     await checkRetiredStaffArchiveAndCanonicalKim(browser);
