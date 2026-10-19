@@ -1803,7 +1803,7 @@ function normalizeState() {
     : "daily";
   state.fitnessLogPage = Number.isFinite(Number(state.fitnessLogPage)) ? Number(state.fitnessLogPage) : 1;
   state.fitnessLogPageId = String(state.fitnessLogPageId || "");
-  state.staffMasterTab = ["staff-list", "staff-archive", "approval", "permission", "manual", "growth", "employee-report"].includes(state.staffMasterTab)
+  state.staffMasterTab = ["staff-list", "participation", "staff-archive", "approval", "permission", "manual", "growth", "employee-report"].includes(state.staffMasterTab)
     ? state.staffMasterTab
     : "staff-list";
   state.staffMasterSite ||= "all";
@@ -2775,6 +2775,10 @@ function isWorklogParticipationDateKey(value = "") {
   return /^\d{4}-\d{2}-\d{2}$/.test(String(value || ""));
 }
 
+function normalizeWorklogParticipationMode(value = "auto") {
+  return ["auto", "included", "excluded"].includes(value) ? value : "auto";
+}
+
 function getEmployeeWorklogParticipation(employee = {}, dateKey = getActiveDateKey()) {
   const status = normalizeWorklogParticipationStatus(employee.worklogStatus || employee.worklog_status);
   const excludedFrom = String(employee.worklogExcludedFrom || employee.worklog_excluded_from || "").trim();
@@ -2782,16 +2786,20 @@ function getEmployeeWorklogParticipation(employee = {}, dateKey = getActiveDateK
   const label = getWorklogParticipationStatusLabel(status);
   const validDate = isWorklogParticipationDateKey(dateKey) ? dateKey : getActiveDateKey();
 
-  if (status === "active") {
+  const mode = normalizeWorklogParticipationMode(employee.worklogParticipationMode || employee.worklog_participation_mode);
+  if (status !== "resigned" && mode === "included") {
+    return { status, label: `${label} · 업무일지 참여`, participating: true, phase: "active", excludedFrom, excludedUntil };
+  }
+  if (status === "active" && mode !== "excluded") {
     return { status, label, participating: true, phase: "active", excludedFrom, excludedUntil };
   }
   if (isWorklogParticipationDateKey(excludedFrom) && validDate < excludedFrom) {
-    return { status, label: `${label} 예정`, participating: true, phase: "scheduled", excludedFrom, excludedUntil };
+    return { status, label: `${mode === "excluded" && status === "active" ? "업무일지 미참여" : label} 예정`, participating: true, phase: "scheduled", excludedFrom, excludedUntil };
   }
   if (status !== "resigned" && isWorklogParticipationDateKey(excludedUntil) && validDate >= excludedUntil) {
     return { status, label: "복귀", participating: true, phase: "returned", excludedFrom, excludedUntil };
   }
-  return { status, label, participating: false, phase: "excluded", excludedFrom, excludedUntil };
+  return { status, label: status === "active" ? "업무일지 미참여" : label, participating: false, phase: "excluded", excludedFrom, excludedUntil };
 }
 
 function isEmployeeWorklogParticipantOnDate(employee = {}, dateKey = getActiveDateKey()) {
@@ -5372,7 +5380,7 @@ function getOverviewGroupEmployeeEntries(group) {
   const seen = new Set();
   return source
     .filter(isAssignedWorklogEmployee)
-    .filter((employee) => !isArchivedStaffEmployee(employee))
+    .filter((employee) => isEmployeeWorklogParticipantOnDate(employee, getActiveDateKey()))
     .filter((employee) => !isRepresentativeWorklogEmployee(employee))
     .map((employee) => ({ employeeId: getEmployeeWorklogId(employee), employee }))
     .filter(({ employeeId }) => {
@@ -12948,7 +12956,10 @@ async function loadRemoteWorklogForActiveDate() {
       markRemoteSaveAcknowledged(key, data.updated_at || new Date().toISOString());
       state.backupSettings = { ...(state.backupSettings || {}), ...(data.state.backupSettings || {}) };
       state.selectedEmployeeId = data.state.selectedEmployeeId || state.selectedEmployeeId;
-      state.profile = { ...state.profile, ...(data.state.profile || {}) };
+      // 과거 업무일지 스냅샷이 관리자가 저장한 현재 근무·참여 상태를 되돌리지 않게 합니다.
+      const remoteProfile = { ...(data.state.profile || {}) };
+      ["worklogStatus", "worklogParticipationMode", "worklogStatusReason", "worklogExcludedFrom", "worklogExcludedUntil", "worklogStatusUpdatedBy", "worklogStatusUpdatedAt"].forEach((key) => delete remoteProfile[key]);
+      state.profile = { ...state.profile, ...remoteProfile };
       state.profile = applyProfilePlacementOverride(state.profile);
       normalizeProfilePlacementForAuth();
       enforceAuthProfileBoundary();
@@ -14390,6 +14401,7 @@ function remoteRowToProfile(row) {
     workHours: row.work_hours,
     weeklyWorkHours: row.weekly_work_hours || {},
     worklogStatus: normalizeWorklogParticipationStatus(row.worklog_status),
+    worklogParticipationMode: normalizeWorklogParticipationMode(row.worklog_participation_mode),
     worklogStatusReason: row.worklog_status_reason || "",
     worklogExcludedFrom: row.worklog_excluded_from || "",
     worklogExcludedUntil: row.worklog_excluded_until || "",
@@ -23351,6 +23363,7 @@ function approvalRowToStaffEmployee(row = {}) {
     workHours: profile.workHours || base?.workHours || defaultProfile.workHours,
     weeklyWorkHours: getEffectiveWeeklyWorkHours({ ...profile, mappedEmployeeId: mappedId }),
     worklogStatus: profile.worklogStatus,
+    worklogParticipationMode: profile.worklogParticipationMode,
     worklogStatusReason: profile.worklogStatusReason,
     worklogExcludedFrom: profile.worklogExcludedFrom,
     worklogExcludedUntil: profile.worklogExcludedUntil,
@@ -23665,6 +23678,7 @@ function getManualTemplateForEmployee(employee) {
 
 const staffMasterTabs = [
   ["staff-list", "직원명부", "소속·직함·권한 원장"],
+  ["participation", "근무·참여", "근무 상태·업무일지 참여 관리"],
   ["staff-archive", "퇴사자 보관", "과거 업무일지·직원 기록"],
   ["approval", "승인요청", "직원등록·정보변경 검토"],
   ["permission", "권한관리", "메뉴·사업장 접근 통제"],
@@ -23675,7 +23689,8 @@ const staffMasterTabs = [
 
 function getVisibleStaffMasterTabs() {
   return staffMasterTabs.filter(([key]) => (
-    (key !== "staff-archive" || canViewStaffArchive())
+    (key !== "participation" || canManageStaffWorklogParticipation())
+    && (key !== "staff-archive" || canViewStaffArchive())
     && (key !== "approval" || canShowApprovalMenu())
     && (key !== "employee-report" || isRepresentativeProfile())
   ));
@@ -23777,13 +23792,13 @@ function renderStaffMasterStats(rows = []) {
   `;
 }
 
-function renderStaffMasterTable(rows = [], archived = false) {
+function renderStaffMasterTable(rows = [], archived = false, participation = false) {
   return `
     <section class="staff-master-panel">
       <header>
         <div>
           <span>Master Data</span>
-          <h3>${archived ? "퇴사자 보관" : "전체 직원 명부"}</h3>
+          <h3>${archived ? "퇴사자 보관" : participation ? "근무 상태·업무일지 참여" : "전체 직원 명부"}</h3>
         </div>
         <p class="staff-master-hint">직원 원장과 과거 기록은 보존하면서, 대표가 업무일지 대상·제외 사유·복귀일을 한 명씩 관리합니다.</p>
       </header>
@@ -23803,7 +23818,7 @@ function renderStaffMasterTable(rows = [], archived = false) {
                   <td><b>${escapeHtml(row.access.role)}</b><span>${escapeHtml(row.access.worklog)} · ${escapeHtml(row.access.labor)}</span></td>
                   <td>${escapeHtml(row.workHours || defaultProfile.workHours)}</td>
                   <td>${escapeHtml(`${row.completed}/${row.tasks.length || 0}`)}</td>
-                  <td>${archived ? `<button type="button" class="staff-detail-open" data-staff-archive-id="${escapeAttr(row.id)}">과거 기록</button>` : `<button type="button" class="staff-detail-open" data-staff-detail-id="${escapeAttr(row.id)}">열기</button>`}</td>
+                  <td>${archived ? `<button type="button" class="staff-detail-open" data-staff-archive-id="${escapeAttr(row.id)}">과거 기록</button> ${canManageStaffWorklogParticipation() ? `<button type="button" class="staff-detail-open" data-staff-participation-id="${escapeAttr(row.id)}">상태 변경</button>` : ""}` : participation ? `<button type="button" class="staff-detail-open" data-staff-participation-id="${escapeAttr(row.id)}">상태·참여 변경</button>` : `<button type="button" class="staff-detail-open" data-staff-detail-id="${escapeAttr(row.id)}">열기</button>`}</td>
                 </tr>
               `).join("")}
             </tbody>
@@ -23958,6 +23973,7 @@ function renderStaffEmployeeReport() {
 
 function renderStaffMasterActivePanel(rows = []) {
   const tab = normalizeStaffMasterTab(state.staffMasterTab);
+  if (tab === "participation") return canManageStaffWorklogParticipation() ? renderStaffMasterTable(rows, false, true) : "";
   if (tab === "staff-archive") return canViewStaffArchive() ? renderStaffMasterTable(rows, true) : "";
   if (tab === "approval") return renderStaffApprovalFocus(rows);
   if (tab === "permission") return renderStaffPermissionFocus(rows);
@@ -24016,7 +24032,7 @@ function canEditStaffProfile(row = {}) {
 }
 
 function canManageStaffWorklogParticipation() {
-  return isRepresentativeProfile();
+  return Boolean(authState.user) && isProfileApproved() && canAccessStaffSection();
 }
 
 function staffDetailEditField(row, key, label, type = "text") {
@@ -24082,16 +24098,21 @@ function staffDetailWorklogParticipationEditor(row = {}) {
   return `
     <section class="staff-detail-section staff-worklog-participation">
       <div class="staff-detail-edit-title">
-        <strong>업무일지 운영 상태 <em>대표 전용</em></strong>
+        <strong>근무 상태·업무일지 참여 <em>대표·직원관리 권한자</em></strong>
         <span>업무일지 명부·동료 목록·대표 관제에서만 제외합니다. 기존 업무기록과 노무 원장은 삭제하지 않습니다.</span>
       </div>
       <div class="staff-worklog-participation-grid">
-        <label>상태
+        <label>근무 상태
           <select data-staff-edit-field="worklogStatus">
-            ${worklogParticipationStatusOptions.map(([key, label]) => `<option value="${escapeAttr(key)}" ${key === status ? "selected" : ""}>${escapeHtml(label)}</option>`).join("")}
+            ${worklogParticipationStatusOptions.map(([key, label]) => `<option value="${escapeAttr(key)}" ${key === status ? "selected" : ""}>${escapeHtml(key === "active" ? "근무" : label)}</option>`).join("")}
           </select>
         </label>
-        <label>제외 시작일
+        <label>업무일지 참여
+          <select data-staff-edit-field="worklogParticipationMode">
+            ${[["auto", "상태에 따라 자동"], ["included", "참여"], ["excluded", "미참여"]].map(([key, label]) => `<option value="${key}" ${key === normalizeWorklogParticipationMode(row.worklogParticipationMode) ? "selected" : ""}>${label}</option>`).join("")}
+          </select>
+        </label>
+        <label>상태 적용 시작일
           <input type="date" data-staff-edit-field="worklogExcludedFrom" value="${escapeAttr(excludedFrom)}" />
         </label>
         <label>복귀 예정일
@@ -24101,7 +24122,11 @@ function staffDetailWorklogParticipationEditor(row = {}) {
           <textarea data-staff-edit-field="worklogStatusReason" rows="3" placeholder="예: 개인 사유로 2026.09.30까지 휴직">${escapeHtml(row.worklogStatusReason || row.worklog_status_reason || "")}</textarea>
         </label>
       </div>
-      <p>현재 상태: <b>${escapeHtml(participation.label)}</b> · 휴직·병가·기타 제외는 복귀 예정일부터 자동으로 업무일지 대상에 복귀합니다. 퇴사는 대표가 직접 대상 복귀로 변경할 때까지 유지됩니다.</p>
+      <p>현재 상태: <b>${escapeHtml(participation.label)}</b> · 휴직·병가·기타 제외는 복귀 예정일부터 자동으로 업무일지 대상에 복귀합니다. 퇴사는 참여 선택과 관계없이 보관 처리되며, 근무로 변경해야 복귀합니다. 참여를 직접 선택하면 휴직·병가 중에도 업무일지를 사용할 수 있습니다.</p>
+      <div class="staff-detail-edit-actions">
+        <button type="button" data-staff-participation-save="${escapeAttr(row.id)}">근무·참여 저장</button>
+        <span id="staffParticipationSaveStatus" role="status" aria-live="polite"></span>
+      </div>
     </section>
   `;
 }
@@ -24253,6 +24278,7 @@ function profileRowToEmployeeOverride(row = {}) {
     assignedMissionUpdatedAt: profile.assignedMissionUpdatedAt || "",
     assignedMissionUpdatedBy: profile.assignedMissionUpdatedBy || "",
     worklogStatus: profile.worklogStatus || "active",
+    worklogParticipationMode: normalizeWorklogParticipationMode(profile.worklogParticipationMode),
     worklogStatusReason: profile.worklogStatusReason || "",
     worklogExcludedFrom: profile.worklogExcludedFrom || "",
     worklogExcludedUntil: profile.worklogExcludedUntil || "",
@@ -24300,6 +24326,56 @@ function setStaffDetailSaveStatus(message, tone = "idle") {
   node.textContent = message;
 }
 
+async function saveStaffWorklogParticipation(employeeId) {
+  if (!canManageStaffWorklogParticipation()) return;
+  const row = getEmployeeMasterRows().find((item) => item.id === employeeId);
+  const statusNode = document.getElementById("staffParticipationSaveStatus");
+  const fail = (message) => { if (statusNode) statusNode.textContent = message; };
+  if (!row?.sourceProfileId || !supabaseClient || !authState.user) {
+    fail("가입된 직원 계정과 연결을 확인해주세요.");
+    return;
+  }
+  const fields = collectStaffDetailEditFields();
+  const status = normalizeWorklogParticipationStatus(fields.worklogStatus);
+  const mode = status === "resigned" ? "auto" : normalizeWorklogParticipationMode(fields.worklogParticipationMode);
+  const needsPeriod = status !== "active" || mode === "excluded";
+  const from = needsPeriod ? fields.worklogExcludedFrom : "";
+  const until = status === "resigned" ? "" : needsPeriod ? fields.worklogExcludedUntil : "";
+  const reason = needsPeriod ? fields.worklogStatusReason : "";
+  if (needsPeriod && (!isWorklogParticipationDateKey(from) || !String(reason || "").trim())) {
+    fail("상태 적용 시작일과 사유를 입력해주세요."); return;
+  }
+  if (until && (!isWorklogParticipationDateKey(until) || until < from)) {
+    fail("복귀 예정일은 상태 적용 시작일보다 빠를 수 없습니다."); return;
+  }
+  const button = document.querySelector("[data-staff-participation-save]");
+  if (button) button.disabled = true;
+  fail("저장 중...");
+  try {
+    const { data, error } = await supabaseClient.rpc("set_staff_worklog_participation", {
+      target_profile_id: row.sourceProfileId, target_status: status, target_mode: mode,
+      effective_from: from || null, effective_until: until || null, change_reason: reason || "",
+    });
+    if (error || !data?.id) throw error || new Error("변경 결과를 확인하지 못했습니다.");
+    authState.approvalRows = (authState.approvalRows || []).map((item) => item.id === data.id ? data : item);
+    applyApprovedProfileRowLocally(data, employeeId);
+    saveState({ fastSave: true });
+    renderStaffMaster();
+    openStaffDetail(`profile-${data.id}`);
+    const savedStatus = document.getElementById("staffParticipationSaveStatus");
+    if (savedStatus) savedStatus.textContent = "근무 상태와 업무일지 참여가 저장되었습니다.";
+  } catch (error) {
+    fail("저장하지 못했습니다. 연결 또는 직원관리 권한·관리 기능 업데이트를 확인해주세요.");
+  } finally {
+    if (button?.isConnected) button.disabled = false;
+  }
+}
+
+document.addEventListener("click", (event) => {
+  const button = event.target.closest("[data-staff-participation-save]");
+  if (button) { event.preventDefault(); void saveStaffWorklogParticipation(button.dataset.staffParticipationSave); }
+});
+
 async function saveStaffProfileEdits(employeeId) {
   const row = getEmployeeMasterRows().find((item) => item.id === employeeId);
   if (!row || !canEditStaffProfile(row)) return;
@@ -24312,37 +24388,7 @@ async function saveStaffProfileEdits(employeeId) {
     setStaffDetailSaveStatus("소속은 비울 수 없습니다.", "error");
     return;
   }
-  if (Object.prototype.hasOwnProperty.call(fields, "worklogStatus")) {
-    if (!canManageStaffWorklogParticipation()) {
-      delete fields.worklogStatus;
-      delete fields.worklogStatusReason;
-      delete fields.worklogExcludedFrom;
-      delete fields.worklogExcludedUntil;
-    } else {
-      fields.worklogStatus = normalizeWorklogParticipationStatus(fields.worklogStatus);
-      if (fields.worklogStatus === "active") {
-        fields.worklogStatusReason = "";
-        fields.worklogExcludedFrom = "";
-        fields.worklogExcludedUntil = "";
-      } else {
-        if (!isWorklogParticipationDateKey(fields.worklogExcludedFrom)) {
-          setStaffDetailSaveStatus("제외 시작일을 선택해주세요.", "error");
-          return;
-        }
-        if (!String(fields.worklogStatusReason || "").trim()) {
-          setStaffDetailSaveStatus("업무일지에서 제외하는 사유를 입력해주세요.", "error");
-          return;
-        }
-        if (
-          isWorklogParticipationDateKey(fields.worklogExcludedUntil)
-          && fields.worklogExcludedUntil < fields.worklogExcludedFrom
-        ) {
-          setStaffDetailSaveStatus("복귀 예정일은 제외 시작일보다 빠를 수 없습니다.", "error");
-          return;
-        }
-      }
-    }
-  }
+  ["worklogStatus", "worklogParticipationMode", "worklogStatusReason", "worklogExcludedFrom", "worklogExcludedUntil"].forEach((key) => delete fields[key]);
   setStaffDetailSaveStatus("저장 중...", "saving");
   if (row.sourceProfileId && supabaseClient && authState.user) {
     const sourceRow = (authState.approvalRows || []).find((item) => item.id === row.sourceProfileId) || {};
@@ -24455,7 +24501,7 @@ function renderStaffDetailModal(row) {
         ${canManageParticipation ? staffDetailWorklogParticipationEditor(row) : `
           <section class="staff-detail-section">
             <strong>업무일지 운영 상태</strong>
-            <p>${escapeHtml(row.worklogParticipation?.label || "업무일지 대상")} · 업무일지 대상 관리는 대표 계정에서만 변경할 수 있습니다.</p>
+            <p>${escapeHtml(row.worklogParticipation?.label || "업무일지 대상")} · 근무·참여 관리는 대표 또는 직원관리 권한자가 변경할 수 있습니다.</p>
           </section>
         `}
         <section class="staff-detail-section staff-detail-edit">
@@ -29798,6 +29844,12 @@ document.getElementById("staffMasterGrid")?.addEventListener("click", (event) =>
   const permissionButton = event.target.closest("[data-staff-permission-open]");
   if (permissionButton) {
     openStaffPermissionModal(permissionButton.dataset.staffPermissionOpen);
+    return;
+  }
+  const participationButton = event.target.closest("[data-staff-participation-id]");
+  if (participationButton && canManageStaffWorklogParticipation()) {
+    openStaffDetail(participationButton.dataset.staffParticipationId);
+    document.querySelector(".staff-worklog-participation")?.scrollIntoView({ block: "start" });
     return;
   }
   const archiveButton = event.target.closest("[data-staff-archive-id]");

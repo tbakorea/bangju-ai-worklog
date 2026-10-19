@@ -6939,6 +6939,66 @@ async function checkFitnessPaidPtCanonicalLedger(browser) {
   await page.close();
 }
 
+async function checkStaffParticipationManagement(browser) {
+  for (const viewport of [{ width: 390, height: 844 }, { width: 820, height: 1180 }, { width: 1440, height: 1000 }]) {
+    const page = await browser.newPage({ viewport });
+    await page.route(/https:\/\/cdn\.jsdelivr\.net\/npm\/@supabase\/supabase-js@2(?:\.[^/]*)?\/dist\/umd\/supabase\.js/, async route => route.fulfill({ contentType: "application/javascript", body: `
+      window.supabase = { createClient() { return {
+        auth: { getSession: async()=>({data:{session:null}}), onAuthStateChange:()=>({data:{subscription:{unsubscribe(){}}}}) },
+        from() { return { select(){return this},eq(){return this},in(){return this},order(){return this},limit(){return this},maybeSingle:async()=>({data:null}),then(resolve,reject){return Promise.resolve({data:[],error:null}).then(resolve,reject)} }; },
+        async rpc(name, args) {
+          if(name !== 'set_staff_worklog_participation') return {data:[],error:null};
+          window.__participationCalls = (window.__participationCalls || 0)+1;
+          if(window.__rejectParticipation) return {data:null,error:{message:'denied'}};
+          window.__participationRow = { ...window.__participationRow, worklog_status:args.target_status, worklog_participation_mode:args.target_mode, worklog_excluded_from:args.effective_from, worklog_excluded_until:args.effective_until, worklog_status_reason:args.change_reason };
+          return {data:window.__participationRow,error:null};
+        }
+      }; } };
+    ` }));
+    await page.goto(target, { waitUntil: "domcontentloaded" });
+    await page.evaluate(() => window.eval(`(() => {
+      authState.user={id:"qa-manager",email:"manager@example.com"};
+      state.profile={...defaultProfile,name:"관리자",role:"직원",email:"manager@example.com",org:"(주)방주",approvalStatus:"approved",accessPreset:"operations_admin",permissions:{staffManage:true}};
+      window.__participationRow={id:"qa-member",name:"상태검증",email:"member@example.com",role:"직원",org:"(주)방주",workplace:"재무",approval_status:"approved",worklog_status:"active"};
+      authState.approvalRows=[window.__participationRow];
+      authState.approvalRowsLoaded=true;
+      state.staffMasterTab="participation"; state.staffMasterSite="all";
+      switchView("staff"); renderStaffMaster();
+    })()`));
+    await page.click('[data-staff-participation-id="profile-qa-member"]');
+    await page.selectOption('[data-staff-edit-field="worklogStatus"]', "sick_leave");
+    await page.selectOption('[data-staff-edit-field="worklogParticipationMode"]', "included");
+    await page.fill('[data-staff-edit-field="worklogExcludedFrom"]', "2026-10-01");
+    await page.fill('[data-staff-edit-field="worklogStatusReason"]', "병가 중 업무일지 참여 요청");
+    await page.click('[data-staff-participation-save]');
+    await page.waitForFunction(() => document.getElementById('staffParticipationSaveStatus')?.textContent.includes('저장되었습니다'));
+    const saved = await page.evaluate(() => window.eval(`(() => {
+      const employee=getStaffDirectoryEmployees().find(e=>e.sourceProfileId==='qa-member');
+      const participation=getEmployeeWorklogParticipation(employee,todayKey);
+      return {status:employee.worklogStatus,mode:employee.worklogParticipationMode,participating:participation.participating,overflow:document.documentElement.scrollWidth-window.innerWidth};
+    })()`));
+    if(saved.status!=='sick_leave'||saved.mode!=='included'||!saved.participating||saved.overflow>2) fail('manager participation save',JSON.stringify({viewport,...saved}));
+    // A failed server update must not change the locally displayed status.
+    await page.evaluate(() => { window.__rejectParticipation=true; });
+    await page.selectOption('[data-staff-edit-field="worklogParticipationMode"]', "excluded");
+    await page.click('[data-staff-participation-save]');
+    await page.waitForFunction(() => document.getElementById('staffParticipationSaveStatus')?.textContent.includes('저장하지 못했습니다'));
+    const permissions=await page.evaluate(()=>window.eval(`(() => {
+      const mode=getStaffDirectoryEmployees().find(e=>e.sourceProfileId==='qa-member').worklogParticipationMode;
+      const manualExcluded=!getEmployeeWorklogParticipation({worklogStatus:'active',worklogParticipationMode:'excluded'},todayKey).participating;
+      const resignedExcluded=!getEmployeeWorklogParticipation({worklogStatus:'resigned',worklogParticipationMode:'included'},todayKey).participating;
+      state.profile={...state.profile,accessPreset:'employee',permissions:{}};
+      const employeeDenied=!canManageStaffWorklogParticipation()&&!getVisibleStaffMasterTabs().some(([key])=>key==='participation');
+      state.profile={...state.profile,accessPreset:'operations_admin',permissions:{staffManage:false}};
+      const revokedDenied=!canManageStaffWorklogParticipation();
+      state.profile={...state.profile,role:'대표',email:'j3010@ymail.com'};authState.user.email='j3010@ymail.com';
+      return {mode,manualExcluded,resignedExcluded,employeeDenied,revokedDenied,representativeAllowed:canManageStaffWorklogParticipation()};
+    })()`));
+    if(permissions.mode!=='included'||!permissions.manualExcluded||!permissions.resignedExcluded||!permissions.employeeDenied||!permissions.revokedDenied||!permissions.representativeAllowed) fail('participation permissions',JSON.stringify(permissions));
+    await page.close();
+  }
+}
+
 async function checkRetiredStaffArchiveAndCanonicalKim(browser) {
   for (const viewport of [{ width: 390, height: 844 }, { width: 820, height: 1180 }, { width: 1440, height: 1000 }]) {
     const { page, errors } = await openPage(browser, viewport);
@@ -6991,6 +7051,7 @@ async function checkRetiredStaffArchiveAndCanonicalKim(browser) {
     ...(localChrome ? { executablePath: localChrome } : {}),
   });
   try {
+    await checkStaffParticipationManagement(browser);
     await checkRetiredStaffArchiveAndCanonicalKim(browser);
     await checkTabletRepresentativeWorklogChrome(browser);
     await checkDesktopEmployeeWorklog(browser);
