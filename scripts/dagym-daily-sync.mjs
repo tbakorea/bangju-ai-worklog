@@ -110,7 +110,7 @@ async function applyDateFilter(page, period = "daily") {
     await page.waitForTimeout(1400);
   }
   const dotted = value => value.replaceAll("-", ".");
-  const expected = period === "daily" ? dotted(targetDate) : `${dotted(startDate)} ~ ${dotted(targetDate)}`;
+  const expected = period === "daily" || startDate === targetDate ? dotted(targetDate) : `${dotted(startDate)} ~ ${dotted(targetDate)}`;
   const expectedPattern = new RegExp(`^${expected.replaceAll(".", "\\.").replace(" ~ ", "\\s*~\\s*")}$`);
   await page.getByText(expectedPattern).first().waitFor({ state: "attached", timeout: 30000 });
   await page.waitForTimeout(1200);

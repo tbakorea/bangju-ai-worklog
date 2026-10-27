@@ -128,13 +128,13 @@ async function waitForReady(page) {
   await page.waitForLoadState("domcontentloaded", { timeout: 60000 }).catch(() => {});
   await page.waitForFunction(() => {
     const text = document.body?.innerText || "";
-    return document.querySelector('input[type="password"]') || /시간표|로그인|회원가입/.test(text);
+    return document.querySelector('input[type="password"]') || /시간표|로그인|회원가입|비욘드\s*피트니스/.test(text);
   }, null, { timeout: 30000 });
   const bodyText = normalizeText(await page.locator("body").innerText({ timeout: 15000 }).catch(() => ""));
   if (quality.isAuthSource(page.url()) || /로그인\s*해주세요/.test(bodyText) || await page.locator('input[type="password"]').count()) {
     throw new Error("다짐 전용 브라우저 로그인이 필요합니다.");
   }
-  if (!/시간표/.test(bodyText)) throw new Error(`다짐 시간표 화면 확인 필요 (${new URL(page.url()).pathname}).`);
+  if (new URL(page.url()).pathname !== "/schedule/calendar") throw new Error("다짐 시간표 주소 확인이 필요합니다.");
   return bodyText;
 }
 
