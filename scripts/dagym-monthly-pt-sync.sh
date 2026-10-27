@@ -25,13 +25,8 @@ KST_CLOCK="$(TZ=Asia/Seoul date +%H%M)"
 TARGET_DATE="${DAGYM_DATE:-$(TZ=Asia/Seoul date -v-1d +%F)}"
 
 cleanup() {
-  if [ -n "$STARTED_BROWSER_PID" ] && kill -0 "$STARTED_BROWSER_PID" >/dev/null 2>&1; then
-    kill "$STARTED_BROWSER_PID" >/dev/null 2>&1 || true
-  fi
-  if [ -n "$STARTED_BROWSER_PID" ] && [ -f "$BROWSER_PID_FILE" ] \
-    && [ "$(tr -d '[:space:]' < "$BROWSER_PID_FILE")" = "$STARTED_BROWSER_PID" ]; then
-    rm -f "$BROWSER_PID_FILE"
-  fi
+  # Keep the dedicated browser alive: closing it discarded session-only logins.
+  # Only the collector connections and temporary lock end after each run.
   if [ "$(cat "$SYNC_LOCK_DIR/pid" 2>/dev/null || true)" = "$$" ]; then
     rm -f "$SYNC_LOCK_DIR/pid"
     rmdir "$SYNC_LOCK_DIR" >/dev/null 2>&1 || true
@@ -149,6 +144,7 @@ ensure_dagym_browser() {
     --remote-debugging-port="$DEBUG_PORT" \
     --no-first-run \
     --no-default-browser-check \
+    --restore-last-session \
     --user-data-dir="$USER_DATA_DIR" \
     "https://www.dagym-manager.com/dashboard/attendance?gymId=${DAGYM_GYM_ID:-2387f907-0810-49b9-9db2-7ceb7861e076}" \
     >/tmp/bangju-dagym-monthly-browser.log 2>&1 &

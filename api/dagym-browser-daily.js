@@ -92,6 +92,8 @@ function normalizeDomains(input = {}) {
     const source = input?.[key] && typeof input[key] === "object" ? input[key] : {};
     return [key, {
       ok: source.ok === true,
+      authenticated: source.authenticated === true,
+      rangeVerified: source.rangeVerified === true,
       rows: Math.max(0, Number(source.rows || 0)),
       source: String(source.source || "").slice(0, 120),
       error: String(source.error || "").slice(0, 240),

@@ -64,9 +64,13 @@ async function importPlaywright() {
 
 async function waitForReady(page) {
   await page.waitForLoadState("domcontentloaded", { timeout: 60000 }).catch(() => {});
-  await page.waitForTimeout(1800);
+  await page.waitForFunction(() => {
+    const text = document.body?.innerText || "";
+    return document.querySelector('input[type="password"]') || /비욘드\s*피트니스|로그인|회원가입/.test(text);
+  }, null, { timeout: 30000 });
+  await page.waitForTimeout(1200);
   const bodyText = normalizeText(await page.locator("body").innerText({ timeout: 15000 }).catch(() => ""));
-  if (isAuthSource(page.url()) || await page.locator('input[type="password"]').count()) throw new Error("다짐 전용 브라우저 로그인이 필요합니다.");
+  if (isAuthSource(page.url()) || /로그인\s*해주세요/.test(bodyText) || await page.locator('input[type="password"]').count()) throw new Error("다짐 전용 브라우저 로그인이 필요합니다.");
   return bodyText;
 }
 
@@ -154,7 +158,7 @@ async function captureDomain(page, key, url) {
       const text = normalizeText(await page.locator("body").innerText());
       const rows = await page.locator("table tbody tr").count().catch(() => 0);
       const metricHints = await extractDomainMetricHints(page, key);
-      return { ok: true, rows, source: new URL(page.url()).pathname.slice(0, 120), error: "", text, metricHints, period, capturedAt: new Date().toISOString() };
+      return { ok: true, authenticated: true, rangeVerified: period !== "point-in-time", rows, source: new URL(page.url()).pathname.slice(0, 120), error: "", text, metricHints, period, capturedAt: new Date().toISOString() };
     } catch (error) {
       lastError = error;
       await page.waitForTimeout(1200 * attempt);
@@ -183,6 +187,8 @@ async function captureMembersViaMenu(page, attendanceUrl) {
       const rows = await page.locator("table tbody tr").count().catch(() => 0);
       return {
         ok: true,
+        authenticated: true,
+        rangeVerified: false,
         rows,
         source: new URL(page.url()).pathname.slice(0, 120),
         error: "",
@@ -277,6 +283,8 @@ async function main() {
   const metrics = collectMetrics(captures);
   const domains = Object.fromEntries(Object.entries(captures).map(([key, capture]) => [key, {
     ok: capture.ok,
+    authenticated: capture.authenticated === true,
+    rangeVerified: capture.rangeVerified === true,
     rows: capture.rows,
     source: capture.source,
     error: capture.error,

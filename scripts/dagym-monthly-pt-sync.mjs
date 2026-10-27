@@ -126,12 +126,15 @@ export function calendarItemToEvents(item = {}, targetMonthKey = monthKey) {
 
 async function waitForReady(page) {
   await page.waitForLoadState("domcontentloaded", { timeout: 60000 }).catch(() => {});
-  await page.waitForTimeout(1200);
+  await page.waitForFunction(() => {
+    const text = document.body?.innerText || "";
+    return document.querySelector('input[type="password"]') || /시간표|로그인|회원가입/.test(text);
+  }, null, { timeout: 30000 });
   const bodyText = normalizeText(await page.locator("body").innerText({ timeout: 15000 }).catch(() => ""));
-  if (quality.isAuthSource(page.url()) || await page.locator('input[type="password"]').count()) {
+  if (quality.isAuthSource(page.url()) || /로그인\s*해주세요/.test(bodyText) || await page.locator('input[type="password"]').count()) {
     throw new Error("다짐 전용 브라우저 로그인이 필요합니다.");
   }
-  if (!/시간표/.test(bodyText)) throw new Error("다짐 시간표 화면을 불러오지 못했습니다.");
+  if (!/시간표/.test(bodyText)) throw new Error(`다짐 시간표 화면 확인 필요 (${new URL(page.url()).pathname}).`);
   return bodyText;
 }
 

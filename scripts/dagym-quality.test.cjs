@@ -3,7 +3,7 @@ const assert = require('node:assert/strict');
 const { isAuthSource, validateDailySnapshot } = require('./dagym-quality.cjs');
 const good = () => ({ metrics: { visits: 91, sales: 28871100 }, domains: Object.fromEntries([
   ['attendance', '/dashboard/attendance', 'daily'], ['sales', '/sales/list', 'month-to-date'], ['members', '/member/list', 'point-in-time']
-].map(([key, source, period]) => [key, { ok: true, source, period, capturedAt: '2026-10-28T00:00:00Z' }])) });
+].map(([key, source, period]) => [key, { ok: true, authenticated: true, rangeVerified: true, source, period, capturedAt: '2026-10-28T00:00:00Z' }])) });
 test('auth pages cannot be stored as zero-valued source data', () => {
   for (const source of ['/account/login', '/account/sign-up', 'https://www.dagym-manager.com/account/login?next=/sales/list']) {
     assert.equal(isAuthSource(source), true);
@@ -17,4 +17,6 @@ test('verified zero is distinct from missing data; periods and all core sources 
   delete data.metrics.sales; assert.throws(() => validateDailySnapshot(data));
   const wrong = good(); wrong.domains.sales.period = 'daily'; assert.throws(() => validateDailySnapshot(wrong));
   const missing = good(); missing.domains.members.ok = false; assert.throws(() => validateDailySnapshot(missing));
+  const legacy = good(); delete legacy.domains.attendance.authenticated; assert.throws(() => validateDailySnapshot(legacy));
+  const unchecked = good(); unchecked.domains.sales.rangeVerified = false; assert.throws(() => validateDailySnapshot(unchecked));
 });

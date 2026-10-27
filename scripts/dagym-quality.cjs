@@ -8,7 +8,7 @@ function validateDailySnapshot(snapshot = {}) {
   const expected = { attendance: ["/dashboard/attendance", "daily"], sales: ["/sales/list", "month-to-date"], members: ["/member/list", "point-in-time"] };
   for (const [key, [path, period]] of Object.entries(expected)) {
     const domain = snapshot.domains?.[key];
-    if (!domain?.ok || isAuthSource(domain.source) || domain.source !== path || domain.period !== period || !Number.isFinite(Date.parse(domain.capturedAt))) {
+    if (!domain?.ok || domain.authenticated !== true || (period !== "point-in-time" && domain.rangeVerified !== true) || isAuthSource(domain.source) || domain.source !== path || domain.period !== period || !Number.isFinite(Date.parse(domain.capturedAt))) {
       throw new Error(`다짐 ${key} 자료 검증 실패: 로그인·조회 화면을 확인해주세요.`);
     }
   }

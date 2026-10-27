@@ -61,6 +61,6 @@ launchctl bootout "$DOMAIN/$LEGACY_LABEL" >/dev/null 2>&1 || true
 launchctl bootout "$DOMAIN/$LABEL" >/dev/null 2>&1 || true
 # Legacy jobs used an empty lock directory. Remove only that empty stale lock.
 rmdir "$RUNTIME_DIR/work/dagym-sync/run.lock" >/dev/null 2>&1 || true
-launchctl bootstrap "$DOMAIN" "$TARGET"
 launchctl enable "$DOMAIN/$LABEL"
+launchctl bootstrap "$DOMAIN" "$TARGET"
 echo "설치 완료: 매일 01:05~03:35 수집, 실패 시 04:05·07:05 보완 실행 (완료 날짜 중복 방지)"
