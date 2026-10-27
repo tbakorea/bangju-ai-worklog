@@ -42,7 +42,8 @@ function withCaptureRange(value = "", period = "daily") {
   const url = new URL(expandUrl(value), baseUrl);
   const startDate = period === "month-to-date" ? getMonthStartDateKey() : targetDate;
   if (!url.searchParams.has("gymId")) url.searchParams.set("gymId", gymId);
-  url.searchParams.set("date", targetDate);
+  if (period === "daily") url.searchParams.set("date", targetDate);
+  else url.searchParams.delete("date");
   url.searchParams.set("startDate", `${startDate}T00:00:00`);
   url.searchParams.set("endDate", `${targetDate}T23:59:59`);
   return url.toString();
@@ -90,6 +91,19 @@ async function applyDateFilter(page, period = "daily") {
     if (!label) throw new Error("과거 출석 조회는 날짜 선택 지원이 필요합니다. 다른 날짜로 대체하지 않습니다.");
     await page.getByText(label, { exact: true }).first().evaluate(element => element.click());
   }
+  if (!count && period === "month-to-date") {
+    // The portal may reset URL-only ranges on mount. Use its actual date picker.
+    const label = targetDate === kstDateKey() ? "오늘" : targetDate === previousKstDateKey() ? "어제" : "";
+    if (!label) throw new Error("과거 매출 조회 날짜를 화면에서 확인해야 합니다.");
+    await page.getByText(label, { exact: true }).first().evaluate(element => element.click());
+    await page.waitForTimeout(1200);
+    await page.getByText(/^\d{4}\.\d{2}\.\d{2}(?:\s*~\s*\d{4}\.\d{2}\.\d{2})?$/).first().evaluate(element => element.click());
+    for (const date of [startDate, targetDate]) {
+      const ariaDate = new Date(`${date}T12:00:00Z`).toDateString();
+      await page.locator(`[role="gridcell"][aria-disabled="false"][aria-label="${ariaDate}"]`).first().evaluate(element => element.click());
+    }
+    await page.getByRole("button", { name: "적용", exact: true }).evaluate(element => element.click());
+  }
   if (count) {
     const button = page.getByRole("button", { name: /조회|검색|적용|확인/ }).first();
     if (await button.count().catch(() => 0)) await button.click().catch(() => {});
@@ -98,7 +112,7 @@ async function applyDateFilter(page, period = "daily") {
   const dotted = value => value.replaceAll("-", ".");
   const expected = period === "daily" ? dotted(targetDate) : `${dotted(startDate)} ~ ${dotted(targetDate)}`;
   const expectedPattern = new RegExp(`^${expected.replaceAll(".", "\\.").replace(" ~ ", "\\s*~\\s*")}$`);
-  await page.getByText(expectedPattern).first().waitFor({ state: "attached", timeout: 10000 });
+  await page.getByText(expectedPattern).first().waitFor({ state: "attached", timeout: 30000 });
   await page.waitForTimeout(1200);
 }
 
@@ -164,7 +178,7 @@ async function captureDomain(page, key, url) {
       await page.waitForTimeout(1200 * attempt);
     }
   }
-  return { ok: false, rows: 0, source: "", error: String(lastError?.message || "화면 수집 실패").slice(0, 240), text: "", period, capturedAt: "" };
+  return { ok: false, rows: 0, source: new URL(page.url()).pathname.slice(0, 120), error: String(lastError?.message || "화면 수집 실패").slice(0, 240), text: "", period, capturedAt: "" };
 }
 
 async function captureMembersViaMenu(page, attendanceUrl) {
@@ -265,6 +279,7 @@ async function main() {
   const context = browser.contexts()[0];
   if (!context) throw new Error("다짐 전용 브라우저 컨텍스트를 찾지 못했습니다.");
   const page = context.pages()[0] || await context.newPage();
+  await page.bringToFront();
   const attendanceStart = process.env.DAGYM_ATTENDANCE_URL || `${baseUrl}/dashboard/attendance?gymId={gymId}`;
   await page.goto(withCaptureRange(attendanceStart, "daily"), { waitUntil: "domcontentloaded", timeout: 60000 });
   await waitForReady(page);
