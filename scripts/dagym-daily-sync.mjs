@@ -1,5 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
+import quality from "./dagym-quality.cjs";
+const { isAuthSource, validateDailySnapshot } = quality;
 
 const root = process.cwd();
 const gymId = process.env.DAGYM_GYM_ID || "2387f907-0810-49b9-9db2-7ceb7861e076";
@@ -40,9 +42,9 @@ function withCaptureRange(value = "", period = "daily") {
   const url = new URL(expandUrl(value), baseUrl);
   const startDate = period === "month-to-date" ? getMonthStartDateKey() : targetDate;
   if (!url.searchParams.has("gymId")) url.searchParams.set("gymId", gymId);
-  if (!url.searchParams.has("date")) url.searchParams.set("date", targetDate);
-  if (!url.searchParams.has("startDate")) url.searchParams.set("startDate", `${startDate}T00:00:00`);
-  if (!url.searchParams.has("endDate")) url.searchParams.set("endDate", `${targetDate}T23:59:59`);
+  url.searchParams.set("date", targetDate);
+  url.searchParams.set("startDate", `${startDate}T00:00:00`);
+  url.searchParams.set("endDate", `${targetDate}T23:59:59`);
   return url.toString();
 }
 
@@ -64,11 +66,12 @@ async function waitForReady(page) {
   await page.waitForLoadState("domcontentloaded", { timeout: 60000 }).catch(() => {});
   await page.waitForTimeout(1800);
   const bodyText = normalizeText(await page.locator("body").innerText({ timeout: 15000 }).catch(() => ""));
-  if (/로그인|비밀번호/.test(bodyText) && !/회원|출석|매출|수업|비욘드\s*피트니스/.test(bodyText)) throw new Error("다짐 전용 브라우저 로그인이 필요합니다.");
+  if (isAuthSource(page.url()) || await page.locator('input[type="password"]').count()) throw new Error("다짐 전용 브라우저 로그인이 필요합니다.");
   return bodyText;
 }
 
 async function applyDateFilter(page, period = "daily") {
+  if (period === "point-in-time") return;
   const inputs = page.locator('input[type="date"]');
   const count = await inputs.count().catch(() => 0);
   const startDate = period === "month-to-date" ? getMonthStartDateKey() : targetDate;
@@ -76,11 +79,23 @@ async function applyDateFilter(page, period = "daily") {
     const value = count > 1 && index === 0 ? startDate : targetDate;
     await inputs.nth(index).fill(value).catch(() => {});
   }
+  if (!count && period === "daily") {
+    const current = kstDateKey();
+    const previous = previousKstDateKey();
+    const label = targetDate === current ? "오늘" : targetDate === previous ? "어제" : "";
+    if (!label) throw new Error("과거 출석 조회는 날짜 선택 지원이 필요합니다. 다른 날짜로 대체하지 않습니다.");
+    await page.getByText(label, { exact: true }).first().evaluate(element => element.click());
+  }
   if (count) {
     const button = page.getByRole("button", { name: /조회|검색|적용|확인/ }).first();
     if (await button.count().catch(() => 0)) await button.click().catch(() => {});
     await page.waitForTimeout(1400);
   }
+  const dotted = value => value.replaceAll("-", ".");
+  const expected = period === "daily" ? dotted(targetDate) : `${dotted(startDate)} ~ ${dotted(targetDate)}`;
+  const expectedPattern = new RegExp(`^${expected.replaceAll(".", "\\.").replace(" ~ ", "\\s*~\\s*")}$`);
+  await page.getByText(expectedPattern).first().waitFor({ state: "attached", timeout: 10000 });
+  await page.waitForTimeout(1200);
 }
 
 async function discoverLinks(page) {
@@ -212,7 +227,7 @@ function collectMetrics(captures) {
     renewals: firstNumber(membership, [/(?:재등록|갱신|연장)\s*[:：]?\s*([\d,]+)\s*(?:명|건)?/i]),
     expiring: firstNumber(members, [/(?:만료\s*예정|만료\s*회원|만료\s*대상)\s*[:：]?\s*([\d,]+)\s*(?:명|건)?/i]),
     ptBookings: firstNumber(attendance, [/(?:PT|피티)\s*(?:예약|수업)\s*[:：]?\s*([\d,]+)\s*(?:명|건|회)?/i]),
-    noShows: firstNumber(attendance, [/(?:노쇼|미출석|예약\s*취소)\s*[:：]?\s*([\d,]+)\s*(?:명|건)?/i]),
+    noShows: null, // Only an explicit source no-show status may populate this metric.
     lockerExpiring: firstNumber(members, [/(?:락커|사물함)\s*만료\s*[:：]?\s*([\d,]+)\s*(?:명|건)?/i]),
     sales: captures.sales?.metricHints?.sales ?? firstNumber(sales, [/(?:총\s*)?(?:매출|결제)(?:액|금액)?\s*[:：]?\s*(?:₩|원)?\s*([\d,]+)\s*원?/i]),
   };
@@ -274,11 +289,22 @@ async function main() {
   fs.mkdirSync(safeDir, { recursive: true });
   const auditPath = path.join(safeDir, "latest.json");
   fs.writeFileSync(auditPath, `${JSON.stringify({ dateKey: targetDate, startedAt, capturedAt: new Date().toISOString(), metrics, domains, warnings, uploaded: null }, null, 2)}\n`);
-  const uploaded = await upload({ dateKey: targetDate, startedAt, metrics, domains, warnings });
+  const payload = { dateKey: targetDate, startedAt, metrics, domains, warnings };
+  validateDailySnapshot(payload);
+  if (process.env.DAGYM_SYNC_DRY_RUN === "1") {
+    console.log(JSON.stringify({ ok: true, dryRun: true, dateKey: targetDate, metrics, domains }, null, 2));
+    await browser.close();
+    return;
+  }
+  const uploaded = await upload(payload);
+  if (!uploaded?.ok) throw new Error("다짐 자료가 서버에서 정상 저장으로 확인되지 않았습니다.");
   fs.writeFileSync(auditPath, `${JSON.stringify({ dateKey: targetDate, startedAt, capturedAt: new Date().toISOString(), metrics, domains, warnings, uploaded }, null, 2)}\n`);
   console.log(JSON.stringify({ ok: true, dateKey: targetDate, metrics, domains, uploaded }, null, 2));
+  await browser.close();
 }
 
+const deadline = setTimeout(() => { console.error("다짐 일일 수집 제한시간 초과"); process.exit(1); }, 10 * 60 * 1000);
+deadline.unref();
 main().catch((error) => {
   console.error(error.stack || error.message || error);
   process.exit(1);

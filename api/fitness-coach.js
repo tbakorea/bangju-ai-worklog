@@ -1,4 +1,5 @@
 const { createHash } = require("node:crypto");
+const { redactCoachContext, redactText } = require("./_lib/coach-privacy.cjs");
 
 const SUPABASE_URL = process.env.SUPABASE_URL || "https://zllpfaijahyfppivkxzu.supabase.co";
 const SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY || "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InpsbHBmYWlqYWh5ZnBwaXZreHp1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODMzMzQxNTUsImV4cCI6MjA5ODkxMDE1NX0.C4omaj-e_9PM-iF3-5GUUVX47Wo06UsNTOYMlMMVcZU";
@@ -54,7 +55,7 @@ function extractResponseText(result = {}) {
 }
 
 function normalizeCoachResult(value = {}) {
-  const clamp = (text, max = 180) => String(text || "").replace(/\s+/g, " ").trim().slice(0, max);
+  const clamp = (text, max = 180) => redactText(String(text || "")).replace(/\s+/g, " ").trim().slice(0, max);
   const result = {
     praise: clamp(value.praise),
     feedback: clamp(value.feedback),
@@ -96,7 +97,7 @@ module.exports = async function handler(request, response) {
   }
 
   const context = request.body?.context;
-  const serialized = JSON.stringify(context || {});
+  const serialized = JSON.stringify(redactCoachContext(context || {}));
   if (!context || serialized.length > MAX_PAYLOAD_BYTES || !/^\d{4}-\d{2}-\d{2}$/.test(String(context.dateKey || ""))) {
     response.status(400).json({ ok: false, error: "코칭 자료 형식이 올바르지 않습니다." });
     return;
@@ -121,6 +122,9 @@ module.exports = async function handler(request, response) {
         "제공된 businessArea, 소속, 직급, 주업무, 업무일지, 수치와 직무 매뉴얼에 명시된 사실만 근거로 답하세요.",
         "재무는 금액·증빙·마감·지급위험, 공유사업은 공실·계약·미수·시설·고객응대, TBA·시공은 제품·현장·견적·납기·품질·안전, 피트니스는 수업·상담·계약·시설·회원경험을 우선 기준으로 삼으세요.",
         "성격, 역량, 인사등급을 단정하거나 직원 간 순위를 매기지 마세요.",
+        "정직성·성실성 점수, 직원 공개순위, 자동 징계·급여·인사 판단을 만들지 마세요. 자료 불일치는 확인 필요로 표현하고 본인의 설명·정정과 관리자의 검토를 먼저 안내하세요.",
+        "실제 개선 행동·정확한 정정·팀 협업을 구체적으로 격려하고 다음 근무에서 본인이 선택할 수 있는 실행 한 가지를 제안하세요. 수집 실패·누락을 직원의 미실적이나 과실로 단정하지 마세요.",
+        "회원 이름·연락처·건강정보·회사 기밀 원문을 출력하지 마세요. 결석과 노쇼, 예약과 실제 수업을 구분하고, 개인의 근무시간·역할·기회 차이를 무시한 성과 비교를 하지 마세요.",
         "taskSummary.items, scheduleSummary.items, reportNotes 중 실제로 비어 있지 않은 당일 기록을 최소 하나 이상 반드시 근거로 사용하세요. 일반적인 칭찬 문구만 반복하지 마세요.",
         fitnessOperations ? "피트니스 보고서의 praise는 칭찬이 아니라 당일 업무와 연결되는 운영 노하우, feedback은 구체적 실무 팁, nextAction은 다음 근무 실행 한 가지, manualReminder는 완료 확인 기준으로 작성하세요. 기록했다는 사실을 칭찬하거나 업무 문장을 반복하지 마세요." : "칭찬은 실제 업무 문장·시간·작성자 중 하나를 짧게 언급한 구체적 실행 근거를 포함하고, 피드백은 비난 없이 그 기록과 연결되는 가장 중요한 보완점 하나만 제시하세요.",
         fitnessOperations ? "operationsTip은 날짜별로 선정한 운영 팁입니다. 제공된 직무 매뉴얼과 실제 당일 업무에 맞춰 이 팁을 구체화하고, 네 항목에서 같은 업무 문장이나 권유를 반복하지 마세요. 빈 기록을 임의로 채우거나 제안을 실제 성과로 쓰지 마세요." : "칭찬·피드백·다음 행동에는 가능한 한 서로 다른 당일 근거를 사용하고, 업무가 기록되어 있는데도 '기록을 남겨주세요' 같은 일반 문구만 반복하지 마세요.",

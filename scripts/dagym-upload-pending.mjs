@@ -1,5 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
+import quality from "./dagym-quality.cjs";
 
 const root = process.cwd();
 const requestedDate = String(process.argv[2] || "").trim();
@@ -58,11 +59,18 @@ async function main() {
     process.exitCode = 2;
     return;
   }
+  try { quality.validateDailySnapshot(audit); }
+  catch {
+    console.log(JSON.stringify({ ok: false, retryable: false, reason: "invalid-source-recapture-required" }));
+    process.exitCode = 2;
+    return;
+  }
   if (audit.uploaded?.ok) {
     console.log(JSON.stringify({ ok: true, retried: false, dateKey: audit.dateKey, reason: "already-uploaded" }));
     return;
   }
   const uploaded = await upload(audit);
+  if (!uploaded?.ok) throw new Error("다짐 자료 저장이 확인되지 않았습니다.");
   const updated = { ...audit, uploaded, uploadedAt: new Date().toISOString() };
   fs.writeFileSync(auditPath, `${JSON.stringify(updated, null, 2)}\n`);
   console.log(JSON.stringify({ ok: true, retried: true, dateKey: audit.dateKey, uploaded }, null, 2));

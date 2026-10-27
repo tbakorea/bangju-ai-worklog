@@ -32,16 +32,27 @@ cleanup() {
     && [ "$(tr -d '[:space:]' < "$BROWSER_PID_FILE")" = "$STARTED_BROWSER_PID" ]; then
     rm -f "$BROWSER_PID_FILE"
   fi
-  rmdir "$SYNC_LOCK_DIR" >/dev/null 2>&1 || true
+  if [ "$(cat "$SYNC_LOCK_DIR/pid" 2>/dev/null || true)" = "$$" ]; then
+    rm -f "$SYNC_LOCK_DIR/pid"
+    rmdir "$SYNC_LOCK_DIR" >/dev/null 2>&1 || true
+  fi
 }
 trap cleanup EXIT
 
 cd "$ROOT_DIR"
 mkdir -p "$SYNC_STATE_DIR"
 if ! mkdir "$SYNC_LOCK_DIR" 2>/dev/null; then
-  echo "다짐 동기화가 이미 실행 중입니다. 이번 실행은 건너뜁니다."
-  exit 0
+  LOCK_PID="$(cat "$SYNC_LOCK_DIR/pid" 2>/dev/null || true)"
+  if [[ "$LOCK_PID" =~ ^[0-9]+$ ]] && ! kill -0 "$LOCK_PID" 2>/dev/null; then
+    rm -f "$SYNC_LOCK_DIR/pid"
+    rmdir "$SYNC_LOCK_DIR" 2>/dev/null || true
+    mkdir "$SYNC_LOCK_DIR" || exit 1
+  else
+    echo "다짐 동기화가 이미 실행 중이거나 이전 잠금 확인이 필요합니다."
+    exit 1
+  fi
 fi
+printf '%s\n' "$$" > "$SYNC_LOCK_DIR/pid"
 
 if [ "$SYNC_FORCE" != "1" ] && [ "$KST_CLOCK" -lt 0105 ]; then
   echo "다짐 자동수집 대기: 한국시간 01:05 이후에 전날 자료를 수집합니다."
@@ -87,7 +98,7 @@ fi
 
 JITTER_APPLIED=0
 apply_browser_jitter() {
-  if [ "$JITTER_APPLIED" -eq 1 ] || [ "${DAGYM_SYNC_SKIP_JITTER:-0}" = "1" ]; then
+  if [ "$JITTER_APPLIED" -eq 1 ] || [ "${DAGYM_SYNC_SKIP_JITTER:-0}" = "1" ] || [ "$KST_CLOCK" -ge 0400 ]; then
     return
   fi
   # 포털 수집 시점만 01:05~03:35 사이로 분산합니다. 저장 재시도에는
@@ -155,7 +166,12 @@ ensure_dagym_browser() {
 
 STATUS=0
 DAILY_COMPLETE=0
-if [ "${DAGYM_SYNC_MONTHLY_ONLY:-0}" != "1" ]; then
+if [ "${DAGYM_SYNC_DAILY_ONLY:-0}" != "1" ]; then
+  ensure_dagym_browser \
+    && DAGYM_CDP_URL="$CDP_URL" "$NODE_BIN" "$ROOT_DIR/scripts/dagym-monthly-pt-sync.mjs" "$@" \
+    || STATUS=1
+fi
+if [ "$STATUS" -eq 0 ] && [ "${DAGYM_SYNC_MONTHLY_ONLY:-0}" != "1" ]; then
   # 전날 화면을 이미 읽었는데 서버 저장만 실패한 경우에는 다짐에 다시
   # 접속하지 않습니다. 개인정보가 없는 감사 요약본만 재전송합니다.
   if [ -f "$DAILY_AUDIT_FILE" ]; then
@@ -174,14 +190,6 @@ if [ "${DAGYM_SYNC_MONTHLY_ONLY:-0}" != "1" ]; then
       && DAILY_COMPLETE=1 \
       || STATUS=1
   fi
-fi
-
-# 일일 요약 저장이 끝난 뒤에만 월간 시간표를 읽습니다. 저장 장애가 난 날은
-# 다음 보완 실행에서 기존 요약본만 먼저 재전송해 포털 접속을 하루 한 번으로 제한합니다.
-if [ "$STATUS" -eq 0 ] && [ "${DAGYM_SYNC_DAILY_ONLY:-0}" != "1" ]; then
-  ensure_dagym_browser \
-    && DAGYM_CDP_URL="$CDP_URL" "$NODE_BIN" "$ROOT_DIR/scripts/dagym-monthly-pt-sync.mjs" "$@" \
-    || STATUS=1
 fi
 
 if [ "$STATUS" -eq 0 ] && [ "$SYNC_DRY_RUN" != "1" ] \

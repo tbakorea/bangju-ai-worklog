@@ -2,6 +2,7 @@ import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import quality from "./dagym-quality.cjs";
 
 const root = process.cwd();
 const monthKey = process.env.DAGYM_MONTH || process.argv.find((value) => /^\d{4}-\d{2}$/.test(value)) || getKstMonthKey();
@@ -127,7 +128,7 @@ async function waitForReady(page) {
   await page.waitForLoadState("domcontentloaded", { timeout: 60000 }).catch(() => {});
   await page.waitForTimeout(1200);
   const bodyText = normalizeText(await page.locator("body").innerText({ timeout: 15000 }).catch(() => ""));
-  if (/로그인|비밀번호/.test(bodyText) && !/시간표|수업\s*일정|예약현황|비욘드\s*피트니스/.test(bodyText)) {
+  if (quality.isAuthSource(page.url()) || await page.locator('input[type="password"]').count()) {
     throw new Error("다짐 전용 브라우저 로그인이 필요합니다.");
   }
   if (!/시간표/.test(bodyText)) throw new Error("다짐 시간표 화면을 불러오지 못했습니다.");
@@ -152,9 +153,10 @@ function sanitizeReplayHeaders(headers = {}) {
 
 async function captureCalendarRequest(page) {
   const requestPromise = page.waitForRequest(isCalendarGraphqlRequest, { timeout: 30000 });
+  requestPromise.catch(() => {});
   await page.goto(dagymCalendarUrl(), { waitUntil: "domcontentloaded", timeout: 60000 });
-  const request = await requestPromise;
   await waitForReady(page);
+  const request = await requestPromise;
   return {
     url: request.url(),
     payload: request.postDataJSON(),
@@ -304,6 +306,8 @@ async function main() {
 
 const isDirectRun = process.argv[1] && path.resolve(process.argv[1]) === path.resolve(fileURLToPath(import.meta.url));
 if (isDirectRun) {
+  const deadline = setTimeout(() => { console.error("다짐 월간 수집 제한시간 초과"); process.exit(1); }, 10 * 60 * 1000);
+  deadline.unref();
   main()
     .then(() => process.exit(0))
     .catch((error) => {

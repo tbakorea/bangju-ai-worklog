@@ -19,12 +19,11 @@
   <key>WorkingDirectory</key>
   <string>/Users/bangju/Library/Application Support/BangjuWorklog/dagym-sync</string>
   <key>StartCalendarInterval</key>
-  <dict>
-    <key>Hour</key>
-    <integer>1</integer>
-    <key>Minute</key>
-    <integer>5</integer>
-  </dict>
+  <array>
+    <dict><key>Hour</key><integer>1</integer><key>Minute</key><integer>5</integer></dict>
+    <dict><key>Hour</key><integer>4</integer><key>Minute</key><integer>5</integer></dict>
+    <dict><key>Hour</key><integer>7</integer><key>Minute</key><integer>5</integer></dict>
+  </array>
   <key>RunAtLoad</key>
   <true/>
   <key>ProcessType</key>

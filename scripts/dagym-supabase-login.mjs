@@ -7,6 +7,7 @@ if (!email || !password) throw new Error("대표 계정 동기화 인증정보�
 
 const response = await fetch(`${supabaseUrl}/auth/v1/token?grant_type=password`, {
   method: "POST",
+  signal: AbortSignal.timeout(20000),
   headers: { apikey: anonKey, "Content-Type": "application/json" },
   body: JSON.stringify({ email, password }),
 });

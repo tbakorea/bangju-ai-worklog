@@ -1,4 +1,5 @@
 const crypto = require("crypto");
+const { validateDailySnapshot } = require("../scripts/dagym-quality.cjs");
 
 const SUPABASE_URL = String(process.env.SUPABASE_URL || "https://zllpfaijahyfppivkxzu.supabase.co").replace(/\/$/, "");
 const DEFAULT_SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InpsbHBmYWlqYWh5ZnBwaXZreHp1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODMzMzQxNTUsImV4cCI6MjA5ODkxMDE1NX0.C4omaj-e_9PM-iF3-5GUUVX47Wo06UsNTOYMlMMVcZU";
@@ -118,9 +119,10 @@ async function supabaseRequest(path, options = {}) {
 async function enrichPtMetrics(dateKey, metrics) {
   const start = encodeURIComponent(`${dateKey}T00:00:00+09:00`);
   const end = encodeURIComponent(`${nextDateKey(dateKey)}T00:00:00+09:00`);
-  const rows = await supabaseRequest(`/rest/v1/dagym_pt_schedule_events?center_key=eq.${CENTER_KEY}&active=eq.true&scheduled_at=gte.${start}&scheduled_at=lt.${end}&select=status&limit=2500`);
+  const rows = await supabaseRequest(`/rest/v1/dagym_pt_schedule_events?center_key=eq.${CENTER_KEY}&active=eq.true&scheduled_at=gte.${start}&scheduled_at=lt.${end}&member_name_ciphertext=neq.&status=not.in.(cancelled,postponed)&select=status&limit=2500`);
   if (metrics.ptBookings === undefined) metrics.ptBookings = rows.length;
-  if (metrics.noShows === undefined) metrics.noShows = rows.filter((row) => row.status === "no-show").length;
+  // Calendar imports carry scheduled slots, not a complete attendance ledger.
+  // Do not manufacture a zero no-show count from unknown/scheduled states.
   return { metrics, scheduleRows: rows.length };
 }
 
@@ -146,6 +148,11 @@ module.exports = async function handler(request, response) {
   const domains = normalizeDomains(request.body?.domains);
   const warnings = Array.isArray(request.body?.warnings) ? request.body.warnings.map((item) => String(item).slice(0, 240)).slice(0, 20) : [];
 
+  try {
+    validateDailySnapshot({ domains, metrics: request.body?.metrics });
+  } catch (error) {
+    return response.status(422).json({ ok: false, error: error.message });
+  }
   try {
     const enriched = await enrichPtMetrics(dateKey, normalizeMetrics(request.body?.metrics));
     const metrics = enriched.metrics;

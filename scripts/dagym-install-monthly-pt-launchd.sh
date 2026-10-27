@@ -15,6 +15,7 @@ LEGACY_PROFILE="/Users/bangju/Documents/Codex/2026-07-06/bangju-ai-worklog/work/
 RUNTIME_PROFILE="$RUNTIME_DIR/browser-profile"
 SYNC_SCRIPTS=(
   dagym-monthly-pt-sync.sh
+  dagym-quality.cjs
   dagym-daily-sync.mjs
   dagym-monthly-pt-sync.mjs
   dagym-upload-pending.mjs
@@ -58,6 +59,8 @@ cp "$SOURCE" "$TARGET"
 # 기존 plist와 과거 로그는 복구·감사를 위해 삭제하지 않는다.
 launchctl bootout "$DOMAIN/$LEGACY_LABEL" >/dev/null 2>&1 || true
 launchctl bootout "$DOMAIN/$LABEL" >/dev/null 2>&1 || true
+# Legacy jobs used an empty lock directory. Remove only that empty stale lock.
+rmdir "$RUNTIME_DIR/work/dagym-sync/run.lock" >/dev/null 2>&1 || true
 launchctl bootstrap "$DOMAIN" "$TARGET"
 launchctl enable "$DOMAIN/$LABEL"
-echo "설치 완료: 매일 01:05~03:35 다짐 일일자료와 월간 PT 일정 통합 동기화"
+echo "설치 완료: 매일 01:05~03:35 수집, 실패 시 04:05·07:05 보완 실행 (완료 날짜 중복 방지)"
