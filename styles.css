@@ -32177,3 +32177,47 @@ body[data-active-view="executive"] #executiveDateButton {
     padding: 9px 11px !important;
   }
 }
+
+/* Selected-date weather: one line, with descriptions available to assistive technology. */
+#view-today #todayJumpButton.is-weather-today,
+#view-fitness-log #fitnessTodayButton.is-weather-today {
+  display: inline-flex !important;
+  flex-direction: row !important;
+  flex-wrap: nowrap !important;
+  align-items: center;
+  justify-content: center;
+  white-space: nowrap;
+  gap: 4px;
+}
+.worklog-weather-row span {
+  display: inline-flex;
+  white-space: nowrap;
+}
+#view-today .worklog-pulse.is-historical-weather span,
+#view-fitness-log .fitness-coaching-ticker.is-historical-weather span {
+  flex-wrap: nowrap;
+  white-space: nowrap;
+}
+
+#view-fitness-log .fitness-coaching-ticker.is-historical-weather > b {
+  display: none;
+}
+@media (max-width: 640px) {
+  body[data-layout-mode="phone"] #view-today .worklog-summary-date,
+  body.physical-phone-device #view-today .worklog-summary-date {
+    grid-template-columns: 28px minmax(0, 1fr) 28px !important;
+    gap: 2px !important;
+  }
+  body[data-layout-mode="phone"] #view-today .worklog-summary-date .date-arrow-button,
+  body.physical-phone-device #view-today .worklog-summary-date .date-arrow-button {
+    width: 28px !important;
+    min-width: 28px !important;
+    flex: 0 0 28px;
+    padding-inline: 0 !important;
+  }
+  body[data-layout-mode="phone"] #view-today #worklogDayTitle,
+  body.physical-phone-device #view-today #worklogDayTitle {
+    font-size: 11px !important;
+    letter-spacing: -0.04em;
+  }
+}

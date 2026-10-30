@@ -1021,6 +1021,7 @@ const dailyEditingState = {
   focused: false,
   composing: false,
 };
+const weatherRemoteDates = new Set();
 const weatherRequestInFlight = new Set();
 const weatherBatchAttempted = new Set();
 const weatherRequestFailures = new Map();
@@ -2993,7 +2994,8 @@ function getSiteWeatherKeyForEmployee(employee = getSelectedEmployee()) {
   if (/동천/.test(source)) return "(주)비제이종합건설 · 동천체육관 현장";
   if (/헤이븐|옥동/.test(source) && /건설|현장|비제이/.test(source)) return "(주)비제이종합건설 · 옥동 더헤이븐빌 신축현장";
   if (/방주|재무/.test(source)) return "(주)방주 · 재무";
-  return "기타";
+  // Unmapped workplaces must not inherit an unrelated "other site" address.
+  return [employee?.org, employee?.workplace].map((value) => String(value || "").trim()).filter(Boolean).join(" · ") || "기타";
 }
 
 function getSiteWeatherAddress(siteKey = "") {
@@ -3018,9 +3020,7 @@ function canManageSharedSiteWeatherSettings() {
 
 function clearWeatherCacheForSite(siteKey = "") {
   const cacheSuffix = `::${siteKey}`;
-  Object.keys(state.weatherCache || {}).forEach((cacheKey) => {
-    if (cacheKey.endsWith(cacheSuffix)) delete state.weatherCache[cacheKey];
-  });
+  // Address changes invalidate coordinates, never erase dated weather history.
   delete state.weatherLocationCache?.[siteKey];
   Array.from(weatherBatchAttempted).forEach((requestKey) => {
     if (requestKey.endsWith(cacheSuffix)) weatherBatchAttempted.delete(requestKey);
@@ -3098,8 +3098,22 @@ function markWeatherRequestFailure(requestKey = "", error) {
   return failure;
 }
 
+function applyRemoteWeatherForDate(remoteState, dateKey, userId) {
+  Object.keys(state.weatherCache || {}).forEach((cacheKey) => {
+    if (cacheKey.startsWith(`${dateKey}::`)) delete state.weatherCache[cacheKey];
+  });
+  Object.entries(remoteState?.weatherCache || {}).forEach(([cacheKey, record]) => {
+    if (record?.dateKey === dateKey && cacheKey === getWeatherCacheKey(record.siteKey, dateKey)) {
+      state.weatherCache[cacheKey] = record;
+    }
+  });
+  weatherRemoteDates.add(`${userId}::${dateKey}`);
+}
+
 function getWeatherRecordForSite(siteKey = "", dateKey = getActiveDateKey()) {
-  return state.weatherCache?.[getWeatherCacheKey(siteKey, dateKey)] || null;
+  if (authState.user && !weatherRemoteDates.has(`${authState.user.id}::${dateKey}`)) return null;
+  const record = state.weatherCache?.[getWeatherCacheKey(siteKey, dateKey)];
+  return record?.dateKey === dateKey && record?.siteKey === siteKey ? record : null;
 }
 
 function getWeatherRecordForEmployee(employee = getSelectedEmployee(), dateKey = getActiveDateKey()) {
@@ -3108,7 +3122,7 @@ function getWeatherRecordForEmployee(employee = getSelectedEmployee(), dateKey =
 }
 
 function getWeatherConditionLabel(code) {
-  const value = Number(code);
+  const value = weatherTemperatureNumber(code);
   if ([0].includes(value)) return "맑음";
   if ([1, 2].includes(value)) return "구름 조금";
   if ([3].includes(value)) return "흐림";
@@ -3122,27 +3136,27 @@ function getWeatherConditionLabel(code) {
 
 function formatWeatherSummary(record, { compact = false } = {}) {
   if (!record) return compact ? "날씨 미기록" : "사업장 주소 입력 후 날씨를 갱신하세요.";
-  const temperatureText = Number.isFinite(Number(record.temperatureMin)) && Number.isFinite(Number(record.temperatureMax))
-    ? `${Math.round(Number(record.temperatureMin))}°/${Math.round(Number(record.temperatureMax))}°`
-    : Number.isFinite(Number(record.temperature)) ? `${Math.round(Number(record.temperature))}°` : "";
+  const temperatureText = formatWeatherTemperatureRange(record);
   const parts = [
     record.condition || getWeatherConditionLabel(record.weatherCode),
     temperatureText,
-    Number.isFinite(Number(record.humidity)) ? `습도 ${Math.round(Number(record.humidity))}%` : "",
-    Number.isFinite(Number(record.precipitation)) && Number(record.precipitation) > 0 ? `강수 ${record.precipitation}mm` : "",
+    weatherTemperatureNumber(record.humidity) !== null ? `습도 ${Math.round(Number(record.humidity))}%` : "",
+    weatherTemperatureNumber(record.precipitation) !== null && Number(record.precipitation) > 0 ? `강수 ${record.precipitation}mm` : "",
   ].filter(Boolean);
   const body = parts.join(" · ") || "날씨 기록";
   return compact ? body : `${record.siteKey || "사업장"} · ${body}`;
 }
 
+function weatherTemperatureNumber(value) {
+  if (value === null || value === undefined || String(value).trim() === "") return null;
+  const number = Number(value);
+  return Number.isFinite(number) ? number : null;
+}
+
 function formatWeatherTemperatureRange(record = {}) {
-  const temperatureMin = Number(record.temperatureMin);
-  const temperatureMax = Number(record.temperatureMax);
-  if (Number.isFinite(temperatureMin) && Number.isFinite(temperatureMax)) {
-    return `${Math.round(temperatureMin)}°/${Math.round(temperatureMax)}°`;
-  }
-  const temperature = Number(record.temperature);
-  return Number.isFinite(temperature) ? `${Math.round(temperature)}°` : "--°/--°";
+  const min = weatherTemperatureNumber(record.temperatureMin);
+  const max = weatherTemperatureNumber(record.temperatureMax);
+  return `${min === null ? "—" : `${Math.round(min)}°`}/${max === null ? "—" : `${Math.round(max)}°`}`;
 }
 
 function isWeatherRecordFresh(record, maxAgeMs = weatherFreshnessMs) {
@@ -3152,12 +3166,11 @@ function isWeatherRecordFresh(record, maxAgeMs = weatherFreshnessMs) {
 }
 
 function needsWeatherRefresh(record, dateKey = getActiveDateKey()) {
-  if (!record) return true;
-  return dateKey === todayKey && !isWeatherRecordFresh(record);
+  return dateKey === todayKey && (!record || record.address !== getSiteWeatherAddress(record.siteKey) || !isWeatherRecordFresh(record));
 }
 
 function buildWeatherAdvice(record = {}) {
-  const temperature = Number(record.temperature);
+  const temperature = weatherTemperatureNumber(record.temperature);
   const wind = Number(record.wind);
   const precipitation = Number(record.precipitation);
   const condition = record.condition || getWeatherConditionLabel(record.weatherCode);
@@ -3243,8 +3256,8 @@ function renderWeatherDateButton(button, employee, dateKey = getActiveDateKey(),
   const requestKey = getWeatherCacheKey(siteKey, dateKey);
   const loading = Boolean(address && weatherRequestInFlight.has(requestKey));
   const failed = Boolean(address && !record && weatherRequestFailures.has(requestKey));
-  const icon = loading && !record ? "…" : failed ? "↻" : getWeatherConditionIcon(record || {});
-  const range = record ? formatWeatherTemperatureRange(record) : loading ? "확인중" : failed ? "재시도" : "--°/--°";
+  const icon = record ? getWeatherConditionIcon(record) : loading ? "…" : "–";
+  const range = record ? formatWeatherTemperatureRange(record) : loading ? "확인중" : failed ? "조회 실패" : "기록 없음";
   button.dataset.weatherStatus = record ? "ready" : loading ? "loading" : failed ? "retry" : address ? "pending" : "missing";
   button.innerHTML = `<i aria-hidden="true">${escapeHtml(icon)}</i><small>${escapeHtml(range)}</small>`;
   const failureMessage = weatherRequestFailures.get(requestKey)?.message;
@@ -3280,15 +3293,14 @@ function renderWeatherDateButtons(dateKey = getActiveDateKey()) {
 function getHistoricalWeatherBannerMarkup(record, siteKey = "") {
   const icon = getWeatherConditionIcon(record || {});
   const summary = record
-    ? `${record.condition || getWeatherConditionLabel(record.weatherCode)} · ${formatWeatherTemperatureRange(record)}`
-    : "날씨 확인 중";
-  const location = record?.location || siteKey || "사업장";
-  return `<i aria-hidden="true">${escapeHtml(icon)}</i><b>${escapeHtml(summary)}</b><small>${escapeHtml(location)}</small>`;
+    ? formatWeatherTemperatureRange(record)
+    : "기록 없음";
+  return `<i aria-hidden="true">${escapeHtml(icon)}</i><b>${escapeHtml(summary)}</b>`;
 }
 
 function renderHistoricalWeatherBanners(dateKey = getActiveDateKey()) {
-  if (dateKey >= todayKey) {
-    // 과거 날짜를 본 뒤 오늘·미래로 이동하면 숨겨진 피트니스 코칭 배너에도
+  if (dateKey === todayKey) {
+    // 과거 날짜를 본 뒤 오늘로 이동하면 숨겨진 피트니스 코칭 배너에도
     // 과거 날씨 상태가 남아 있을 수 있습니다. 다음 렌더링 전 상태를 해제해
     // 날짜 이동과 화면 전환 모두에서 현재 코칭을 정상적으로 보여줍니다.
     const worklogPulse = document.getElementById("worklogPulse");
@@ -3332,7 +3344,7 @@ function renderHistoricalWeatherBanners(dateKey = getActiveDateKey()) {
 }
 
 function getWeatherConditionIcon(record = {}) {
-  const code = Number(record.weatherCode);
+  const code = weatherTemperatureNumber(record.weatherCode);
   if ([0].includes(code)) return "☀️";
   if ([1, 2].includes(code)) return "⛅";
   if ([3].includes(code)) return "☁️";
@@ -3454,12 +3466,10 @@ function renderWeatherWidget(scope, employee) {
   row.classList.toggle("is-missing", !address);
   row.classList.toggle("is-loading", loading);
   const title = failure && !record ? `${siteKey} 날씨 조회 지연 · 자동 재시도 중` : address ? getWeatherAccessibleTitle(record, siteKey) : `${siteKey} 주소 입력 필요`;
-  text.innerHTML = address
-    ? `<i aria-hidden="true">${escapeHtml(loading ? "…" : failure && !record ? "↻" : getWeatherConditionIcon(record || {}))}</i><b>${escapeHtml(loading && !record ? "날씨 확인 중" : failure && !record ? "잠시 후 자동 재시도" : formatWeatherSummary(record, { compact: true }))}</b><small>${escapeHtml(siteKey)}</small>`
-    : `<i aria-hidden="true">–</i><b>주소 필요</b><small>${escapeHtml(siteKey)}</small>`;
+  text.innerHTML = `<i aria-hidden="true">${escapeHtml(record ? getWeatherConditionIcon(record) : loading ? "…" : "–")}</i><b>${escapeHtml(record ? formatWeatherTemperatureRange(record) : dateKey !== todayKey ? "기록 없음" : loading ? "확인 중" : failure ? "조회 실패" : address ? "기록 없음" : "위치 미설정")}</b>`;
   row.title = title;
   row.setAttribute("aria-label", title);
-  button.disabled = !address;
+  button.disabled = !address || dateKey !== todayKey;
   button.textContent = "↻";
   button.title = record ? "날씨 새로고침" : "날씨 불러오기";
   button.setAttribute("aria-label", button.title);
@@ -3518,6 +3528,9 @@ async function fetchWeatherJson(url, timeoutMs = 6500) {
 }
 
 async function requestWeatherForSite(siteKey, address, dateKey = getActiveDateKey(), { silent = false, scope = "worklog" } = {}) {
+  // Only today's verified response may become a new historical record.
+  if (dateKey !== todayKey || (authState.user && (!weatherRemoteDates.has(`${authState.user.id}::${dateKey}`) || authState.applyingRemote))) return null;
+  const requestUserId = authState.user?.id;
   const trimmedAddress = String(address || "").trim();
   if (!trimmedAddress) {
     if (!silent) alert("앱설정에서 사업장/현장 주소를 먼저 입력해주세요.");
@@ -3566,7 +3579,7 @@ async function requestWeatherForSite(siteKey, address, dateKey = getActiveDateKe
         }
       }
     }
-    if (!place) throw new Error("주소 좌표를 찾지 못했습니다.");
+    if (!place || weatherTemperatureNumber(place.latitude) === null || weatherTemperatureNumber(place.longitude) === null) throw new Error("주소 좌표를 찾지 못했습니다.");
     state.weatherLocationCache = {
       ...(state.weatherLocationCache || {}),
       [siteKey]: { ...place, address: trimmedAddress },
@@ -3582,21 +3595,26 @@ async function requestWeatherForSite(siteKey, address, dateKey = getActiveDateKe
     }
     if (!weatherResponse.ok) throw new Error("날씨 정보를 불러오지 못했습니다.");
     const weather = await weatherResponse.json();
-    if (getSiteWeatherAddress(siteKey) !== trimmedAddress) {
+    if (authState.user?.id !== requestUserId || getSiteWeatherAddress(siteKey) !== trimmedAddress) {
       weatherBatchAttempted.delete(requestKey);
       window.setTimeout(() => renderWeatherWidgets(), 0);
       return null;
     }
     const current = weather?.current || {};
     const daily = weather?.daily || {};
-    const weatherCode = current.weather_code ?? daily.weather_code?.[0];
-    const temperatureMax = daily.temperature_2m_max?.[0];
-    const temperatureMin = daily.temperature_2m_min?.[0];
+    if (daily.time?.[0] !== dateKey) throw new Error("날씨 응답 날짜가 일치하지 않습니다.");
+    const weatherCode = weatherTemperatureNumber(current.weather_code ?? daily.weather_code?.[0]);
+    const temperatureMax = weatherTemperatureNumber(daily.temperature_2m_max?.[0]);
+    const temperatureMin = weatherTemperatureNumber(daily.temperature_2m_min?.[0]);
     const temperature = current.temperature_2m ?? (
-      Number.isFinite(Number(temperatureMax)) && Number.isFinite(Number(temperatureMin))
+      temperatureMax !== null && temperatureMin !== null
         ? (Number(temperatureMax) + Number(temperatureMin)) / 2
         : temperatureMax ?? temperatureMin
     );
+    if (weatherCode === null || (temperatureMin === null && temperatureMax === null)) throw new Error("날씨 응답이 불완전합니다.");
+    const previous = getWeatherRecordForSite(siteKey, dateKey);
+    if (previous && ((weatherTemperatureNumber(previous.temperatureMin) !== null && temperatureMin === null)
+      || (weatherTemperatureNumber(previous.temperatureMax) !== null && temperatureMax === null))) throw new Error("기존 기온 기록을 유지합니다.");
     const record = {
       siteKey,
       address: trimmedAddress,
@@ -3616,7 +3634,9 @@ async function requestWeatherForSite(siteKey, address, dateKey = getActiveDateKe
     state.weatherCache = { ...(state.weatherCache || {}), [requestKey]: record };
     clearWeatherRequestFailure(requestKey);
     weatherBatchAttempted.delete(requestKey);
-    saveState({ fastSave: true });
+    try { writeStateToLocalStorage(); } catch (_error) { /* DB persistence must survive a full local cache. */ }
+    // Capture the request date: navigating during a fetch must not save into another day.
+    scheduleRemoteSave(500, dateKey);
     renderWeatherWidgets();
     if (document.getElementById("fitnessReportSheet")?.classList.contains("is-open")) {
       document.getElementById("fitnessReportPreview").innerHTML = renderFitnessReportTemplate(buildFitnessReportModel());
@@ -12217,6 +12237,7 @@ function clearAuthRuntimeState() {
   cancelDeferredInputRenders();
   authState.session = null;
   authState.user = null;
+  weatherRemoteDates.clear();
   clearTimeout(authState.saveTimer);
   authState.saveTimer = null;
   clearInterval(authState.approvalTimer);
@@ -12941,6 +12962,7 @@ async function hydrateRepresentativeControlData(dateKey = getActiveDateKey()) {
 async function loadRemoteWorklogForActiveDate() {
   if (!supabaseClient || !authState.user) return;
   const key = getActiveDateKey();
+  const weatherUserId = authState.user.id;
   const { data, error } = await supabaseClient
     .from("worklog_states")
     .select("state,updated_at")
@@ -12949,12 +12971,15 @@ async function loadRemoteWorklogForActiveDate() {
     .order("updated_at", { ascending: false })
     .limit(1)
     .maybeSingle();
+  if (authState.user?.id !== weatherUserId) return;
   if (error) {
     renderAuthStatus(`원격 불러오기 대기: ${error.message}`);
     return;
   }
   authState.applyingRemote = true;
   try {
+    // A successful DB read replaces this date's local weather, including absent records.
+    applyRemoteWeatherForDate(data?.state, key, authState.user.id);
     if (data?.state) {
       // A successful read is also evidence that this device is looking at the
       // server-held worklog, not only a browser cache. Keep that acknowledgement
@@ -12981,7 +13006,6 @@ async function loadRemoteWorklogForActiveDate() {
       state.worklogReportSubmissions = { ...(state.worklogReportSubmissions || {}), ...(data.state.worklogReportSubmissions || {}) };
       state.reportTone = data.state.reportTone || state.reportTone;
       state.siteWeatherAddresses = { ...(state.siteWeatherAddresses || {}), ...(data.state.siteWeatherAddresses || {}) };
-      state.weatherCache = { ...(state.weatherCache || {}), ...(data.state.weatherCache || {}) };
       state.weatherLocationCache = { ...(state.weatherLocationCache || {}), ...(data.state.weatherLocationCache || {}) };
     }
     const deferRepresentativeControl = shouldDeferRepresentativeControlData(key);
@@ -13015,6 +13039,8 @@ async function loadRemoteWorklogForActiveDate() {
     renderAuthStatus();
   } finally {
     authState.applyingRemote = false;
+    Object.keys(state.siteWeatherAddresses || {}).forEach((siteKey) => weatherBatchAttempted.delete(getWeatherCacheKey(siteKey, key)));
+    renderWeatherWidgets();
   }
 }
 
@@ -26522,7 +26548,7 @@ function getFitnessCenterGeneratedRecordRows(logEntries = [], context = {}) {
     .slice(0, 2)
     .map((entry) => `${employee.name || getEmployeeOwnLabel(employee)} ${entry.time || ""} ${getScheduleEntryText(entry)}`.trim()));
   if (scheduleHighlights.length) add(`핵심 실행: ${scheduleHighlights.slice(0, 3).join(" / ")}`);
-  if (weatherText && !/미기록|주소 입력 필요/.test(weatherText)) {
+  if (weatherText && !/미기록|기록 없음|주소 입력 필요/.test(weatherText)) {
     add(`환경 기록: ${weatherText}. 현장 컨디션과 고객 응대 특이사항을 함께 확인하세요.`);
   }
   if (!rows.length) add("직원 업무보고와 운영기록을 입력하면 오늘의 기록이 자동으로 정리됩니다.");
@@ -27030,7 +27056,7 @@ function buildWorklogDailyReportModel(options = {}) {
     siteKey,
     address: getSiteWeatherAddress(siteKey),
     weather,
-    weatherText: formatWeatherSummary(weather, { compact: true }),
+    weatherText: weather ? `${getWeatherConditionIcon(weather)} ${formatWeatherTemperatureRange(weather)}` : "기록 없음",
     clock: `${log.clockIn || "미기록"} ~ ${log.clockOut || "미기록"}`,
     tasks: tasks.map((task) => {
       const statusMeta = getWorklogReportTaskStatusMeta(task);
@@ -27809,7 +27835,7 @@ function buildFitnessCenterCommandSummary({ staffRows = [], totals = {}, monthly
   const todayFocus = cleanTask(topTasks)
     || (recordedPt || bookedPt ? `PT 실행기록 ${recordedPt}건과 예약 ${bookedPt}건을 마감 대조합니다.` : "금일 핵심 실행업무를 센터장이 확정하세요.");
   const tomorrowHandoff = cleanTask(tomorrowTasks) || "명일 예정업무와 담당자를 마감 전에 지정하세요.";
-  const weatherReady = weatherText && !/미기록|확인 중|주소 입력 필요/.test(weatherText);
+  const weatherReady = weatherText && !/미기록|기록 없음|확인 중|주소 입력 필요/.test(weatherText);
   const sourceReady = Boolean(dagymSummary?.sourceDateKey);
   const taskReady = Boolean(cleanTask(topTasks));
   const readiness = Math.max(0, Math.min(100,
@@ -27867,8 +27893,8 @@ function buildFitnessReportModel(options = {}) {
   const weather = getWeatherRecordForSite(weatherSiteKey, dateKey);
   const weatherAddress = getSiteWeatherAddress(weatherSiteKey);
   const weatherText = weather
-    ? formatWeatherSummary(weather, { compact: true })
-    : weatherAddress ? "날씨 확인 중" : "날씨 미기록";
+    ? `${getWeatherConditionIcon(weather)} ${formatWeatherTemperatureRange(weather)}`
+    : "기록 없음";
   const aiEnabled = !isHistoricalWorklogDate(dateKey);
   const { key: manualRoleKey, template: manualTemplate } = getFitnessReportManualTemplate(employee);
   const manual = {
