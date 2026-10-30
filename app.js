@@ -3165,8 +3165,20 @@ function isWeatherRecordFresh(record, maxAgeMs = weatherFreshnessMs) {
   return Number.isFinite(fetchedAt) && Date.now() - fetchedAt < maxAgeMs;
 }
 
+function canQueryWeatherDate(dateKey) {
+  const days = Math.round((Date.parse(`${dateKey}T00:00:00+09:00`) - Date.parse(`${todayKey}T00:00:00+09:00`)) / 86400000);
+  return Number.isFinite(days) && days <= 15;
+}
+
+function getMissingWeatherLabel(dateKey) {
+  return dateKey > todayKey ? "예보 대기" : "기록 없음";
+}
+
 function needsWeatherRefresh(record, dateKey = getActiveDateKey()) {
-  return dateKey === todayKey && (!record || record.address !== getSiteWeatherAddress(record.siteKey) || !isWeatherRecordFresh(record));
+  if (!canQueryWeatherDate(dateKey)) return false;
+  if (dateKey < todayKey) return !record || record.recordType === "forecast";
+  return !record || (dateKey === todayKey && record.recordType === "forecast")
+    || record.address !== getSiteWeatherAddress(record.siteKey) || !isWeatherRecordFresh(record);
 }
 
 function buildWeatherAdvice(record = {}) {
@@ -3185,7 +3197,7 @@ function buildWeatherAdvice(record = {}) {
 
 function getWeatherAccessibleTitle(record = {}, siteKey = "") {
   if (!record) return `${siteKey || "사업장"} 날씨 미기록`;
-  return `${siteKey || record.siteKey || "사업장"} ${formatWeatherSummary(record, { compact: true })}. ${record.advice || buildWeatherAdvice(record)}`;
+  return `${siteKey || record.siteKey || "사업장"} ${record.recordType === "forecast" ? "날씨예보 · " : ""}${formatWeatherSummary(record, { compact: true })}. ${record.advice || buildWeatherAdvice(record)}`;
 }
 
 function getActiveWeatherEmployee(scope = activeView) {
@@ -3290,11 +3302,11 @@ function renderWeatherDateButtons(dateKey = getActiveDateKey()) {
   );
 }
 
-function getHistoricalWeatherBannerMarkup(record, siteKey = "") {
+function getHistoricalWeatherBannerMarkup(record, siteKey = "", dateKey = getActiveDateKey()) {
   const icon = getWeatherConditionIcon(record || {});
   const summary = record
     ? formatWeatherTemperatureRange(record)
-    : "기록 없음";
+    : getMissingWeatherLabel(dateKey);
   return `<i aria-hidden="true">${escapeHtml(icon)}</i><b>${escapeHtml(summary)}</b>`;
 }
 
@@ -3323,7 +3335,7 @@ function renderHistoricalWeatherBanners(dateKey = getActiveDateKey()) {
   if (pulse && pulseText) {
     pulse.classList.add("is-historical-weather");
     pulse.disabled = true;
-    pulseText.innerHTML = getHistoricalWeatherBannerMarkup(worklogRecord, worklogSiteKey);
+    pulseText.innerHTML = getHistoricalWeatherBannerMarkup(worklogRecord, worklogSiteKey, dateKey);
     pulse.setAttribute("aria-label", getWeatherAccessibleTitle(worklogRecord, worklogSiteKey));
   }
 
@@ -3337,7 +3349,7 @@ function renderHistoricalWeatherBanners(dateKey = getActiveDateKey()) {
     ticker.classList.add("is-historical-weather");
     ticker.disabled = true;
     tickerLabel.textContent = "기록 날씨";
-    tickerText.innerHTML = getHistoricalWeatherBannerMarkup(fitnessRecord, fitnessSiteKey);
+    tickerText.innerHTML = getHistoricalWeatherBannerMarkup(fitnessRecord, fitnessSiteKey, dateKey);
     tickerText.dataset.tickerText = "";
     ticker.setAttribute("aria-label", getWeatherAccessibleTitle(fitnessRecord, fitnessSiteKey));
   }
@@ -3466,10 +3478,10 @@ function renderWeatherWidget(scope, employee) {
   row.classList.toggle("is-missing", !address);
   row.classList.toggle("is-loading", loading);
   const title = failure && !record ? `${siteKey} 날씨 조회 지연 · 자동 재시도 중` : address ? getWeatherAccessibleTitle(record, siteKey) : `${siteKey} 주소 입력 필요`;
-  text.innerHTML = `<i aria-hidden="true">${escapeHtml(record ? getWeatherConditionIcon(record) : loading ? "…" : "–")}</i><b>${escapeHtml(record ? formatWeatherTemperatureRange(record) : dateKey !== todayKey ? "기록 없음" : loading ? "확인 중" : failure ? "조회 실패" : address ? "기록 없음" : "위치 미설정")}</b>`;
+  text.innerHTML = `<i aria-hidden="true">${escapeHtml(record ? getWeatherConditionIcon(record) : loading ? "…" : "–")}</i><b>${escapeHtml(record ? formatWeatherTemperatureRange(record) : dateKey !== todayKey ? getMissingWeatherLabel(dateKey) : loading ? "확인 중" : failure ? "조회 실패" : address ? "기록 없음" : "위치 미설정")}</b>`;
   row.title = title;
   row.setAttribute("aria-label", title);
-  button.disabled = !address || dateKey !== todayKey;
+  button.disabled = !address || !canQueryWeatherDate(dateKey);
   button.textContent = "↻";
   button.title = record ? "날씨 새로고침" : "날씨 불러오기";
   button.setAttribute("aria-label", button.title);
@@ -3528,8 +3540,10 @@ async function fetchWeatherJson(url, timeoutMs = 6500) {
 }
 
 async function requestWeatherForSite(siteKey, address, dateKey = getActiveDateKey(), { silent = false, scope = "worklog" } = {}) {
-  // Only today's verified response may become a new historical record.
-  if (dateKey !== todayKey || (authState.user && (!weatherRemoteDates.has(`${authState.user.id}::${dateKey}`) || authState.applyingRemote))) return null;
+  // Archived records are immutable; forecasts are refreshed until the date arrives.
+  if (!canQueryWeatherDate(dateKey) || (authState.user && (!weatherRemoteDates.has(`${authState.user.id}::${dateKey}`) || authState.applyingRemote))) return null;
+  const existing = getWeatherRecordForSite(siteKey, dateKey);
+  if (dateKey < todayKey && existing && existing.recordType !== "forecast") return existing;
   const requestUserId = authState.user?.id;
   const trimmedAddress = String(address || "").trim();
   if (!trimmedAddress) {
@@ -3600,7 +3614,7 @@ async function requestWeatherForSite(siteKey, address, dateKey = getActiveDateKe
       window.setTimeout(() => renderWeatherWidgets(), 0);
       return null;
     }
-    const current = weather?.current || {};
+    const current = dateKey === todayKey ? weather?.current || {} : {};
     const daily = weather?.daily || {};
     if (daily.time?.[0] !== dateKey) throw new Error("날씨 응답 날짜가 일치하지 않습니다.");
     const weatherCode = weatherTemperatureNumber(current.weather_code ?? daily.weather_code?.[0]);
@@ -3620,6 +3634,7 @@ async function requestWeatherForSite(siteKey, address, dateKey = getActiveDateKe
       address: trimmedAddress,
       location: [place.name, place.admin1].filter(Boolean).join(" "),
       dateKey,
+      recordType: dateKey > todayKey ? "forecast" : dateKey < todayKey ? "history" : "day",
       fetchedAt: new Date().toISOString(),
       temperature,
       temperatureMax,

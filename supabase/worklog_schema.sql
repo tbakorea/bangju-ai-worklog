@@ -374,6 +374,9 @@ set approval_status = 'rejected',
 where lower(coalesce(email, '')) in ('pjhong1@naver.com', 'pjhong9@naver.com')
 ;
 
+-- state.weatherCache["YYYY-MM-DD::siteKey"] stores date/site weather records.
+-- Optional recordType: forecast (future prediction), day (same-day), history (archive).
+-- Legacy records without recordType remain valid; no new column or migration is required.
 create table if not exists public.worklog_states (
   id uuid primary key default gen_random_uuid(),
   user_id uuid not null references auth.users(id) on delete cascade,
