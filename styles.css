@@ -32221,3 +32221,25 @@ body[data-active-view="executive"] #executiveDateButton {
     letter-spacing: -0.04em;
   }
 }
+
+/* Korean task states need room distinct from a single ABC priority letter. */
+body #view-today .task-row:has(.priority-select.is-action),
+body #view-fitness-log .task-row:has(.priority-select.is-action) {
+  grid-template-columns: 20px 42px minmax(0, 1fr) 18px !important;
+}
+body #view-today .task-row .priority-select.is-action,
+body #view-fitness-log .task-row .priority-select.is-action {
+  width: 42px !important;
+  min-width: 42px !important;
+  max-width: 42px !important;
+  padding-inline: 1px !important;
+  font-size: 11px !important;
+  line-height: 1.3 !important;
+  letter-spacing: -0.03em;
+  text-align: center;
+  text-align-last: center;
+}
+body #view-today .priority-select option,
+body #view-fitness-log .priority-select option {
+  font-size: 12px;
+}

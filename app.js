@@ -5602,6 +5602,12 @@ function getAttendanceExpectedStart(employee = {}, log = {}, dateKey = getActive
     return Number.isFinite(scheduledStart) ? { minutes: scheduledStart, source: "configured-hours", samples: 0 } : null;
   }
 
+  // An agreed personal shift takes precedence over inferred past attendance.
+  // In particular, a 16:00-24:00 shift must not be compared with an earlier pattern.
+  if (Number.isFinite(scheduledStart) && !isFitnessCoverageWindow(scheduledHours)) {
+    return { minutes: scheduledStart, source: "configured-hours", samples: 0 };
+  }
+
   const recentPattern = getRecentFitnessAttendanceStartPattern(employee, dateKey);
   if (recentPattern && Number.isFinite(recentPattern.minutes)) return recentPattern;
 
