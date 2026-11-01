@@ -127,10 +127,19 @@ export function calendarItemToEvents(item = {}, targetMonthKey = monthKey) {
 
 async function waitForReady(page) {
   await page.waitForLoadState("domcontentloaded", { timeout: 60000 }).catch(() => {});
-  await page.waitForFunction(() => {
-    const text = document.body?.innerText || "";
-    return document.querySelector('input[type="password"]') || /시간표|로그인|회원가입|비욘드\s*피트니스/.test(text);
-  }, null, { timeout: 30000 });
+  try {
+    await page.waitForFunction(() => {
+      const text = document.body?.innerText || "";
+      return location.pathname === "/schedule/calendar"
+        && !document.querySelector('input[type="password"]') && /시간표/.test(text);
+    }, null, { timeout: 30000 });
+  } catch {
+    const text = normalizeText(await page.locator("body").innerText().catch(() => ""));
+    if (quality.isAuthSource(page.url()) || /로그인\s*해주세요/.test(text) || await page.locator('input[type="password"]').count()) {
+      throw new Error("다짐 전용 브라우저 로그인이 필요합니다.");
+    }
+    throw new Error("다짐 시간표 준비 상태를 확인하지 못했습니다.");
+  }
   const bodyText = normalizeText(await page.locator("body").innerText({ timeout: 15000 }).catch(() => ""));
   if (quality.isAuthSource(page.url()) || /로그인\s*해주세요/.test(bodyText) || await page.locator('input[type="password"]').count()) {
     throw new Error("다짐 전용 브라우저 로그인이 필요합니다.");
@@ -155,12 +164,14 @@ function sanitizeReplayHeaders(headers = {}) {
   )));
 }
 
-async function captureCalendarRequest(page) {
+export async function captureCalendarRequest(page) {
   const requestPromise = page.waitForRequest(isCalendarGraphqlRequest, { timeout: 30000 });
   requestPromise.catch(() => {});
   await page.goto(dagymCalendarUrl(), { waitUntil: "domcontentloaded", timeout: 60000 });
-  await waitForReady(page);
+  // A new tab may briefly show the login shell before restoring a valid session.
+  // The actual calendar request is the readiness boundary, not that transient DOM.
   const request = await requestPromise;
+  await waitForReady(page);
   return {
     url: request.url(),
     payload: request.postDataJSON(),

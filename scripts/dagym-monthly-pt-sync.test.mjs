@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { calendarItemToEvents, getKstMonthRangeIso } from "./dagym-monthly-pt-sync.mjs";
+import { calendarItemToEvents, getKstMonthRangeIso, captureCalendarRequest } from "./dagym-monthly-pt-sync.mjs";
 
 test("KST month range covers the exact local month", () => {
   assert.deepEqual(getKstMonthRangeIso("2026-08"), {
@@ -48,4 +48,19 @@ test("calendar schedule keeps trainers separated and rejects another month", () 
   assert.deepEqual(events.map((event) => event.trainerName).sort(), ["박주홍", "홍현규"]);
   assert.notEqual(events[0].sourceKey, events[1].sourceKey);
   assert.deepEqual(calendarItemToEvents(item, "2026-09"), []);
+});
+
+
+test("calendar capture waits past the transient login shell for its real source request", async () => {
+  let ready = false;
+  const request = { url: () => "https://www.dagym-manager.com/api/graphql", postDataJSON: () => ({ operationName: "GetCalendarScheduleItems" }), allHeaders: async () => ({ "content-type": "application/json", cookie: "fixture" }) };
+  const page = {
+    waitForRequest: async () => { await new Promise(resolve => setTimeout(resolve, 10)); ready = true; return request; },
+    goto: async () => {}, waitForLoadState: async () => {}, waitForFunction: async () => {},
+    url: () => `https://www.dagym-manager.com/${ready ? "schedule/calendar" : "account/login"}`,
+    locator: selector => ({ innerText: async () => ready ? "비욘드 피트니스 시간표" : "로그인", count: async () => ready ? 0 : 1 }),
+  };
+  const result = await captureCalendarRequest(page);
+  assert.equal(result.payload.operationName, "GetCalendarScheduleItems");
+  assert.equal(result.headers.cookie, undefined);
 });
