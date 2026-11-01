@@ -55,4 +55,4 @@ launchctl bootout "$DOMAIN/$LABEL" >/dev/null 2>&1 || true
 rmdir "$RUNTIME_DIR/work/dagym-sync/run.lock" >/dev/null 2>&1 || true
 launchctl enable "$DOMAIN/$LABEL"
 launchctl bootstrap "$DOMAIN" "$TARGET"
-echo "설치 완료: 매일 01:05 수집·매시간 실패 보완, 완료 날짜 중복 방지·화면 없는 브라우저·로그인 상태 점검"
+echo "설치 완료: 매일 01:05 수집·매시간 실패 보완, 완료 날짜 중복 방지·백그라운드 전용 브라우저·로그인 상태 점검"

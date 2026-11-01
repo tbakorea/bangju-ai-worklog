@@ -186,7 +186,7 @@ supabase/migrations/20260822040000_defer_dagym_daily_analysis.sql
 
 ## 2026-11-01 무인 실행 보강
 
-- 전용 Chrome은 `--headless=new`로 실행한다. macOS 화면 잠금 해제나 창의 전면 배치를 요구하지 않는다. 기존 전용 프로필만 제자리에서 사용하며 일반 Chrome 프로필·쿠키를 복사하지 않는다.
+- 전용 Chrome은 일반 모드로 백그라운드 실행한다. 실제 검증에서 같은 프로필의 headless 요청은 403으로 거부되고 일반 모드는 정상 응답했으므로 headless를 운영 기본값으로 사용하지 않는다. 수집 코드는 창 클릭·전면 배치를 사용하지 않는다. 기존 전용 프로필만 제자리에서 사용하며 일반 Chrome 프로필·쿠키를 복사하지 않는다.
 - Mac이 켜져 있고 사용자 로그인 세션과 네트워크가 있어야 한다. 전원 꺼짐·로그아웃·장기 절전·키체인 잠금·추가 인증까지 자동으로 우회하는 구조는 아니다. 작업 중에만 caffeinate로 유휴 절전을 방지하며 시스템 잠금·전원 설정은 바꾸지 않는다.
 - 전용 포트가 응답해도 렌더러 제어 연결이 실패하면 PID·포트·프로필이 일치하는 수집기 소유 Chrome만 한 번 재시작한다. 개인 Chrome은 종료하지 않는다.
 - 수집 전에 `dagym-session.mjs`가 센터 접속 상태를 확인한다. 정상 세션이면 비밀번호를 읽지 않는다. 만료되면 기존 전용 브라우저 자동완성 또는 이 사이트의 저장된 로컬 키체인 계정을 이용한다.
@@ -203,4 +203,4 @@ supabase/migrations/20260822040000_defer_dagym_daily_analysis.sql
 - `work/dagym-daily-sync/YYYY-MM-DD.json`: 검증한 날짜별 집계와 서버 확인 응답.
 
 검증: `node --test scripts/dagym-resilience.test.mjs scripts/dagym-quality.test.cjs scripts/dagym-monthly-pt-sync.test.mjs scripts/dagym-browser-daily.test.cjs scripts/dagym-monthly-schedule-api.test.cjs`.
-화면 없는 Chrome의 동작 근거: [Chrome 공식 Headless 문서](https://developer.chrome.com/docs/automation-and-testing/headless).
+Chrome headless는 공식 기능이지만 실제 다짐 서버 응답을 우선하여 운영에서는 일반 모드를 사용한다.

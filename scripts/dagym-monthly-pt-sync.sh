@@ -17,7 +17,7 @@ DAILY_AUDIT_FILE="$ROOT_DIR/work/dagym-daily-sync/latest.json"
 BROWSER_PID_FILE="$SYNC_STATE_DIR/dagym-browser.pid"
 SYNC_FORCE="${DAGYM_SYNC_FORCE:-0}"
 SYNC_DRY_RUN="${DAGYM_SYNC_DRY_RUN:-0}"
-BROWSER_HEADLESS="${DAGYM_BROWSER_HEADLESS:-1}"
+BROWSER_HEADLESS="${DAGYM_BROWSER_HEADLESS:-0}"
 
 # 자동 실행은 전날 마감자료만 다룹니다. 자정 직후의 당일 부분자료를
 # 수집하지 않도록 01:05 이후에만 실행하며, 수동 긴급 실행은 FORCE로
@@ -144,6 +144,7 @@ ensure_dagym_browser() {
     return 1
   fi
   mkdir -p "$USER_DATA_DIR"
+  # DaGym rejects API requests in headless mode (403); use normal Chrome in the background.
   BROWSER_MODE=()
   if [ "$BROWSER_HEADLESS" = "1" ]; then BROWSER_MODE=(--headless=new); fi
   "$CHROME_BIN" "${BROWSER_MODE[@]}" \
