@@ -1,10 +1,13 @@
 import fs from "node:fs";
 import path from "node:path";
 import quality from "./dagym-quality.cjs";
+import { atomicJson, validateDailyReceipt } from "./dagym-sync-health.mjs";
 
 const root = process.cwd();
 const requestedDate = String(process.argv[2] || "").trim();
-const auditPath = path.join(root, "work", "dagym-daily-sync", "latest.json");
+const latestPath = path.join(root, "work", "dagym-daily-sync", "latest.json");
+const datedPath = /^\d{4}-\d{2}-\d{2}$/.test(requestedDate) ? path.join(root, "work", "dagym-daily-sync", `${requestedDate}.json`) : latestPath;
+const auditPath = fs.existsSync(datedPath) ? datedPath : latestPath;
 const uploadUrl = process.env.DAGYM_DAILY_SYNC_URL || "https://bangju-ai-worklog.vercel.app/api/dagym-browser-daily";
 const syncSecret = process.env.DAGYM_BROWSER_SYNC_SECRET || "";
 const accessToken = process.env.DAGYM_SYNC_ACCESS_TOKEN || "";
@@ -66,13 +69,18 @@ async function main() {
     return;
   }
   if (audit.uploaded?.ok) {
+    validateDailyReceipt(audit.uploaded, audit.dateKey);
+    atomicJson(datedPath, audit);
     console.log(JSON.stringify({ ok: true, retried: false, dateKey: audit.dateKey, reason: "already-uploaded" }));
     return;
   }
   const uploaded = await upload(audit);
-  if (!uploaded?.ok) throw new Error("다짐 자료 저장이 확인되지 않았습니다.");
+  validateDailyReceipt(uploaded, audit.dateKey);
   const updated = { ...audit, uploaded, uploadedAt: new Date().toISOString() };
-  fs.writeFileSync(auditPath, `${JSON.stringify(updated, null, 2)}\n`);
+  atomicJson(datedPath, updated);
+  let latestDate = "";
+  try { latestDate = JSON.parse(fs.readFileSync(latestPath, "utf8")).dateKey || ""; } catch {}
+  if (latestDate <= audit.dateKey) atomicJson(latestPath, updated);
   console.log(JSON.stringify({ ok: true, retried: true, dateKey: audit.dateKey, uploaded }, null, 2));
 }
 

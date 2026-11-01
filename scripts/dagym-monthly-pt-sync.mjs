@@ -3,6 +3,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import quality from "./dagym-quality.cjs";
+import { atomicJson, validateMonthlyReceipt } from "./dagym-sync-health.mjs";
 
 const root = process.cwd();
 const monthKey = process.env.DAGYM_MONTH || process.argv.find((value) => /^\d{4}-\d{2}$/.test(value)) || getKstMonthKey();
@@ -240,6 +241,7 @@ async function uploadMonth(capture) {
       ...(syncSecret ? { "X-Dagym-Sync-Secret": syncSecret } : {}),
       ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
     },
+    signal: AbortSignal.timeout(30000),
     body: JSON.stringify({
       centerKey: "beyond-fitness",
       monthKey,
@@ -263,6 +265,7 @@ async function main() {
   const page = await context.newPage();
   try {
     const capture = await captureMonth(context, page);
+    if (!capture.complete) throw new Error("PT 일정 전체 범위를 확인하지 못했습니다.");
     const safeDir = path.join(root, "work", "dagym-monthly-schedule");
     fs.mkdirSync(safeDir, { recursive: true });
     // 회원 이름은 암호화된 서버 컬럼에만 보관하고 로컬 감사 파일에서는 제거합니다.
@@ -286,8 +289,12 @@ async function main() {
       lastScheduledAt: safeEvents.at(-1)?.scheduledAt || "",
       events: safeEvents,
     };
-    fs.writeFileSync(path.join(safeDir, `${monthKey}.json`), `${JSON.stringify(audit, null, 2)}\n`);
+    if (!dryRun) atomicJson(path.join(safeDir, `${monthKey}.pending.json`), audit);
     const uploaded = dryRun ? { skipped: true, reason: "dry-run" } : await uploadMonth(capture);
+    if (!dryRun) {
+      validateMonthlyReceipt(uploaded, monthKey, safeEvents.length);
+      atomicJson(path.join(safeDir, `${monthKey}.json`), { ...audit, uploaded });
+    }
     console.log(JSON.stringify({
       ok: true,
       monthKey,

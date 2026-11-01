@@ -17,6 +17,7 @@ DAILY_AUDIT_FILE="$ROOT_DIR/work/dagym-daily-sync/latest.json"
 BROWSER_PID_FILE="$SYNC_STATE_DIR/dagym-browser.pid"
 SYNC_FORCE="${DAGYM_SYNC_FORCE:-0}"
 SYNC_DRY_RUN="${DAGYM_SYNC_DRY_RUN:-0}"
+BROWSER_HEADLESS="${DAGYM_BROWSER_HEADLESS:-1}"
 
 # 자동 실행은 전날 마감자료만 다룹니다. 자정 직후의 당일 부분자료를
 # 수집하지 않도록 01:05 이후에만 실행하며, 수동 긴급 실행은 FORCE로
@@ -33,6 +34,8 @@ cleanup() {
   fi
 }
 trap cleanup EXIT
+# Keep only this bounded job awake; do not unlock the screen or change power settings.
+/usr/bin/caffeinate -i -w $$ >/dev/null 2>&1 &
 
 cd "$ROOT_DIR"
 mkdir -p "$SYNC_STATE_DIR"
@@ -64,6 +67,8 @@ if [ "$SYNC_FORCE" != "1" ] && [ "$SYNC_DRY_RUN" != "1" ] \
 fi
 
 export DAGYM_DATE="$TARGET_DATE"
+# The previous day may belong to the previous month (e.g. November 1).
+export DAGYM_MONTH="${DAGYM_MONTH:-${TARGET_DATE:0:7}}"
 if [ -f "$ROOT_DIR/.env.local" ]; then
   set -a
   # shellcheck disable=SC1091
@@ -96,9 +101,9 @@ apply_browser_jitter() {
   if [ "$JITTER_APPLIED" -eq 1 ] || [ "${DAGYM_SYNC_SKIP_JITTER:-0}" = "1" ] || [ "$KST_CLOCK" -ge 0400 ]; then
     return
   fi
-  # 포털 수집 시점만 01:05~03:35 사이로 분산합니다. 저장 재시도에는
+  # 포털 수집 시점만 최대 60초 이내로 분산합니다. 인증 토큰 만료 전에 저장을 끝냅니다. 저장 재시도에는
   # 대기하지 않아, 이미 읽은 자료를 빠르게 반영할 수 있습니다.
-  JITTER_SECONDS=$((RANDOM % 9001))
+  JITTER_SECONDS=$((RANDOM % 61))
   sleep "$JITTER_SECONDS"
   JITTER_APPLIED=1
 }
@@ -139,7 +144,9 @@ ensure_dagym_browser() {
     return 1
   fi
   mkdir -p "$USER_DATA_DIR"
-  "$CHROME_BIN" \
+  BROWSER_MODE=()
+  if [ "$BROWSER_HEADLESS" = "1" ]; then BROWSER_MODE=(--headless=new); fi
+  "$CHROME_BIN" "${BROWSER_MODE[@]}" \
     --remote-debugging-address=127.0.0.1 \
     --remote-debugging-port="$DEBUG_PORT" \
     --no-first-run \
@@ -162,34 +169,56 @@ ensure_dagym_browser() {
 
 STATUS=0
 DAILY_COMPLETE=0
-if [ "${DAGYM_SYNC_DAILY_ONLY:-0}" != "1" ]; then
-  ensure_dagym_browser \
-    && DAGYM_CDP_URL="$CDP_URL" "$NODE_BIN" "$ROOT_DIR/scripts/dagym-monthly-pt-sync.mjs" "$@" \
-    || STATUS=1
+MONTHLY_STATUS=0
+# A previously verified capture can finish its server retry even if the portal session expired.
+if [ "${DAGYM_SYNC_MONTHLY_ONLY:-0}" != "1" ] && [ "$SYNC_DRY_RUN" != "1" ]; then
+  if "$NODE_BIN" "$ROOT_DIR/scripts/dagym-upload-pending.mjs" "$TARGET_DATE"; then
+    DAILY_COMPLETE=1
+  else
+    PENDING_STATUS=$?
+    if [ "$PENDING_STATUS" -ne 2 ]; then STATUS=1; fi
+  fi
 fi
-if [ "$STATUS" -eq 0 ] && [ "${DAGYM_SYNC_MONTHLY_ONLY:-0}" != "1" ]; then
-  # 전날 화면을 이미 읽었는데 서버 저장만 실패한 경우에는 다짐에 다시
-  # 접속하지 않습니다. 개인정보가 없는 감사 요약본만 재전송합니다.
-  if [ -f "$DAILY_AUDIT_FILE" ]; then
-    if "$NODE_BIN" "$ROOT_DIR/scripts/dagym-upload-pending.mjs" "$TARGET_DATE"; then
-      DAILY_COMPLETE=1
+# Check/renew once. Extra authentication is never bypassed or retried in a loop.
+ensure_dagym_browser || exit 1
+if ! DAGYM_CDP_URL="$CDP_URL" "$NODE_BIN" "$ROOT_DIR/scripts/dagym-session.mjs"; then
+  # A responsive debug port is not proof of a responsive browser renderer.
+  # Restart at most once, and only the process owned by this dedicated collector.
+  if "$NODE_BIN" -e 'const fs=require("fs");try{const h=JSON.parse(fs.readFileSync(process.argv[1],"utf8"));process.exit(["browser_connection_failed","session_check_timeout"].includes(h.status)?0:1)}catch{process.exit(1)}' "$SYNC_STATE_DIR/session-health.json"; then
+    OWNED_PID="$(cat "$BROWSER_PID_FILE" 2>/dev/null || true)"
+    OWNED_COMMAND="$(ps -p "$OWNED_PID" -o command= 2>/dev/null || true)"
+    if [ -n "$OWNED_COMMAND" ] && [[ "$OWNED_COMMAND" == *"--remote-debugging-port=$DEBUG_PORT"* ]] && [[ "$OWNED_COMMAND" == *"--user-data-dir=$USER_DATA_DIR"* ]]; then
+      kill "$OWNED_PID" || exit 3
+      for _ in {1..10}; do
+        if ! kill -0 "$OWNED_PID" 2>/dev/null; then break; fi
+        sleep 1
+      done
+      if kill -0 "$OWNED_PID" 2>/dev/null; then exit 3; fi
+      rm -f "$BROWSER_PID_FILE"
+      ensure_dagym_browser || exit 3
+      DAGYM_CDP_URL="$CDP_URL" "$NODE_BIN" "$ROOT_DIR/scripts/dagym-session.mjs" || exit 3
     else
-      PENDING_STATUS=$?
-      if [ "$PENDING_STATUS" -ne 2 ]; then
-        STATUS=1
-      fi
+      exit 3
     fi
-  fi
-  if [ "$DAILY_COMPLETE" -eq 0 ] && [ "$STATUS" -eq 0 ]; then
-    ensure_dagym_browser \
-      && DAGYM_CDP_URL="$CDP_URL" "$NODE_BIN" "$ROOT_DIR/scripts/dagym-daily-sync.mjs" "$@" \
-      && DAILY_COMPLETE=1 \
-      || STATUS=1
+  else
+    exit 3
   fi
 fi
+if [ "${DAGYM_SYNC_DAILY_ONLY:-0}" != "1" ]; then
+  DAGYM_CDP_URL="$CDP_URL" "$NODE_BIN" "$ROOT_DIR/scripts/dagym-monthly-pt-sync.mjs" "$@" || MONTHLY_STATUS=1
+fi
+# A PT-only failure must not stop validated daily operating data from saving.
+if [ "${DAGYM_SYNC_MONTHLY_ONLY:-0}" != "1" ]; then
+  if [ "$DAILY_COMPLETE" -eq 0 ] && [ "$STATUS" -eq 0 ]; then
+    DAGYM_CDP_URL="$CDP_URL" "$NODE_BIN" "$ROOT_DIR/scripts/dagym-daily-sync.mjs" "$@" \
+      && DAILY_COMPLETE=1 || STATUS=1
+  fi
+fi
+if [ "$MONTHLY_STATUS" -ne 0 ]; then STATUS=1; fi
 
 if [ "$STATUS" -eq 0 ] && [ "$SYNC_DRY_RUN" != "1" ] \
   && [ "${DAGYM_SYNC_MONTHLY_ONLY:-0}" != "1" ] && [ "${DAGYM_SYNC_DAILY_ONLY:-0}" != "1" ]; then
+  "$NODE_BIN" "$ROOT_DIR/scripts/dagym-sync-health.mjs" "$TARGET_DATE" || exit 1
   printf '%s\n' "$TARGET_DATE" > "$LAST_SUCCESS_FILE.tmp"
   mv "$LAST_SUCCESS_FILE.tmp" "$LAST_SUCCESS_FILE"
   echo "다짐 자동수집 완료: ${TARGET_DATE} 일일 운영자료와 ${TARGET_DATE:0:7} PT 일정을 반영했습니다."

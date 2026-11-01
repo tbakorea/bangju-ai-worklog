@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import quality from "./dagym-quality.cjs";
+import { atomicJson, validateDailyReceipt } from "./dagym-sync-health.mjs";
 const { isAuthSource, validateDailySnapshot } = quality;
 
 const root = process.cwd();
@@ -279,7 +280,7 @@ async function main() {
   const context = browser.contexts()[0];
   if (!context) throw new Error("다짐 전용 브라우저 컨텍스트를 찾지 못했습니다.");
   const page = context.pages()[0] || await context.newPage();
-  await page.bringToFront();
+  // DOM automation also works while the desktop is locked; no UI focus is needed.
   const attendanceStart = process.env.DAGYM_ATTENDANCE_URL || `${baseUrl}/dashboard/attendance?gymId={gymId}`;
   await page.goto(withCaptureRange(attendanceStart, "daily"), { waitUntil: "domcontentloaded", timeout: 60000 });
   await waitForReady(page);
@@ -311,17 +312,24 @@ async function main() {
   const safeDir = path.join(root, "work", "dagym-daily-sync");
   fs.mkdirSync(safeDir, { recursive: true });
   const auditPath = path.join(safeDir, "latest.json");
-  fs.writeFileSync(auditPath, `${JSON.stringify({ dateKey: targetDate, startedAt, capturedAt: new Date().toISOString(), metrics, domains, warnings, uploaded: null }, null, 2)}\n`);
   const payload = { dateKey: targetDate, startedAt, metrics, domains, warnings };
   validateDailySnapshot(payload);
+  const audit = { ...payload, capturedAt: new Date().toISOString(), uploaded: null };
+  const datedAuditPath = path.join(safeDir, `${targetDate}.json`);
+  // An invalid capture never replaces a previously validated pending snapshot.
+  if (process.env.DAGYM_SYNC_DRY_RUN !== "1") {
+    atomicJson(datedAuditPath, audit);
+    atomicJson(auditPath, audit);
+  }
   if (process.env.DAGYM_SYNC_DRY_RUN === "1") {
     console.log(JSON.stringify({ ok: true, dryRun: true, dateKey: targetDate, metrics, domains }, null, 2));
     await browser.close();
     return;
   }
   const uploaded = await upload(payload);
-  if (!uploaded?.ok) throw new Error("다짐 자료가 서버에서 정상 저장으로 확인되지 않았습니다.");
-  fs.writeFileSync(auditPath, `${JSON.stringify({ dateKey: targetDate, startedAt, capturedAt: new Date().toISOString(), metrics, domains, warnings, uploaded }, null, 2)}\n`);
+  validateDailyReceipt(uploaded, targetDate);
+  atomicJson(datedAuditPath, { ...audit, uploaded, uploadedAt: new Date().toISOString() });
+  atomicJson(auditPath, { ...audit, uploaded, uploadedAt: new Date().toISOString() });
   console.log(JSON.stringify({ ok: true, dateKey: targetDate, metrics, domains, uploaded }, null, 2));
   await browser.close();
 }
