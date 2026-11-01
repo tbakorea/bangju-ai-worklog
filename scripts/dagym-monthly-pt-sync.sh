@@ -77,13 +77,13 @@ if [ -f "$ROOT_DIR/.env.local" ]; then
 fi
 
 # 자동 실행용 비밀값은 평문 파일보다 macOS Keychain을 우선 사용한다.
-if [ -z "${DAGYM_BROWSER_SYNC_SECRET:-}" ]; then
-  DAGYM_BROWSER_SYNC_SECRET="$(security find-generic-password -a "$USER" -s "com.bangju.dagym-sync" -w 2>/dev/null || true)"
+if [ "$SYNC_DRY_RUN" != "1" ] && [ -z "${DAGYM_BROWSER_SYNC_SECRET:-}" ]; then
+  DAGYM_BROWSER_SYNC_SECRET="$("$NODE_BIN" "$ROOT_DIR/scripts/dagym-keychain-read.mjs" com.bangju.dagym-sync "$USER" || true)"
   export DAGYM_BROWSER_SYNC_SECRET
 fi
 if [ "$SYNC_DRY_RUN" != "1" ] && [ -z "${DAGYM_SYNC_ACCESS_TOKEN:-}" ]; then
   DAGYM_SYNC_EMAIL="${DAGYM_SYNC_EMAIL:-j3010@ymail.com}"
-  DAGYM_SYNC_PASSWORD="${DAGYM_SYNC_PASSWORD:-$(security find-generic-password -a "$DAGYM_SYNC_EMAIL" -s "com.bangju.worklog-sync" -w 2>/dev/null || true)}"
+  DAGYM_SYNC_PASSWORD="${DAGYM_SYNC_PASSWORD:-$("$NODE_BIN" "$ROOT_DIR/scripts/dagym-keychain-read.mjs" com.bangju.worklog-sync "$DAGYM_SYNC_EMAIL" || true)}"
   export DAGYM_SYNC_EMAIL DAGYM_SYNC_PASSWORD
   if [ -n "$DAGYM_SYNC_PASSWORD" ]; then
     DAGYM_SYNC_ACCESS_TOKEN="$("$NODE_BIN" "$ROOT_DIR/scripts/dagym-supabase-login.mjs")"
@@ -172,7 +172,7 @@ STATUS=0
 DAILY_COMPLETE=0
 MONTHLY_STATUS=0
 # A previously verified capture can finish its server retry even if the portal session expired.
-if [ "${DAGYM_SYNC_MONTHLY_ONLY:-0}" != "1" ] && [ "$SYNC_DRY_RUN" != "1" ]; then
+if [ "${DAGYM_SYNC_MONTHLY_ONLY:-0}" != "1" ] && [ "$SYNC_DRY_RUN" != "1" ] && [ "$SYNC_FORCE" != "1" ]; then
   if "$NODE_BIN" "$ROOT_DIR/scripts/dagym-upload-pending.mjs" "$TARGET_DATE"; then
     DAILY_COMPLETE=1
   else

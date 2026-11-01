@@ -13,6 +13,7 @@ RUNTIME_AUDIT_DIR="$RUNTIME_DIR/work/dagym-daily-sync"
 SOURCE_AUDIT="$ROOT_DIR/work/dagym-daily-sync/latest.json"
 SYNC_SCRIPTS=(
   dagym-monthly-pt-sync.sh
+  dagym-keychain-read.mjs
   dagym-session.mjs
   dagym-sync-health.mjs
   dagym-quality.cjs

@@ -204,3 +204,13 @@ supabase/migrations/20260822040000_defer_dagym_daily_analysis.sql
 
 검증: `node --test scripts/dagym-resilience.test.mjs scripts/dagym-quality.test.cjs scripts/dagym-monthly-pt-sync.test.mjs scripts/dagym-browser-daily.test.cjs scripts/dagym-monthly-schedule-api.test.cjs`.
 Chrome headless는 공식 기능이지만 실제 다짐 서버 응답을 우선하여 운영에서는 일반 모드를 사용한다.
+
+## 화면 잠금 상태에서의 실검증
+
+`python3 scripts/dagym-locked-qa.py --wait-seconds 1800`을 실행한 뒤 사용자가 화면을 잠그면 수집기가 작동한다. 프로그램은 ioreg의 `IOConsoleLocked`를 읽어 잠금 시작·수집 중·완료 상태를 확인하며, 화면 잠금 해제나 인증 설정 변경은 수행하지 않는다.
+
+검증은 성공 날짜 캐시를 건너뛰고 전날 자료를 새로 수집·저장한다. 일일·PT 서버 저장과 이번 실행 이후의 일일 저장 응답이 확인돼야 통과한다. 중간에 화면이 풀리거나 과거 성공 응답만 남아 있으면 통과하지 않는다. 결과는 실행 폴더의 `work/dagym-sync/locked-verification.json`에 인증정보·회원 목록 없이 남긴다.
+
+서버 저장을 생략한 읽기 검증은 `--dry-run`으로 실행한다. 이 모드에서는 업로드용 키체인을 읽지 않으며 기존 감사 기록도 덮어쓰지 않는다. 운영 키체인 읽기는 5초 제한을 두어 시스템 승인 창에서 전체 작업이 무한히 멈추지 않게 한다. 승인되지 않은 키체인 접근은 실패로 보고하고 다음 예약 실행에서 다시 확인한다. 키체인 접근 제한을 우회하거나 화면 잠금을 해제하지 않는다.
+
+잠금 검증 유닛 테스트: `python3 scripts/dagym-locked-qa.test.py`.

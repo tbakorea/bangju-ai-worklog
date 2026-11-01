@@ -134,3 +134,9 @@ test('pending uploader preserves a rejected receipt and writes a matching date a
     assert.equal(JSON.parse(fs.readFileSync(path.join(root,'work/dagym-daily-sync/latest.json'),'utf8')).dateKey,dateKey);
   } finally { await new Promise(resolve=>server.close(resolve)); }
 }));
+
+test('bounded keychain helper refuses unrelated services without printing data', async () => {
+  const { execFile } = await import('node:child_process');
+  const { promisify } = await import('node:util');
+  await assert.rejects(promisify(execFile)(process.execPath, [fileURLToPath(new URL('./dagym-keychain-read.mjs', import.meta.url)), 'unrelated-service', 'fixture-account']), error => error.code === 2 && error.stdout === '' && error.stderr === '');
+});
