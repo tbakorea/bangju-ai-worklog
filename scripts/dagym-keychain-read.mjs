@@ -6,7 +6,13 @@ const allowedServices = new Set(['com.bangju.dagym-sync', 'com.bangju.worklog-sy
 const [service, account] = process.argv.slice(2);
 if (!allowedServices.has(service) || !account) process.exit(2);
 try {
-  const result = await execute('/usr/bin/security', ['find-generic-password', '-s', service, '-a', account, '-w'], { timeout: 5000 });
+  // Use the identical unique service selector for metadata and password retrieval.
+  // Check its account first; never return another account's credential.
+  const query = ['find-generic-password', '-s', service];
+  const metadata = await execute('/usr/bin/security', query, { timeout: 5000 });
+  const storedAccount = metadata.stdout.match(/"acct"<blob>="([^"]+)"/)?.[1];
+  if (storedAccount !== account) process.exit(2);
+  const result = await execute('/usr/bin/security', [...query, '-w'], { timeout: 15000 });
   if (!result.stdout.trim()) process.exit(2);
   process.stdout.write(result.stdout.replace(/\r?\n$/, ''));
 } catch {

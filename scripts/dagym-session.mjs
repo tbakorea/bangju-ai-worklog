@@ -20,7 +20,7 @@ export async function readSavedDagymLogin() {
     const metadata = await execute('/usr/bin/security', ['find-generic-password', '-s', 'com.bangju.dagym-manager'], { timeout: 5000 });
     const identifier = metadata.stdout.match(/"acct"<blob>="([^"]+)"/)?.[1];
     if (identifier) {
-      const secret = await execute('/usr/bin/security', ['find-generic-password', '-s', 'com.bangju.dagym-manager', '-a', identifier, '-w'], { timeout: 5000 });
+      const secret = await execute('/usr/bin/security', ['find-generic-password', '-s', 'com.bangju.dagym-manager', '-w'], { timeout: 15000 });
       const password = secret.stdout.replace(/\r?\n$/, '');
       if (password) return { identifier, password };
     }
