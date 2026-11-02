@@ -1086,6 +1086,7 @@ function refreshCurrentTimeIndicators() {
     const start = timeToMinutes(row.dataset.executiveScheduleTime);
     row.classList.toggle("is-current", Boolean(isToday && Number.isFinite(start) && currentMinutes >= start && currentMinutes < start + 60));
   });
+  refreshSmartNextAction({ checkSources: true });
   checkAttendanceRecordReminder(now);
   if (now.getHours() >= 1) ensureTodayDagymDailyAnalysis({ now, silent: true });
 }
@@ -14812,10 +14813,109 @@ function renderEntries() {
   refreshWorklogSaveStatus();
 }
 
+const smartNextActionChoices = new Map();
+function getSmartNextActionContext(scope = "worklog", suppliedLog = null) {
+  const fitness = scope === "fitness";
+  if (!window.SmartNextAction || !authState.user || !isProfileApproved()
+    || (fitness ? activeView !== "fitness-log" : (!isGeneralEmployeeWorklogView() || todayPageMode !== "daily"))
+    || !canEditCurrentWorklog(activeView)) return null;
+  const parts = getDagymScheduleKstParts(new Date());
+  const date = getActiveDateKey();
+  if (date !== parts.dateKey) return null;
+  const page = fitness ? getCurrentFitnessLogPage() : null;
+  if (fitness && page?.type !== "employee") return null;
+  const employee = fitness ? page.employee : getSelectedEmployee();
+  if (getCoachingFollowupOwnerUserId(employee) !== authState.user.id) return null;
+  const log = suppliedLog || (fitness ? getFitnessEmployeeLogForDate(employee, date) : getSelectedLog());
+  if (!log) return null;
+  const refs = getWorklogTaskRefs(log);
+  const schedule = (log.schedule || []).flatMap((entry, index) => {
+    const items = Array.isArray(entry.items) && entry.items.length ? entry.items : [entry];
+    return items.map((item, itemIndex) => ({ key: `${index}:${itemIndex}`, time: entry.time, text: item.text || "", done: item.done, status: item.dagymStatus || item.status || "" }));
+  });
+  const minimal = { employee, dateKey: date, isCenter: false };
+  const comparison = fitness ? getPtComparisonRecord(minimal) : null;
+  const reminder = fitness ? getPtScheduleReminder(minimal, log) : null;
+  const attendance = String(log.attendanceStatus || "");
+  const off = (!log.clockIn && isOffWorkHours(getOverviewScheduledWorkHours(employee, date, log)))
+    || /휴무|비번|연차|병가|휴직|휴가|퇴사|결근/.test(attendance);
+  const candidates = window.SmartNextAction.rank({ allowed: true, date, today: parts.dateKey, time: parts.time, off, ended: Boolean(log.clockOut),
+    tasks: refs.map(ref => ({ ...ref.task, key: `${ref.sourceDateKey}:${ref.task.id || ref.index}`, dueDate: ref.task.dueDate || ref.task.deadline || "" })),
+    schedule, ptComparison: comparison, reminder,
+    recorded: refs.some(ref => String(ref.task.text || "").trim()) || schedule.some(item => String(item.text || "").trim()) || [log.report, log.record].some(text => String(text || "").trim()),
+  });
+  const key = `${authState.user.id}:${getEmployeeWorklogId(employee)}:${date}:${scope}`;
+  const signature = candidates.map(item => `${item.id}:${item.score}`).join("|");
+  let choice = smartNextActionChoices.get(key);
+  if (!choice || choice.signature !== signature) {
+    choice = { signature, index: 0 }; smartNextActionChoices.set(key, choice);
+  }
+  return { scope, key, date, employee, log, refs, minimal: { ...minimal, ptScheduleReminder: reminder }, candidates, choice,
+    item: candidates[choice.index % candidates.length], sourceWaiting: fitness && !off && !log.clockOut && [comparison, reminder].some(record => record && ["pending", "loading", "unavailable"].includes(record.status)) };
+}
+function renderSmartNextAction(scope = "worklog", log = null) {
+  const host = document.getElementById(scope === "fitness" ? "fitnessSmartNextAction" : "worklogSmartNextAction");
+  if (!host) return;
+  const context = getSmartNextActionContext(scope, log);
+  if (!context?.item) { host.hidden = true; host.innerHTML = ""; host.__smartRenderKey = ""; return; }
+  const { item, candidates, choice } = context;
+  host.hidden = false;
+  const markup = `<div class="smart-next-action-content"><small>오늘의 다음 행동${choice.index ? ` · 다른 제안 ${choice.index + 1}/${candidates.length}` : ""}</small>
+    <h3 title="${escapeAttr(item.title)}">${escapeHtml(item.title)}</h3><p title="${escapeAttr(item.reason)}">${escapeHtml(item.reason)}</p></div>
+    <div class="smart-next-action-actions"><button type="button" data-smart-open>확인하기</button>${candidates.length > 1 ? '<button type="button" data-smart-alternate>다른 제안</button>' : ""}</div>
+    <p class="smart-next-action-evidence">현재 열린 본인 일지 기준${context.sourceWaiting ? " · 피트니스 추가 자료 확인 보류" : ""}</p>`;
+  const renderKey = `${context.key}:${item.id}:${markup}`;
+  if (host.__smartRenderKey === renderKey) return;
+  const focusedButton = host.contains(document.activeElement) ? (document.activeElement?.hasAttribute("data-smart-alternate") ? "[data-smart-alternate]" : "[data-smart-open]") : "";
+  host.innerHTML = markup; host.__smartRenderKey = renderKey;
+  if (focusedButton) host.querySelector(focusedButton)?.focus({ preventScroll: true });
+  host.querySelector("[data-smart-open]").onclick = () => openSmartNextAction(scope, item.id);
+  host.querySelector("[data-smart-alternate]")?.addEventListener("click", () => {
+    const current = getSmartNextActionContext(scope);
+    if (!current) return;
+    current.choice.index = (current.choice.index + 1) % current.candidates.length;
+    renderSmartNextAction(scope);
+  });
+}
+function openSmartNextAction(scope, itemId) {
+  const context = getSmartNextActionContext(scope);
+  const item = context?.candidates.find(candidate => candidate.id === itemId);
+  if (!item) { renderSmartNextAction(scope); return; }
+  if (item.target === "report") {
+    if (scope === "fitness") openFitnessReportSheet(); else openWorklogReportSheet();
+    return;
+  }
+  const fitness = scope === "fitness";
+  const board = document.getElementById(fitness ? "fitnessTaskBoard" : "worklogTaskBoard");
+  let target = item.target === "task"
+    ? [...(board?.querySelectorAll("[data-smart-task-key]") || [])].find(row => row.dataset.smartTaskKey === item.taskKey)
+    : item.target === "schedule" ? [...document.querySelectorAll(`#${fitness ? "fitnessAppointmentList" : "worklogAppointmentList"} [data-schedule-time]`)].find(row => row.dataset.scheduleTime === item.time) : board;
+  if (!target && item.target === "schedule") target = document.getElementById(fitness ? "fitnessAppointmentList" : "worklogAppointmentList");
+  if (!target) target = board;
+  if (!target) return;
+  if (fitness) resetFitnessMobileFocusToSplit({ blur: true }); else resetMobileDayFocusToSplit({ blur: true });
+  target.scrollIntoView({ behavior: "smooth", block: "center" });
+  target.classList.add("smart-action-target");
+  const focus = target.querySelector(".task-text-input") || target;
+  if (focus === target) target.setAttribute("tabindex", "-1");
+  focus.focus({ preventScroll: true });
+  setTimeout(() => target.classList.remove("smart-action-target"), 2400);
+}
+function refreshSmartNextAction({ checkSources = false } = {}) {
+  const scope = activeView === "fitness-log" ? "fitness" : "worklog";
+  renderSmartNextAction(scope);
+  if (!checkSources || scope !== "fitness") return;
+  const context = getSmartNextActionContext(scope);
+  if (!context || context.item?.kind === "off" || context.log.clockOut) return;
+  loadPtComparison(context.minimal).catch(() => null);
+  loadPtScheduleReminder(context.minimal).catch(() => null);
+}
+
 function renderWorklogToday(log = getSelectedLog()) {
   renderWorklogSummary(log);
   renderWorklogTaskBoard(log);
   renderWorklogAppointments(log);
+  renderSmartNextAction("worklog", log);
 }
 
 function renderFitnessWorklog(log = getSelectedLog()) {
@@ -14861,10 +14961,11 @@ function renderFitnessWorklog(log = getSelectedLog()) {
   document.querySelector(".fitness-ops-section")?.toggleAttribute("hidden", isCenter);
   renderRepresentativeEmployeeAnalysis("fitness-log");
   applyFitnessLogPermissionState();
-  if (isCenter) return;
+  if (isCenter) { renderSmartNextAction("fitness"); return; }
   renderFitnessTaskBoard(log);
   renderFitnessAppointments(log);
   renderFitnessOperations(log);
+  renderSmartNextAction("fitness", log);
   applyFitnessLogPermissionState();
 }
 
@@ -18691,6 +18792,7 @@ function renderWorklogTaskRow(ref, currentLog, options = {}) {
     getActiveDateKey(),
     log?.employeeId || currentLog?.employeeId
   );
+  row.dataset.smartTaskKey = `${sourceDateKey}:${task.id || index}`;
   row.className = `worklog-task-row task-row priority-${String(displayTask.priority || "?").toLowerCase()} marker-${marker} ${statusClass} ${displayTask.done ? "done" : ""} ${isCarryover ? "is-carryover" : ""} ${isPostponedFromOtherDate ? "is-postponed-in" : ""} ${priorityMissing ? "is-priority-missing" : ""}`;
   row.innerHTML = `
     <button class="task-cycle" type="button" aria-label="상태 변경: 완료, 진행중, 해제 순환">${getWorklogTaskMarkerLabel(displayTask)}</button>
@@ -18739,6 +18841,7 @@ function renderWorklogTaskRow(ref, currentLog, options = {}) {
     scheduleInputRender("worklog-task-derived", () => {
       if (getSelectedLog() !== currentLog) return;
       renderWorklogSummary(currentLog);
+      refreshSmartNextAction();
       renderWorklogAppointments(currentLog);
       renderFitnessAppointments(currentLog);
       renderTodayContext();
@@ -26736,7 +26839,7 @@ function getCoachingFollowupOwnerUserId(employee = {}) {
   if (!authState.user) return "";
   const employeeKeys = new Set(getEmployeeIdentityKeys(employee).map(String));
   const ownEmployeeId = getProfileMappedEmployeeId() || "profile-user";
-  if (employeeKeys.has(String(ownEmployeeId)) || employee.id === "profile-user") return authState.user.id;
+  if (employeeKeys.has(`id:${ownEmployeeId}`) || employee.id === "profile-user") return authState.user.id;
   const directId = [employee.sourceProfileId, employee.profileEmployeeId].find(isUuidValue);
   if (directId) return String(directId);
   const approvalRow = (authState.approvalRows || []).find((row) => {
@@ -28038,6 +28141,10 @@ function buildFitnessCenterCommandSummary({ staffRows = [], totals = {}, monthly
 }
 
 function clearFitnessReportCaches() {
+  smartNextActionChoices.clear();
+  for (const id of ["worklogSmartNextAction", "fitnessSmartNextAction"]) {
+    const host = document.getElementById(id); if (host) { host.hidden = true; host.innerHTML = ""; host.__smartRenderKey = ""; }
+  }
   fitnessReportIssueCache.clear();
   fitnessPtComparisonCache.clear();
   fitnessPtScheduleReminderCache.clear();
@@ -28079,6 +28186,7 @@ async function loadPtScheduleReminder(model, { force = false } = {}) {
       if (authState.user?.id !== viewer || fitnessPtScheduleReminderCache.get(key) !== entry) return;
       fitnessPtScheduleReminderCache.set(key, { status: "unavailable", date: model.dateKey, loadedAt: Date.now() });
     }
+    if (authState.user?.id === viewer) renderSmartNextAction("fitness");
     const current = buildFitnessReportModel();
     if (authState.user?.id !== viewer || current.dateKey !== model.dateKey || !current.ptScheduleReminder || !canReadOwnPtComparison(current)) return;
     refreshOpenFitnessReport(current);
@@ -28145,6 +28253,7 @@ async function loadPtComparison(model, { force = false } = {}) {
       if (authState.user?.id !== viewer || fitnessPtComparisonCache.get(key) !== entry) return;
       fitnessPtComparisonCache.set(key, { status: "unavailable", differences: [], exceptions: [], reason: "전날 수업 대조를 확인하지 못했습니다. 일치 또는 수업 누락으로 판단하지 않습니다.", loadedAt: Date.now() });
     }
+    if (authState.user?.id === viewer) renderSmartNextAction("fitness");
     const current = buildFitnessReportModel();
     if (authState.user?.id === viewer && current.dateKey === model.dateKey && canReadOwnPtComparison(current)) refreshOpenFitnessReport(current);
   })();

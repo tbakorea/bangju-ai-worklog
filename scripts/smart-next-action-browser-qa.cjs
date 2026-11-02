@@ -1,0 +1,50 @@
+const assert=require('node:assert/strict');const {spawn}=require('node:child_process');
+const {chromium}=require('/Users/bangju/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/node_modules/playwright');
+const server=spawn('/usr/bin/python3',['-m','http.server','8788'],{stdio:'ignore'});
+(async()=>{let browser;try{
+ await new Promise(r=>setTimeout(r,700));browser=await chromium.launch({headless:true,executablePath:'/Applications/Google Chrome.app/Contents/MacOS/Google Chrome'});
+ for(const width of [390,820,1440]){
+  const page=await browser.newPage({viewport:{width,height:1000}});const errors=[];page.on('pageerror',e=>errors.push(e.message));
+  await page.route('**/*.supabase.co/**',r=>r.abort());await page.route('**/api/**',r=>r.fulfill({status:503,body:'{}'}));
+  await page.goto('http://127.0.0.1:8788/index.html');
+  const result=await page.evaluate(()=>window.eval(`(async()=>{
+   const id='11111111-1111-4111-8111-111111111111';authState.user={id,email:'onse2@naver.com'};authState.session=null;
+   state.profile={...defaultProfile,authUserId:id,name:'김경희',nickname:'김경희',email:'onse2@naver.com',role:'차장',org:'(주)방주',workplace:'재무',approvalStatus:'approved',permissions:{},accessPreset:'employee'};
+   normalizeState();switchView('bangju-log');state.selectedDateKey=todayKey;state.selectedEmployeeId='bangju-finance-kimkyunghee';
+   const log=getSelectedLog();log.tasks=[{...createWorklogTask('A'),text:'정산 검토',status:'미완료'},{...createWorklogTask('C'),text:'지원 요청 <script>BAD</script> '+ '긴 업무 설명 '.repeat(8),status:'지원필요'}];log.schedule=[];log.clockIn='08:30';
+   renderEntries();const host=document.getElementById('worklogSmartNextAction');const context=getSmartNextActionContext('worklog');
+   if(!context)throw Error(JSON.stringify({activeView,date:getActiveDateKey(),todayKey,user:!!authState.user,approved:isProfileApproved(),edit:canEditCurrentWorklog(),signedOut:isExplicitlySignedOut(),selected:state.selectedEmployeeId,owner:getCoachingFollowupOwnerUserId(getSelectedEmployee()),mapped:getProfileMappedEmployeeId(),module:!!window.SmartNextAction}));const ownShown=!host.hidden&&context?.item.kind==='support';
+   const buttonNode=host.querySelector('[data-smart-open]');renderSmartNextAction('worklog');const stableButton=buttonNode===host.querySelector('[data-smart-open]');
+   const escaped=!host.querySelector('script')&&host.textContent.includes('<script>BAD</script>');
+   const before=JSON.stringify(log);host.querySelector('[data-smart-open]')?.click();const focus=document.activeElement?.classList.contains('task-text-input')&&document.activeElement.value.includes('지원 요청');
+   const noMutation=before===JSON.stringify(log);
+   const taskPanel=document.querySelector(".worklog-task-panel").getBoundingClientRect(),coworkerPanel=document.querySelector(".worklog-coworker-page");const coworkerAligned=getComputedStyle(coworkerPanel).display==="none"||innerWidth<1100||Math.abs(taskPanel.top-coworkerPanel.getBoundingClientRect().top)<5;
+   host.querySelector('[data-smart-alternate]')?.click();const alternate=getSmartNextActionContext('worklog').item.title==='정산 검토';
+   log.tasks[0].done=true;log.tasks[0].status='완료';renderSmartNextAction('worklog');const completedRemoved=getSmartNextActionContext('worklog').candidates.every(x=>x.title!=='정산 검토');
+   const rect=host.getBoundingClientRect();const within=rect.width>0&&rect.left>=-1&&rect.right<=innerWidth+1&&host.scrollWidth<=host.clientWidth+1;
+   const title=host.querySelector('h3').getBoundingClientRect(),button=host.querySelector('button').getBoundingClientRect();const noOverlap=title.right<=button.left+1;
+   const past=parseDateKey(todayKey);past.setDate(past.getDate()-1);state.selectedDateKey=formatDateKey(past);renderSmartNextAction('worklog');const pastHidden=host.hidden;
+   state.selectedDateKey=todayKey;state.selectedEmployeeId='bangju-finance-assistant';renderSmartNextAction('worklog');const peerHidden=host.hidden;
+   state.selectedEmployeeId='bangju-finance-kimkyunghee';state.profile.approvalStatus='pending';renderSmartNextAction('worklog');const pendingHidden=host.hidden;
+   state.profile.approvalStatus='approved';authState.user=null;renderSmartNextAction('worklog');const signedOutHidden=host.hidden;
+   authState.user={id,email:'onse2@naver.com'};
+   const engine=window.SmartNextAction;window.SmartNextAction=undefined;renderSmartNextAction('worklog');const missingModuleSafe=host.hidden;window.SmartNextAction=engine;
+   renderSmartNextAction('worklog');const ownerResolved=getCoachingFollowupOwnerUserId(getSelectedEmployee())===id;
+   state.profile={...defaultProfile,authUserId:id,name:'박주홍',nickname:'박주홍',email:activeFitnessManagerEmail,role:'센터장',org:'비욘드 피트니스',workplace:'비욘드 피트니스',approvalStatus:'approved',permissions:{},accessPreset:'site_manager'};authState.user={id,email:activeFitnessManagerEmail};
+   normalizeState();switchView('fitness-log');state.fitnessWritableEmployeeId='beyond-fitness-manager';state.selectedEmployeeId='beyond-fitness-manager';state.fitnessLogPageId='beyond-fitness-manager';state.fitnessLogPage=1;
+   const fitnessLog=getSelectedLog();fitnessLog.clockIn='16:00';fitnessLog.tasks=[{...createWorklogTask('B'),text:'수업 준비 점검'}];fitnessLog.schedule=[];
+   const prior=parseDateKey(todayKey);prior.setDate(prior.getDate()-1);
+   fitnessPtComparisonCache.set(id+':'+todayKey,{status:'review',guidance:'예약 변경과 실제 수업을 확인하고 기록을 보완해주세요.',sourceDate:formatDateKey(prior),differences:[{dagym:'16:00',worklog:'17:00'}]});fitnessPtScheduleReminderCache.set(id+':'+todayKey,{date:todayKey,status:'present'});
+   renderEntries();const fitnessHost=document.getElementById('fitnessSmartNextAction');const fitness=getSmartNextActionContext('fitness');const fitnessShown=!fitnessHost.hidden&&fitness?.item.id==='pt-review'&&fitnessHost.textContent.includes('16:00');
+   fitnessHost.querySelector('[data-smart-open]')?.click();const reportOpened=!document.getElementById('fitnessReportSheet').hidden;closeFitnessReportSheet();
+   fitnessPtComparisonCache.set(id+':'+todayKey,{status:'unavailable'});renderSmartNextAction('fitness');const gapNotFailure=getSmartNextActionContext('fitness').item.title==='수업 준비 점검'&&fitnessHost.textContent.includes('확인 보류');
+   state.fitnessLogPageId='fitness-center';state.fitnessLogPage=0;renderEntries();const centerHidden=fitnessHost.hidden;
+   authState.user=null;renderSmartNextAction('fitness');const fitnessSignedOutHidden=fitnessHost.hidden;
+   state.profile={...defaultProfile,authUserId:id,name:'김경희',nickname:'김경희',email:'onse2@naver.com',role:'차장',org:'(주)방주',workplace:'재무',approvalStatus:'approved',permissions:{},accessPreset:'employee'};authState.user={id,email:'onse2@naver.com'};normalizeState();switchView('bangju-log');state.selectedEmployeeId='bangju-finance-kimkyunghee';renderEntries();
+   return {ownerResolved,fitnessShown,reportOpened,gapNotFailure,centerHidden,fitnessSignedOutHidden,ownShown,coworkerAligned,stableButton,escaped,focus,noMutation,alternate,completedRemoved,within,noOverlap,pastHidden,peerHidden,pendingHidden,signedOutHidden,missingModuleSafe};
+  })()`));
+  for(const [key,value]of Object.entries(result))assert.equal(value,true,`${width}: ${key} ${JSON.stringify(result)}`);assert.deepEqual(errors,[]);console.log(width,result);
+  await page.waitForTimeout(350);
+  await page.screenshot({path:`/tmp/bangju-smart-next-action-${width}.png`,fullPage:false});await page.close();
+ }
+}finally{await browser?.close();server.kill();}})().catch(e=>{console.error(e);process.exitCode=1;});

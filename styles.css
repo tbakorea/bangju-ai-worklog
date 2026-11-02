@@ -32064,6 +32064,21 @@ body[data-active-view="executive"] #executiveDateButton {
 
 /* Keep this final guard after the responsive executive header rules: inactive
    pages must never be layered below the currently open worklog page. */
+/* One evidence-backed action, scoped to the employee's current day. */
+.smart-next-action { grid-column:1 / -1; min-width:0; display:grid; grid-template-columns:minmax(0,1fr) auto; gap:7px 14px; padding:12px 14px; border:1px solid #b6cbbd; border-radius:14px; background:linear-gradient(125deg,#f1f6ed,#fffdf7); color:#163f30; }
+.smart-next-action[hidden], #view-today:has(#worklogMain:not([data-today-page="daily"])) #worklogSmartNextAction { display:none !important; }
+.smart-next-action small { display:block; font-size:11px; font-weight:850; color:#527063; }
+.smart-next-action h3 { margin:4px 0 !important; padding:0 !important; display:-webkit-box !important; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; font-size:15px !important; line-height:1.4; overflow-wrap:anywhere; }
+.smart-next-action-content > p { display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; }
+.smart-next-action p { margin:0; font-size:12px; line-height:1.45; color:#466154; overflow-wrap:anywhere; }
+.smart-next-action-content { min-width:0; }
+.smart-next-action-actions { display:flex; flex-direction:column; gap:6px; align-self:center; }
+.smart-next-action-actions button { min-height:34px; border:1px solid #b5c9ba; border-radius:9px; padding:6px 10px; background:#fffefa; color:#174b36; font-size:12px; font-weight:850; white-space:nowrap; }
+.smart-next-action-actions button:first-child { background:#174b36; color:#fffefa; border-color:#174b36; }
+.smart-next-action-evidence { grid-column:1 / -1; font-size:10px !important; color:#65796d !important; }
+.smart-action-target { outline:2px solid #4d9872 !important; outline-offset:3px; }
+@media(max-width:480px) { .smart-next-action { padding:10px; gap:7px; } .smart-next-action h3 { font-size:13px !important; } .smart-next-action p { font-size:11px; } .smart-next-action-actions button { padding:6px 8px; font-size:11px; } }
+
 .worklog-shell > .worklog-view:not(.is-active) {
   display: none !important;
 }

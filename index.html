@@ -8,7 +8,7 @@
     <link rel="icon" href="data:," />
     <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin />
     <link rel="dns-prefetch" href="https://cdn.jsdelivr.net" />
-    <link rel="stylesheet" href="./styles.css" />
+    <link rel="stylesheet" href="./styles.css?v=20261102-next-action" />
   </head>
   <body>
     <main class="worklog-shell">
@@ -457,6 +457,7 @@
           </div>
           <div class="worklog-edit-lock-banner" id="worklogEditLockBanner" hidden></div>
           <section class="representative-employee-analysis" id="representativeEmployeeAnalysis" aria-label="대표자 직원 근태 및 역량 분석" hidden></section>
+          <section id="worklogSmartNextAction" class="smart-next-action" aria-label="오늘의 다음 행동" hidden></section>
           <div class="worklog-main day-main-panel day-swipe" id="worklogMain" data-today-page="daily">
             <article class="worklog-panel shared-worklog-panel worklog-common-page">
               <h3>공통 실행일정</h3>
@@ -818,6 +819,7 @@
           </div>
           <div class="fitness-center-confirm" id="fitnessCenterConfirmPanel"></div>
         </article>
+        <section id="fitnessSmartNextAction" class="smart-next-action" aria-label="오늘의 다음 행동" hidden></section>
         <div class="fitness-desktop-worklog-grid">
         <article class="worklog-panel fitness-log-task-panel">
           <h3>
@@ -1497,7 +1499,8 @@
       </section>
     </main>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.115.0/dist/umd/supabase.js"></script>
+    <script src="./lib/smart-next-action.js?v=20261102-next-action"></script>
     <script src="./lib/fitness-role-feedback.js?v=20261102-role-feedback"></script>
-    <script src="./app.js?v=20261102-schedule-reminder"></script>
+    <script src="./app.js?v=20261102-next-action"></script>
   </body>
 </html>
