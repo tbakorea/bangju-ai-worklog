@@ -967,6 +967,7 @@ const authState = {
   representativeControlDataLoading: null,
   coachingFollowupCache: new Map(),
   coachingFollowupLoading: new Set(),
+  fitnessFeedbackHistory: new Map(),
   coachingFollowupOverviewRows: [],
   coachingFollowupOverviewDateKey: "",
   coachingFollowupOverviewLoadedAt: 0,
@@ -12296,6 +12297,7 @@ function clearAuthRuntimeState() {
   authState.representativeControlDataLoading = null;
   authState.coachingFollowupCache = new Map();
   authState.coachingFollowupLoading = new Set();
+  authState.fitnessFeedbackHistory = new Map();
   authState.coachingFollowupOverviewRows = [];
   authState.coachingFollowupOverviewDateKey = "";
   authState.coachingFollowupOverviewLoadedAt = 0;
@@ -12550,6 +12552,7 @@ async function applySession(session) {
   if (previousUserId && previousUserId !== nextUserId) {
     authState.coachingFollowupCache = new Map();
     authState.coachingFollowupLoading = new Set();
+    authState.fitnessFeedbackHistory = new Map();
     authState.coachingFollowupOverviewRows = [];
     authState.coachingFollowupOverviewDateKey = "";
     authState.coachingFollowupOverviewLoadedAt = 0;
@@ -26795,6 +26798,12 @@ function buildCoachingFollowupSnapshot(context = {}) {
     })),
     taskCount: numberValue(context.model?.taskCount || context.model?.aiContext?.taskSummary?.total),
     completedCount: numberValue(context.model?.completedCount || context.model?.aiContext?.taskSummary?.completed),
+    ...(context.model?.operatingFeedback ? { fitnessFeedback: {
+      version: 1,
+      roleKey: context.model.operatingFeedback.roleKey,
+      stepKey: context.actionText && context.actionText !== context.nextAction ? "custom" : context.model.operatingFeedback.stepKey,
+      stage: context.model.operatingFeedback.stage,
+    } } : {}),
   };
 }
 
@@ -26826,7 +26835,7 @@ function renderCoachingFollowup(scope = "worklog", suppliedModel = null) {
   const display = getCoachingFollowupDisplayStatus(record);
   const responseCode = record?.response_code || "";
   const responseLabel = coachingFollowupResponseMeta[responseCode]?.label || "응답 전";
-  const actionText = record?.action_text || context.nextAction;
+  const actionText = record?.response_code === "pending" ? context.nextAction : record?.action_text || context.nextAction;
   const dueDate = record?.due_date || getDefaultCoachingFollowupDueDate(context.model.dateKey);
   const status = record?.status || (coachingFollowupResponseMeta[responseCode]?.status || "in_progress");
   const result = record?.followup_result || "unchecked";
@@ -26894,6 +26903,9 @@ async function loadCoachingFollowup(scope = "worklog", suppliedModel = null, { f
     renderCoachingFollowup(scope, suppliedModel);
     return null;
   }
+  const viewerUserId = authState.user.id;
+  const followupCache = authState.coachingFollowupCache;
+  const loading = authState.coachingFollowupLoading;
   if (!force && authState.coachingFollowupCache.has(context.cacheKey)) {
     renderCoachingFollowup(scope, suppliedModel);
     return authState.coachingFollowupCache.get(context.cacheKey);
@@ -26908,11 +26920,15 @@ async function loadCoachingFollowup(scope = "worklog", suppliedModel = null, { f
     .eq("log_date", context.model.dateKey)
     .eq("report_scope", context.scope)
     .maybeSingle();
+  if (viewerUserId !== authState.user?.id || followupCache !== authState.coachingFollowupCache) {
+    loading.delete(context.cacheKey);
+    return null;
+  }
   if (!error && !data && context.canEdit && context.model.aiEnabled) {
     ({ data, error } = await supabaseClient
       .from("worklog_coaching_followups")
       .upsert({
-        user_id: authState.user.id,
+        user_id: viewerUserId,
         employee_id: getEmployeeWorklogId(context.employee) || context.employee.id || "profile-user",
         employee_name: context.employee.name || getEmployeeOwnLabel(context.employee),
         organization: context.employee.org || state.profile?.org || "",
@@ -26928,6 +26944,10 @@ async function loadCoachingFollowup(scope = "worklog", suppliedModel = null, { f
       }, { onConflict: "user_id,log_date,report_scope" })
       .select("*")
       .single());
+  }
+  if (viewerUserId !== authState.user?.id || followupCache !== authState.coachingFollowupCache) {
+    loading.delete(context.cacheKey);
+    return null;
   }
   authState.coachingFollowupLoading.delete(context.cacheKey);
   if (error) {
@@ -26973,7 +26993,7 @@ async function saveCoachingFollowup(scope = "worklog") {
     log_date: context.model.dateKey,
     report_scope: context.scope,
     coaching_key: context.model.aiKey || "",
-    coaching_snapshot: buildCoachingFollowupSnapshot(context),
+    coaching_snapshot: buildCoachingFollowupSnapshot({ ...context, actionText }),
     response_code: responseCode,
     response_note: String(host.querySelector('[data-coaching-followup-field="note"]')?.value || "").trim().slice(0, 1200),
     action_text: actionText.slice(0, 1200),
@@ -26998,7 +27018,9 @@ async function saveCoachingFollowup(scope = "worklog") {
     return;
   }
   authState.coachingFollowupCache.set(context.cacheKey, data);
+  if (scope === "fitness") host.dataset.feedbackDirty = "false";
   renderCoachingFollowup(scope);
+  if (scope === "fitness") refreshOpenFitnessReport();
   showAppToast(status === "completed" ? "개선 결과를 저장했습니다" : "코칭 실행계획을 저장했습니다");
 }
 
@@ -27028,10 +27050,12 @@ async function saveCoachingFollowupReview(scope = "worklog") {
     return;
   }
   authState.coachingFollowupCache.set(context.cacheKey, data);
+  if (scope === "fitness") host.dataset.feedbackDirty = "false";
   authState.coachingFollowupOverviewRows = authState.coachingFollowupOverviewRows.map((row) => (
     row.id === data.id ? data : row
   ));
   renderCoachingFollowup(scope);
+  if (scope === "fitness") refreshOpenFitnessReport();
   showAppToast(reviewResult === "improved" ? "개선 확인을 저장했습니다" : "후속점검을 저장했습니다");
 }
 
@@ -27575,6 +27599,43 @@ function getFitnessReportAiFingerprint(context = {}) {
   return (hash >>> 0).toString(36);
 }
 
+function getFitnessFeedbackHistoryAccess(employee, dateKey) {
+  const viewerId = authState.user?.id;
+  const ownerId = [employee.sourceProfileId, employee.profileEmployeeId].find(isUuidValue) || getCoachingFollowupOwnerUserId(employee);
+  if (!viewerId || !ownerId || (ownerId !== viewerId && !canAccessAllWorklogs())) return null;
+  return { ownerId, key: `${viewerId}:${ownerId}:${dateKey}` };
+}
+
+async function loadFitnessFeedbackHistory(model, { force = false } = {}) {
+  if (!model?.aiEnabled || model.isCenter || !supabaseClient) return;
+  const access = getFitnessFeedbackHistoryAccess(model.employee, model.dateKey);
+  if (!access) return;
+  const cache = authState.fitnessFeedbackHistory;
+  const existing = cache.get(access.key);
+  if (!force && existing && Date.now() - existing.loadedAt < 60000) return;
+  const firstDate = parseDateKey(model.dateKey);
+  firstDate.setDate(firstDate.getDate() - 30);
+  try {
+    const { data, error } = await supabaseClient.from("worklog_coaching_followups")
+      .select("log_date,status,response_code,followup_result,reviewed_at,fitness_feedback:coaching_snapshot->fitnessFeedback")
+      .eq("user_id", access.ownerId).eq("report_scope", "fitness")
+      .gte("log_date", formatDateKey(firstDate)).lt("log_date", model.dateKey)
+      .order("log_date", { ascending: false }).limit(20);
+    if (cache !== authState.fitnessFeedbackHistory || access.key !== getFitnessFeedbackHistoryAccess(model.employee, model.dateKey)?.key) return;
+    cache.set(access.key, { rows: error ? [] : data || [], status: error ? "unavailable" : "ready", loadedAt: Date.now() });
+  } catch {
+    if (cache === authState.fitnessFeedbackHistory) cache.set(access.key, { rows: [], status: "unavailable", loadedAt: Date.now() });
+  }
+}
+
+function buildFitnessRoleFeedback(context, employee, isCenter) {
+  if (!window.FitnessRoleFeedback) return null;
+  const access = !isCenter && getFitnessFeedbackHistoryAccess(employee, context.dateKey);
+  const history = access ? authState.fitnessFeedbackHistory.get(access.key) || { status: "loading", rows: [] } : { status: "unavailable", rows: [] };
+  const current = access ? authState.coachingFollowupCache.get(`${access.ownerId}:${context.dateKey}:fitness`) : null;
+  return window.FitnessRoleFeedback.build({ ...context, employee, isCenter }, history, current);
+}
+
 function buildFitnessReportAiContext({ dateKey, isCenter, employee, sourceLog, logEntries, totals, classStats, manual, dagymSummary, attendanceWarnings = [] }) {
   const tasks = logEntries.flatMap(({ employee: itemEmployee, log }) => getWorklogTaskRefs(log).map(({ task }) => ({
     writer: sanitizeFitnessCoachText(itemEmployee?.name || getEmployeeOwnLabel(itemEmployee) || "직원").slice(0, 40),
@@ -27616,7 +27677,7 @@ function buildFitnessReportAiContext({ dateKey, isCenter, employee, sourceLog, l
       visualContent: review.checks.visual,
     };
   }).filter(Boolean).slice(0, 8);
-  return {
+  const context = {
     coachingStyle: "fitness-operations-v1",
     operationsTip: (({ topic, title, knowhow, tip, action, check }) => ({ topic, title, knowhow, tip, action, check }))(
       getFitnessOperationsTip({ dateKey, employee, taskSummary: { items: tasks }, scheduleSummary: { items: scheduleEntries }, reportNotes })
@@ -27682,6 +27743,11 @@ function buildFitnessReportAiContext({ dateKey, isCenter, employee, sourceLog, l
       guidelines: String(manual.text || "").split("\n").map(sanitizeFitnessCoachText).filter(Boolean).slice(0, 8),
     },
   };
+  const roleFeedback = buildFitnessRoleFeedback(context, employee, isCenter);
+  if (!roleFeedback) return context;
+  // No raw member, company-finance, attendance or past-report text is sent to
+  // AI for this workflow. The report itself retains its existing source data.
+  return { ...window.FitnessRoleFeedback.aiContext({ dateKey, roleFeedback }), roleFeedback };
 }
 
 function getFitnessReportManualTemplate(employee = {}) {
@@ -27725,7 +27791,25 @@ function getFitnessOperationsTip(context = {}) {
   return pool[(day + employeeSeed) % pool.length];
 }
 
+function getFitnessRoleAiTip(model = {}) {
+  const text = sanitizeFitnessCoachText(model.aiCoaching?.feedback || "").slice(0, 80);
+  // A language-model suggestion cannot introduce financial disclosures,
+  // personnel judgments or extra numeric quotas into the agreed small step.
+  return /매출|급여|수당|인센티브|이자|순위|성실|징계|인사평가|\d[\d,.]*\s*(?:원|만원|%|건|명|회)/.test(text) ? "" : text;
+}
+
 function getFitnessReportCoachingRows(model = {}) {
+  if (model.operatingFeedback) {
+    const f = model.operatingFeedback;
+    const aiTip = getFitnessRoleAiTip(model);
+    const historyNote = f.historyStatus === "loading" ? " 이전 실행기록 확인 중입니다." : f.historyStatus === "unavailable" ? " 이전 실행기록은 확인 전입니다." : "";
+    return [
+      ["운영 노하우", `${f.roleLabel} · ${f.stageLabel}. ${f.purpose}`],
+      ["실무 팁", `${f.observation} ${f.encouragement}${historyNote}${aiTip ? ` ${aiTip}` : ""}`],
+      ["다음 근무 실행", f.action],
+      ["확인 기준", f.check],
+    ];
+  }
   if (model.aiCoaching) {
     const rows = [
       ["운영 노하우", model.aiCoaching.praise],
@@ -27989,6 +28073,7 @@ function buildFitnessReportModel(options = {}) {
     coaching: aiEnabled ? getFitnessCoachingMessages({ page, employee, log: sourceLog, dateKey }) : [],
     aiEnabled,
     aiContext,
+    operatingFeedback: aiContext?.roleFeedback || null,
     aiKey,
     aiCoaching: aiCacheEntry?.coaching || null,
     aiCoachModel: aiCacheEntry?.model || "",
@@ -28307,7 +28392,7 @@ function renderFitnessReportTemplate(model = buildFitnessReportModel()) {
           ${getFitnessReportIssueRowsHtml(model)}
         </div>
         ${model.aiEnabled ? `<div>
-          <h3>운영 매뉴얼·실무 팁${model.aiCoaching ? " · AI 맞춤" : ""}</h3>
+          <h3>${model.operatingFeedback ? "역할별 운영 피드백" : "운영 매뉴얼·실무 팁"}${model.aiCoaching && (!model.operatingFeedback || getFitnessRoleAiTip(model)) ? " · AI 맞춤" : ""}</h3>
           ${getFitnessReportCoachingRows(model).map(([title, text]) => `<p><b>${escapeHtml(title)}</b><span>${escapeHtml(text)}</span></p>`).join("")}
         </div>` : ""}
       </section>
@@ -28331,10 +28416,10 @@ function setFitnessReportAiStatus(stateName = "ready") {
   const status = document.getElementById("fitnessReportAiStatus");
   if (!status) return;
   const labels = {
-    ready: "운영 팁 자동 반영",
-    cached: "맞춤 운영 팁 반영 완료",
-    loading: "맞춤 운영 팁 생성 중…",
-    unavailable: "직무별 운영 팁 반영",
+    ready: "역할별 개선 피드백 반영",
+    cached: "역할별 맞춤 피드백 반영",
+    loading: "맞춤 피드백 다듬는 중…",
+    unavailable: "역할별 실행 기준 반영",
   };
   status.textContent = labels[stateName] || labels.ready;
   status.dataset.aiState = stateName;
@@ -28344,7 +28429,7 @@ function refreshOpenFitnessReport(model = buildFitnessReportModel()) {
   const preview = document.getElementById("fitnessReportPreview");
   if (!preview || !document.getElementById("fitnessReportSheet")?.classList.contains("is-open")) return;
   preview.innerHTML = renderFitnessReportTemplate(model);
-  renderCoachingFollowup("fitness", model);
+  if (document.getElementById("fitnessCoachingFollowup")?.dataset.feedbackDirty !== "true") renderCoachingFollowup("fitness", model);
   updateFitnessReportConfirmButton(model);
   fitFitnessReportPreview();
 }
@@ -28416,6 +28501,8 @@ function openFitnessReportSheet() {
   preview.scrollTop = 0;
   preview.scrollLeft = 0;
   preview.innerHTML = renderFitnessReportTemplate(model);
+  const followupHost = document.getElementById("fitnessCoachingFollowup");
+  if (followupHost) followupHost.dataset.feedbackDirty = "false";
   renderCoachingFollowup("fitness", model);
   updateFitnessReportConfirmButton(model);
   const aiStatus = document.getElementById("fitnessReportAiStatus");
@@ -28426,12 +28513,20 @@ function openFitnessReportSheet() {
   requestAnimationFrame(() => {
     sheet.classList.add("is-open");
     fitFitnessReportPreview();
-    loadCoachingFollowup("fitness", model);
+    loadFitnessFeedbackHistory(model).then(() => {
+      const current = buildFitnessReportModel();
+      if (!sheet.classList.contains("is-open") || current.dateKey !== model.dateKey || current.employee.id !== model.employee.id || current.isCenter !== model.isCenter) return null;
+      return loadCoachingFollowup("fitness", current);
+    }).then(() => {
+      const current = buildFitnessReportModel();
+      if (current.dateKey !== model.dateKey || current.employee.id !== model.employee.id || current.isCenter !== model.isCenter) return;
+      refreshOpenFitnessReport(current);
+      if (current.aiEnabled && sheet.classList.contains("is-open")) requestFitnessReportAiCoaching(current, { silent: true });
+    }).catch(() => setFitnessReportAiStatus("unavailable"));
     if (model.isCenter && model.attendanceWarnings.length) {
       showAppToast(`출퇴근 미기록 ${model.attendanceWarnings.length}명 · 48시간 이내 보완이 필요합니다`);
     }
     refreshFitnessReportWeather(model);
-    if (model.aiEnabled) requestFitnessReportAiCoaching(model, { silent: true });
   });
 }
 
@@ -28494,15 +28589,16 @@ function getFitnessReportFileBase() {
 }
 
 function getFitnessReportExportHeight(model = buildFitnessReportModel()) {
+  const feedbackSpace = model.operatingFeedback ? 360 : 0;
   if (model.isCenter) {
     const staffOverflow = Math.max(0, (model.staffRows?.length || 0) - 6) * 72;
     const issueOverflow = Math.max(0, (model.issueRows?.length || 0) - 3) * 44;
     const dagymSpace = model.dagymSummary ? 220 : 0;
-    return 2050 + staffOverflow + issueOverflow + dagymSpace;
+    return 2050 + staffOverflow + issueOverflow + dagymSpace + feedbackSpace;
   }
   const taskOverflow = Math.max(0, Math.max(model.topTasks?.length || 0, model.tomorrowTasks?.length || 0) - 3) * 50;
   const issueOverflow = Math.max(0, (model.issueRows?.length || 0) - 3) * 50;
-  return 1754 + taskOverflow + issueOverflow;
+  return 1754 + taskOverflow + issueOverflow + feedbackSpace;
 }
 
 function getFitnessReportExportCss(reportHeight = 1754) {
@@ -29076,7 +29172,10 @@ function getFitnessReportExportCss(reportHeight = 1754) {
 
 async function renderFitnessReportCanvas() {
   const width = 1240;
-  const model = buildFitnessReportModel();
+  const selection = buildFitnessReportModel();
+  await loadFitnessFeedbackHistory(selection);
+  await loadCoachingFollowup("fitness", buildFitnessReportModel({ dateKey: selection.dateKey, employee: selection.employee, isCenter: selection.isCenter })).catch(() => null);
+  const model = buildFitnessReportModel({ dateKey: selection.dateKey, employee: selection.employee, isCenter: selection.isCenter });
   const height = getFitnessReportExportHeight(model);
   const html = `
     <div xmlns="http://www.w3.org/1999/xhtml">
@@ -30306,6 +30405,10 @@ document.getElementById("fitnessReportPreview")?.addEventListener("click", (even
     if (event.target.closest(`[data-coaching-followup-review="${scope}"]`)) saveCoachingFollowupReview(scope);
   });
   host?.addEventListener("change", (event) => handleCoachingFollowupChange(event, scope));
+  if (scope === "fitness") {
+    host?.addEventListener("input", () => { host.dataset.feedbackDirty = "true"; });
+    host?.addEventListener("change", () => { host.dataset.feedbackDirty = "true"; });
+  }
 });
 document.getElementById("worklogReportMenuButton")?.addEventListener("click", openWorklogReportSheet);
 document.getElementById("worklogReportCloseButton")?.addEventListener("click", closeWorklogReportSheet);

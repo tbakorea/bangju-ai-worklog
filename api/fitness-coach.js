@@ -1,5 +1,6 @@
 const { createHash } = require("node:crypto");
 const { redactCoachContext, redactText } = require("./_lib/coach-privacy.cjs");
+const fitnessRoleFeedback = require("../lib/fitness-role-feedback.js");
 
 const SUPABASE_URL = process.env.SUPABASE_URL || "https://zllpfaijahyfppivkxzu.supabase.co";
 const SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY || "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InpsbHBmYWlqYWh5ZnBwaXZreHp1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODMzMzQxNTUsImV4cCI6MjA5ODkxMDE1NX0.C4omaj-e_9PM-iF3-5GUUVX47Wo06UsNTOYMlMMVcZU";
@@ -97,13 +98,14 @@ module.exports = async function handler(request, response) {
   }
 
   const context = request.body?.context;
-  const serialized = JSON.stringify(redactCoachContext(context || {}));
+  const progressFeedback = context?.coachingStyle === "fitness-progress-v2";
+  const serialized = JSON.stringify(redactCoachContext(progressFeedback ? fitnessRoleFeedback.aiContext(context) : context || {}));
   if (!context || serialized.length > MAX_PAYLOAD_BYTES || !/^\d{4}-\d{2}-\d{2}$/.test(String(context.dateKey || ""))) {
     response.status(400).json({ ok: false, error: "코칭 자료 형식이 올바르지 않습니다." });
     return;
   }
 
-  const fitnessOperations = context.coachingStyle === "fitness-operations-v1";
+  const fitnessOperations = progressFeedback || context.coachingStyle === "fitness-operations-v1";
   const model = process.env.OPENAI_COACH_MODEL || "gpt-5.4-mini";
   const safetyIdentifier = createHash("sha256").update(`bangju-worklog:${user.id}`).digest("hex").slice(0, 32);
   const openaiResponse = await fetch("https://api.openai.com/v1/responses", {
@@ -129,6 +131,8 @@ module.exports = async function handler(request, response) {
         fitnessOperations ? "피트니스 보고서의 praise는 칭찬이 아니라 당일 업무와 연결되는 운영 노하우, feedback은 구체적 실무 팁, nextAction은 다음 근무 실행 한 가지, manualReminder는 완료 확인 기준으로 작성하세요. 기록했다는 사실을 칭찬하거나 업무 문장을 반복하지 마세요." : "칭찬은 실제 업무 문장·시간·작성자 중 하나를 짧게 언급한 구체적 실행 근거를 포함하고, 피드백은 비난 없이 그 기록과 연결되는 가장 중요한 보완점 하나만 제시하세요.",
         fitnessOperations ? "operationsTip은 날짜별로 선정한 운영 팁입니다. 제공된 직무 매뉴얼과 실제 당일 업무에 맞춰 이 팁을 구체화하고, 네 항목에서 같은 업무 문장이나 권유를 반복하지 마세요. 빈 기록을 임의로 채우거나 제안을 실제 성과로 쓰지 마세요." : "칭찬·피드백·다음 행동에는 가능한 한 서로 다른 당일 근거를 사용하고, 업무가 기록되어 있는데도 '기록을 남겨주세요' 같은 일반 문구만 반복하지 마세요.",
         "다음 행동은 다음 근무에서 바로 실행 가능한 한 가지로 쓰세요.",
+        progressFeedback ? "roleFeedback의 역할·단계·실행 한 가지를 지키세요. 단계는 날짜 경과나 매출 점수가 아니며 이전 본인 응답을 바탕으로 합니다. 지원 단계에서는 추가 실적 요구 대신 막힌 점과 지원 담당을 안내하고, 보류 단계에서는 가능한 다음 시점을 조정하고, 진행 중이면 기존 실행의 마무리를 돕고, 완료 단계도 검증된 성과라고 과장하지 마세요." : "",
+        progressFeedback ? "금액·매출 목표·급여·인센티브·직원 비교는 제안하지 마세요. feedback은 관찰 가능한 실행과 회원 경험의 연결을 짧게 설명하고 roleFeedback.action 외에 추가 과제나 수량 목표를 만들지 마세요. 완료 표시를 실제 개선 효과와 혼동하지 마세요." : "",
         "피트니스 센터 운영 취합에 다짐 지표와 전일 대비 변이가 있으면 출석·예약·노쇼·재등록·매출의 연결을 평가하고 개선 행동을 제시하세요.",
         "snsContent가 있으면 입력된 링크와 contentSummary만 근거로 검색성·고객효익·문의유도 문구를 검토하세요. 외부 링크 본문을 실제로 열람했다고 말하지 마세요.",
         "블로그 중심 홍보에는 같은 소재를 인스타그램 릴스·카드뉴스와 네이버 플레이스 소식으로 재가공하고, 채널별 문의·예약 반응을 기록하도록 구체적으로 코칭하세요.",
