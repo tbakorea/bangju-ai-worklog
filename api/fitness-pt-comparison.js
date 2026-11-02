@@ -1,4 +1,4 @@
-const { compare } = require('./_lib/pt-schedule-comparison.cjs');
+const { compare, scheduleReminder } = require('./_lib/pt-schedule-comparison.cjs');
 const BASE = process.env.SUPABASE_URL || 'https://zllpfaijahyfppivkxzu.supabase.co';
 module.exports = async function(req, res) {
   res.setHeader('Cache-Control', 'private, no-store');
@@ -21,6 +21,13 @@ module.exports = async function(req, res) {
       || !/트레이너|센터장|강사|코치|pt|피티/i.test(`${profile.role || ''} ${profile.primary_work || ''}`)) return res.status(403).json({ error: '본인 트레이너 보고서에서 확인할 수 있습니다.' });
     const reportDate = String(req.query?.date || '');
     if (!/^\d{4}-\d{2}-\d{2}$/.test(reportDate) || !Number.isFinite(Date.parse(reportDate)) || new Date(reportDate).toISOString().slice(0, 10) !== reportDate) return res.status(400).json({ error: '날짜를 확인해주세요.' });
+    if (req.query?.scope === 'reminder') {
+      const end = new Date(`${reportDate}T00:00:00Z`); end.setUTCDate(end.getUTCDate() + 1);
+      const from = encodeURIComponent(`${reportDate}T00:00:00+09:00`);
+      const until = encodeURIComponent(`${end.toISOString().slice(0, 10)}T00:00:00+09:00`);
+      const events = await read(`/rest/v1/dagym_pt_schedule_events?center_key=eq.beyond-fitness&trainer_profile_id=eq.${encodeURIComponent(user.id)}&active=eq.true&or=(and(scheduled_at.gte.${from},scheduled_at.lt.${until}),and(worklog_scheduled_at.gte.${from},worklog_scheduled_at.lt.${until}))&select=scheduled_at,worklog_scheduled_at,active&limit=1000`);
+      return res.status(200).json(scheduleReminder({ date: reportDate, events }));
+    }
     const date = new Date(`${reportDate}T00:00:00Z`); date.setUTCDate(date.getUTCDate() - 1);
     const sourceDate = date.toISOString().slice(0, 10);
     const from = `${sourceDate}T00:00:00+09:00`, until = `${reportDate}T00:00:00+09:00`;

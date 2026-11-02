@@ -70,4 +70,9 @@ function compare({ reportDate, sourceDate, events = [], log = null, now = new Da
   output.reason = '확인된 시간표의 시작 시각·유료/무료 구분을 대조했습니다. 수업 완료·회원 일치·전체 수집 완전성을 판정한 결과가 아닙니다.';
   return output;
 }
-module.exports = { compare, localItems, kstParts };
+function scheduleReminder({ date, events = [] }) {
+  const hasSchedule = events.some(row => row.active !== false && [row.scheduled_at, row.worklog_scheduled_at].some(value => kstParts(value)?.date === date));
+  return { date, status: hasSchedule ? 'present' : 'empty-linked',
+    message: hasSchedule ? '' : '동기화된 자료에서 본인에게 연결된 수업 일정이 확인되지 않습니다. 수업 예정이 있다면 다짐 앱에서 시간표를 먼저 작성해주세요. 이미 등록했다면 센터장에게 강사 연결과 동기화 확인을 요청하세요.' };
+}
+module.exports = { compare, localItems, kstParts, scheduleReminder };

@@ -12257,8 +12257,7 @@ function executeGlobalCommandItem(item) {
 function clearAuthRuntimeState() {
   flushDeferredStateSave();
   cancelDeferredInputRenders();
-  fitnessReportIssueCache.clear();
-  fitnessPtComparisonCache.clear();
+  clearFitnessReportCaches();
   authState.session = null;
   authState.user = null;
   weatherRemoteDates.clear();
@@ -12560,7 +12559,7 @@ async function applySession(session) {
     authState.coachingFollowupOverviewLoadedAt = 0;
     authState.coachingFollowupOverviewLoading = false;
   }
-  if (authState.user?.id !== session?.user?.id) { fitnessReportIssueCache.clear(); fitnessPtComparisonCache.clear(); }
+  if (authState.user?.id !== session?.user?.id) clearFitnessReportCaches();
   authState.session = session;
   authState.user = session?.user || null;
   if (!authState.user) {
@@ -13174,8 +13173,9 @@ function resolveDagymTrainerEmployeeId(row = {}) {
 }
 
 function isDagymScheduleReminderTrainer(employee = {}) {
-  const reminderNames = new Set(["박주홍", "홍현규"].map(normalizeDagymTrainerName));
-  return getDagymTrainerIdentityNames(employee).some((name) => reminderNames.has(name));
+  return isFitnessEmployeeRecord(employee)
+    && (/센터장|트레이너|강사|코치/i.test(String(employee.role || ""))
+      || /pt\s*수업|피티\s*수업/i.test(String(employee.primaryWork || "")));
 }
 
 function getDagymScheduleReminderContext(page = getCurrentFitnessLogPage()) {
@@ -13191,6 +13191,7 @@ function getDagymScheduleReminderContext(page = getCurrentFitnessLogPage()) {
     || dateKey < todayKey
     || !isDagymScheduleReminderTrainer(employee)
   ) return null;
+  if (!isPtScheduleReminderWorkday(employee, dateKey, getReportArchiveEmployeeLog(employee, dateKey))) return null;
 
   const cached = authState.dagymPtScheduleMonthCache.get(dateKey.slice(0, 7));
   if (!Array.isArray(cached?.rows)) return null;
@@ -13217,7 +13218,7 @@ function renderFitnessDagymScheduleWarning(page = getCurrentFitnessLogPage()) {
     <span>DA GYM · PT SCHEDULE</span>
     <strong>수업 시간표 확인 필요</strong>
   </header>
-  <p><b>${escapeHtml(getEmployeeOwnLabel(context.employee))}</b>님의 ${escapeHtml(subject)} 다짐 시간표에 등록된 수업이 없습니다. 예정 수업이 있다면 다짐에서 수업 시간표를 등록·확인해주세요. 등록 후 이 업무일지의 시간별 일정에 자동 반영됩니다.</p>`;
+  <p><b>${escapeHtml(getEmployeeOwnLabel(context.employee))}</b>님의 ${escapeHtml(subject)} 동기화된 자료에서 본인에게 연결된 수업 일정이 확인되지 않습니다. 수업 예정이 있다면 다짐에서 시간표를 작성해주세요. 이미 등록했다면 강사 연결과 동기화를 확인해주세요.</p>`;
 }
 
 function isDagymScheduleProjectionEligible(row = {}, dateKey = getActiveDateKey(), now = new Date()) {
@@ -26237,6 +26238,7 @@ function buildFitnessReportLines() {
     "[특이사항 및 인수인계]",
     ...model.issueRows.map((row) => `- ${row}`),
     "",
+    ...(getPtScheduleReminderLines(model.ptScheduleReminder).length ? ["[다짐 시간표 작성 안내]", ...getPtScheduleReminderLines(model.ptScheduleReminder), ""] : []),
     ...(model.ptComparison ? ["[전날 PT 시간표 대조]", ...getPtComparisonLines(model.ptComparison), ""] : []),
     "[AI 보완 코칭]",
     ...getFitnessReportCoachingRows(model).map(([title, text]) => `- ${title}: ${text}`),
@@ -28035,6 +28037,81 @@ function buildFitnessCenterCommandSummary({ staffRows = [], totals = {}, monthly
   };
 }
 
+function clearFitnessReportCaches() {
+  fitnessReportIssueCache.clear();
+  fitnessPtComparisonCache.clear();
+  fitnessPtScheduleReminderCache.clear();
+}
+const fitnessPtScheduleReminderCache = new Map();
+const fitnessPtScheduleReminderNotified = new Set();
+function isPtScheduleReminderWorkday(employee, dateKey, log = {}) {
+  if (!isEmployeeWorklogParticipantOnDate(employee, dateKey)) return false;
+  const status = String(log.attendanceStatus || "");
+  const off = isOffWorkHours(getOverviewScheduledWorkHours(employee, dateKey, log));
+  const substitute = Boolean(log.clockIn) || /대체근무/.test(status);
+  return !((!substitute && off) || /휴무|비번|연차|병가|휴직|경조|공가|휴가|퇴사|결근/.test(status));
+}
+function getPtScheduleReminder(model, log = {}) {
+  const currentDateKey = getDagymScheduleKstParts(new Date()).dateKey;
+  if (!canReadOwnPtComparison(model) || !isDagymScheduleReminderTrainer(model.employee) || model.dateKey < currentDateKey
+    || !isPtScheduleReminderWorkday(model.employee, model.dateKey, log)) return null;
+  return fitnessPtScheduleReminderCache.get(`${authState.user.id}:${model.dateKey}`) || { status: "pending", date: model.dateKey };
+}
+async function loadPtScheduleReminder(model, { force = false } = {}) {
+  if (!model.ptScheduleReminder || !canReadOwnPtComparison(model) || !authState.session?.access_token) return;
+  const viewer = authState.user.id, key = `${viewer}:${model.dateKey}`;
+  const old = fitnessPtScheduleReminderCache.get(key);
+  if (!force && old?.promise) return old.promise;
+  if (!force && old?.loadedAt && Date.now() - old.loadedAt < 60000) return;
+  const entry = { status: "loading", date: model.dateKey };
+  fitnessPtScheduleReminderCache.set(key, entry);
+  entry.promise = (async () => {
+    try {
+      const response = await fetch(`/api/fitness-pt-comparison?scope=reminder&date=${encodeURIComponent(model.dateKey)}`, {
+        headers: { Authorization: `Bearer ${authState.session.access_token}` }, signal: AbortSignal.timeout(15000),
+      });
+      if (!response.ok) throw Error("unavailable");
+      const data = await response.json();
+      if (data.date !== model.dateKey || !["present", "empty-linked"].includes(data.status)) throw Error("invalid source");
+      if (authState.user?.id !== viewer || fitnessPtScheduleReminderCache.get(key) !== entry) return;
+      fitnessPtScheduleReminderCache.set(key, { ...data, loadedAt: Date.now() });
+    } catch {
+      if (authState.user?.id !== viewer || fitnessPtScheduleReminderCache.get(key) !== entry) return;
+      fitnessPtScheduleReminderCache.set(key, { status: "unavailable", date: model.dateKey, loadedAt: Date.now() });
+    }
+    const current = buildFitnessReportModel();
+    if (authState.user?.id !== viewer || current.dateKey !== model.dateKey || !current.ptScheduleReminder || !canReadOwnPtComparison(current)) return;
+    refreshOpenFitnessReport(current);
+    const sheetOpen = document.getElementById("fitnessReportSheet")?.classList.contains("is-open");
+    if (sheetOpen && current.dateKey === getDagymScheduleKstParts(new Date()).dateKey && current.ptScheduleReminder.status === "empty-linked" && shouldShowPtScheduleReminderToast(key)) {
+      showAppToast("수업 예정이 있다면 다짐 시간표를 작성해주세요 · 보고서 안내 확인");
+    }
+  })();
+  return entry.promise;
+}
+function shouldShowPtScheduleReminderToast(key) {
+  if (fitnessPtScheduleReminderNotified.has(key)) return false;
+  const storageName = `bangju-pt-schedule-reminder:${key}`;
+  try { if (localStorage.getItem(storageName) === "shown") return false; } catch { /* memory fallback */ }
+  fitnessPtScheduleReminderNotified.add(key);
+  try { localStorage.setItem(storageName, "shown"); } catch { /* memory fallback */ }
+  return true;
+}
+function getPtScheduleReminderLines(record) {
+  if (!record || record.status === "present") return [];
+  if (["pending", "loading"].includes(record.status)) return ["다짐 시간표 등록 여부를 확인 중입니다."];
+  if (record.status === "unavailable") return ["다짐 시간표를 불러오지 못해 확인을 보류합니다. 빈 시간표로 판단하지 않습니다."];
+  return [`${record.date} · ${record.message}`, "수업 시작 전 시간표를 등록하고, 종료 후 실제 시간·변경 사유를 확인하면 인수인계가 수월해집니다. 수업이 없는 날은 실제 근무 내용을 업무일지에 남겨주세요."];
+}
+function renderPtScheduleReminderHtml(model) {
+  const lines = getPtScheduleReminderLines(model.ptScheduleReminder);
+  if (!lines.length) return "";
+  const title = model.ptScheduleReminder.status === "empty-linked" ? "다짐 시간표 작성 안내" : "다짐 시간표 확인";
+  return `<section class="fitness-paper-schedule-reminder" role="status" style="margin-top:12px;padding:12px;border:2px solid #b28b48;border-radius:10px;background:#fff7e8;overflow-wrap:anywhere;break-inside:avoid">
+    <h3 style="margin:0 0 6px">${title}</h3>${lines.map(text => `<p style="margin:5px 0;line-height:1.4">${escapeHtml(text)}</p>`).join("")}
+  </section>`;
+}
+
 const fitnessPtComparisonCache = new Map();
 function canReadOwnPtComparison(model = {}) {
   return Boolean(authState.user && !model.isCenter && isFitnessEmployeeRecord(model.employee)
@@ -28209,6 +28286,7 @@ function buildFitnessReportModel(options = {}) {
     aiCoachGeneratedAt: aiCacheEntry?.generatedAt || "",
   };
   model.ptComparison = getPtComparisonRecord(model);
+  model.ptScheduleReminder = getPtScheduleReminder(model, sourceLog);
   return model;
 }
 
@@ -28517,6 +28595,7 @@ function renderFitnessReportTemplate(model = buildFitnessReportModel()) {
 
       ${renderFitnessSnsReportHtml(model)}
 
+      ${renderPtScheduleReminderHtml(model)}
       ${renderPtComparisonHtml(model)}
 
       <section class="fitness-paper-footer-grid">
@@ -28645,6 +28724,7 @@ function openFitnessReportSheet() {
   requestAnimationFrame(() => {
     sheet.classList.add("is-open");
     fitFitnessReportPreview();
+    loadPtScheduleReminder(model, { force: true });
     loadPtComparison(model, { force: true });
     loadFitnessFeedbackHistory(model).then(() => {
       const current = buildFitnessReportModel();
@@ -28722,7 +28802,8 @@ function getFitnessReportFileBase() {
 }
 
 function getFitnessReportExportHeight(model = buildFitnessReportModel()) {
-  const feedbackSpace = (model.operatingFeedback ? 360 : 0)
+  const reminderSpace = getPtScheduleReminderLines(model.ptScheduleReminder).reduce((sum, line) => sum + Math.max(1, Math.ceil(line.length / 65)) * 36, 0);
+  const feedbackSpace = (reminderSpace ? reminderSpace + 180 : 0) + (model.operatingFeedback ? 360 : 0)
     + (model.ptComparison ? 200 + getPtComparisonLines(model.ptComparison).reduce((sum, line) => sum + Math.max(1, Math.ceil(line.length / 65)) * 36, 0) : 0);
   if (model.isCenter) {
     const staffOverflow = Math.max(0, (model.staffRows?.length || 0) - 6) * 72;
@@ -29307,6 +29388,7 @@ function getFitnessReportExportCss(reportHeight = 1754) {
 async function renderFitnessReportCanvas() {
   const width = 1240;
   const selection = buildFitnessReportModel();
+  await loadPtScheduleReminder(selection);
   await loadPtComparison(selection);
   await loadFitnessFeedbackHistory(selection);
   await loadCoachingFollowup("fitness", buildFitnessReportModel({ dateKey: selection.dateKey, employee: selection.employee, isCenter: selection.isCenter })).catch(() => null);

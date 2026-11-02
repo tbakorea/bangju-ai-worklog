@@ -54,3 +54,26 @@ test('API isolates authenticated owner and rejects role, approval, forged owner 
   assert.ok(!JSON.stringify(result.body).includes('PRIVATE'));
  }finally{global.fetch=oldFetch;if(oldKey===undefined)delete process.env.SUPABASE_SERVICE_ROLE_KEY;else process.env.SUPABASE_SERVICE_ROLE_KEY=oldKey;}
 });
+test('registration reminder uses selected-day linked source, including cancelled and corrected dates',()=>{
+ const {scheduleReminder}=require('../api/_lib/pt-schedule-comparison.cjs');
+ const date='2026-11-02';
+ assert.equal(scheduleReminder({date,events:[]}).status,'empty-linked');
+ assert.ok(scheduleReminder({date,events:[]}).message.includes('강사 연결'));
+ assert.equal(scheduleReminder({date,events:[event({scheduled_at:'2026-11-01T15:00:00Z',status:'cancelled'})]}).status,'present');
+ assert.equal(scheduleReminder({date,events:[event({worklog_scheduled_at:'2026-11-02T09:00:00+09:00'})]}).status,'present');
+ assert.equal(scheduleReminder({date,events:[event()]}).status,'empty-linked');
+ assert.equal(scheduleReminder({date,events:[event({scheduled_at:'2026-11-02T09:00:00+09:00',active:false})]}).status,'empty-linked');
+});
+test('reminder API is owner-bound and read failure is never empty',async()=>{
+ const oldFetch=global.fetch,oldKey=process.env.SUPABASE_SERVICE_ROLE_KEY;process.env.SUPABASE_SERVICE_ROLE_KEY='fixture';let fail=false,calls=[];
+ const own='11111111-1111-4111-8111-111111111111';
+ global.fetch=async url=>{url=String(url);calls.push(url);let data=[];
+  if(url.endsWith('/auth/v1/user'))data={id:own};
+  else if(url.includes('/profiles?'))data=[{approval_status:'approved',org:'비욘드 피트니스',role:'센터장'}];
+  else if(fail)throw Error('offline');
+  return {ok:true,json:async()=>data};
+ };
+ const request=async()=>{const res={setHeader(){},status(n){this.code=n;return this;},json(value){this.body=value;return this;}};await handler({method:'GET',headers:{authorization:'Bearer fixture'},query:{date:'2026-11-02',scope:'reminder',owner:'another-user'}},res);return res;};
+ try{const result=await request();assert.equal(result.code,200);assert.equal(result.body.status,'empty-linked');assert.ok(calls.find(x=>x.includes('/dagym_pt_schedule_events?')).includes('trainer_profile_id=eq.'+own));fail=true;assert.equal((await request()).code,503);}
+ finally{global.fetch=oldFetch;if(oldKey===undefined)delete process.env.SUPABASE_SERVICE_ROLE_KEY;else process.env.SUPABASE_SERVICE_ROLE_KEY=oldKey;}
+});
