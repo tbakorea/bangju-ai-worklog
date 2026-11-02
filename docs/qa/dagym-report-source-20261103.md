@@ -7,3 +7,4 @@
 - 전체 mobile-browser QA는 기존 김영채 퇴사자 fixture 기대값에서 실패. 퇴사자 노출을 되돌리지 않음.
 - 실제 운영 검증: 새 전용 프로필에서 정상 자동 로그인 복구. 2026-11-02 일일 자료 서버 업로드, 11월 시간표 93건 complete receipt 및 verifySync 통과. 일일 quality=partial은 유지. 성공 날짜 파일 2026-11-02.
 - 기존 9233 창·탭·프로필 및 회원 인증정보 복사/삭제·접근권한 변경 없음. 운영 원본에 모의 테스트 자료 쓰기 없음.
+- 운영 배포 뒤 인증된 분석 전용 복구를 2026-11-01/02 저장 자료에 각각 1회 실행: 모두 HTTP 200, analysisUpdated=true. DB 재조회에서 analysis_date 2026-11-02/03의 quality가 missing→partial로 갱신됨을 확인. raw snapshot 재업로드 없음.
