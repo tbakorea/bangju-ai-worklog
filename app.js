@@ -12257,6 +12257,7 @@ function executeGlobalCommandItem(item) {
 function clearAuthRuntimeState() {
   flushDeferredStateSave();
   cancelDeferredInputRenders();
+  fitnessReportIssueCache.clear();
   authState.session = null;
   authState.user = null;
   weatherRemoteDates.clear();
@@ -12558,6 +12559,7 @@ async function applySession(session) {
     authState.coachingFollowupOverviewLoadedAt = 0;
     authState.coachingFollowupOverviewLoading = false;
   }
+  if (authState.user?.id !== session?.user?.id) fitnessReportIssueCache.clear();
   authState.session = session;
   authState.user = session?.user || null;
   if (!authState.user) {
@@ -27067,6 +27069,56 @@ function handleCoachingFollowupChange(event, scope = "worklog") {
   if (status) status.value = coachingFollowupResponseMeta[input.value]?.status || "acknowledged";
 }
 
+// Ephemeral, account/date-scoped projection; never persisted into another employee's worklog or AI input.
+const fitnessReportIssueCache = new Map();
+const fitnessIssueRecipientEmails = new Set(["tbakorea@gmail.com", "thal1440@naver.com", "onse2@naver.com"]);
+function canReadOwnFitnessReportIssues(employee = {}) {
+  return Boolean(authState.user && fitnessIssueRecipientEmails.has(normalizeEmailValue(authState.user.email || ""))
+    && getCoachingFollowupOwnerUserId(employee) === authState.user.id);
+}
+function getFitnessReportIssues(employee, dateKey) {
+  if (!canReadOwnFitnessReportIssues(employee)) return null;
+  return fitnessReportIssueCache.get(`${authState.user.id}:${dateKey}`) || { status: "pending", issues: [] };
+}
+async function loadFitnessReportIssues(model, { force = false } = {}) {
+  if (!canReadOwnFitnessReportIssues(model.employee) || !authState.session?.access_token) return;
+  const userId = authState.user.id;
+  const key = `${userId}:${model.dateKey}`;
+  const cached = fitnessReportIssueCache.get(key);
+  if (!force && cached?.promise) return cached.promise;
+  if (!force && cached?.loadedAt && Date.now() - cached.loadedAt < 60000) return;
+  const entry = { status: "loading", issues: [] };
+  fitnessReportIssueCache.set(key, entry);
+  entry.promise = (async () => {
+    try {
+      const response = await fetch(`/api/fitness-report-issues?date=${encodeURIComponent(model.dateKey)}`, {
+        headers: { Authorization: `Bearer ${authState.session.access_token}` }, signal: AbortSignal.timeout(15000),
+      });
+      if (!response.ok) throw new Error("unavailable");
+      const payload = await response.json();
+      if (payload.date !== model.dateKey || !Array.isArray(payload.issues)) throw new Error("date mismatch");
+      if (authState.user?.id !== userId || fitnessReportIssueCache.get(key) !== entry) return;
+      fitnessReportIssueCache.set(key, { ...payload, loadedAt: Date.now() });
+    } catch {
+      if (authState.user?.id !== userId || fitnessReportIssueCache.get(key) !== entry) return;
+      fitnessReportIssueCache.set(key, { status: "unavailable", issues: [], loadedAt: Date.now() });
+    }
+    if (authState.user?.id === userId && getActiveDateKey() === model.dateKey
+        && canReadOwnFitnessReportIssues(getSelectedEmployee()) && !document.getElementById("worklogReportSheet")?.hidden) renderOpenWorklogReport();
+  })();
+  return entry.promise;
+}
+function getFitnessReportIssueLines(record) {
+  if (!record) return [];
+  if (["pending", "loading"].includes(record.status)) return ["센터 이슈 조회 중입니다."];
+  if (record.status === "unavailable") return ["센터 이슈를 확인하지 못했습니다. 정상·이슈 없음으로 판단하지 마세요."];
+  return [
+    ...(record.issues || []).map(item => `${item.title} · ${item.basis} ${item.action}`),
+    ...(!record.issues?.length ? [record.status === "ready" ? "조회한 자료에서 별도 확인 항목이 없습니다." : "현재 확인된 항목이 없습니다."] : []),
+    ...(record.status === "partial" ? ["자료 일부 또는 전날 분석이 미확인 상태입니다. 이슈 없음으로 확정하지 않습니다."] : []),
+  ];
+}
+
 function buildWorklogDailyReportModel(options = {}) {
   const employee = options.employee || getSelectedEmployee();
   const dateKey = options.dateKey || getActiveDateKey();
@@ -27136,6 +27188,7 @@ function buildWorklogDailyReportModel(options = {}) {
     evidenceCount: schedule.length + (reportText ? 1 : 0),
     aiEnabled,
   };
+  model.fitnessIssues = getFitnessReportIssues(employee, dateKey);
   model.businessArea = getWorklogReportBusinessArea(employee);
   model.aiContext = aiEnabled ? buildWorklogReportAiContext(model) : null;
   model.aiKey = aiEnabled ? `worklog:${employee.id || getEmployeeWorklogId(employee)}:${dateKey}:${getFitnessReportAiFingerprint(model.aiContext)}` : "";
@@ -27186,6 +27239,12 @@ function renderWorklogDailyReportTemplate(model = buildWorklogDailyReportModel()
       <section class="worklog-report-bottom-grid">
         <div><h3>3. 이슈·리스크·지원 요청</h3>${model.issueRows.map((row) => `<p>• ${escapeHtml(row)}</p>`).join("")}</div>
         <div><h3>4. 명일 계획·인수인계</h3>${model.tomorrowRows.map((row) => `<p>• ${escapeHtml(row)}</p>`).join("")}</div>
+        ${model.fitnessIssues ? `<div class="worklog-report-fitness-issues" style="grid-column:1 / -1;min-height:0;overflow-wrap:anywhere">
+          <h3>비욘드 피트니스 · 운영 확인 이슈</h3>
+          <p>보고일 ${escapeHtml(model.dateKey)}${model.fitnessIssues.analysisSourceDate ? ` · 다짐 근거일 ${escapeHtml(model.fitnessIssues.analysisSourceDate)}` : ""} · 담당자 확인 전 알림</p>
+          ${getFitnessReportIssueLines(model.fitnessIssues).map(text => `<p>• ${escapeHtml(text)}</p>`).join("")}
+          <p>회원정보·상세 금액은 포함하지 않습니다. 기록 차이로 직원의 성실성이나 인사상 불이익을 판단하지 않습니다.</p>
+        </div>` : ""}
         ${model.aiEnabled ? `<div class="worklog-report-ai-coaching">
           <h3>5. ${escapeHtml(model.businessArea.label)} AI 코칭 · ${model.aiCoaching ? "ChatGPT" : "직무 맞춤 기본 코칭"}</h3>
           <div>${getWorklogReportCoachingRows(model).map(([title, text]) => `<p><b>${escapeHtml(title)}</b><span>${escapeHtml(text)}</span></p>`).join("")}</div>
@@ -27293,6 +27352,7 @@ function openWorklogReportSheet() {
     sheet.classList.add("is-open");
     fitWorklogReportPreview();
     loadCoachingFollowup("worklog", model);
+    loadFitnessReportIssues(model, { force: true });
     if (model.aiEnabled) requestWorklogReportAiCoaching(model, { silent: true });
   });
 }
@@ -27342,6 +27402,7 @@ function buildWorklogDailyReportLines(model = buildWorklogDailyReportModel()) {
     "", "[업무 진행 현황]", ...model.tasks.map((task) => `- ${task.priority} ${task.text} (${task.status})`),
     "", "[시간대별 실행 내역]", ...model.schedule.map((entry) => `- ${entry.time} ${entry.text} (${entry.type})`),
     "", "[이슈·리스크·지원 요청]", ...model.issueRows.map((row) => `- ${row}`),
+    ...(model.fitnessIssues ? ["", "[비욘드 피트니스 운영 확인 이슈]", ...getFitnessReportIssueLines(model.fitnessIssues)] : []),
     "", "[명일 계획·인수인계]", ...model.tomorrowRows.map((row) => `- ${row}`),
     "", `[${model.businessArea.label} AI 코칭]`, ...getWorklogReportCoachingRows(model).map(([title, text]) => `- ${title}: ${text}`),
   ];
@@ -27436,6 +27497,7 @@ function getWorklogReportExportCss(height = 1754) {
 }
 
 async function renderWorklogReportCanvas() {
+  await loadFitnessReportIssues(buildWorklogDailyReportModel());
   const width = 1240;
   const model = buildWorklogDailyReportModel();
   const height = await measureWorklogReportExportHeight(model);
@@ -27477,6 +27539,7 @@ async function saveWorklogReportPdf() {
 }
 
 async function shareWorklogDailyReport() {
+  await loadFitnessReportIssues(buildWorklogDailyReportModel());
   const model = buildWorklogDailyReportModel();
   const canvas = await renderWorklogReportCanvas();
   const base = getWorklogReportFileBase(model);
@@ -27490,6 +27553,7 @@ async function shareWorklogDailyReport() {
 }
 
 async function copyWorklogDailyReport() {
+  await loadFitnessReportIssues(buildWorklogDailyReportModel());
   const text = buildWorklogDailyReportLines().join("\n");
   try {
     await navigator.clipboard?.writeText(text);
