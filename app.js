@@ -12258,6 +12258,7 @@ function clearAuthRuntimeState() {
   flushDeferredStateSave();
   cancelDeferredInputRenders();
   fitnessReportIssueCache.clear();
+  fitnessPtComparisonCache.clear();
   authState.session = null;
   authState.user = null;
   weatherRemoteDates.clear();
@@ -12559,7 +12560,7 @@ async function applySession(session) {
     authState.coachingFollowupOverviewLoadedAt = 0;
     authState.coachingFollowupOverviewLoading = false;
   }
-  if (authState.user?.id !== session?.user?.id) fitnessReportIssueCache.clear();
+  if (authState.user?.id !== session?.user?.id) { fitnessReportIssueCache.clear(); fitnessPtComparisonCache.clear(); }
   authState.session = session;
   authState.user = session?.user || null;
   if (!authState.user) {
@@ -26236,6 +26237,7 @@ function buildFitnessReportLines() {
     "[특이사항 및 인수인계]",
     ...model.issueRows.map((row) => `- ${row}`),
     "",
+    ...(model.ptComparison ? ["[전날 PT 시간표 대조]", ...getPtComparisonLines(model.ptComparison), ""] : []),
     "[AI 보완 코칭]",
     ...getFitnessReportCoachingRows(model).map(([title, text]) => `- ${title}: ${text}`),
   ];
@@ -28033,6 +28035,67 @@ function buildFitnessCenterCommandSummary({ staffRows = [], totals = {}, monthly
   };
 }
 
+const fitnessPtComparisonCache = new Map();
+function canReadOwnPtComparison(model = {}) {
+  return Boolean(authState.user && !model.isCenter && isFitnessEmployeeRecord(model.employee)
+    && /트레이너|센터장|강사|코치|pt|피티/i.test(`${model.employee?.role || ""} ${model.employee?.primaryWork || ""}`)
+    && getCoachingFollowupOwnerUserId(model.employee) === authState.user.id);
+}
+function getPtComparisonRecord(model) {
+  if (!canReadOwnPtComparison(model)) return null;
+  return fitnessPtComparisonCache.get(`${authState.user.id}:${model.dateKey}`) || { status: "pending", differences: [], exceptions: [] };
+}
+async function loadPtComparison(model, { force = false } = {}) {
+  if (!canReadOwnPtComparison(model) || !authState.session?.access_token) return;
+  const viewer = authState.user.id, key = `${viewer}:${model.dateKey}`;
+  const old = fitnessPtComparisonCache.get(key);
+  if (!force && old?.promise) return old.promise;
+  if (!force && old?.loadedAt && Date.now() - old.loadedAt < 60000) return;
+  const entry = { status: "loading", differences: [], exceptions: [] };
+  fitnessPtComparisonCache.set(key, entry);
+  entry.promise = (async () => {
+    try {
+      const response = await fetch(`/api/fitness-pt-comparison?date=${encodeURIComponent(model.dateKey)}`, {
+        headers: { Authorization: `Bearer ${authState.session.access_token}` }, signal: AbortSignal.timeout(15000),
+      });
+      if (!response.ok) throw Error("unavailable");
+      const data = await response.json();
+      const previous = parseDateKey(model.dateKey); previous.setDate(previous.getDate() - 1);
+      if (data.reportDate !== model.dateKey || data.sourceDate !== formatDateKey(previous) || !Array.isArray(data.differences) || !Array.isArray(data.exceptions)) throw Error("date mismatch");
+      if (authState.user?.id !== viewer || fitnessPtComparisonCache.get(key) !== entry) return;
+      fitnessPtComparisonCache.set(key, { ...data, loadedAt: Date.now() });
+    } catch {
+      if (authState.user?.id !== viewer || fitnessPtComparisonCache.get(key) !== entry) return;
+      fitnessPtComparisonCache.set(key, { status: "unavailable", differences: [], exceptions: [], reason: "전날 수업 대조를 확인하지 못했습니다. 일치 또는 수업 누락으로 판단하지 않습니다.", loadedAt: Date.now() });
+    }
+    const current = buildFitnessReportModel();
+    if (authState.user?.id === viewer && current.dateKey === model.dateKey && canReadOwnPtComparison(current)) refreshOpenFitnessReport(current);
+  })();
+  return entry.promise;
+}
+function getPtComparisonLines(record) {
+  if (!record) return [];
+  if (["pending", "loading"].includes(record.status)) return ["전날 다짐 시간표와 저장된 업무일지의 PT 일정을 확인 중입니다."];
+  const label = value => value === "free" ? "무료PT" : value === "paid" ? "유료PT" : "PT 구분 확인";
+  const lines = [];
+  if (record.sourceDate) lines.push(`대조일 ${record.sourceDate} · 다짐 원본 ↔ 저장된 업무일지`);
+  lines.push(...(record.differences || []).slice(0, 12).map(item => `${label(item.session)} · 다짐 ${item.dagym} ↔ 업무일지 ${item.worklog}${item.worklogSession && item.worklogSession !== item.session ? ` (${label(item.worklogSession)})` : ""}${item.note ? ` · ${item.note}` : ""}`));
+  if (record.differences?.length > 12) lines.push(`총 ${record.differences.length}개 확인 항목 중 12개 표시. 전날 시간별 일정 전체를 함께 확인하세요.`);
+  if (record.exceptions?.length) lines.push(`취소·노쇼·연기 별도 확인: ${record.exceptions.slice(0, 12).map(item => `${item.time} ${item.kind}`).join(" / ")}${record.exceptions.length > 12 ? ` 외 ${record.exceptions.length - 12}건` : ""}`);
+  if (record.status === "compared") lines.push("대조 가능한 일정의 시작 시각·구분에서 차이가 확인되지 않았습니다.");
+  if (record.reason) lines.push(record.reason);
+  if (record.status === "review") lines.push(`수업기록 확인 · ${record.guidance}`);
+  return lines;
+}
+function renderPtComparisonHtml(model) {
+  if (!model.ptComparison) return "";
+  return `<section class="fitness-paper-pt-comparison" style="margin-top:12px;border:1px solid #9cad9f;padding:10px;overflow-wrap:anywhere;break-inside:avoid">
+    <h3 style="margin:0 0 6px">전날 PT 시간표 대조 · 확인과 보완</h3>
+    ${getPtComparisonLines(model.ptComparison).map(text => `<p style="margin:4px 0;line-height:1.4">${escapeHtml(text)}</p>`).join("")}
+    <small>예약과 실제 수업은 다를 수 있습니다. 기록 차이를 근태·급여·성실성 평가에 자동 반영하지 않습니다.</small>
+  </section>`;
+}
+
 function buildFitnessReportModel(options = {}) {
   const page = getCurrentFitnessLogPage();
   const dateKey = options.dateKey || getActiveDateKey();
@@ -28145,6 +28208,7 @@ function buildFitnessReportModel(options = {}) {
     aiCoachModel: aiCacheEntry?.model || "",
     aiCoachGeneratedAt: aiCacheEntry?.generatedAt || "",
   };
+  model.ptComparison = getPtComparisonRecord(model);
   return model;
 }
 
@@ -28453,6 +28517,8 @@ function renderFitnessReportTemplate(model = buildFitnessReportModel()) {
 
       ${renderFitnessSnsReportHtml(model)}
 
+      ${renderPtComparisonHtml(model)}
+
       <section class="fitness-paper-footer-grid">
         <div>
           ${getFitnessReportIssueRowsHtml(model)}
@@ -28579,6 +28645,7 @@ function openFitnessReportSheet() {
   requestAnimationFrame(() => {
     sheet.classList.add("is-open");
     fitFitnessReportPreview();
+    loadPtComparison(model, { force: true });
     loadFitnessFeedbackHistory(model).then(() => {
       const current = buildFitnessReportModel();
       if (!sheet.classList.contains("is-open") || current.dateKey !== model.dateKey || current.employee.id !== model.employee.id || current.isCenter !== model.isCenter) return null;
@@ -28655,7 +28722,8 @@ function getFitnessReportFileBase() {
 }
 
 function getFitnessReportExportHeight(model = buildFitnessReportModel()) {
-  const feedbackSpace = model.operatingFeedback ? 360 : 0;
+  const feedbackSpace = (model.operatingFeedback ? 360 : 0)
+    + (model.ptComparison ? 200 + getPtComparisonLines(model.ptComparison).reduce((sum, line) => sum + Math.max(1, Math.ceil(line.length / 65)) * 36, 0) : 0);
   if (model.isCenter) {
     const staffOverflow = Math.max(0, (model.staffRows?.length || 0) - 6) * 72;
     const issueOverflow = Math.max(0, (model.issueRows?.length || 0) - 3) * 44;
@@ -29239,6 +29307,7 @@ function getFitnessReportExportCss(reportHeight = 1754) {
 async function renderFitnessReportCanvas() {
   const width = 1240;
   const selection = buildFitnessReportModel();
+  await loadPtComparison(selection);
   await loadFitnessFeedbackHistory(selection);
   await loadCoachingFollowup("fitness", buildFitnessReportModel({ dateKey: selection.dateKey, employee: selection.employee, isCenter: selection.isCenter })).catch(() => null);
   const model = buildFitnessReportModel({ dateKey: selection.dateKey, employee: selection.employee, isCenter: selection.isCenter });
