@@ -133,7 +133,7 @@ async function main() {
   deadline.unref();
   try {
     const { chromium } = await import(process.env.PLAYWRIGHT_MODULE_PATH || '/Users/bangju/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/node_modules/playwright/index.mjs');
-    const browser = await chromium.connectOverCDP(process.env.DAGYM_CDP_URL || 'http://127.0.0.1:9233', { timeout: 15000 });
+    const browser = await chromium.connectOverCDP(process.env.DAGYM_CDP_URL || 'http://127.0.0.1:9235', { timeout: 15000 });
     stage = 'page';
     const page = await browser.contexts()[0].newPage();
     stage = 'login';

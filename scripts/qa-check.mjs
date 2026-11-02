@@ -135,13 +135,13 @@ check(
 );
 check(
   "DaGym browser automation stays isolated and retries only unfinished days",
-  dagymBrowserLauncher.includes('DEBUG_PORT="${DAGYM_DEBUG_PORT:-9233}"')
+  dagymBrowserLauncher.includes('DEBUG_PORT="${DAGYM_DEBUG_PORT:-9235}"')
     && dagymBrowserLauncher.includes("BROWSER_PID_FILE")
     && dagymBrowserLauncher.includes("예상하지 않은 Chrome에 사용 중입니다")
-    && dagymDailyBrowserCollector.includes('http://127.0.0.1:9233')
-    && dagymMonthlyScheduleCollector.includes('http://127.0.0.1:9233')
+    && dagymDailyBrowserCollector.includes('http://127.0.0.1:9235')
+    && dagymMonthlyScheduleCollector.includes('http://127.0.0.1:9235')
     && dagymLaunchAgent.includes("<key>DAGYM_DEBUG_PORT</key>")
-    && dagymLaunchAgent.includes("<string>9233</string>")
+    && dagymLaunchAgent.includes("<string>9235</string>")
     && dagymBrowserLauncher.includes("LAST_SUCCESS_FILE")
     && dagymBrowserLauncher.includes("dagym-session.mjs")
     && dagymBrowserLauncher.includes("dagym-sync-health.mjs")

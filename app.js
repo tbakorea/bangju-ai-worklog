@@ -12964,6 +12964,7 @@ async function hydrateRepresentativeControlData(dateKey = getActiveDateKey()) {
     // 하나의 보조 자료가 지연되어도 업무일지·메뉴 이동은 계속 가능해야 합니다.
     const results = await Promise.allSettled([
       loadRemoteDagymDailyAnalysis(dateKey),
+      loadFitnessReportDagymSources(dateKey),
       loadRemoteDagymSyncHealth(dateKey),
       loadRemoteLaborPayrollDrafts(),
       loadRemoteLeaveRequests(),
@@ -13052,6 +13053,7 @@ async function loadRemoteWorklogForActiveDate() {
     if (!deferRepresentativeControl) {
       await Promise.allSettled([
         loadRemoteDagymDailyAnalysis(key),
+        loadFitnessReportDagymSources(key),
         loadRemoteDagymSyncHealth(key),
         loadRemoteLaborPayrollDrafts(),
         loadRemoteLeaveRequests(),
@@ -13704,6 +13706,53 @@ async function loadDagymMonthlyPtSchedules(dateKey = getActiveDateKey(), options
   const changed = applyDagymPtScheduleMonth(rows, dateKey);
   if (changed) localStorage.setItem(storageKey, JSON.stringify(state));
   return rows;
+}
+
+const dagymSnapshotLoads = new Map();
+function nullableDagymMetric(value) {
+  if (value === null || value === undefined || String(value).trim() === "") return null;
+  const number = Number(String(value).replace(/,/g, "").trim());
+  return Number.isFinite(number) ? number : null;
+}
+function hasDagymDailySource(record = {}) {
+  return record?.quality !== "missing" && Object.keys(createDagymOps()).some(key => key !== "importText" && nullableDagymMetric(record?.[key]) !== null);
+}
+async function loadRemoteDagymSnapshot(dateKey) {
+  if (!supabaseClient || !authState.user || !canManageDagymOperations() || !/^\d{4}-\d{2}-\d{2}$/.test(dateKey)) return null;
+  const user = authState.user.id, cacheKey = `${user}:${dateKey}`, cache = dagymSnapshotLoads;
+  const cached = cache.get(cacheKey);
+  if (cached?.promise) return cached.promise;
+  if (cached?.loadedAt && Date.now() - cached.loadedAt < 60000) return cached.record;
+  const entry = {}; cache.set(cacheKey, entry);
+  entry.promise = (async () => {
+    const { data, error } = await supabaseClient.from("dagym_daily_snapshots")
+      .select("snapshot_date,metrics,domains,quality,field_count,source,source_updated_at,updated_at")
+      .eq("center_key", "beyond-fitness").eq("snapshot_date", dateKey).maybeSingle();
+    if (authState.user?.id !== user || cache.get(cacheKey) !== entry || !canManageDagymOperations()) return null;
+    if (error || !data || data.snapshot_date !== dateKey || data.quality === "missing") {
+      cache.set(cacheKey, { loadedAt: Date.now(), record: null }); return null;
+    }
+    const metrics = Object.fromEntries(Object.keys(createDagymOps()).filter(key => key !== "importText")
+      .filter(key => nullableDagymMetric(data.metrics?.[key]) !== null).map(key => [key, data.metrics[key]]));
+    if (!Object.keys(metrics).length) { cache.set(cacheKey, { loadedAt: Date.now(), record: null }); return null; }
+    // Legacy imports synthesized calendar zero from absence of rows, without empty-range proof.
+    if (metrics.ptBookings === 0 && data.domains?.schedule?.source === "dagym_pt_schedule_events" && data.domains.schedule.rows === 0 && data.domains.schedule.emptyVerified !== true && data.domains.schedule.bookingMetricVerified !== true) delete metrics.ptBookings;
+    if (!Object.keys(metrics).length) { cache.set(cacheKey, { loadedAt: Date.now(), record: null }); return null; }
+    const stamp = data.source_updated_at || data.updated_at || "";
+    const record = { ...createDagymDailyRecord(dateKey), ...metrics, dateKey, domains: data.domains || {}, quality: data.quality,
+      snapshotAvailable: true, fieldCount: Object.keys(metrics).length, syncMode: "browser-daily", importSource: data.source,
+      importedAt: stamp, updatedAt: stamp, status: "closed" };
+    const local = state.dagymDaily?.[dateKey];
+    if (!hasDagymDailySource(local) || !local?.updatedAt || stamp >= local.updatedAt) {
+      state.dagymDaily ||= {}; state.dagymDaily[dateKey] = record;
+    }
+    cache.set(cacheKey, { loadedAt: Date.now(), record }); return record;
+  })().catch(() => { if (authState.user?.id === user && cache.get(cacheKey) === entry) cache.set(cacheKey, { loadedAt: Date.now(), record: null }); return null; });
+  return entry.promise;
+}
+async function loadFitnessReportDagymSources(dateKey = getActiveDateKey()) {
+  const previous = getPreviousCalendarDateKey(dateKey);
+  return Promise.allSettled([dateKey, previous, getPreviousCalendarDateKey(previous)].map(loadRemoteDagymSnapshot));
 }
 
 async function loadRemoteDagymDailyAnalysis(dateKey = getActiveDateKey()) {
@@ -16246,7 +16295,7 @@ function buildDagymDailyAnalysis(dateKey = getActiveDateKey(), sourceRecord = nu
   const metricKeys = Object.keys(createDagymOps()).filter((key) => key !== "importText");
   const metrics = Object.fromEntries(metricKeys.map((key) => [key, numberValue(dagym?.[key]) || 0]));
   const populated = metricKeys.filter((key) => String(dagym?.[key] ?? "").trim() !== "").length;
-  const hasActivity = hasDagymDailyActivity(dagym);
+  const hasActivity = hasDagymDailySource(dagym);
   if (!hasActivity) {
     return {
       ...base,
@@ -16825,21 +16874,18 @@ function buildFitnessYesterdayBrief(dateKey = getActiveDateKey()) {
   const metricKeys = Object.keys(createDagymOps()).filter((key) => key !== "importText");
   const metrics = Object.fromEntries(metricKeys.map((key) => {
     const localValue = sourceRecord && String(sourceRecord[key] ?? "").trim() !== "" ? sourceRecord[key] : undefined;
-    const analysisValue = analysisMatches ? analysis?.metrics?.[key] : undefined;
-    return [key, numberValue(localValue ?? analysisValue)];
+    const analysisValue = analysisMatches && analysis?.quality === "complete" ? analysis?.metrics?.[key] : undefined;
+    return [key, nullableDagymMetric(localValue ?? analysisValue)];
   }));
-  const hasSourceRecord = hasDagymDailyActivity(sourceRecord);
+  const hasSourceRecord = hasDagymDailySource(sourceRecord);
   const hasData = hasSourceRecord || Boolean(analysisMatches && analysis?.quality !== "missing");
-  const quality = hasData ? (analysisMatches ? analysis.quality : sourceRecord?.quality || "partial") : "missing";
+  const quality = hasSourceRecord ? sourceRecord.quality || "partial" : hasData ? analysis.quality : "missing";
   const salesPeriod = String(sourceRecord?.domains?.sales?.period || (analysisMatches ? analysis?.ratios?.salesPeriod : "") || "");
   const priorDateKey = getPreviousCalendarDateKey(sourceDateKey);
   const priorRecord = getDagymOpsForDate(priorDateKey, { create: false });
   const priorSalesKnown = Boolean(priorRecord && String(priorRecord.sales ?? "").trim() !== "" && priorDateKey.slice(0, 7) === sourceDateKey.slice(0, 7));
   const revenue = buildFitnessRevenueGrowthPlan(sourceDateKey);
-  const sourceSalesKnown = hasData && (
-    String(sourceRecord?.sales ?? "").trim() !== ""
-    || Boolean(analysisMatches && Object.hasOwn(analysis?.metrics || {}, "sales") && (salesPeriod || analysis?.quality === "complete"))
-  );
+  const sourceSalesKnown = hasData && metrics.sales !== null;
   const isDailySales = salesPeriod === "daily";
   const isMonthToDateSales = salesPeriod === "month-to-date" || revenue.basis === "inferred-month-to-date";
   let dailySales = null;
@@ -16847,6 +16893,8 @@ function buildFitnessYesterdayBrief(dateKey = getActiveDateKey()) {
   if (sourceSalesKnown && isDailySales) {
     dailySales = metrics.sales;
     dailySalesBasis = "다짐 당일 매출";
+  } else if (sourceSalesKnown && isMonthToDateSales && sourceDateKey.endsWith("-01")) {
+    dailySales = metrics.sales; dailySalesBasis = "월초 첫날의 월누계";
   } else if (sourceSalesKnown && isMonthToDateSales && priorSalesKnown) {
     dailySales = Math.max(0, metrics.sales - numberValue(priorRecord.sales));
     dailySalesBasis = "전일·전전일 월누계 차감";
@@ -16870,19 +16918,19 @@ function buildFitnessYesterdayBrief(dateKey = getActiveDateKey()) {
   const openFollowups = memberOutreach.openFollowups;
   const overdueFollowups = memberOutreach.overdue;
   const renewalGap = Math.max(0, metrics.expiring - metrics.renewals);
-  const conversionCount = metrics.newMembers + metrics.renewals;
+  const conversionCount = metrics.newMembers === null || metrics.renewals === null ? null : metrics.newMembers + metrics.renewals;
   const conversionTarget = metrics.visits ? Math.max(2, Math.round(metrics.visits * 0.03)) : 0;
   const salesGap = Math.max(0, revenue.paceTarget - monthSales);
   const monthPaceRate = revenue.paceTarget ? Math.round((monthSales / revenue.paceTarget) * 100) : 0;
   const qualityLabel = { complete: "수집 완료", partial: "일부 확인", missing: "자료 대기" }[quality] || "일부 확인";
-  const sourceUpdatedAt = String(analysisMatches ? analysis?.sourceUpdatedAt : sourceRecord?.updatedAt || sourceRecord?.importedAt || "");
+  const sourceUpdatedAt = String(hasSourceRecord ? sourceRecord?.updatedAt || sourceRecord?.importedAt || "" : analysisMatches ? analysis?.sourceUpdatedAt || "" : "");
   const memberCandidateText = memberOutreachState.loaded ? `${renewalCandidates.length}명` : "불러오는 중";
   const kpis = [
     { label: "전일 매출", value: dailySales === null ? "산출 대기" : formatFitnessBriefMoney(dailySales), meta: dailySales === null && isMonthToDateSales ? "전전일 월누계가 필요합니다" : dailySalesBasis, tone: dailySales === null ? "attention" : "normal" },
-    { label: "월 매출", value: hasData && sourceSalesKnown ? formatFitnessBriefMoney(monthSales) : "—", meta: `${formatFitnessBriefMoney(revenue.floorTarget)} 목표 · 페이스 ${monthSales ? monthPaceRate : 0}%`, tone: salesGap ? "attention" : "normal" },
-    { label: "방문·신규", value: hasData ? `${metrics.visits}명 · ${metrics.newMembers}명` : "—", meta: `신규+재등록 ${conversionCount}건`, tone: hasData && conversionTarget > conversionCount ? "attention" : "normal" },
-    { label: "PT 예약", value: hasData ? `${metrics.ptBookings}건` : "—", meta: `노쇼·취소 ${metrics.noShows}건 · ${noShowRate}%`, tone: metrics.noShows ? "attention" : "normal" },
-    { label: "만료·재등록", value: hasData ? `${metrics.renewals}/${metrics.expiring}` : "—", meta: `대응률 ${renewalCoverage}%`, tone: renewalGap ? "attention" : "normal" },
+    { label: "월 매출", value: hasData && sourceSalesKnown ? formatFitnessBriefMoney(monthSales) : "—", meta: sourceSalesKnown ? `${formatFitnessBriefMoney(revenue.floorTarget)} 목표 · 페이스 ${monthPaceRate}%` : "매출자료 확인 전", tone: salesGap ? "attention" : "normal" },
+    { label: "방문·신규", value: hasData ? `${metrics.visits ?? "—"}명 · ${metrics.newMembers ?? "—"}명` : "—", meta: `신규+재등록 ${conversionCount ?? "—"}건`, tone: hasData && conversionTarget > conversionCount ? "attention" : "normal" },
+    { label: "PT 예약", value: hasData ? `${metrics.ptBookings ?? "—"}건` : "—", meta: `노쇼·취소 ${metrics.noShows ?? "—"}건 · ${metrics.noShows === null || !(metrics.ptBookings > 0) ? "—" : noShowRate}%`, tone: metrics.noShows ? "attention" : "normal" },
+    { label: "만료·재등록", value: hasData ? `${metrics.renewals ?? "—"}/${metrics.expiring ?? "—"}` : "—", meta: `대응률 ${metrics.renewals === null || !(metrics.expiring > 0) ? "—" : renewalCoverage}%`, tone: renewalGap ? "attention" : "normal" },
     { label: "동의 후속", value: memberOutreachState.loaded ? `${openFollowups.length}건` : memberCandidateText, meta: memberOutreachState.loaded ? `후보 ${renewalCandidates.length}명 · 기한경과 ${overdueFollowups.length}건` : "개인정보 동의 명부 확인", tone: urgentCandidates.length || overdueFollowups.length ? "attention" : "normal" },
   ];
   const actions = hasData ? [
@@ -28010,20 +28058,23 @@ const fitnessDagymReportFields = [
 
 function getFitnessReportDagymSummary(dateKey = getActiveDateKey(), staffTotals = {}) {
   const current = getDagymOpsForDate(dateKey, { create: false });
-  const currentReady = hasDagymDailyActivity(current);
-  const sourceDateKey = currentReady ? dateKey : getPreviousDagymOperatingDate(dateKey);
+  const currentReady = hasDagymDailySource(current);
+  const previousDateKey = getPreviousCalendarDateKey(dateKey);
+  const sourceDateKey = currentReady ? dateKey : hasDagymDailySource(getDagymOpsForDate(previousDateKey, { create: false })) ? previousDateKey : "";
   const source = sourceDateKey ? getDagymOpsForDate(sourceDateKey, { create: false }) : null;
-  const comparisonDateKey = sourceDateKey ? getPreviousDagymOperatingDate(sourceDateKey) : "";
+  const comparisonDateKey = sourceDateKey ? getPreviousCalendarDateKey(sourceDateKey) : "";
   const comparison = comparisonDateKey ? getDagymOpsForDate(comparisonDateKey, { create: false }) : null;
   const rows = fitnessDagymReportFields.map(([key, label]) => {
-    const value = numberValue(source?.[key]);
-    const previous = comparison ? numberValue(comparison[key]) : null;
-    return { key, label, value, previous, delta: previous === null ? null : value - previous };
+    const value = nullableDagymMetric(source?.[key]);
+    const previousValue = nullableDagymMetric(comparison?.[key]);
+    const comparable = key !== "sales" || (source?.domains?.sales?.period === "daily" && comparison?.domains?.sales?.period === "daily");
+    const previous = comparable ? previousValue : null;
+    return { key, label, value, previous, delta: value === null || previous === null ? null : value - previous };
   });
   const insights = [];
   const add = (level, title, text) => insights.push({ level, title, text });
   if (!sourceDateKey) {
-    add("danger", "다짐 자료 미연결", "다짐 운영현황에 전일 마감자료를 붙여넣고 마감 확정해야 운영 변이를 분석할 수 있습니다.");
+    add("danger", "다짐 자료 미연결", "선택일과 전날의 저장된 수집 자료를 확인하지 못했습니다. 수집 상태와 조회 권한을 확인해주세요. 미확인 값은 0으로 표시하지 않습니다.");
     return { sourceDateKey: "", comparisonDateKey: "", sourceStatus: "missing", rows, insights };
   }
   const visits = numberValue(source.visits);
@@ -28035,14 +28086,15 @@ function getFitnessReportDagymSummary(dateKey = getActiveDateKey(), staffTotals 
   const sales = numberValue(source.sales);
   const previousSales = comparison ? numberValue(comparison.sales) : 0;
   if (noShows > 0) add("danger", "노쇼 회복 필요", `노쇼·취소 ${noShows}건의 재예약, 보류, 연락불가 결과를 구분해 기록하세요.`);
-  if (expiring > renewals) add("danger", "만료 대응 부족", `만료예정 ${expiring}건 대비 재등록 ${renewals}건입니다. 미상담 대상을 우선 배정하세요.`);
-  if (ptBookings > recordedPt) add("danger", "수업 대조 필요", `다짐 PT예약 ${ptBookings}건과 직원 수업기록 ${recordedPt}건의 차이 ${ptBookings - recordedPt}건을 확인하세요.`);
-  if (comparison && previousSales > 0 && sales < previousSales) add("danger", "매출 변이 확인", `직전 마감 대비 매출이 ${(previousSales - sales).toLocaleString()}원 감소했습니다. 상담수, 재등록, 결제 보류를 함께 대조하세요.`);
-  if (visits > 0 && numberValue(source.newMembers) + renewals === 0) add("danger", "전환행동 점검", `출석 ${visits}명 중 신규·재등록 기록이 없습니다. 상담 미실시 또는 결과 기록 누락 여부를 확인하세요.`);
+  if (nullableDagymMetric(source.expiring) !== null && nullableDagymMetric(source.renewals) !== null && expiring > renewals) add("danger", "만료 대응 부족", `만료예정 ${expiring}건 대비 재등록 ${renewals}건입니다. 미상담 대상을 우선 배정하세요.`);
+  if (sourceDateKey === dateKey && nullableDagymMetric(source.ptBookings) !== null && ptBookings > recordedPt) add("danger", "수업 대조 필요", `다짐 PT예약 ${ptBookings}건과 직원 수업기록 ${recordedPt}건의 차이 ${ptBookings - recordedPt}건을 확인하세요.`);
+  if (source.domains?.sales?.period === "daily" && comparison?.domains?.sales?.period === "daily" && previousSales > 0 && sales < previousSales) add("danger", "매출 변이 확인", `직전 마감 대비 매출이 ${(previousSales - sales).toLocaleString()}원 감소했습니다. 상담수, 재등록, 결제 보류를 함께 대조하세요.`);
+  if (visits > 0 && nullableDagymMetric(source.newMembers) !== null && nullableDagymMetric(source.renewals) !== null && numberValue(source.newMembers) + renewals === 0) add("danger", "전환행동 점검", `출석 ${visits}명 중 신규·재등록 기록이 없습니다. 상담 미실시 또는 결과 기록 누락 여부를 확인하세요.`);
+  if (!insights.length && (source.quality === "partial" || rows.some(row => row.value === null))) add("warn", "일부 지표 확인 필요", "저장된 수집 자료 중 확인되지 않은 지표는 —로 표시합니다. 누락을 0건·0원으로 판단하지 않습니다.");
   if (!insights.length) add("good", "운영 흐름 안정", "다짐 핵심지표에서 즉시 경고할 변이가 없습니다. 상담 결과와 매출 발생 원인을 계속 남겨주세요.");
-  const cause = ptBookings > recordedPt
+  const cause = sourceDateKey === dateKey && nullableDagymMetric(source.ptBookings) !== null && ptBookings > recordedPt
     ? "원인 후보: 노쇼, 일정 변경, 수업 완료 누락 중 하나일 수 있으므로 예약 원장과 직원 기록을 건별 대조합니다."
-    : expiring > renewals
+    : nullableDagymMetric(source.expiring) !== null && nullableDagymMetric(source.renewals) !== null && expiring > renewals
       ? "원인 후보: 만료 안내 지연, 상담 미배정, 보류 결과 누락 여부를 확인합니다."
       : "원인 분석: 출석·상담·재등록·매출의 연결 기록을 유지하면 변동 원인을 더 정확히 판별할 수 있습니다.";
   add(insights.some((item) => item.level === "danger") ? "danger" : "good", "원인·개선 방향", cause);
@@ -28103,7 +28155,7 @@ function buildFitnessCenterCommandSummary({ staffRows = [], totals = {}, monthly
   const visits = numberValue(dagymRows.visits?.value);
   const conversionCount = numberValue(dagymRows.newMembers?.value) + numberValue(dagymRows.renewals?.value);
   const conversionRate = visits ? Math.round((conversionCount / visits) * 100) : 0;
-  const bookedPt = numberValue(dagymRows.ptBookings?.value);
+  const bookedPt = nullableDagymMetric(dagymRows.ptBookings?.value);
   const recordedPt = numberValue(totals.ptTotal);
   const dangerInsights = (dagymSummary?.insights || []).filter((item) => item.level === "danger" && item.title !== "원인·개선 방향");
   const cleanTask = (rows = []) => rows.find((row) => String(row || "").trim())?.replace(/^\S+\s+/, "").trim() || "";
@@ -28111,7 +28163,7 @@ function buildFitnessCenterCommandSummary({ staffRows = [], totals = {}, monthly
     || dangerInsights[0]?.text
     || "즉시 보완할 운영 이상신호가 없습니다.";
   const todayFocus = cleanTask(topTasks)
-    || (recordedPt || bookedPt ? `PT 실행기록 ${recordedPt}건과 예약 ${bookedPt}건을 마감 대조합니다.` : "금일 핵심 실행업무를 센터장이 확정하세요.");
+    || (recordedPt || bookedPt ? (bookedPt !== null && dagymSummary?.sourceDateKey === getActiveDateKey() ? `PT 실행기록 ${recordedPt}건과 예약 ${bookedPt}건을 마감 대조합니다.` : `PT 실행기록 ${recordedPt}건의 결과를 확인하세요. 같은 날짜의 예약자료는 확인 전입니다.`) : "금일 핵심 실행업무를 센터장이 확정하세요.");
   const tomorrowHandoff = cleanTask(tomorrowTasks) || "명일 예정업무와 담당자를 마감 전에 지정하세요.";
   const weatherReady = weatherText && !/미기록|기록 없음|확인 중|주소 입력 필요/.test(weatherText);
   const sourceReady = Boolean(dagymSummary?.sourceDateKey);
@@ -28128,7 +28180,7 @@ function buildFitnessCenterCommandSummary({ staffRows = [], totals = {}, monthly
     readinessLabel,
     kpis: [
       { label: "출결 완결", value: `${attendanceComplete}/${activeRows.length || 0}`, note: `${attendanceRate}% · 휴무 제외` },
-      { label: "PT 실행", value: `${recordedPt}/${numberValue(monthlyTotals.ptTotal)}`, note: `당일/월누계 · 예약 ${bookedPt}` },
+      { label: "PT 실행", value: `${recordedPt}/${numberValue(monthlyTotals.ptTotal)}`, note: `당일/월누계 · 예약 ${bookedPt ?? "—"}` },
       { label: "계약 성과", value: `${numberValue(totals.contractTotal)}/${numberValue(monthlyTotals.contractTotal)}`, note: "당일/월누계" },
       { label: "회원 전환", value: visits ? `${conversionRate}%` : "-", note: visits ? `${conversionCount}/${visits}명` : "출석자료 대기" },
     ],
@@ -28142,6 +28194,7 @@ function buildFitnessCenterCommandSummary({ staffRows = [], totals = {}, monthly
 
 function clearFitnessReportCaches() {
   smartNextActionChoices.clear();
+  dagymSnapshotLoads.clear();
   for (const id of ["worklogSmartNextAction", "fitnessSmartNextAction"]) {
     const host = document.getElementById(id); if (host) { host.hidden = true; host.innerHTML = ""; host.__smartRenderKey = ""; }
   }
@@ -28411,7 +28464,8 @@ function formatReportTime(value = "") {
 }
 
 function formatFitnessDagymReportValue(row = {}) {
-  const value = numberValue(row.value);
+  const value = nullableDagymMetric(row.value);
+  if (value === null) return "—";
   return row.key === "sales" ? `${value.toLocaleString()}원` : `${value}건`;
 }
 
@@ -28432,9 +28486,9 @@ function renderFitnessDagymReportHtml(model = {}) {
   if (!model.isCenter || !model.dagymSummary) return "";
   const summary = model.dagymSummary;
   const sourceLabel = summary.sourceDateKey
-    ? `${formatShortDate(summary.sourceDateKey)} ${summary.sourceStatus === "previous-closed" ? "전일 마감자료" : "다짐 현황"}`
+    ? `${formatShortDate(summary.sourceDateKey)} ${summary.sourceStatus === "previous-closed" ? "전날 수집자료" : "다짐 현황"}`
     : "다짐 자료 미연결";
-  const comparisonLabel = summary.comparisonDateKey ? `직전 ${formatShortDate(summary.comparisonDateKey)} 대비` : "최초 기록";
+  const comparisonLabel = summary.comparisonDateKey && summary.rows.some(row => row.delta !== null) ? `직전 ${formatShortDate(summary.comparisonDateKey)} 대비` : "비교자료 미확인";
   return `
     <section class="fitness-paper-dagym">
       <header><h3>다짐 운영현황·변이 분석</h3><span>${escapeHtml(sourceLabel)} · ${escapeHtml(comparisonLabel)}</span></header>
@@ -28833,6 +28887,12 @@ function openFitnessReportSheet() {
   requestAnimationFrame(() => {
     sheet.classList.add("is-open");
     fitFitnessReportPreview();
+    const sourceViewer = authState.user?.id;
+    loadFitnessReportDagymSources(model.dateKey).then(() => {
+      if (authState.user?.id !== sourceViewer) return;
+      const current = buildFitnessReportModel();
+      if (current.dateKey === model.dateKey && current.employee.id === model.employee.id && current.isCenter === model.isCenter) refreshOpenFitnessReport(current);
+    });
     loadPtScheduleReminder(model, { force: true });
     loadPtComparison(model, { force: true });
     loadFitnessFeedbackHistory(model).then(() => {
@@ -29497,6 +29557,7 @@ function getFitnessReportExportCss(reportHeight = 1754) {
 async function renderFitnessReportCanvas() {
   const width = 1240;
   const selection = buildFitnessReportModel();
+  await loadFitnessReportDagymSources(selection.dateKey);
   await loadPtScheduleReminder(selection);
   await loadPtComparison(selection);
   await loadFitnessFeedbackHistory(selection);

@@ -8,7 +8,7 @@ import { atomicJson, validateMonthlyReceipt } from "./dagym-sync-health.mjs";
 const root = process.cwd();
 const monthKey = process.env.DAGYM_MONTH || process.argv.find((value) => /^\d{4}-\d{2}$/.test(value)) || getKstMonthKey();
 const gymId = process.env.DAGYM_GYM_ID || "2387f907-0810-49b9-9db2-7ceb7861e076";
-const cdpUrl = process.env.DAGYM_CDP_URL || "http://127.0.0.1:9233";
+const cdpUrl = process.env.DAGYM_CDP_URL || "http://127.0.0.1:9235";
 const baseUrl = process.env.DAGYM_BASE_URL || "https://www.dagym-manager.com";
 const uploadUrl = process.env.DAGYM_MONTHLY_SCHEDULE_URL || "https://bangju-ai-worklog.vercel.app/api/dagym-monthly-schedule";
 const syncSecret = process.env.DAGYM_BROWSER_SYNC_SECRET || "";

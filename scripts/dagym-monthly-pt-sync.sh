@@ -5,16 +5,16 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 NODE_BIN="${NODE_BIN:-/Users/bangju/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/bin/node}"
 # 포트 9222는 개발·개인 Chrome이 이미 사용할 수 있습니다. 다짐 수집기는
 # 별도 포트와 별도 프로필만 사용해, 사용 중인 브라우저 탭에 붙지 않습니다.
-DEBUG_PORT="${DAGYM_DEBUG_PORT:-9233}"
+DEBUG_PORT="${DAGYM_DEBUG_PORT:-9235}"
 CDP_URL="${DAGYM_CDP_URL:-http://127.0.0.1:$DEBUG_PORT}"
 CHROME_BIN="${DAGYM_BROWSER_EXECUTABLE:-/Applications/Google Chrome.app/Contents/MacOS/Google Chrome}"
-USER_DATA_DIR="${DAGYM_USER_DATA_DIR:-$ROOT_DIR/browser-profile}"
+USER_DATA_DIR="${DAGYM_USER_DATA_DIR:-$ROOT_DIR/collector-browser-profile}"
 STARTED_BROWSER_PID=""
 SYNC_STATE_DIR="$ROOT_DIR/work/dagym-sync"
 SYNC_LOCK_DIR="$SYNC_STATE_DIR/run.lock"
 LAST_SUCCESS_FILE="$SYNC_STATE_DIR/last-successful-target-date"
 DAILY_AUDIT_FILE="$ROOT_DIR/work/dagym-daily-sync/latest.json"
-BROWSER_PID_FILE="$SYNC_STATE_DIR/dagym-browser.pid"
+BROWSER_PID_FILE="$SYNC_STATE_DIR/dagym-collector-browser.pid"
 SYNC_FORCE="${DAGYM_SYNC_FORCE:-0}"
 SYNC_DRY_RUN="${DAGYM_SYNC_DRY_RUN:-0}"
 BROWSER_HEADLESS="${DAGYM_BROWSER_HEADLESS:-0}"
@@ -145,17 +145,15 @@ ensure_dagym_browser() {
   fi
   mkdir -p "$USER_DATA_DIR"
   # DaGym rejects API requests in headless mode (403); use normal Chrome in the background.
-  BROWSER_MODE=()
-  if [ "$BROWSER_HEADLESS" = "1" ]; then BROWSER_MODE=(--headless=new); fi
+  BROWSER_MODE=(--no-first-run)
+  if [ "$BROWSER_HEADLESS" = "1" ]; then BROWSER_MODE+=(--headless=new); fi
   "$CHROME_BIN" "${BROWSER_MODE[@]}" \
     --remote-debugging-address=127.0.0.1 \
     --remote-debugging-port="$DEBUG_PORT" \
-    --no-first-run \
     --no-default-browser-check \
-    --restore-last-session \
     --user-data-dir="$USER_DATA_DIR" \
     "https://www.dagym-manager.com/dashboard/attendance?gymId=${DAGYM_GYM_ID:-2387f907-0810-49b9-9db2-7ceb7861e076}" \
-    >/tmp/bangju-dagym-monthly-browser.log 2>&1 &
+    >"$SYNC_STATE_DIR/browser.log" 2>&1 &
   STARTED_BROWSER_PID="$!"
   printf '%s\n' "$STARTED_BROWSER_PID" > "$BROWSER_PID_FILE"
   for _ in {1..30}; do

@@ -122,10 +122,15 @@ async function enrichPtMetrics(dateKey, metrics) {
   const start = encodeURIComponent(`${dateKey}T00:00:00+09:00`);
   const end = encodeURIComponent(`${nextDateKey(dateKey)}T00:00:00+09:00`);
   const rows = await supabaseRequest(`/rest/v1/dagym_pt_schedule_events?center_key=eq.${CENTER_KEY}&active=eq.true&scheduled_at=gte.${start}&scheduled_at=lt.${end}&member_name_ciphertext=neq.&status=not.in.(cancelled,postponed)&select=status&limit=2500`);
-  if (metrics.ptBookings === undefined) metrics.ptBookings = rows.length;
+  const bookingMetricVerified = metrics.ptBookings !== undefined;
+  if (metrics.ptBookings === undefined && rows.length > 0) metrics.ptBookings = rows.length;
   // Calendar imports carry scheduled slots, not a complete attendance ledger.
   // Do not manufacture a zero no-show count from unknown/scheduled states.
-  return { metrics, scheduleRows: rows.length };
+  return { metrics, scheduleRows: rows.length, bookingMetricVerified };
+}
+
+async function refreshDailyAnalysis(dateKey) {
+  return supabaseRequest("/rest/v1/rpc/run_dagym_nightly_analysis", { method: "POST", body: JSON.stringify({ target_date: nextDateKey(dateKey) }), signal: AbortSignal.timeout(8000) });
 }
 
 module.exports = async function handler(request, response) {
@@ -145,6 +150,14 @@ module.exports = async function handler(request, response) {
 
   const dateKey = String(request.body?.dateKey || "").trim();
   if (!isDateKey(dateKey)) return response.status(400).json({ ok: false, error: "수집 날짜가 올바르지 않습니다." });
+  if (request.body?.action === "refresh-analysis") {
+    try {
+      const [stored] = await supabaseRequest(`/rest/v1/dagym_daily_snapshots?center_key=eq.${CENTER_KEY}&snapshot_date=eq.${dateKey}&select=quality,field_count&limit=1`);
+      if (!stored || stored.quality === "missing" || stored.field_count < 1) return response.status(409).json({ ok: false, error: "확인된 저장 자료가 없어 분석을 갱신하지 않았습니다." });
+      await refreshDailyAnalysis(dateKey);
+      return response.status(200).json({ ok: true, dateKey, analysisUpdated: true });
+    } catch { return response.status(503).json({ ok: false, error: "저장 자료의 분석 갱신을 완료하지 못했습니다." }); }
+  }
   const collectedAt = new Date().toISOString();
   const syncId = crypto.randomUUID();
   const domains = normalizeDomains(request.body?.domains);
@@ -158,7 +171,7 @@ module.exports = async function handler(request, response) {
   try {
     const enriched = await enrichPtMetrics(dateKey, normalizeMetrics(request.body?.metrics));
     const metrics = enriched.metrics;
-    domains.schedule = { ok: true, rows: enriched.scheduleRows, source: "dagym_pt_schedule_events", error: "", period: "month-schedule", capturedAt: collectedAt };
+    domains.schedule = { ok: enriched.scheduleRows > 0, bookingMetricVerified: enriched.bookingMetricVerified, rows: enriched.scheduleRows, source: "dagym_pt_schedule_events", error: "", period: "month-schedule", capturedAt: collectedAt };
     const fieldCount = METRIC_KEYS.filter((key) => metrics[key] !== undefined).length;
     const successfulDomains = Object.values(domains).filter((domain) => domain.ok).length;
     const quality = fieldCount >= 6 && successfulDomains >= 3 ? "complete" : fieldCount > 0 ? "partial" : "missing";
@@ -174,7 +187,9 @@ module.exports = async function handler(request, response) {
       body: JSON.stringify({ id: syncId, center_key: CENTER_KEY, target_date: dateKey, source: "browser-daily", status: quality === "missing" ? "failed" : quality === "partial" ? "partial" : "success", quality, metrics_count: fieldCount, domains, warnings, started_at: request.body?.startedAt || collectedAt, finished_at: new Date().toISOString() }),
     });
 
-    return response.status(200).json({ ok: quality !== "missing", dateKey, quality, fieldCount, domains, analysisDeferred: true, syncedAt: collectedAt });
+    let analysisUpdated = false;
+    try { await refreshDailyAnalysis(dateKey); analysisUpdated = true; } catch { /* Persisted sources remain usable; retry analysis separately. */ }
+    return response.status(200).json({ ok: quality !== "missing", dateKey, quality, fieldCount, domains, analysisDeferred: !analysisUpdated, analysisUpdated, syncedAt: collectedAt });
   } catch (error) {
     await supabaseRequest("/rest/v1/dagym_sync_runs", {
       method: "POST",

@@ -30,7 +30,7 @@ function compare({ reportDate, sourceDate, events = [], log = null, now = new Da
   const output = { reportDate, sourceDate, status: 'unavailable', differences: [], exceptions: [], compared: 0,
     guidance: '수업 누락으로 단정하지 말고 예약 변경·취소·노쇼·대체강사 여부를 먼저 확인하세요. 확인 후 실제 수업시간과 변경 사유를 기록하세요. 지난 일지를 직접 수정할 수 없으면 센터장에게 보완을 요청하세요. 다음 수업부터 종료 직후 기록을 확인하면 실적 확인과 인수인계가 수월해집니다.' };
   if (sourceDate >= kstParts(now.toISOString()).date) return { ...output, reason: '전날 수업이 마감되기 전입니다.' };
-  if (!log) return { ...output, reason: '전날 저장된 업무일지를 확인하지 못했습니다. 미작성·수업 누락으로 단정하지 않습니다.' };
+  if (!log) return { ...output, reason: '전날 저장된 개인 업무일지가 없어 PT 대조만 보류합니다. 다짐 자료 수집 여부와는 별개이며 미작성·수업 누락으로 단정하지 않습니다.' };
   const dayRows = events.filter(row => row.active !== false && kstParts(row.scheduled_at)?.date === sourceDate);
   if (!dayRows.length) return { ...output, reason: '본인에게 연결된 전날 다짐 시간표를 확인하지 못했습니다. 수업 0건이나 일치로 판단하지 않습니다.' };
   const cutoff = Date.parse(`${sourceDate}T23:59:59+09:00`);

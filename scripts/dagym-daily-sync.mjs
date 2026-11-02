@@ -6,7 +6,7 @@ const { isAuthSource, validateDailySnapshot } = quality;
 
 const root = process.cwd();
 const gymId = process.env.DAGYM_GYM_ID || "2387f907-0810-49b9-9db2-7ceb7861e076";
-const cdpUrl = process.env.DAGYM_CDP_URL || "http://127.0.0.1:9233";
+const cdpUrl = process.env.DAGYM_CDP_URL || "http://127.0.0.1:9235";
 const baseUrl = process.env.DAGYM_BASE_URL || "https://www.dagym-manager.com";
 const uploadUrl = process.env.DAGYM_DAILY_SYNC_URL || "https://bangju-ai-worklog.vercel.app/api/dagym-browser-daily";
 const syncSecret = process.env.DAGYM_BROWSER_SYNC_SECRET || "";

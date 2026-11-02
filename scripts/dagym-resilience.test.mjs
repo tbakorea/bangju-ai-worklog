@@ -83,9 +83,9 @@ test('launcher saves daily data despite a PT failure and keeps the success marke
   fs.mkdirSync(scripts); fs.mkdirSync(bin); fs.mkdirSync(state, { recursive:true });
   fs.copyFileSync(new URL('./dagym-monthly-pt-sync.sh', import.meta.url), path.join(scripts, 'dagym-monthly-pt-sync.sh'));
   fs.writeFileSync(path.join(state, 'last-successful-target-date'), '2026-10-27\n');
-  fs.writeFileSync(path.join(state, 'dagym-browser.pid'), '12345\n');
+  fs.writeFileSync(path.join(state, 'dagym-collector-browser.pid'), '12345\n');
   fs.writeFileSync(path.join(bin, 'curl'), '#!/bin/bash\nexit 0\n', { mode:0o700 });
-  fs.writeFileSync(path.join(bin, 'ps'), `#!/bin/bash\nprintf '%s\\n' '--remote-debugging-port=9233 --user-data-dir=${root}/browser-profile'\n`, { mode:0o700 });
+  fs.writeFileSync(path.join(bin, 'ps'), `#!/bin/bash\nprintf '%s\\n' '--remote-debugging-port=9235 --user-data-dir=${root}/collector-browser-profile'\n`, { mode:0o700 });
   const node = path.join(bin, 'node');
   fs.writeFileSync(node, `#!/bin/bash\nprintf '%s %s\\n' "$(basename "$1")" "$DAGYM_MONTH" >> '${root}/trace'\ncase "$1" in\n *dagym-upload-pending.mjs) exit 2;;\n *dagym-monthly-pt-sync.mjs) exit 1;;\n *) exit 0;;\nesac\n`, { mode:0o700 });
   await assert.rejects(run('/bin/bash', [path.join(scripts, 'dagym-monthly-pt-sync.sh')], { env: { ...process.env, PATH:`${bin}:${process.env.PATH}`, NODE_BIN:node, DAGYM_DATE:'2026-10-31', DAGYM_SYNC_FORCE:'1', DAGYM_SYNC_SKIP_JITTER:'1', DAGYM_BROWSER_SYNC_SECRET:'fixture', DAGYM_SYNC_ACCESS_TOKEN:'fixture' } }), error => error.code === 1);
@@ -140,3 +140,15 @@ test('bounded keychain helper refuses unrelated services without printing data',
   const { promisify } = await import('node:util');
   await assert.rejects(promisify(execFile)(process.execPath, [fileURLToPath(new URL('./dagym-keychain-read.mjs', import.meta.url)), 'unrelated-service', 'fixture-account']), error => error.code === 2 && error.stdout === '' && error.stderr === '');
 });
+
+test('headed collector can launch from macOS bash with no headless option', async () => tempTest(async root => {
+  const { execFile } = await import('node:child_process'); const { promisify } = await import('node:util'); const run=promisify(execFile);
+  const scripts=path.join(root,'scripts'),bin=path.join(root,'bin');fs.mkdirSync(scripts);fs.mkdirSync(bin);
+  fs.copyFileSync(new URL('./dagym-monthly-pt-sync.sh',import.meta.url),path.join(scripts,'dagym-monthly-pt-sync.sh'));
+  const launched=path.join(root,'launched');
+  fs.writeFileSync(path.join(bin,'curl'),`#!/bin/bash\n[ -f '${launched}' ]\n`,{mode:0o700});
+  const chrome=path.join(bin,'fake-chrome');fs.writeFileSync(chrome,`#!/bin/bash\nprintf '%s\\n' "$@" > '${root}/chrome-args'\ntouch '${launched}'\n`,{mode:0o700});
+  const node=path.join(bin,'node');fs.writeFileSync(node,'#!/bin/bash\nexit 0\n',{mode:0o700});
+  await run('/bin/bash',[path.join(scripts,'dagym-monthly-pt-sync.sh')],{env:{...process.env,PATH:`${bin}:${process.env.PATH}`,NODE_BIN:node,DAGYM_BROWSER_EXECUTABLE:chrome,DAGYM_BROWSER_HEADLESS:'0',DAGYM_DATE:'2026-11-02',DAGYM_SYNC_FORCE:'1',DAGYM_SYNC_SKIP_JITTER:'1',DAGYM_SYNC_DRY_RUN:'1'}});
+  const args=fs.readFileSync(path.join(root,'chrome-args'),'utf8');assert.match(args,/--remote-debugging-port=9235/);assert.doesNotMatch(args,/--headless/);assert.match(args,/collector-browser-profile/);
+}));

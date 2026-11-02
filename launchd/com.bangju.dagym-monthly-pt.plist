@@ -12,11 +12,11 @@
   <key>EnvironmentVariables</key>
   <dict>
     <key>DAGYM_USER_DATA_DIR</key>
-    <string>/Users/bangju/Library/Application Support/BangjuWorklog/dagym-sync/browser-profile</string>
+    <string>/Users/bangju/Library/Application Support/BangjuWorklog/dagym-sync/collector-browser-profile</string>
     <key>DAGYM_BROWSER_HEADLESS</key>
     <string>0</string>
     <key>DAGYM_DEBUG_PORT</key>
-    <string>9233</string>
+    <string>9235</string>
   </dict>
   <key>WorkingDirectory</key>
   <string>/Users/bangju/Library/Application Support/BangjuWorklog/dagym-sync</string>
