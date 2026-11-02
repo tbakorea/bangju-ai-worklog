@@ -19,6 +19,9 @@ const wait=ms=>new Promise(r=>setTimeout(r,ms));
     const employee={id:"profile-user",sourceProfileId:own,name:"검증인포",role:"인포데스크",primaryWork:"고객응대",org:state.profile.org,workplace:state.profile.workplace};
     const log={...createEmployeeLog(employee,state.profile),tasks:[{text:"회원 문의 PRIVATE_SECRET_99990000원 010-0000-0000",status:"미완료"}],schedule:[]};
     const make=()=>buildFitnessReportModel({employee,dateKey:todayKey,isCenter:false,log});
+    const feedbackEngine=window.FitnessRoleFeedback;window.FitnessRoleFeedback=undefined;
+    const missingModuleSafe=make().aiContext===null;
+    window.FitnessRoleFeedback=feedbackEngine;
     const yesterday=parseDateKey(todayKey);yesterday.setDate(yesterday.getDate()-1);
     let response={data:[{log_date:formatDateKey(yesterday),status:"support_needed",response_code:"support",fitness_feedback:{version:1,roleKey:"frontDesk",stepKey:"inquiry-next"}}],error:null};
     const calls=[];const oldFrom=supabaseClient.from;let savedPayload;
@@ -85,7 +88,7 @@ const wait=ms=>new Promise(r=>setTimeout(r,ms));
       await saveCoachingFollowup("fitness");
      }finally{getCoachingFollowupContext=originalContext;refreshOpenFitnessReport=originalRefresh;}
      const saveTransport=savedPayload?.user_id===own&&savedPayload.report_scope==="fitness"&&savedPayload.status==="completed"&&savedPayload.coaching_snapshot.fitnessFeedback.stepKey==="custom"&&savedPayload.result_note.includes("확인한 결과");
-     return{support,privateSafe,ownQuery,coworkerDenied,delegatedQuery,missingExplicit,switchedCacheSafe,reloadProgress,snapshotSaved,customPreserved,draftPreserved,aiQuotaBlocked,reportRows,fit,exportFits,centerExportFits,centerNoFinance,saveTransport,exportOverflow};
+     return{support,privateSafe,missingModuleSafe,ownQuery,coworkerDenied,delegatedQuery,missingExplicit,switchedCacheSafe,reloadProgress,snapshotSaved,customPreserved,draftPreserved,aiQuotaBlocked,reportRows,fit,exportFits,centerExportFits,centerNoFinance,saveTransport,exportOverflow};
     }finally{supabaseClient.from=oldFrom;}
    })()`));
    console.log(JSON.stringify({viewport:viewport.width,...result}));

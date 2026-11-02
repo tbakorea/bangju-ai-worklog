@@ -27744,7 +27744,9 @@ function buildFitnessReportAiContext({ dateKey, isCenter, employee, sourceLog, l
     },
   };
   const roleFeedback = buildFitnessRoleFeedback(context, employee, isCenter);
-  if (!roleFeedback) return context;
+  // If the privacy/role module did not load, keep local manual tips but never
+  // fall back to sending the old raw context to AI.
+  if (!roleFeedback) return null;
   // No raw member, company-finance, attendance or past-report text is sent to
   // AI for this workflow. The report itself retains its existing source data.
   return { ...window.FitnessRoleFeedback.aiContext({ dateKey, roleFeedback }), roleFeedback };
