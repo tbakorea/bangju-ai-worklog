@@ -16858,8 +16858,8 @@ function resetFitnessGuidanceFromTask(task = {}) {
 }
 
 function formatFitnessBriefMoney(value = 0) {
-  const amount = Math.max(0, numberValue(value));
-  if (amount >= 10000) {
+  const amount = numberValue(value);
+  if (Math.abs(amount) >= 10000) {
     const tenThousands = amount / 10000;
     return `${tenThousands.toLocaleString("ko-KR", { maximumFractionDigits: tenThousands < 100 ? 1 : 0 })}만원`;
   }
@@ -16883,11 +16883,11 @@ function buildFitnessYesterdayBrief(dateKey = getActiveDateKey()) {
   const salesPeriod = String(sourceRecord?.domains?.sales?.period || (analysisMatches ? analysis?.ratios?.salesPeriod : "") || "");
   const priorDateKey = getPreviousCalendarDateKey(sourceDateKey);
   const priorRecord = getDagymOpsForDate(priorDateKey, { create: false });
-  const priorSalesKnown = Boolean(priorRecord && String(priorRecord.sales ?? "").trim() !== "" && priorDateKey.slice(0, 7) === sourceDateKey.slice(0, 7));
+  const priorSalesKnown = Boolean(nullableDagymMetric(priorRecord?.sales) !== null && priorRecord?.domains?.sales?.period === "month-to-date" && priorDateKey.slice(0, 7) === sourceDateKey.slice(0, 7));
   const revenue = buildFitnessRevenueGrowthPlan(sourceDateKey);
   const sourceSalesKnown = hasData && metrics.sales !== null;
   const isDailySales = salesPeriod === "daily";
-  const isMonthToDateSales = salesPeriod === "month-to-date" || revenue.basis === "inferred-month-to-date";
+  const isMonthToDateSales = salesPeriod === "month-to-date";
   let dailySales = null;
   let dailySalesBasis = "전일 단일 매출자료";
   if (sourceSalesKnown && isDailySales) {
@@ -16896,11 +16896,8 @@ function buildFitnessYesterdayBrief(dateKey = getActiveDateKey()) {
   } else if (sourceSalesKnown && isMonthToDateSales && sourceDateKey.endsWith("-01")) {
     dailySales = metrics.sales; dailySalesBasis = "월초 첫날의 월누계";
   } else if (sourceSalesKnown && isMonthToDateSales && priorSalesKnown) {
-    dailySales = Math.max(0, metrics.sales - numberValue(priorRecord.sales));
+    dailySales = metrics.sales - numberValue(priorRecord.sales);
     dailySalesBasis = "전일·전전일 월누계 차감";
-  } else if (revenue.latestSourceDate === sourceDateKey && revenue.sourceDays >= 2 && ["month-to-date", "inferred-month-to-date"].includes(revenue.basis)) {
-    dailySales = revenue.dailySales;
-    dailySalesBasis = "저장된 월누계 스냅샷 차감";
   }
   const monthSales = sourceSalesKnown && isMonthToDateSales
     ? metrics.sales
@@ -16926,7 +16923,9 @@ function buildFitnessYesterdayBrief(dateKey = getActiveDateKey()) {
   const sourceUpdatedAt = String(hasSourceRecord ? sourceRecord?.updatedAt || sourceRecord?.importedAt || "" : analysisMatches ? analysis?.sourceUpdatedAt || "" : "");
   const memberCandidateText = memberOutreachState.loaded ? `${renewalCandidates.length}명` : "불러오는 중";
   const kpis = [
-    { label: "전일 매출", value: dailySales === null ? "산출 대기" : formatFitnessBriefMoney(dailySales), meta: dailySales === null && isMonthToDateSales ? "전전일 월누계가 필요합니다" : dailySalesBasis, tone: dailySales === null ? "attention" : "normal" },
+    { label: dailySales !== null ? "전일 매출" : sourceSalesKnown && isMonthToDateSales ? "월누계 매출" : "매출 기준",
+      value: dailySales !== null ? formatFitnessBriefMoney(dailySales) : sourceSalesKnown && isMonthToDateSales ? formatFitnessBriefMoney(monthSales) : "—",
+      meta: dailySales !== null ? dailySalesBasis : sourceSalesKnown && isMonthToDateSales ? `${sourceDateKey} 월누계 · 일매출과 구분` : "확인된 자료 기준으로만 계산", tone: "normal" },
     { label: "월 매출", value: hasData && sourceSalesKnown ? formatFitnessBriefMoney(monthSales) : "—", meta: sourceSalesKnown ? `${formatFitnessBriefMoney(revenue.floorTarget)} 목표 · 페이스 ${monthPaceRate}%` : "매출자료 확인 전", tone: salesGap ? "attention" : "normal" },
     { label: "방문·신규", value: hasData ? `${metrics.visits ?? "—"}명 · ${metrics.newMembers ?? "—"}명` : "—", meta: `신규+재등록 ${conversionCount ?? "—"}건`, tone: hasData && conversionTarget > conversionCount ? "attention" : "normal" },
     { label: "PT 예약", value: hasData ? `${metrics.ptBookings ?? "—"}건` : "—", meta: `노쇼·취소 ${metrics.noShows ?? "—"}건 · ${metrics.noShows === null || !(metrics.ptBookings > 0) ? "—" : noShowRate}%`, tone: metrics.noShows ? "attention" : "normal" },
@@ -26367,6 +26366,7 @@ function buildFitnessReportLines() {
       "",
       `[전일 다짐 운영 브리프 · ${model.operatingBrief.sourceDateKey}]`,
       ...model.operatingBrief.kpis.map((item) => `- ${item.label}: ${item.value} (${item.meta})`),
+      ...(model.operatingBrief.feedback ? [`- 좋은 흐름: ${model.operatingBrief.feedback.message}`, `- 오늘 한 걸음: ${model.operatingBrief.feedback.action}`] : []),
       "",
       "[오늘 배정 미션]",
       ...(model.operatingBrief.missions.length
@@ -28195,6 +28195,7 @@ function buildFitnessCenterCommandSummary({ staffRows = [], totals = {}, monthly
 function clearFitnessReportCaches() {
   smartNextActionChoices.clear();
   dagymSnapshotLoads.clear();
+  fitnessOperatingBriefCache.clear();
   for (const id of ["worklogSmartNextAction", "fitnessSmartNextAction"]) {
     const host = document.getElementById(id); if (host) { host.hidden = true; host.innerHTML = ""; host.__smartRenderKey = ""; }
   }
@@ -28396,7 +28397,7 @@ function buildFitnessReportModel(options = {}) {
     tomorrowTasks,
     weatherText,
   }) : null;
-  const operatingBrief = buildFitnessReportOperatingBrief(dateKey, employee, isCenter);
+  const operatingBrief = buildFitnessReportOperatingBrief(dateKey, employee, isCenter, sourceLog);
   const model = {
     title,
     dateKey,
@@ -28523,7 +28524,49 @@ function renderFitnessSnsReportHtml(model = {}) {
   `;
 }
 
-function buildFitnessReportOperatingBrief(dateKey = getActiveDateKey(), employee = {}, isCenter = false) {
+const fitnessOperatingBriefCache = new Map();
+async function loadFitnessOperatingBrief(model, { force = false } = {}) {
+  if (!authState.user || !authState.session?.access_token || !isProfileApproved() || model.isCenter || !isFitnessEmployeeRecord(model.employee)) return;
+  const viewer = authState.user.id, key = `${viewer}:${model.dateKey}`;
+  const old = fitnessOperatingBriefCache.get(key);
+  if (!force && old?.promise) return old.promise;
+  if (!force && old?.loadedAt && Date.now() - old.loadedAt < 60000) return;
+  const previous = old && ["complete", "partial"].includes(old.status) ? { date: old.date, sourceDate: old.sourceDate, status: old.status, counts: old.counts } : null;
+  const entry = previous ? { ...previous, refreshing: true } : { status: "loading" }; fitnessOperatingBriefCache.set(key, entry);
+  entry.promise = (async () => {
+    try {
+      const response = await fetch(`/api/fitness-operating-brief?date=${encodeURIComponent(model.dateKey)}`, {
+        headers: { Authorization: `Bearer ${authState.session.access_token}` }, signal: AbortSignal.timeout(15000),
+      });
+      if (!response.ok) throw Error("unavailable");
+      const data = await response.json();
+      if (data.date !== model.dateKey || data.sourceDate !== getPreviousCalendarDateKey(model.dateKey) || !data.counts || !["complete", "partial", "missing"].includes(data.status)) throw Error("date mismatch");
+      if (authState.user?.id !== viewer || fitnessOperatingBriefCache.get(key) !== entry) return;
+      // Whitelist the safe projection even if an upstream response grows new fields later.
+      fitnessOperatingBriefCache.set(key, { date: data.date, sourceDate: data.sourceDate, status: data.status,
+        counts: { visits: nullableDagymMetric(data.counts.visits), ptBookings: nullableDagymMetric(data.counts.ptBookings) }, loadedAt: Date.now() });
+    } catch {
+      if (authState.user?.id !== viewer || fitnessOperatingBriefCache.get(key) !== entry) return;
+      fitnessOperatingBriefCache.set(key, previous ? { ...previous, refreshError: true, loadedAt: Date.now() } : { status: "unavailable", counts: {}, loadedAt: Date.now() });
+    }
+    if (authState.user?.id !== viewer) return;
+    const current = buildFitnessReportModel();
+    if (current.dateKey === model.dateKey && current.employee.id === model.employee.id && !current.isCenter) refreshOpenFitnessReport(current);
+  })();
+  return entry.promise;
+}
+function getFitnessReportEncouragement(employee = {}, log = {}) {
+  const tasks = (log.tasks || []).filter(item => String(item.text || "").trim());
+  const evidence = { roleKey: window.FitnessRoleFeedback?.role(employee) || "general", tasks: tasks.length,
+    support: tasks.filter(item => ["지원필요", "지원 필요", "보류"].includes(item.status)).length,
+    completed: tasks.filter(item => item.done || item.status === "완료").length,
+    schedule: (log.schedule || []).filter(entry => getScheduleEntryText(entry).trim()).length,
+    consultation: nullableDagymMetric(log.fitnessOps?.consultation), sns: nullableDagymMetric(log.fitnessOps?.snsPromotion),
+    pt: [log.fitnessOps?.ptRegular, log.fitnessOps?.ptFree, log.fitnessOps?.ptOther].map(nullableDagymMetric).filter(value => value !== null).reduce((sum, value) => sum + value, 0) };
+  return window.FitnessReportEncouragement?.build(evidence) || { value: "한 걸음부터", message: "실제로 한 일과 다음 확인사항을 한 줄로 남겨보세요.", actionLabel: "기록 연결", action: "기록한 내용에서 다음 한 가지를 정해주세요." };
+}
+
+function buildFitnessReportOperatingBrief(dateKey = getActiveDateKey(), employee = {}, isCenter = false, sourceLog = {}) {
   const yesterday = buildFitnessYesterdayBrief(dateKey);
   const employeeMissionIds = new Set([
     ...getEmployeeWorklogAliases(employee),
@@ -28553,18 +28596,30 @@ function buildFitnessReportOperatingBrief(dateKey = getActiveDateKey(), employee
     else counts.assigned += 1;
     return counts;
   }, { assigned: 0, progress: 0, finished: 0, waiting: 0 });
-  const reportKpiLabels = new Set(["전일 매출", "방문·신규", "PT 예약", "만료·재등록"]);
-  const kpis = yesterday.kpis.filter((item) => reportKpiLabels.has(item.label)).map((item) => ({
+  const feedback = !isCenter ? getFitnessReportEncouragement(employee, sourceLog) : null;
+  const managementReport = canManageDagymOperations() && isFitnessCenterManagerEmployee(employee);
+  const safe = fitnessOperatingBriefCache.get(`${authState.user?.id || ""}:${dateKey}`);
+  const countLabel = (value, unit = "건") => nullableDagymMetric(value) === null ? "—" : `${Number(value).toLocaleString()}${unit}`;
+  const reportKpiLabels = new Set(["전일 매출", "월누계 매출", "매출 기준", "방문·신규", "PT 예약", "만료·재등록"]);
+  const managementKpis = yesterday.kpis.filter((item) => reportKpiLabels.has(item.label)).map((item) => ({
     label: item.label,
     value: sanitizeFitnessCoachText(item.value),
     meta: sanitizeFitnessCoachText(item.meta),
     tone: item.tone === "attention" ? "attention" : "normal",
   }));
+  const kpis = managementReport ? managementKpis : [
+    { label: "전일 방문", value: countLabel(safe?.counts?.visits, "명"), meta: safe?.refreshError ? "이전 확인 집계 · 재조회 보류" : nullableDagymMetric(safe?.counts?.visits) !== null ? "선택한 전날의 출석 집계" : "전일 집계 미확인 · 0건 아님", tone: "normal" },
+    { label: "전일 PT 예약", value: countLabel(safe?.counts?.ptBookings), meta: nullableDagymMetric(safe?.counts?.ptBookings) !== null ? "예약과 실제 수업 결과는 구분" : "연결된 예약 집계 확인 전", tone: "normal" },
+    { label: "오늘의 기록", value: feedback?.value || "한 걸음부터", meta: "본인 업무일지 기준", tone: "normal" },
+    { label: "다음 한 걸음", value: feedback?.actionLabel || "기록 연결", meta: "가능한 한 가지부터", tone: "normal" },
+  ];
   const ownId = getProfileMappedEmployeeId() || "profile-user";
   return {
+    title: managementReport ? "전일 운영 · 오늘의 실행" : "전일 운영 · 나의 좋은 기록",
+    feedback,
     sourceDateKey: yesterday.sourceDateKey,
     quality: yesterday.quality,
-    qualityLabel: yesterday.qualityLabel,
+    qualityLabel: managementReport ? yesterday.qualityLabel : ["complete", "partial"].includes(safe?.status) ? "운영·기록 연결" : "본인 기록 기준",
     kpis,
     missions,
     statusCounts,
@@ -28580,7 +28635,7 @@ function renderFitnessReportOperatingBriefHtml(model = {}) {
   return `
     <section class="fitness-paper-operating-brief" data-report-operating-brief>
       <header>
-        <div><small>PREVIOUS DAY → TODAY</small><h3>전일 다짐 브리프 · 오늘 미션</h3></div>
+        <div><small>PREVIOUS DAY → TODAY</small><h3>${escapeHtml(brief.title || "전일 운영 · 오늘의 실행")}</h3></div>
         <span>${escapeHtml(formatShortDate(brief.sourceDateKey))} · ${escapeHtml(brief.qualityLabel)}</span>
         ${brief.canOpenMissions ? `<button type="button" class="fitness-paper-live-action" data-fitness-report-guidance-open>${escapeHtml(brief.actionLabel)}</button>` : ""}
       </header>
@@ -28589,6 +28644,10 @@ function renderFitnessReportOperatingBriefHtml(model = {}) {
           <div class="tone-${escapeAttr(item.tone)}"><span>${escapeHtml(item.label)}</span><strong>${escapeHtml(item.value)}</strong><small>${escapeHtml(item.meta)}</small></div>
         `).join("")}
       </div>
+      ${brief.feedback ? `<div class="fitness-paper-brief-feedback" style="padding:8px 10px;line-height:1.45;overflow-wrap:anywhere;border-top:1px solid #b7cbbb">
+        <p style="margin:0"><b>좋은 흐름</b> · ${escapeHtml(brief.feedback.message)}</p>
+        <p style="margin:4px 0 0"><b>오늘 한 걸음</b> · ${escapeHtml(brief.feedback.action)}</p>
+      </div>` : ""}
       <div class="fitness-paper-mission-audit">
         <div class="fitness-paper-mission-summary">
           <b>오늘 실행</b><span>배정 ${brief.statusCounts.assigned} · 진행 ${brief.statusCounts.progress} · 결과 ${brief.statusCounts.finished}</span>
@@ -28599,7 +28658,7 @@ function renderFitnessReportOperatingBriefHtml(model = {}) {
             <span><b>${escapeHtml(item.title)}</b><small>${escapeHtml(item.resultNote || `${item.assignee} · 결과 대기`)}</small></span>
             <em>${escapeHtml(item.statusLabel)}</em>
           </p>
-        `).join("") : `<p class="is-empty"><span><b>배정된 미션 없음</b><small>업무를 시작하면 역할에 맞는 전일 다짐 미션이 연결됩니다.</small></span><em>대기</em></p>`}
+        `).join("") : `<p class="is-empty"><span><b>오늘 한 걸음부터</b><small>위의 실행 제안 중 가능한 한 가지를 선택해보세요.</small></span><em>자율 실행</em></p>`}
       </div>
       <footer>개인정보 비표시 · 집계와 처리 이력만 보고서에 보존</footer>
     </section>
@@ -28888,6 +28947,7 @@ function openFitnessReportSheet() {
     sheet.classList.add("is-open");
     fitFitnessReportPreview();
     const sourceViewer = authState.user?.id;
+    loadFitnessOperatingBrief(model, { force: true });
     loadFitnessReportDagymSources(model.dateKey).then(() => {
       if (authState.user?.id !== sourceViewer) return;
       const current = buildFitnessReportModel();
@@ -28972,7 +29032,7 @@ function getFitnessReportFileBase() {
 
 function getFitnessReportExportHeight(model = buildFitnessReportModel()) {
   const reminderSpace = getPtScheduleReminderLines(model.ptScheduleReminder).reduce((sum, line) => sum + Math.max(1, Math.ceil(line.length / 65)) * 36, 0);
-  const feedbackSpace = (reminderSpace ? reminderSpace + 180 : 0) + (model.operatingFeedback ? 360 : 0)
+  const feedbackSpace = (model.operatingBrief?.feedback && !model.isCenter ? 160 : 0) + (reminderSpace ? reminderSpace + 180 : 0) + (model.operatingFeedback ? 360 : 0)
     + (model.ptComparison ? 200 + getPtComparisonLines(model.ptComparison).reduce((sum, line) => sum + Math.max(1, Math.ceil(line.length / 65)) * 36, 0) : 0);
   if (model.isCenter) {
     const staffOverflow = Math.max(0, (model.staffRows?.length || 0) - 6) * 72;
@@ -29557,7 +29617,7 @@ function getFitnessReportExportCss(reportHeight = 1754) {
 async function renderFitnessReportCanvas() {
   const width = 1240;
   const selection = buildFitnessReportModel();
-  await loadFitnessReportDagymSources(selection.dateKey);
+  await Promise.all([loadFitnessReportDagymSources(selection.dateKey), loadFitnessOperatingBrief(selection)]);
   await loadPtScheduleReminder(selection);
   await loadPtComparison(selection);
   await loadFitnessFeedbackHistory(selection);
