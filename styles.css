@@ -14797,13 +14797,18 @@ body.physical-phone-device #view-fitness-log .fitness-log-schedule-panel .fitnes
 }
 
 .worklog-report-progress-section .worklog-report-status {
-  display: inline-flex;
-  min-width: 54px;
+  display: inline-grid;
+  box-sizing: border-box;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
   gap: 3px;
-  align-items: baseline;
+  align-items: center;
   justify-content: center;
   padding: 2px 6px;
-  white-space: nowrap;
+  border-radius: 8px;
+  white-space: normal;
+  overflow-wrap: anywhere;
 }
 
 .worklog-report-progress-section .worklog-report-status b {

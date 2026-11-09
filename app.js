@@ -1532,6 +1532,7 @@ function saveExecutiveWorklogWithCarryoverRepair(options = {}) {
 function persistWorklogCarryoverDeletion(ref = {}, { executive = false } = {}) {
   const task = ref?.task;
   if (!task) return false;
+  const activeDateKey = getActiveDateKey();
   const sourceDateKey = String(ref.sourceDateKey || activeDateKey);
   task.carryoverDeletedFrom = activeDateKey;
   if (ref.log && typeof ref.log === "object") ref.log.updatedAt = new Date().toISOString();
@@ -1952,7 +1953,7 @@ function normalizeEmployeeLogRows(log, dateKey = getActiveDateKey()) {
   log.memoCarry = String(log.memoCarry || "");
   log.memoLesson = String(log.memoLesson || "");
   log.tasks.forEach((task, index) => {
-    task.id ||= `task-${Date.now()}-${index}-${Math.random().toString(36).slice(2, 7)}`;
+    task.id ||= `task-${dateKey}-${index}`;
     const isBlankDefaultTask = !String(task.text || "").trim()
       && !task.done
       && !task.delegate
@@ -2268,7 +2269,6 @@ function removeRemoteSnapshotFromOutbox(dateKey = getActiveDateKey(), organizati
 function writeStateToLocalStorage() {
   recordActiveCorrectionAudits();
   normalizeProfilePlacementForAuth();
-  markOwnedWorklogUpdated();
   localStorage.setItem(storageKey, JSON.stringify(state));
   setWorklogSaveStatus("local");
 }
@@ -2330,8 +2330,8 @@ function scheduleInputRender(key, callback, delay = 700) {
 }
 
 function saveState(options = {}) {
+  markOwnedWorklogUpdated();
   if (options.input) {
-    markOwnedWorklogUpdated();
     setWorklogSaveStatus("saving");
     scheduleDeferredStateSave(options.localDelay || 650);
     scheduleRemoteSave(options.remoteDelay || 2500);
@@ -2343,10 +2343,10 @@ function saveState(options = {}) {
 }
 
 function markOwnedWorklogUpdated(dateKey = getActiveDateKey()) {
-  if (!authState.user || isRepresentativeProfile() || !isWorklogEditView()) return;
+  if (!authState.user || authState.applyingRemote || isRepresentativeProfile() || !isWorklogEditView()) return;
   const employeeId = getProfileMappedEmployeeId() || "profile-user";
   const log = state.employeeLogs?.[dateKey]?.[employeeId] || state.employeeLogs?.[dateKey]?.["profile-user"];
-  if (log && hasSubmittableWorklogContent(log)) log.updatedAt = new Date().toISOString();
+  if (log) log.updatedAt = new Date().toISOString();
 }
 
 function normalizeWorklogTaskStatus(status = "예정") {
@@ -13045,7 +13045,7 @@ async function loadRemoteWorklogForActiveDate() {
       loadSharedSiteWeatherSettings(),
       isRepresentativeProfile()
         ? loadRemoteExecutiveCarryoverContext(key)
-        : Promise.resolve(false),
+        : loadRemoteEmployeeCarryoverContext(key),
     ]);
     if (Array.isArray(sharedWeatherRows)) await publishRepresentativeSiteWeatherSettings(sharedWeatherRows);
     if (canAccessAllWorklogs()) await loadVisibleStaffWorklogsForDate(key);
@@ -13895,8 +13895,8 @@ function mergeOwnRemoteEmployeeLogs(remoteEmployeeLogs = {}) {
       const remoteUpdatedAt = String(remoteLog?.updatedAt || "");
       const keepLocal = Boolean(
         localLog
-        && hasSubmittableWorklogContent(localLog)
-        && (!hasSubmittableWorklogContent(remoteLog) || (localUpdatedAt && localUpdatedAt > remoteUpdatedAt))
+        && ((localUpdatedAt && localUpdatedAt > remoteUpdatedAt)
+          || (!remoteUpdatedAt && hasSubmittableWorklogContent(localLog) && !hasSubmittableWorklogContent(remoteLog)))
       );
       if (keepLocal) return;
       state.employeeLogs[dateKey][targetEmployeeId] = {
@@ -14083,6 +14083,49 @@ async function loadRemoteOwnWorklogForDate(dateKey = getActiveDateKey()) {
   return before !== JSON.stringify(state.employeeLogs?.[dateKey] || {});
 }
 
+async function loadRemoteEmployeeCarryoverContext(dateKey = getActiveDateKey()) {
+  if (!supabaseClient || !authState.user || isRepresentativeProfile() || !isProfileApproved()) return false;
+  const userId = authState.user.id;
+  const employeeId = getProfileMappedEmployeeId() || "profile-user";
+  const cacheKey = `${userId}:${employeeId}:${dateKey}`;
+  authState.employeeCarryoverCursors ||= new Map();
+  const cursor = authState.employeeCarryoverCursors.get(cacheKey) || "";
+  const aliases = new Set([employeeId, "profile-user", userId, `profile-${userId}`]);
+  let changed = false;
+  let newest = cursor;
+  // Date-scoped snapshots no longer contain every prior day's tasks. Read
+  // this account's history once, then only rows updated since the last read.
+  // Do not truncate old unfinished work at an arbitrary 30/90-day boundary.
+  for (let offset = 0; offset < 5000; offset += 100) {
+    let query = supabaseClient.from("worklog_states")
+      .select("log_date,updated_at,employeeLogs:state->employeeLogs")
+      .eq("user_id", userId).lte("log_date", dateKey)
+      .order("updated_at", { ascending: false }).order("log_date", { ascending: false });
+    if (cursor) query = query.gte("updated_at", cursor);
+    const { data, error } = await query.range(offset, offset + 99);
+    if (authState.user?.id !== userId || (getProfileMappedEmployeeId() || "profile-user") !== employeeId) return false;
+    if (error || !Array.isArray(data)) return changed;
+    for (const row of data) {
+      const ownLogs = Object.fromEntries(Object.entries(row.employeeLogs || {})
+        .filter(([key]) => key <= dateKey)
+        .map(([key, byEmployee]) => [key, Object.fromEntries(Object.entries(byEmployee || {})
+          .filter(([id]) => aliases.has(id)))]));
+      for (const key of Object.keys(ownLogs)) {
+        const before = JSON.stringify(state.employeeLogs?.[key]?.[employeeId] || null);
+        mergeOwnRemoteEmployeeLogs({ [key]: ownLogs[key] });
+        changed ||= before !== JSON.stringify(state.employeeLogs?.[key]?.[employeeId] || null);
+      }
+      if (String(row.updated_at || "") > newest) newest = row.updated_at;
+    }
+    if (data.length < 100) {
+      authState.employeeCarryoverCursors.set(cacheKey, newest);
+      return changed;
+    }
+  }
+  // Leave the cursor untouched if the scan is incomplete so it is retried.
+  return changed;
+}
+
 async function hydrateWorklogWeekOnDemand({ force = false } = {}) {
   if (!supabaseClient || !authState.user || !isProfileApproved() || todayPageMode !== "week") return false;
   authState.weekWorklogHydration ||= new Map();
@@ -14186,7 +14229,10 @@ async function refreshVisibleStaffWorklogsForActiveDate(options = {}) {
   if (isVisibleWorklogRefreshFresh(dateKey, options)) return;
   authState.visibleWorklogsLoading = true;
   try {
-    const worklogsChanged = await loadVisibleStaffWorklogsForDate(dateKey);
+    const [staffChanged, ownChanged] = await Promise.all([
+      loadVisibleStaffWorklogsForDate(dateKey), loadRemoteEmployeeCarryoverContext(dateKey),
+    ]);
+    const worklogsChanged = staffChanged || ownChanged;
     if (dateKey !== getActiveDateKey()) return;
     let refreshedSchedule = false;
     if (activeView === "fitness-log") {
@@ -14200,7 +14246,7 @@ async function refreshVisibleStaffWorklogsForActiveDate(options = {}) {
     if (activeView === "worklog-overview" && worklogsChanged) await loadRepresentativeCoachingFollowups(dateKey);
     if (!worklogsChanged && !refreshedSchedule) return;
     normalizeState();
-    scheduleDeferredStateSave(180);
+    localStorage.setItem(storageKey, JSON.stringify(state));
     if (activeView === "fitness-log" || isGeneralEmployeeWorklogView(activeView)) renderEntries();
     else renderWorklogOverview();
   } finally {
@@ -14231,7 +14277,7 @@ function scheduleActiveWorklogRefresh() {
   const dateKey = getActiveDateKey();
   const canRefreshView = view === "fitness-log"
     || view === "worklog-overview"
-    || (isGeneralEmployeeWorklogView(view) && canAccessAllWorklogs());
+    || isGeneralEmployeeWorklogView(view);
   if (!authState.session || !canRefreshView) return;
   clearTimeout(authState.visibleWorklogRefreshTimer);
   // 화면을 먼저 전환한 후 짧게 양보해, 원격 조회 시작이 메뉴 클릭의 첫
@@ -14249,12 +14295,13 @@ function scheduleActiveWorklogRefresh() {
 function startVisibleWorklogPolling() {
   clearInterval(authState.visibleWorklogsTimer);
   authState.visibleWorklogsTimer = null;
-  if (!authState.user || !canAccessAllWorklogs()) return;
+  if (!authState.user || !isProfileApproved()) return;
   authState.visibleWorklogsTimer = setInterval(() => {
     const isVisibleWorklog = ["worklog-overview", "fitness-log"].includes(activeView)
       || isGeneralEmployeeWorklogView(activeView);
     if (document.visibilityState !== "visible" || !isVisibleWorklog) return;
-    refreshVisibleStaffWorklogsForActiveDate();
+    if (canAccessAllWorklogs()) refreshVisibleStaffWorklogsForActiveDate();
+    else refreshCoworkerWorklogsForActiveDate();
   }, 60 * 1000);
 }
 
@@ -14274,7 +14321,10 @@ async function refreshCoworkerWorklogsForActiveDate(options = {}) {
   if (isVisibleWorklogRefreshFresh(dateKey, options)) return;
   authState.visibleWorklogsLoading = true;
   try {
-    const worklogsChanged = await loadCoworkerWorklogsForDate(dateKey);
+    const [coworkersChanged, ownChanged] = await Promise.all([
+      loadCoworkerWorklogsForDate(dateKey), loadRemoteEmployeeCarryoverContext(dateKey),
+    ]);
+    const worklogsChanged = coworkersChanged || ownChanged;
     if (dateKey !== getActiveDateKey()) return;
     let refreshedSchedule = false;
     if (activeView === "fitness-log") {
@@ -14284,7 +14334,7 @@ async function refreshCoworkerWorklogsForActiveDate(options = {}) {
     }
     if (!worklogsChanged && !refreshedSchedule) return;
     normalizeState();
-    scheduleDeferredStateSave(180);
+    localStorage.setItem(storageKey, JSON.stringify(state));
     renderEntries();
   } finally {
     authState.visibleWorklogsLoading = false;
@@ -18731,39 +18781,36 @@ function updateTaskPriorityWarningState(row, task, { announce = false, log = get
 function getEmployeeWorklogTaskRefs(employee = {}, dateKey = getActiveDateKey(), log = {}) {
   const activeDateKey = String(dateKey || getActiveDateKey());
   const employeeId = String(log?.employeeId || getEmployeeWorklogId(employee) || "").trim();
-  const refs = (log.tasks || []).map((task, index) => ({
-    task,
-    index,
-    log,
-    sourceDateKey: activeDateKey,
-    isCarryover: false,
-    isPostponedFromOtherDate: false,
-  }));
-  Object.entries(state.employeeLogs || {})
-    .filter(([dateKey]) => dateKey < activeDateKey)
-    .sort(([dateA], [dateB]) => dateA.localeCompare(dateB))
-    .forEach(([dateKey, logsByEmployee]) => {
-      const sourceLog = logsByEmployee?.[employeeId];
-      (sourceLog?.tasks || []).forEach((task, index) => {
-        task.id ||= `task-${dateKey}-${index}`;
-        const deletedFrom = String(task.carryoverDeletedFrom || "");
-        const isOpenCarryover = Boolean(
-          isWorklogTaskDueForDate(task, dateKey, activeDateKey)
-          && (!deletedFrom || deletedFrom > activeDateKey)
-        );
-        if (isOpenCarryover) {
-          refs.push({
-            task,
-            index,
-            log: sourceLog,
-            sourceDateKey: dateKey,
-            isCarryover: true,
-            isPostponedFromOtherDate: false,
-          });
-        }
-      });
+  const logs = Object.fromEntries(Object.entries(state.employeeLogs || {})
+    .filter(([key]) => key < activeDateKey)
+    .map(([key, byEmployee]) => [key, byEmployee?.[employeeId]]));
+  logs[activeDateKey] = log;
+  const latestByLineage = new Map();
+  Object.keys(logs).sort().forEach((sourceDateKey) => {
+    const sourceLog = logs[sourceDateKey];
+    (sourceLog?.tasks || []).forEach((task, index) => {
+      if (sourceDateKey !== activeDateKey && !isActiveTask(task)) return;
+      const lineage = getEmployeeWorklogTaskLineage(task, sourceDateKey, index, logs);
+      const ref = { task, index, log: sourceLog, sourceDateKey,
+        isCarryover: sourceDateKey !== activeDateKey, isPostponedFromOtherDate: false,
+        terminalAncestor: lineage.terminalAncestor };
+      const previous = latestByLineage.get(lineage.key);
+      // Even a completed/hidden fork supersedes its old origin. Filtering it
+      // before resolving lineage would revive that origin on another device.
+      if (!previous || sourceDateKey > previous.sourceDateKey
+        || (sourceDateKey === previous.sourceDateKey && isEmployeeWorklogTaskTerminal(task))) {
+        latestByLineage.set(lineage.key, ref);
+      }
     });
-  return refs
+  });
+  return [...latestByLineage.values()]
+    .filter((ref) => {
+      if (ref.terminalAncestor && !isEmployeeWorklogTaskTerminal(ref.task)) return false;
+      if (!ref.isCarryover) return true;
+      const deletedFrom = String(ref.task.carryoverDeletedFrom || "");
+      return isWorklogTaskDueForDate(ref.task, ref.sourceDateKey, activeDateKey)
+        && (!deletedFrom || deletedFrom > activeDateKey);
+    })
     .sort((a, b) => {
       const activeA = isActiveTask(a.task);
       const activeB = isActiveTask(b.task);
@@ -18773,8 +18820,40 @@ function getEmployeeWorklogTaskRefs(employee = {}, dateKey = getActiveDateKey(),
     });
 }
 
+function isEmployeeWorklogTaskTerminal(task = {}) {
+  const status = normalizeWorklogTaskStatus(task.status);
+  return status !== "진행중" && (Boolean(task.done) || ["완료", "취소", "위임"].includes(status));
+}
+
+function getEmployeeWorklogTaskLineage(task = {}, dateKey = "", index = 0, logs = {}, visited = new Set()) {
+  const ownKey = `${dateKey}:${task.id || `task-${dateKey}-${index}`}`;
+  const fork = String(task.carryoverForkFrom || "").trim();
+  const separator = fork.indexOf(":");
+  if (separator < 1 || visited.has(fork)) return { key: ownKey, terminalAncestor: false };
+  const parentDate = fork.slice(0, separator);
+  if (parentDate >= dateKey) return { key: ownKey, terminalAncestor: false };
+  const parentId = fork.slice(separator + 1);
+  let parentIndex = (logs[parentDate]?.tasks || []).findIndex((item, i) => (
+    String(item.id || `task-${parentDate}-${i}`) === parentId
+  ));
+  if (parentIndex < 0) {
+    // Older clients generated a random ID on every hydration without saving
+    // the source. Repair only an explicitly linked date with one exact match;
+    // never collapse unrelated same-text tasks with no carryover metadata.
+    const matches = (logs[parentDate]?.tasks || []).map((item, i) => ({ item, i }))
+      .filter(({ item }) => String(item.text || "").trim() === String(task.text || "").trim()
+        && String(item.priority || "?") === String(task.priority || "?"));
+    if (matches.length === 1) parentIndex = matches[0].i;
+  }
+  if (parentIndex < 0) return { key: fork, terminalAncestor: false };
+  const parent = logs[parentDate].tasks[parentIndex];
+  const ancestor = getEmployeeWorklogTaskLineage(parent, parentDate, parentIndex, logs, new Set([...visited, fork]));
+  return { key: ancestor.key, terminalAncestor: ancestor.terminalAncestor || isEmployeeWorklogTaskTerminal(parent) };
+}
+
 function getWorklogCarryoverForkKey(ref = {}) {
-  return `${ref.sourceDateKey || "unknown"}:${ref.task?.id || ref.index || "task"}`;
+  const dateKey = ref.sourceDateKey || "unknown";
+  return `${dateKey}:${ref.task?.id || `task-${dateKey}-${ref.index || 0}`}`;
 }
 
 function materializeWorklogCarryover(ref, currentLog) {
@@ -18804,7 +18883,15 @@ function materializeWorklogCarryover(ref, currentLog) {
       targetIndex = currentLog.tasks.length - 1;
     }
   }
+  const sourceChanged = ref.task.carryoverDeletedFrom !== getActiveDateKey();
   ref.task.carryoverDeletedFrom = getActiveDateKey();
+  if (sourceChanged && ref.log) ref.log.updatedAt = new Date().toISOString();
+  // The fork and the origin belong to different DB rows. Save the origin's
+  // rollover stop marker too, including offline retry, before another device
+  // hydrates that old row again.
+  if (sourceChanged && !authState.applyingRemote && ref.sourceDateKey && ref.sourceDateKey !== getActiveDateKey()) {
+    scheduleRemoteSave(0, ref.sourceDateKey);
+  }
   return {
     task: currentLog.tasks[targetIndex],
     index: targetIndex,
@@ -25427,7 +25514,7 @@ function renderReport() {
   if (!reportSurfaceOpen) return;
   const employee = getSelectedEmployee();
   const log = getSelectedLog();
-  const tasks = (log.tasks || []).filter((task) => task.text.trim());
+  const tasks = getReportArchiveTasks(log, { employee, dateKey: getActiveDateKey() });
   const entries = (log.schedule || []).filter((entry) => getScheduleEntryText(entry));
   const attendance = state.attendance?.[getActiveDateKey()] || [];
   const employeeAttendance = attendance.find((item) => item.employeeId === employee.id);
@@ -25654,23 +25741,8 @@ function getReportArchiveTaskText(task = {}) {
 }
 
 function getReportArchiveTaskRefs(employee = {}, dateKey = getActiveDateKey(), log = {}) {
-  // 당일 기록이 생긴 뒤의 보고서는 그 날 직원이 확정해 둔 목록만 보여준다.
-  // 그렇지 않으면 과거 미완료 항목을 매번 덧붙여 대표 열람 보고서가
-  // 직원 본인의 당일 보고서보다 길어지는 문제가 생긴다.
-  const hasCurrentDailyEntries = (log.tasks || []).some((task) => getReportArchiveTaskText(task));
-  if (hasCurrentDailyEntries) {
-    return (log.tasks || []).map((task, index) => ({
-      task,
-      index,
-      log,
-      sourceDateKey: String(dateKey || getActiveDateKey()),
-      isCarryover: false,
-      isPostponedFromOtherDate: false,
-    }));
-  }
-
-  // 아직 당일 입력 전이면, 직원 업무일지와 같은 기준으로 도래한 이월 업무만
-  // 미리 보여준다. 이 경우에만 과거 원본의 이월 표시를 유지한다.
+  // 보고서와 입력 화면은 같은 목록을 사용한다. 오늘 새 업무를 적어도
+  // 도래한 이월 업무는 남기되, 원본과 사본은 계보별로 한 번만 표시한다.
   return getEmployeeWorklogTaskRefs(employee, dateKey, log);
 }
 
@@ -25682,7 +25754,8 @@ function getReportArchiveTasks(log, options = {}) {
     .filter(({ task }) => getReportArchiveTaskText(task))
     .map((ref) => ({
       ...ref.task,
-      reportCarryoverSourceDate: ref.isCarryover || ref.isPostponedFromOtherDate ? ref.sourceDateKey : "",
+      reportCarryoverSourceDate: ref.task.carryoverSourceDate
+        || (ref.isCarryover || ref.isPostponedFromOtherDate ? ref.sourceDateKey : ""),
     }));
 }
 
@@ -27626,7 +27699,7 @@ function getWorklogReportExportCss(height = 1754) {
     section h3 { margin: 20px 0 8px; color: #173f32; font-size: 20px; }
     .worklog-report-table-section table th:first-child, .worklog-report-table-section table td:first-child { width: 110px; text-align: center; }
     .worklog-report-table-section table th:last-child, .worklog-report-table-section table td:last-child { width: 150px; text-align: center; }
-    .worklog-report-status { display: inline-grid; min-width: 112px; gap: 2px; border: 2px solid #aebbb2; border-radius: 999px; padding: 6px 12px; line-height: 1.05; }
+    .worklog-report-status { display: inline-grid; min-width: 0; max-width: 100%; gap: 2px; border: 2px solid #aebbb2; border-radius: 8px; padding: 6px 12px; line-height: 1.05; white-space: normal; overflow-wrap: anywhere; }
     .worklog-report-status b { font-size: 16px; font-weight: 950; }
     .worklog-report-status small { font-size: 11px; font-weight: 800; opacity: .72; }
     .worklog-report-status.is-complete { border-color: #69a483; background: #e4f4e8; color: #0f6540; }
@@ -31204,7 +31277,10 @@ document.addEventListener("visibilitychange", () => {
   restoreTodayAfterAppResume();
   if (activeView === "executive" && isRepresentativeProfile()) refreshRemoteExecutiveWorklogForActiveDate({ force: true });
   if (activeView === "worklog-overview" && canAccessAllWorklogs()) refreshVisibleStaffWorklogsForActiveDate();
-  if (isGeneralEmployeeWorklogView(activeView) && canAccessAllWorklogs()) refreshVisibleStaffWorklogsForActiveDate();
+  if (isGeneralEmployeeWorklogView(activeView)) {
+    if (canAccessAllWorklogs()) refreshVisibleStaffWorklogsForActiveDate();
+    else refreshCoworkerWorklogsForActiveDate();
+  }
   if (activeView === "fitness-log") {
     if (canAccessAllWorklogs()) refreshVisibleStaffWorklogsForActiveDate();
     else refreshCoworkerWorklogsForActiveDate();
@@ -31217,6 +31293,7 @@ window.addEventListener("pageshow", (event) => {
 window.addEventListener("focus", () => {
   restoreTodayAfterAppResume();
   refreshCurrentTimeIndicators();
+  scheduleActiveWorklogRefresh();
 });
 document.addEventListener("keydown", (event) => {
   if (event.key === "Escape" && fitnessMobileFocusMode !== "split") resetFitnessMobileFocusToSplit({ blur: true });

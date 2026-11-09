@@ -3727,10 +3727,11 @@ async function checkPriorityCarryoverAndDateRules(browser) {
     || parsed.preInputReportTasks.some((task) => task.carryoverSourceDate !== "2026-08-02" || !task.detail.includes("이월"))) {
     fail("opening a daily report before the first input should include only arrived unresolved carryover work", metrics);
   }
-  if (parsed.dailyInputReportTasks.length !== 1
-    || parsed.dailyInputReportTasks[0]?.text !== "오늘 직접 작성한 업무"
-    || parsed.dailyInputReportTasks[0]?.carryoverSourceDate) {
-    fail("a report with daily task input must not append historical carryover tasks", metrics);
+  const directReportTask = parsed.dailyInputReportTasks.find((task) => task.text === "오늘 직접 작성한 업무");
+  if (parsed.dailyInputReportTasks.length !== parsed.preInputReportTasks.length + 1
+    || !directReportTask || directReportTask.carryoverSourceDate
+    || preInputReportTexts.some((text) => !parsed.dailyInputReportTasks.some((task) => task.text === text))) {
+    fail("a report with daily input must keep the same arrived carryovers as the employee worklog", metrics);
   }
   if (parsed.futureBeforeArrival || !parsed.nextDayArrived || parsed.postponedBeforeDate
     || parsed.postponedDateArrived || parsed.postponedFutureDay || parsed.postponedNextDayArrived) {

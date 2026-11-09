@@ -411,16 +411,16 @@ check(
 );
 
 check(
-  "worklog reports keep the employee's daily list intact and include carryover only before first input",
+  "worklog reports share the lineage-deduplicated employee task list including arrived carryovers",
   js.includes("function getReportArchiveTaskRefs")
-    && /function getEmployeeWorklogTaskRefs[\s\S]{0,1500}isWorklogTaskDueForDate\(task, dateKey, activeDateKey\)/.test(js)
-    && /function getEmployeeWorklogTaskRefs[\s\S]{0,1700}!deletedFrom \|\| deletedFrom > activeDateKey/.test(js)
-    && /function getReportArchiveTaskRefs[\s\S]{0,500}const hasCurrentDailyEntries/.test(js)
-    && /function getReportArchiveTaskRefs[\s\S]{0,900}if \(hasCurrentDailyEntries\)[\s\S]{0,900}getEmployeeWorklogTaskRefs\(employee, dateKey, log\)/.test(js)
+    && /function getEmployeeWorklogTaskRefs[\s\S]{0,2600}isWorklogTaskDueForDate\(ref.task, ref.sourceDateKey, activeDateKey\)/.test(js)
+    && /function getEmployeeWorklogTaskRefs[\s\S]{0,2800}!deletedFrom \|\| deletedFrom > activeDateKey/.test(js)
+    && /function getReportArchiveTaskRefs[\s\S]{0,500}getEmployeeWorklogTaskRefs\(employee, dateKey, log\)/.test(js)
+    && js.includes("function getEmployeeWorklogTaskLineage")
     && js.includes("const tasks = getReportArchiveTasks(log, { employee, dateKey });")
     && js.includes("reportCarryoverSourceDate")
     && js.includes("carryoverDetail"),
-  "a representative report must match an employee's daily list, while a pre-input report still uses arrived carryover rules"
+  "reports must include arrived carryovers after new daily input, without reviving completed origins"
 );
 
 check(
@@ -807,9 +807,9 @@ check(
   "fitness center refreshes changed staff PT and DaGym class status without interrupting input",
   js.includes("function scheduleActiveWorklogRefresh()")
     && /if \(!options\.skipRemoteRefresh\) scheduleActiveWorklogRefresh\(\);/.test(js)
-    && /async function refreshVisibleStaffWorklogsForActiveDate\(options = \{\}\)[\s\S]{0,1600}isEditingDailyField\(\)[\s\S]{0,700}const worklogsChanged = await loadVisibleStaffWorklogsForDate\(dateKey\)[\s\S]{0,900}if \(refreshedSchedule\) await loadDagymMonthlyPtSchedules\(dateKey, \{ force: Boolean\(options\.forceDagym\) \}\)[\s\S]{0,700}if \(!worklogsChanged && !refreshedSchedule\) return[\s\S]{0,500}renderEntries\(\)/.test(js)
+    && /async function refreshVisibleStaffWorklogsForActiveDate\(options = \{\}\)[\s\S]{0,1600}isEditingDailyField\(\)[\s\S]{0,900}loadVisibleStaffWorklogsForDate\(dateKey\), loadRemoteEmployeeCarryoverContext\(dateKey\)[\s\S]{0,1000}if \(refreshedSchedule\) await loadDagymMonthlyPtSchedules\(dateKey, \{ force: Boolean\(options\.forceDagym\) \}\)[\s\S]{0,700}if \(!worklogsChanged && !refreshedSchedule\) return[\s\S]{0,500}renderEntries\(\)/.test(js)
     && /const isVisibleWorklog = \["worklog-overview", "fitness-log"\]\.includes\(activeView\)[\s\S]{0,120}isGeneralEmployeeWorklogView\(activeView\)/.test(js)
-    && /setInterval\([\s\S]{0,360}60 \* 1000\)/.test(js)
+    && /setInterval\([\s\S]{0,600}60 \* 1000\)/.test(js)
     && /const cacheTtlMs = Math\.max\(30 \* 1000, Number\(options\.cacheTtlMs \|\| 5 \* 60 \* 1000\)/.test(js),
   "representative center pages must refresh changed employee ledgers and class outcomes without repeated full renders while an employee types"
 );
@@ -832,7 +832,7 @@ check(
     && js.includes("function hydrateReadonlyWorklogOnDemand")
     && js.includes("await hydrateReadonlyWorklogOnDemand(employeeId, activeView)")
     && /activeView === "fitness-log" \|\| isGeneralEmployeeWorklogView\(activeView\)\) renderEntries\(\)/.test(js)
-    && /isGeneralEmployeeWorklogView\(view\) && canAccessAllWorklogs\(\)/.test(js),
+    && /const canRefreshView[\s\S]{0,180}isGeneralEmployeeWorklogView\(view\)/.test(js),
   "read-only detail views must show the selected employee after scrolling, preserve legacy saved data, and clear only a versioned current empty ledger"
 );
 
