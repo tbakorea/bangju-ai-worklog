@@ -18693,7 +18693,7 @@ function ensureFitnessTaskRowsVisible(log) {
   const board = document.getElementById("fitnessTaskBoard");
   const list = board?.querySelector(".fitness-task-list");
   if (!list) return;
-  const refs = getWorklogTaskRefs(log);
+  const refs = getWorklogBoardTaskRefs(log);
   if (canAccessWorklogOverview() && !canEditCurrentWorklog("fitness-log")) return;
   const currentCount = list.querySelectorAll(".worklog-task-row").length;
   const activeCount = refs.filter((ref) => isActiveTask(ref.task)).length;
@@ -18705,7 +18705,7 @@ function ensureFitnessTaskRowsVisible(log) {
 }
 
 function getVisibleWorklogTaskRefs(log, { view = activeView, compactEditable = false } = {}) {
-  const refs = getWorklogTaskRefs(log);
+  const refs = getWorklogBoardTaskRefs(log);
   const activeRefs = refs.filter((ref) => isActiveTask(ref.task));
   if (!canEditCurrentWorklog(view)) {
     const blankRefs = refs.filter((ref) => !isActiveTask(ref.task)).slice(0, Math.max(0, 3 - activeRefs.length));
@@ -18715,6 +18715,13 @@ function getVisibleWorklogTaskRefs(log, { view = activeView, compactEditable = f
   if (!compactEditable) return refs;
   const visibleCount = Math.min(refs.length, Math.max(3, activeRefs.length + 1));
   return refs.slice(0, visibleCount);
+}
+
+function getWorklogBoardTaskRefs(log) {
+  const isToday = getActiveDateKey() === todayKey;
+  return getWorklogTaskRefs(log).filter(({ task }) => !isToday
+    || (normalizeWorklogTaskStatus(task.status) !== "완료"
+      && !(task.done && normalizeWorklogTaskStatus(task.status) !== "진행중")));
 }
 
 function createWorklogTask(priority = "?") {
@@ -18945,11 +18952,29 @@ function renderWorklogTaskRow(ref, currentLog, options = {}) {
   row.querySelector(".task-cycle").onclick = () => {
     if (!guardWorklogEdit(viewName)) return;
     const editableRef = materializeWorklogCarryover(ref, currentLog);
+    const previousStatus = { status: editableRef.task.status, done: editableRef.task.done };
     cycleWorklogTaskStatus(editableRef.task);
     syncFitnessGuidanceFromTask(editableRef.task);
     syncWorklogTaskTimeHintToSchedule(editableRef.task, editableRef.log);
     saveState();
     renderEntries();
+    if (getActiveDateKey() === todayKey && editableRef.task.done) {
+      const completedDateKey = getActiveDateKey();
+      const employeeId = editableRef.log.employeeId;
+      const taskId = editableRef.task.id;
+      showUndoToast("완료 업무를 오늘 목록에서 정리했습니다", () => {
+        if (getActiveDateKey() !== completedDateKey || !guardWorklogEdit(viewName)) return;
+        const savedLog = state.employeeLogs?.[completedDateKey]?.[employeeId];
+        const savedTask = savedLog?.tasks?.find((item) => item.id === taskId);
+        if (!savedTask || !savedTask.done) return;
+        Object.assign(savedTask, previousStatus);
+        syncFitnessGuidanceFromTask(savedTask);
+        syncWorklogTaskTimeHintToSchedule(savedTask, savedLog);
+        saveState({ fastSave: true });
+        renderEntries();
+      });
+      return;
+    }
     showTaskStatusGuide(taskStatusGuideLabels[editableRef.task.status] || editableRef.task.status || "미완료");
   };
   bindTaskMetaControl(row, ref, currentLog, viewName);

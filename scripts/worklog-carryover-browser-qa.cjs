@@ -62,9 +62,10 @@ const run=(page,code)=>page.evaluate(code=>window.eval(code),code);
    // Also reproduce pre-fix data: the completion exists but the origin's stop marker was never saved.
    delete rows.get(sourceDate).state.employeeLogs[sourceDate][employeeId].tasks[0].carryoverDeletedFrom;
    assert.equal(await run(pc.page,`loadRemoteEmployeeCarryoverContext('${date}')`),true);
-   const after=await run(pc.page,`(()=>{const log=state.employeeLogs['${date}']['${employeeId}'];const refs=getWorklogTaskRefs(log).filter(r=>isActiveTask(r.task));const model=buildWorklogDailyReportModel({employee:getSelectedEmployee(),dateKey:'${date}',log});return{refs:refs.map(r=>({text:r.task.text,done:r.task.done})),report:model.tasks};})()`);
+   const after=await run(pc.page,`(()=>{const log=state.employeeLogs['${date}']['${employeeId}'];const refs=getWorklogTaskRefs(log).filter(r=>isActiveTask(r.task));const model=buildWorklogDailyReportModel({employee:getSelectedEmployee(),dateKey:'${date}',log});return{refs:refs.map(r=>({text:r.task.text,done:r.task.done})),report:model.tasks,board:getVisibleWorklogTaskRefs(log).filter(r=>isActiveTask(r.task)).map(r=>r.task.text),fitnessBoard:getVisibleWorklogTaskRefs(log,{view:'fitness-log',compactEditable:true}).filter(r=>isActiveTask(r.task)).map(r=>r.task.text)};})()`);
    assert.equal(after.refs.length,2);assert.equal(after.refs.filter(r=>r.text==='누적 방지 검증 업무').length,1);assert(after.refs.find(r=>r.text==='누적 방지 검증 업무').done);
    assert(after.report.some(r=>r.text==='누적 방지 검증 업무'&&r.carryoverSourceDate===sourceDate&&r.status==='완료'));
+   assert.deepEqual(after.board,['오늘 신규 업무']);assert.deepEqual(after.fitnessBoard,['오늘 신규 업무']);
    const paper=await run(pc.page,`(()=>{
     const employee=getSelectedEmployee(),log=state.employeeLogs['${date}']['${employeeId}'];
     const model=buildWorklogDailyReportModel({employee,dateKey:'${date}',log});
@@ -87,6 +88,7 @@ const run=(page,code)=>page.evaluate(code=>window.eval(code),code);
     const employee=getSelectedEmployee();const current={employeeId:'${employeeId}',tasks:[{id:'new-same-text',text:'누적 방지 검증 업무',priority:'A',status:'미완료'}],schedule:[]};
     const independent=getEmployeeWorklogTaskRefs(employee,'${nextDate}',current).filter(r=>r.task.text==='누적 방지 검증 업무').length===1;
     const historic=buildWorklogDailyReportModel({employee,dateKey:'${sourceDate}',log:state.employeeLogs['${sourceDate}']['${employeeId}']}).tasks.some(t=>t.text==='누적 방지 검증 업무'&&t.status!=='완료');
+    const historicalCompletedVisible=getVisibleWorklogTaskRefs(state.employeeLogs['${date}']['${employeeId}']).some(r=>r.task.done&&r.task.text==='누적 방지 검증 업무');
     const originalStamp=state.employeeLogs['${date}']['${employeeId}'].updatedAt;writeStateToLocalStorage();
     const readDoesNotEdit=state.employeeLogs['${date}']['${employeeId}'].updatedAt===originalStamp;
     const local=state.employeeLogs['${date}']['${employeeId}'];local.updatedAt='2099-01-01T00:00:00.000Z';
@@ -108,11 +110,13 @@ const run=(page,code)=>page.evaluate(code=>window.eval(code),code);
     root.status='완료';root.done=true;copy.status='미완료';copy.done=false;
     const terminalAncestorStopped=getEmployeeWorklogTaskRefs(employee,'${date}',legacyCurrent).filter(r=>r.task.text==='기존 형식 이월').length===0;
     state.employeeLogs=snapshot;
-    return{independent,historic,readDoesNotEdit,pendingEditKept,stableLegacyIds,remoteClear,legacyForkDeduped,legacyDoneStopped,terminalAncestorStopped};
+    return{independent,historic,historicalCompletedVisible,readDoesNotEdit,pendingEditKept,stableLegacyIds,remoteClear,legacyForkDeduped,legacyDoneStopped,terminalAncestorStopped};
    })()`);
    for(const[k,v]of Object.entries(safeguards))assert.equal(v,true,`${viewport.width}: ${k}`);
+   const undo=await run(phone.page,`(async()=>{document.querySelector('#undoToast button').click();await flushPendingRemoteSaves();const log=state.employeeLogs['${date}']['${employeeId}'];return{visibleAgain:getVisibleWorklogTaskRefs(log).some(r=>r.task.text==='누적 방지 검증 업무'),pendingAgain:log.tasks.some(t=>t.text==='누적 방지 검증 업무'&&!t.done)};})()`);
+   assert.equal(undo.visibleAgain,true);assert.equal(undo.pendingAgain,true);
    assert.deepEqual(phone.errors,[]);assert.deepEqual(pc.errors,[]);
-   console.log(JSON.stringify({viewport:viewport.width,completionAcrossDevices:true,bothDatesSaved:true,completedOriginNotRevived:true,reportIncludesCarryover:true,...safeguards}));
+   console.log(JSON.stringify({viewport:viewport.width,completionAcrossDevices:true,bothDatesSaved:true,completedOriginNotRevived:true,todayCompletedHidden:true,undoCompletion:true,reportIncludesCarryover:true,...safeguards}));
    await phone.page.close();await pc.page.close();
   }
   // A fresh device must hydrate more than one page of history and isolate owners/future dates.
