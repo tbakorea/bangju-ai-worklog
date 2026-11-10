@@ -16670,6 +16670,7 @@ function ensureOwnAssignedFitnessGuidanceTasks(dateKey = getActiveDateKey()) {
       done: false,
       guidanceId: item.id,
       guidanceSourceDateKey: item.sourceDateKey,
+      guidanceDateKey: dateKey,
       scheduledSlot: item.dueTime || "",
     });
     changed = true;
@@ -16817,6 +16818,7 @@ function acceptFitnessDailyGuidance(guidanceId) {
       done: false,
       guidanceId: item.id,
       guidanceSourceDateKey: item.sourceDateKey,
+      guidanceDateKey: dateKey,
       scheduledSlot: item.dueTime || "",
     });
   }
@@ -18785,6 +18787,25 @@ function updateTaskPriorityWarningState(row, task, { announce = false, log = get
   return missing;
 }
 
+// Daily data-driven prompts belong to their assignment day, not an endless
+// backlog. Explicitly postponed occurrences remain ordinary user-owned tasks.
+function isFitnessGuidanceTaskForDate(task, sourceDateKey, dateKey, logs = {}) {
+  if (task.postponedFrom) return true;
+  if (!task.guidanceId && !/^\[전일 다짐(?: 미션)?\]/.test(String(task.text || ""))) return true;
+  const savedItem = task.guidanceId && Object.entries(state.fitnessDailyGuidance || {})
+    .find(([, items]) => (items || []).some((item) => item.id === task.guidanceId));
+  let assignmentDate = task.guidanceDateKey || savedItem?.[0]
+    || String(task.guidanceId || "").match(/^dagym-guidance:(\d{4}-\d{2}-\d{2}):/)?.[1];
+  if (!assignmentDate && isWorklogDateKey(task.guidanceSourceDateKey)) {
+    assignmentDate = getNextDateKey(task.guidanceSourceDateKey);
+  }
+  if (!assignmentDate) {
+    const lineage = getEmployeeWorklogTaskLineage(task, sourceDateKey, 0, logs);
+    assignmentDate = lineage.key.slice(0, 10);
+  }
+  return assignmentDate === dateKey;
+}
+
 function getEmployeeWorklogTaskRefs(employee = {}, dateKey = getActiveDateKey(), log = {}) {
   const activeDateKey = String(dateKey || getActiveDateKey());
   const employeeId = String(log?.employeeId || getEmployeeWorklogId(employee) || "").trim();
@@ -18812,6 +18833,7 @@ function getEmployeeWorklogTaskRefs(employee = {}, dateKey = getActiveDateKey(),
   });
   return [...latestByLineage.values()]
     .filter((ref) => {
+      if (!isFitnessGuidanceTaskForDate(ref.task, ref.sourceDateKey, activeDateKey, logs)) return false;
       if (ref.terminalAncestor && !isEmployeeWorklogTaskTerminal(ref.task)) return false;
       if (!ref.isCarryover) return true;
       const deletedFrom = String(ref.task.carryoverDeletedFrom || "");
@@ -26760,8 +26782,8 @@ function summarizeFitnessReportRows(logEntries = [], dateKey = getActiveDateKey(
   };
 }
 
-function getFitnessReportTaskRows(logEntries = [], { limit = 3, minRows = 3 } = {}) {
-  const tasks = logEntries.flatMap(({ log }) => getWorklogTaskRefs(log).map((ref) => ref.task).filter(isActiveTask));
+function getFitnessReportTaskRows(logEntries = [], { limit = 3, minRows = 3, dateKey = getActiveDateKey() } = {}) {
+  const tasks = logEntries.flatMap(({ employee, log }) => getEmployeeWorklogTaskRefs(employee, dateKey, log).map((ref) => ref.task).filter(isActiveTask));
   const selected = Number.isFinite(limit) ? tasks.slice(0, limit) : tasks;
   const rows = selected.map((task) => {
     const status = getWorklogReportTaskStatusMeta(task);
@@ -27954,7 +27976,7 @@ function buildFitnessRoleFeedback(context, employee, isCenter) {
 }
 
 function buildFitnessReportAiContext({ dateKey, isCenter, employee, sourceLog, logEntries, totals, classStats, manual, dagymSummary, attendanceWarnings = [] }) {
-  const tasks = logEntries.flatMap(({ employee: itemEmployee, log }) => getWorklogTaskRefs(log).map(({ task }) => ({
+  const tasks = logEntries.flatMap(({ employee: itemEmployee, log }) => getEmployeeWorklogTaskRefs(itemEmployee, dateKey, log).map(({ task }) => ({
     writer: sanitizeFitnessCoachText(itemEmployee?.name || getEmployeeOwnLabel(itemEmployee) || "직원").slice(0, 40),
     priority: ["A", "B", "C"].includes(String(task.priority || "")) ? task.priority : "",
     text: sanitizeFitnessCoachText(task.text).slice(0, 240),
@@ -28478,8 +28500,8 @@ function buildFitnessReportModel(options = {}) {
     : null;
   const aiKey = aiEnabled ? `${dateKey}:${isCenter ? "center" : employee.id}:${getFitnessReportAiFingerprint(aiContext)}` : "";
   const aiCacheEntry = aiEnabled ? getFitnessAiCoachingCache()[aiKey] || null : null;
-  const topTasks = getFitnessReportTaskRows(logEntries, { limit: isCenter ? 3 : Infinity, minRows: 3 });
-  const tomorrowTasks = getFitnessReportTaskRows(nextLogEntries, { limit: isCenter ? 3 : Infinity, minRows: 3 });
+  const topTasks = getFitnessReportTaskRows(logEntries, { dateKey, limit: isCenter ? 3 : Infinity, minRows: 3 });
+  const tomorrowTasks = getFitnessReportTaskRows(nextLogEntries, { dateKey: getNextDateKey(dateKey), limit: isCenter ? 3 : Infinity, minRows: 3 });
   const snsReviews = logEntries.map(({ employee: itemEmployee, log }) => ({
     writer: itemEmployee?.name || "직원",
     ...buildFitnessSnsReview(log),

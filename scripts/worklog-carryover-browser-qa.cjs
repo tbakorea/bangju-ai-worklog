@@ -117,6 +117,40 @@ const run=(page,code)=>page.evaluate(code=>window.eval(code),code);
    assert.equal(undo.visibleAgain,true);assert.equal(undo.pendingAgain,true);
    assert.deepEqual(phone.errors,[]);assert.deepEqual(pc.errors,[]);
    console.log(JSON.stringify({viewport:viewport.width,completionAcrossDevices:true,bothDatesSaved:true,completedOriginNotRevived:true,todayCompletedHidden:true,undoCompletion:true,reportIncludesCarryover:true,...safeguards}));
+   const dailyMissions=await run(pc.page,`(()=>{
+    const saved=state.employeeLogs,savedGuidance=state.fitnessDailyGuidance;
+    todayKey='${date}';
+    const employee=getSelectedEmployee(),id='${employeeId}';
+    const mission={id:'daily-old',priority:'A',text:'[전일 다짐 미션] 상담행동 2건 보강',status:'미완료',guidanceId:'old-guidance',guidanceSourceDateKey:'${shift(-2)}'};
+    const manual={id:'manual',priority:'B',text:'직접 입력한 후속 업무',status:'미완료'};
+    const past={employeeId:id,tasks:[mission,manual]},current={employeeId:id,tasks:[{...mission,id:'fork',carryoverForkFrom:'${sourceDate}:daily-old'},
+     {...mission,id:'new',guidanceId:'today-guidance',guidanceSourceDateKey:'${sourceDate}',guidanceDateKey:'${date}'},
+     {id:'explicit',priority:'C',text:'[전일 다짐 미션] 직접 연기한 업무',postponedFrom:'postpone-1',status:'미완료'}]},future={employeeId:id,tasks:[{id:'future',priority:'A',text:'내일 예약 업무',status:'미완료'}]};
+    state.employeeLogs={'${sourceDate}':{[id]:past},'${date}':{[id]:current},'${nextDate}':{[id]:future}};state.fitnessDailyGuidance={};
+    const before=JSON.stringify(state.employeeLogs);
+    const refs=getEmployeeWorklogTaskRefs(employee,'${date}',current);
+    const todayRows=getFitnessReportTaskRows([{employee,log:current}],{dateKey:'${date}',limit:Infinity,minRows:0});
+    const tomorrowRows=getFitnessReportTaskRows([{employee,log:future}],{dateKey:'${nextDate}',limit:Infinity,minRows:0});
+    const history=getEmployeeWorklogTaskRefs(employee,'${sourceDate}',past);
+    const result={expiredCopyHidden:!refs.some(r=>r.task.id==='fork'),currentMissionOnce:refs.filter(r=>r.task.guidanceId==='today-guidance').length===1,
+     manualCarryoverKept:refs.some(r=>r.task.id==='manual'),explicitPostponeKept:refs.some(r=>r.task.id==='explicit'),
+     reportClean:todayRows.filter(r=>r.includes('상담행동')).length===1,tomorrowIsolated:tomorrowRows.length===1&&tomorrowRows[0].includes('내일 예약 업무'),
+     historyPreserved:history.some(r=>r.task.id==='daily-old'),readDoesNotDelete:before===JSON.stringify(state.employeeLogs)};
+    current.schedule=[];
+    const model=buildFitnessReportModel({employee,dateKey:'${date}',isCenter:false,log:current});
+    result.modelClean=model.topTasks.filter(r=>r.includes('상담행동')).length===1;
+    result.modelTomorrowCorrect=model.tomorrowTasks.some(r=>r.includes('내일 예약 업무'))&&!model.tomorrowTasks.some(r=>r.includes('상담행동'));
+    document.querySelectorAll('[role=dialog], [id$=Backdrop]').forEach(el=>{el.hidden=true;el.classList.remove('is-open');});
+    const sheet=document.getElementById('fitnessReportSheet');document.body.appendChild(sheet);document.body.appendChild(document.getElementById('fitnessReportBackdrop'));
+    sheet.hidden=false;sheet.classList.add('is-open');
+    document.getElementById('fitnessReportBackdrop').hidden=false;
+    document.getElementById('fitnessReportPreview').innerHTML=renderFitnessReportTemplate(model);fitFitnessReportPreview();
+    result.noHorizontalClipping=sheet.scrollWidth<=sheet.clientWidth+2;
+    state.employeeLogs=saved;state.fitnessDailyGuidance=savedGuidance;return result;
+   })()`);
+   for(const[k,v]of Object.entries(dailyMissions))assert.equal(v,true,`daily missions ${viewport.width}: ${k}`);
+   console.log(JSON.stringify({viewport:viewport.width,dailyMissions}));
+   await pc.page.screenshot({path:`/tmp/bangju-fitness-missions-${viewport.width}.png`});
    await phone.page.close();await pc.page.close();
   }
   // A fresh device must hydrate more than one page of history and isolate owners/future dates.
