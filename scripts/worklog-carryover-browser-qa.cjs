@@ -49,14 +49,18 @@ const run=(page,code)=>page.evaluate(code=>window.eval(code),code);
   for(const viewport of [{width:390,height:844},{width:820,height:1180},{width:1440,height:1000}]){
    reset();const phone=await pageFor(browser,{width:390,height:844}),pc=await pageFor(browser,viewport);
    for(const {page}of[phone,pc])assert.equal(await run(page,`loadRemoteEmployeeCarryoverContext('${date}')`),true);
+   for(const {page}of[phone,pc])await run(page,`switchView('bangju-log')`);
    const before=await run(pc.page,`(()=>{const employee=getSelectedEmployee(),log=state.employeeLogs['${date}']['${employeeId}'];const model=buildWorklogDailyReportModel({employee,dateKey:'${date}',log});return model.tasks.map(t=>({text:t.text,source:t.carryoverSourceDate}));})()`);
    assert.equal(before.length,2);assert(before.some(t=>t.text==='누적 방지 검증 업무'&&t.source===sourceDate));
    await run(phone.page,`(async()=>{
     const log=state.employeeLogs['${date}']['${employeeId}'];
-    const ref=getWorklogTaskRefs(log).find(r=>r.task.id==='origin');
-    const row=renderWorklogTaskRow(ref,log,{view:'bangju-log'});document.body.appendChild(row);row.querySelector('.task-cycle').click();
-    await flushPendingRemoteSaves();row.remove();
+    renderWorklogTaskBoard(log);
+    const row=[...document.querySelectorAll('#worklogTaskBoard .worklog-task-row')].find(r=>r.querySelector('.task-text-input').value==='누적 방지 검증 업무');
+    row.querySelector('.task-cycle').click();
+    await flushPendingRemoteSaves();
    })()`);
+   const completedRow=await run(phone.page,`(()=>{const row=[...document.querySelectorAll('#worklogTaskBoard .worklog-task-row')].find(r=>r.querySelector('.task-text-input').value==='누적 방지 검증 업무');return{visible:!!row&&row.getBoundingClientRect().height>0,completed:!!row?.classList.contains('status-complete'),marker:row?.querySelector('.task-cycle').textContent};})()`);
+   assert.equal(completedRow.visible,true);assert.equal(completedRow.completed,true);assert(completedRow.marker);
    assert(writes.includes(sourceDate));assert(writes.includes(date));
    assert.equal(rows.get(sourceDate).state.employeeLogs[sourceDate][employeeId].tasks[0].carryoverDeletedFrom,date);
    // Also reproduce pre-fix data: the completion exists but the origin's stop marker was never saved.
@@ -65,7 +69,10 @@ const run=(page,code)=>page.evaluate(code=>window.eval(code),code);
    const after=await run(pc.page,`(()=>{const log=state.employeeLogs['${date}']['${employeeId}'];const refs=getWorklogTaskRefs(log).filter(r=>isActiveTask(r.task));const model=buildWorklogDailyReportModel({employee:getSelectedEmployee(),dateKey:'${date}',log});return{refs:refs.map(r=>({text:r.task.text,done:r.task.done})),report:model.tasks,board:getVisibleWorklogTaskRefs(log).filter(r=>isActiveTask(r.task)).map(r=>r.task.text),fitnessBoard:getVisibleWorklogTaskRefs(log,{view:'fitness-log',compactEditable:true}).filter(r=>isActiveTask(r.task)).map(r=>r.task.text)};})()`);
    assert.equal(after.refs.length,2);assert.equal(after.refs.filter(r=>r.text==='누적 방지 검증 업무').length,1);assert(after.refs.find(r=>r.text==='누적 방지 검증 업무').done);
    assert(after.report.some(r=>r.text==='누적 방지 검증 업무'&&r.carryoverSourceDate===sourceDate&&r.status==='완료'));
-   assert.deepEqual(after.board,['오늘 신규 업무']);assert.deepEqual(after.fitnessBoard,['오늘 신규 업무']);
+   assert.deepEqual(after.board,['누적 방지 검증 업무','오늘 신규 업무']);assert.deepEqual(after.fitnessBoard,['누적 방지 검증 업무','오늘 신규 업무']);
+   const boardLayout=await run(pc.page,`(()=>{renderWorklogTaskBoard(state.employeeLogs['${date}']['${employeeId}']);const row=[...document.querySelectorAll('#worklogTaskBoard .worklog-task-row')].find(r=>r.querySelector('.task-text-input').value==='누적 방지 검증 업무');return{completed:!!row?.classList.contains('status-complete'),visible:!!row&&row.getBoundingClientRect().height>0,fits:!!row&&row.scrollWidth<=row.clientWidth+2};})()`);
+   for(const[k,v]of Object.entries(boardLayout))assert.equal(v,true,`${viewport.width}: completed board ${k}`);
+   await pc.page.screenshot({path:`/tmp/bangju-completed-priority-${viewport.width}.png`});
    const paper=await run(pc.page,`(()=>{
     const employee=getSelectedEmployee(),log=state.employeeLogs['${date}']['${employeeId}'];
     const model=buildWorklogDailyReportModel({employee,dateKey:'${date}',log});
@@ -116,7 +123,7 @@ const run=(page,code)=>page.evaluate(code=>window.eval(code),code);
    const undo=await run(phone.page,`(async()=>{document.querySelector('#undoToast button').click();await flushPendingRemoteSaves();const log=state.employeeLogs['${date}']['${employeeId}'];return{visibleAgain:getVisibleWorklogTaskRefs(log).some(r=>r.task.text==='누적 방지 검증 업무'),pendingAgain:log.tasks.some(t=>t.text==='누적 방지 검증 업무'&&!t.done)};})()`);
    assert.equal(undo.visibleAgain,true);assert.equal(undo.pendingAgain,true);
    assert.deepEqual(phone.errors,[]);assert.deepEqual(pc.errors,[]);
-   console.log(JSON.stringify({viewport:viewport.width,completionAcrossDevices:true,bothDatesSaved:true,completedOriginNotRevived:true,todayCompletedHidden:true,undoCompletion:true,reportIncludesCarryover:true,...safeguards}));
+   console.log(JSON.stringify({viewport:viewport.width,completionAcrossDevices:true,bothDatesSaved:true,completedOriginNotRevived:true,todayCompletedVisible:true,undoCompletion:true,reportIncludesCarryover:true,...safeguards}));
    const dailyMissions=await run(pc.page,`(()=>{
     const saved=state.employeeLogs,savedGuidance=state.fitnessDailyGuidance;
     todayKey='${date}';

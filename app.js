@@ -18720,10 +18720,8 @@ function getVisibleWorklogTaskRefs(log, { view = activeView, compactEditable = f
 }
 
 function getWorklogBoardTaskRefs(log) {
-  const isToday = getActiveDateKey() === todayKey;
-  return getWorklogTaskRefs(log).filter(({ task }) => !isToday
-    || (normalizeWorklogTaskStatus(task.status) !== "완료"
-      && !(task.done && normalizeWorklogTaskStatus(task.status) !== "진행중")));
+  // Keep completed work visible on its date; carryover eligibility is handled upstream.
+  return getWorklogTaskRefs(log);
 }
 
 function createWorklogTask(priority = "?") {
@@ -18984,7 +18982,7 @@ function renderWorklogTaskRow(ref, currentLog, options = {}) {
       const completedDateKey = getActiveDateKey();
       const employeeId = editableRef.log.employeeId;
       const taskId = editableRef.task.id;
-      showUndoToast("완료 업무를 오늘 목록에서 정리했습니다", () => {
+      showUndoToast("업무를 완료로 표시했습니다", () => {
         if (getActiveDateKey() !== completedDateKey || !guardWorklogEdit(viewName)) return;
         const savedLog = state.employeeLogs?.[completedDateKey]?.[employeeId];
         const savedTask = savedLog?.tasks?.find((item) => item.id === taskId);
