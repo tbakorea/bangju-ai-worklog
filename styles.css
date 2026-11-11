@@ -32084,6 +32084,25 @@ body[data-active-view="executive"] #executiveDateButton {
 .smart-action-target { outline:2px solid #4d9872 !important; outline-offset:3px; }
 @media(max-width:480px) { .smart-next-action { padding:10px; gap:7px; } .smart-next-action h3 { font-size:13px !important; } .smart-next-action p { font-size:11px; } .smart-next-action-actions button { padding:6px 8px; font-size:11px; } }
 
+/* Keep completed employee tasks unmistakable, including read-only worklogs. */
+body .worklog-task-row.marker-check .task-cycle {
+  color: #c9322b !important;
+  -webkit-text-fill-color: #c9322b;
+  opacity: 1 !important;
+}
+
+body .worklog-task-row.status-complete .task-text-input {
+  opacity: 1 !important;
+  -webkit-text-fill-color: #111b16;
+  text-decoration: line-through #c9322b 2px !important;
+  text-decoration-skip-ink: none;
+}
+
+/* Strike the text itself so the line follows it on narrow/wrapped layouts. */
+body .worklog-task-row.status-complete .task-text-cell::after {
+  content: none;
+}
+
 .worklog-shell > .worklog-view:not(.is-active) {
   display: none !important;
 }

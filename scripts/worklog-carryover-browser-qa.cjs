@@ -73,6 +73,30 @@ const run=(page,code)=>page.evaluate(code=>window.eval(code),code);
    const boardLayout=await run(pc.page,`(()=>{renderWorklogTaskBoard(state.employeeLogs['${date}']['${employeeId}']);const row=[...document.querySelectorAll('#worklogTaskBoard .worklog-task-row')].find(r=>r.querySelector('.task-text-input').value==='누적 방지 검증 업무');return{completed:!!row?.classList.contains('status-complete'),visible:!!row&&row.getBoundingClientRect().height>0,fits:!!row&&row.scrollWidth<=row.clientWidth+2};})()`);
    for(const[k,v]of Object.entries(boardLayout))assert.equal(v,true,`${viewport.width}: completed board ${k}`);
    await pc.page.screenshot({path:`/tmp/bangju-completed-priority-${viewport.width}.png`});
+   // Representative read-only view: the completion total and visible list must agree.
+   const representative=await run(pc.page,`(()=>{
+    const profile=state.profile,user=authState.user,savedLogs=state.employeeLogs;
+    authState.user={id:'qa-representative',email:'j3010@ymail.com'};
+    state.profile={...defaultProfile,email:'j3010@ymail.com',name:'정찬훈',role:'대표',org:'(주)방주',approvalStatus:'approved',accessPreset:'representative',permissions:{}};
+    const tasks=Array.from({length:14},(_,i)=>({id:'rep-'+i,priority:i<6?'A':'B',text:'대표 열람 업무 '+(i+1),status:i<3?'완료':'미완료',done:i<3}));
+    const log={employeeId:'${employeeId}',tasks,schedule:[]};
+    state.employeeLogs={'${date}':{'${employeeId}':log}};
+    renderWorklogToday(log);applyCurrentWorklogPermissionState();
+    const rows=[...document.querySelectorAll('#worklogTaskBoard .worklog-task-row')];
+    const done=rows.filter(r=>r.classList.contains('status-complete'));
+    const result={total:document.getElementById('worklogCompletion').textContent,rows:rows.length,completed:done.length,
+     readOnly:!canEditCurrentWorklog('bangju-log')&&rows.every(r=>r.querySelector('.task-cycle').disabled&&r.querySelector('.task-text-input').disabled),
+     visible:done.every(r=>r.getBoundingClientRect().height>0&&r.scrollWidth<=r.clientWidth+2),
+     redChecks:done.every(r=>r.querySelector('.task-cycle').textContent==='✓'&&getComputedStyle(r.querySelector('.task-cycle')).color==='rgb(201, 50, 43)'&&getComputedStyle(r.querySelector('.task-cycle')).opacity==='1'),
+     redStrikes:done.every(r=>{const s=getComputedStyle(r.querySelector('.task-text-input'));return s.textDecorationLine==='line-through'&&s.textDecorationColor==='rgb(201, 50, 43)'&&s.opacity==='1';})};
+    window.__restoreCompletionFixture=()=>{state.profile=profile;authState.user=user;state.employeeLogs=savedLogs;renderEntries();};
+    return result;
+   })()`);
+   assert.equal(representative.total,'3/14');assert.equal(representative.rows,14);assert.equal(representative.completed,3);
+   for(const key of ['readOnly','visible','redChecks','redStrikes'])assert.equal(representative[key],true,`${viewport.width}: representative ${key}`);
+   await pc.page.screenshot({path:`/tmp/bangju-representative-completed-${viewport.width}.png`,fullPage:true});
+   await run(pc.page,'window.__restoreCompletionFixture();delete window.__restoreCompletionFixture');
+   console.log(JSON.stringify({viewport:viewport.width,representative}));
    const paper=await run(pc.page,`(()=>{
     const employee=getSelectedEmployee(),log=state.employeeLogs['${date}']['${employeeId}'];
     const model=buildWorklogDailyReportModel({employee,dateKey:'${date}',log});

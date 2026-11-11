@@ -19205,7 +19205,7 @@ function getWorklogTaskMarker(task) {
 
 function getWorklogTaskMarkerLabel(task) {
   const marker = getWorklogTaskMarker(task);
-  return { check: "v", dot: "·", delegate: "↗", postpone: "→", cancel: "×", blank: "" }[marker] || "";
+  return { check: "✓", dot: "·", delegate: "↗", postpone: "→", cancel: "×", blank: "" }[marker] || "";
 }
 
 function cycleWorklogTaskStatus(task) {
