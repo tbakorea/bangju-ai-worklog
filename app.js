@@ -13895,7 +13895,7 @@ function mergeOwnRemoteEmployeeLogs(remoteEmployeeLogs = {}) {
       const remoteUpdatedAt = String(remoteLog?.updatedAt || "");
       const keepLocal = Boolean(
         localLog
-        && ((localUpdatedAt && localUpdatedAt > remoteUpdatedAt)
+        && ((localUpdatedAt && localUpdatedAt >= remoteUpdatedAt)
           || (!remoteUpdatedAt && hasSubmittableWorklogContent(localLog) && !hasSubmittableWorklogContent(remoteLog)))
       );
       if (keepLocal) return;
@@ -19416,9 +19416,12 @@ function normalizeScheduleEntryItems(entry) {
   // 부분 저장·원격 병합 중 남은 빈 일정 항목은 읽기만 건너뜁니다.
   // 그래야 한 행의 손상으로 업무일지·센터현황 렌더링 전체가 중단되지 않습니다.
   if (!entry || typeof entry !== "object") return [];
-  entry.items = Array.isArray(entry.items)
-    ? entry.items.filter((item) => item && typeof item === "object")
-    : null;
+  // Readers must not detach arrays captured by an open editor/delete handler.
+  if (Array.isArray(entry.items)) {
+    for (let index = entry.items.length - 1; index >= 0; index -= 1) {
+      if (!entry.items[index] || typeof entry.items[index] !== "object") entry.items.splice(index, 1);
+    }
+  } else entry.items = null;
   if (!entry.items) {
     const text = String(entry.text || "").trim();
     entry.items = text ? [{ type: inferScheduleType(text), text }] : [{ type: "업무", text: "" }];
@@ -19578,7 +19581,8 @@ function renderAppointmentRow(entry, log, scope = "worklog") {
   `;
   row.querySelectorAll(".appointment-item").forEach((itemRow) => {
     const itemIndex = Number(itemRow.dataset.scheduleItemIndex);
-    const item = items[itemIndex];
+    let item = items[itemIndex];
+    const editDateKey = getActiveDateKey();
     const text = itemRow.querySelector(".schedule-text-input");
     const remove = itemRow.querySelector(".schedule-item-delete");
     if (item.source === "dagym-monthly-pt") {
@@ -19587,16 +19591,23 @@ function renderAppointmentRow(entry, log, scope = "worklog") {
     }
     text.oninput = () => {
       if (!guardWorklogEdit()) return;
+      if (editDateKey !== getActiveDateKey() || log.employeeId !== getSelectedLog().employeeId) return;
+      const target = resolveScheduleEditTarget(log, entry, editDateKey);
+      const liveItems = normalizeScheduleEntryItems(target.entry);
+      const liveItem = liveItems.find((candidate) => candidate === item)
+        || liveItems.find((candidate) => candidate.source !== "dagym-monthly-pt" && candidate.text === item.text && candidate.type === item.type);
+      if (liveItem) item = liveItem;
+      else { item = createScheduleItem("", item.type); liveItems.push(item); }
       item.text = text.value;
-      promptAttendanceBeforeWorklogInput(log, item.text);
+      promptAttendanceBeforeWorklogInput(target.log, item.text);
       if (item.type === "업무") item.type = inferScheduleType(text.value, getScheduleTypeOptionsForLog(log));
-      syncScheduleEntryText(entry);
+      syncScheduleEntryText(target.entry);
       saveState({ input: true });
       scheduleInputRender("worklog-schedule-derived", () => {
-        if (getSelectedLog() !== log) return;
-        renderWorklogSummary(log);
-        if (scope === "worklog") renderFitnessAppointments(log);
-        else renderWorklogAppointments(log);
+        if (getSelectedLog() !== target.log) return;
+        renderWorklogSummary(target.log);
+        if (scope === "worklog") renderFitnessAppointments(target.log);
+        else renderWorklogAppointments(target.log);
       });
       scheduleInputRender("worklog-report", renderReport, 1600);
     };
@@ -19604,21 +19615,26 @@ function renderAppointmentRow(entry, log, scope = "worklog") {
       flushDeferredStateSave();
     });
     remove.onclick = () => {
-      if (!guardWorklogEdit()) return;
+      if (!guardWorklogEdit() || editDateKey !== getActiveDateKey() || log.employeeId !== getSelectedLog().employeeId) return;
+      const target = resolveScheduleEditTarget(log, entry, editDateKey);
+      const liveItems = normalizeScheduleEntryItems(target.entry);
+      const index = liveItems.findIndex((candidate) => candidate === item
+        || (candidate.source !== "dagym-monthly-pt" && candidate.text === item.text && candidate.type === item.type));
+      if (index < 0) return;
       if (!confirmWorklogEventDeletion("이 시간별일정 이벤트를 삭제할까요?")) return;
-      const beforeLog = cloneWorklogLogForAudit(log);
-      items.splice(itemIndex, 1);
-      if (!items.length) items.push(createScheduleItem());
-      syncScheduleEntryText(entry);
+      const beforeLog = cloneWorklogLogForAudit(target.log);
+      liveItems.splice(index, 1);
+      if (!liveItems.length) liveItems.push(createScheduleItem());
+      syncScheduleEntryText(target.entry);
       saveState();
-      renderWorklogAppointments(log);
-      renderFitnessAppointments(log);
+      renderWorklogAppointments(target.log);
+      renderFitnessAppointments(target.log);
       renderReport();
       showUndoToast("시간별 일정을 삭제했습니다", () => {
-        restoreObjectSnapshot(log, beforeLog);
+        restoreObjectSnapshot(target.log, beforeLog);
         saveState();
-        renderWorklogAppointments(log);
-        renderFitnessAppointments(log);
+        renderWorklogAppointments(target.log);
+        renderFitnessAppointments(target.log);
         renderReport();
       });
     };
@@ -19670,7 +19686,7 @@ function getOrCreateFitnessScheduleEditor() {
   editor.querySelector("#fitnessScheduleEditorAdd").onclick = () => addFitnessScheduleEditorItem({ close: false });
   editor.querySelector("#fitnessScheduleEditorDone").onclick = () => addFitnessScheduleEditorItem({ close: true });
   editor.querySelector("#fitnessScheduleEditorText").onkeydown = (event) => {
-    if (event.key === "Enter") {
+    if (event.key === "Enter" && !event.isComposing && event.keyCode !== 229) {
       event.preventDefault();
       addFitnessScheduleEditorItem({ close: false });
     }
@@ -19700,6 +19716,7 @@ function openScheduleTypeEditor(entry, log, viewName = activeView) {
     entry,
     log,
     viewName,
+    dateKey: getActiveDateKey(),
     selectedType: "",
   };
   const { backdrop, editor } = getOrCreateFitnessScheduleEditor();
@@ -19709,8 +19726,35 @@ function openScheduleTypeEditor(entry, log, viewName = activeView) {
   requestAnimationFrame(() => editor.classList.add("is-open"));
 }
 
+// Resolve against the saved worklog each time: remote hydration can replace
+// the log while the schedule dialog remains open.
+function resolveScheduleEditTarget(log, entry, dateKey = getActiveDateKey()) {
+  const currentLog = state.employeeLogs?.[dateKey]?.[log.employeeId] || log;
+  let currentEntry = currentLog.schedule?.find((row) => row.time === entry.time);
+  if (!currentEntry) {
+    currentEntry = { time: entry.time, text: "", items: [createScheduleItem()] };
+    currentLog.schedule ||= [];
+    currentLog.schedule.push(currentEntry);
+  }
+  return { log: currentLog, entry: currentEntry };
+}
+
+function refreshScheduleEditorTarget() {
+  if (!fitnessScheduleEditorState) return false;
+  if (fitnessScheduleEditorState.dateKey !== getActiveDateKey()
+    || fitnessScheduleEditorState.log.employeeId !== getSelectedLog().employeeId
+    || !canEditCurrentWorklog(fitnessScheduleEditorState.viewName)) {
+    closeFitnessScheduleEditor();
+    return false;
+  }
+  Object.assign(fitnessScheduleEditorState, resolveScheduleEditTarget(
+    fitnessScheduleEditorState.log, fitnessScheduleEditorState.entry, fitnessScheduleEditorState.dateKey
+  ));
+  return true;
+}
+
 function renderFitnessScheduleEditor() {
-  if (!fitnessScheduleEditorState) return;
+  if (!refreshScheduleEditorTarget()) return;
   const { editor } = getOrCreateFitnessScheduleEditor();
   const { entry, selectedType } = fitnessScheduleEditorState;
   const items = normalizeScheduleEntryItems(entry);
@@ -19736,13 +19780,18 @@ function renderFitnessScheduleEditor() {
 
   existing.querySelectorAll("[data-remove-schedule-item]").forEach((button) => {
     button.onclick = () => {
-      const editorLog = fitnessScheduleEditorState.log;
+      if (!refreshScheduleEditorTarget()) return;
+      const { log: editorLog, entry: liveEntry } = fitnessScheduleEditorState;
+      const liveItems = normalizeScheduleEntryItems(liveEntry);
+      const original = items[Number(button.dataset.removeScheduleItem)];
+      const liveIndex = liveItems.findIndex((candidate) => candidate === original
+        || (candidate.source !== "dagym-monthly-pt" && candidate.text === original?.text && candidate.type === original?.type));
+      if (liveIndex < 0) { renderFitnessScheduleEditor(); return; }
       if (!confirmWorklogEventDeletion("이 시간별일정 이벤트를 삭제할까요?")) return;
       const beforeLog = cloneWorklogLogForAudit(editorLog);
-      const index = Number(button.dataset.removeScheduleItem);
-      items.splice(index, 1);
-      if (!items.length) items.push(createScheduleItem());
-      syncScheduleEntryText(entry);
+      liveItems.splice(liveIndex, 1);
+      if (!liveItems.length) liveItems.push(createScheduleItem());
+      syncScheduleEntryText(liveEntry);
       saveState();
       rerenderScheduleAfterFitnessEdit(editorLog);
       renderFitnessScheduleEditor();
@@ -19780,7 +19829,7 @@ function addFitnessScheduleEditorItem({ close = false } = {}) {
     guardWorklogEdit(viewName);
     return;
   }
-  if (!fitnessScheduleEditorState) return;
+  if (!refreshScheduleEditorTarget()) return;
   const { editor } = getOrCreateFitnessScheduleEditor();
   const { entry, log } = fitnessScheduleEditorState;
   const input = editor.querySelector("#fitnessScheduleEditorText");
