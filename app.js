@@ -3926,7 +3926,18 @@ function getFitnessRosterSlotId(employee = {}) {
   return "";
 }
 
+// Confirmed departures: suppress stale profile/log copies without deleting historical logs.
+// Do not match generic trainer/info slot IDs: those slots can be reused by new staff.
+function isDepartedFitnessStaffIdentity(employee = {}) {
+  const email = normalizeEmailValue(employee.email || "");
+  const profileIds = [employee.id, employee.sourceProfileId, employee.profileEmployeeId].map(value => String(value || "").replace(/^profile-/, ""));
+  return ["gusrd1005@gmail.com", "yckim1558@naver.com"].includes(email)
+    || profileIds.some(id => ["09a25cc3-d6f0-4b6d-87ee-2fafe8f53452", "1ad6f241-3a7d-466d-a912-ad70b0654ae6"].includes(id))
+    || [employee.name, employee.nickname].some(value => ["홍현규", "김영채"].includes(String(value || "").replace(/\s/g, "")));
+}
+
 function isVisibleFitnessRosterEmployee(employee = {}) {
+  if (isDepartedFitnessStaffIdentity(employee)) return false;
   if (!isAssignedWorklogEmployee(employee) || !isFitnessEmployeeRecord(employee)) return false;
   if (!getFitnessRosterSlotId(employee) && isClearlyNonFitnessEmployeeRecord(employee)) return false;
   const id = String(employee.id || "").trim();
