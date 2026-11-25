@@ -32103,6 +32103,26 @@ body .worklog-task-row.status-complete .task-text-cell::after {
   content: none;
 }
 
+/* Authenticated revenue evidence; tables scroll within the card on phones. */
+.revenue-evidence { font-size:12px; line-height:1.5; }
+.revenue-history-table { max-width:100%; overflow-x:auto; }
+.revenue-history table { width:100%; min-width:310px; border-collapse:collapse; font-size:11px; }
+.revenue-history th,.revenue-history td { padding:7px 4px; border-bottom:1px solid #cbdacf; text-align:right; white-space:nowrap; }
+.revenue-history td { position:relative; }
+.revenue-history td b { position:relative; z-index:1; }
+.revenue-bar { position:absolute; left:0; top:4px; bottom:4px; background:#d5e8db; }
+.revenue-history caption { text-align:left; padding:8px 0; }
+/* November owner-reported focus; compact on phones and coworker read-only pages. */
+.revenue-recovery-panel { min-width:0; margin:10px 0; padding:14px; border:1px solid #b9d0c1; border-radius:12px; background:#f1f7f3; color:#193e30; overflow-wrap:anywhere; }
+.revenue-recovery-panel[hidden] { display:none; }
+.revenue-recovery-panel header { display:flex; flex-wrap:wrap; gap:6px 16px; align-items:baseline; }
+.revenue-recovery-panel p { margin:8px 0; line-height:1.6; }
+.revenue-recovery-panel small { display:block; line-height:1.5; color:#476354; }
+.revenue-recovery-panel summary { cursor:pointer; font-weight:700; padding:8px 0; }
+.revenue-recovery-panel blockquote { margin:8px 0; padding:8px 12px; border-left:3px solid #729b81; background:#fff; }
+.revenue-recovery-panel button { margin-top:10px; min-height:44px; max-width:100%; white-space:normal; padding:8px 14px; border:1px solid #315f46; border-radius:8px; background:#24543d; color:white; cursor:pointer; }
+.revenue-recovery-panel button:disabled { opacity:.65; cursor:default; }
+
 .worklog-shell > .worklog-view:not(.is-active) {
   display: none !important;
 }

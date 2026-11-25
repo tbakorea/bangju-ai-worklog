@@ -27,9 +27,11 @@ test('verified daily upload excludes empty slots and does not invent zero no-sho
     ['attendance','/dashboard/attendance','daily'],['sales','/sales/list','month-to-date'],['members','/member/list','point-in-time']
   ].map(([key,source,period])=>[key,{ok:true,authenticated:true,rangeVerified:true,source,period,capturedAt:'2026-10-28T00:00:00Z'}]));
   const response={code:200,setHeader(){},status(code){this.code=code;return this},json(body){this.body=body;return this}};
-  await handler({method:'POST',headers:{'x-dagym-sync-secret':'test-secret'},body:{dateKey:'2026-10-27',metrics:{visits:91,sales:28871100},domains}},response);
+  await handler({method:'POST',headers:{'x-dagym-sync-secret':'test-secret'},body:{dateKey:'2026-10-27',metrics:{visits:91,sales:28871100,salesComposition:{startDate:'2026-10-01',endDate:'2026-10-27',total:28871100,public:10000000,pt:18871100,refund:0,capturedAt:'2026-10-28T00:00:00Z',member:'must-drop'}},domains}},response);
   assert.equal(response.code,200);
   assert.equal(saved.metrics.ptBookings,1);
+  assert.equal(saved.metrics.salesComposition.pt,18871100);
+  assert.equal('member' in saved.metrics.salesComposition,false);
   assert.equal('noShows' in saved.metrics,false);
 });
 

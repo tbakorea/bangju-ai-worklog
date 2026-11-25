@@ -8,7 +8,7 @@
     <link rel="icon" href="data:," />
     <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin />
     <link rel="dns-prefetch" href="https://cdn.jsdelivr.net" />
-    <link rel="stylesheet" href="./styles.css?v=20261111-completed-task-markers" />
+    <link rel="stylesheet" href="./styles.css?v=20261126-revenue-recovery" />
   </head>
   <body>
     <main class="worklog-shell">
@@ -491,6 +491,7 @@
                   <button type="button" class="ai-section-button" data-section-ai="tasks">AI</button>
                   <button type="button" class="mobile-focus-done" data-mobile-focus-close aria-label="오늘의 업무 확대창 닫기">닫기</button>
                 </h3>
+                <section id="worklogRevenueRecovery" class="revenue-recovery-panel" hidden></section>
                 <div id="worklogTaskBoard" class="worklog-task-board task-board"></div>
               </article>
               <article class="worklog-panel worklog-schedule-panel day-schedule-panel" data-mobile-focus-panel="schedule">
@@ -666,6 +667,7 @@
             </section>
           </div>
         </article>
+        <article id="fitnessRevenueRecovery" class="revenue-recovery-panel" hidden></article>
         <article class="fitness-personal-month-summary" id="fitnessPersonalMonthSummary" hidden>
           <header>
             <div>
@@ -1502,6 +1504,7 @@
     <script src="./lib/fitness-report-encouragement.js?v=20261103-encouragement"></script>
     <script src="./lib/smart-next-action.js?v=20261103-encouragement"></script>
     <script src="./lib/fitness-role-feedback.js?v=20261102-role-feedback"></script>
-    <script src="./app.js?v=20261119-fitness-roster"></script>
+    <script src="./lib/fitness-revenue-recovery.js?v=20261126"></script>
+    <script src="./app.js?v=20261126-revenue-recovery"></script>
   </body>
 </html>

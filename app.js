@@ -15021,7 +15021,120 @@ function refreshSmartNextAction({ checkSources = false } = {}) {
   loadPtScheduleReminder(context.minimal).catch(() => null);
 }
 
+// Revenue feedback is an authenticated, date/account-scoped read; never employee-authored state.
+const revenueFeedbackCache = new Map();
+function revenueFeedbackKey(dateKey) { return `${authState.user?.id || ""}:${dateKey}`; }
+function getRevenueFeedback(dateKey = getActiveDateKey()) { return authState.user ? revenueFeedbackCache.get(revenueFeedbackKey(dateKey))?.data || null : null; }
+async function loadRevenueFeedback(dateKey = getActiveDateKey(), { force = false } = {}) {
+  if (!authState.user || !authState.session?.access_token || dateKey > formatDateKey(new Date())) return;
+  const userId = authState.user.id, key = revenueFeedbackKey(dateKey), previous = revenueFeedbackCache.get(key);
+  if (previous?.promise) return previous.promise;
+  if (!force && previous?.loadedAt && Date.now() - previous.loadedAt < 60000) return;
+  const entry = { data: { date: dateKey, status: "loading" } }; revenueFeedbackCache.set(key, entry);
+  entry.promise = (async () => {
+    let data;
+    try {
+      const r = await fetch(`/api/fitness-revenue-feedback?date=${encodeURIComponent(dateKey)}`, { headers: { Authorization: `Bearer ${authState.session.access_token}` }, signal: AbortSignal.timeout(20000) });
+      if (!r.ok) throw Error("source");
+      data = await r.json();
+      if (data.date !== dateKey || !["ready", "stale", "missing"].includes(data.status) || !Array.isArray(data.history) || !Array.isArray(data.signals) || !Array.isArray(data.limits)
+          || (["ready", "stale"].includes(data.status) && (!Number.isFinite(data.current?.total) || data.sourceDate >= dateKey))) throw Error("invalid");
+    } catch { data = { date: dateKey, status: "unavailable" }; }
+    if (authState.user?.id !== userId || revenueFeedbackCache.get(key) !== entry) return;
+    revenueFeedbackCache.set(key, { data, loadedAt: Date.now() });
+    if (getActiveDateKey() === dateKey && !document.getElementById("worklogReportSheet")?.hidden) renderOpenWorklogReport();
+    if (getActiveDateKey() === dateKey && !document.getElementById("fitnessReportSheet")?.hidden) { const preview = document.getElementById("fitnessReportPreview"); if (preview) { preview.innerHTML = renderFitnessReportTemplate(buildFitnessReportModel()); fitFitnessReportPreview(); } }
+    if (getActiveDateKey() === dateKey && ["fitness-log", "bangju-log", "beyond-log", "today"].includes(activeView)) {
+      renderRevenueRecovery(activeView === "fitness-log" ? "fitness" : "worklog", getSelectedLog());
+    }
+  })();
+  return entry.promise;
+}
+function revenueFeedbackLines(data) {
+  if (!data || ["loading", "unavailable"].includes(data.status)) return ["매출 분석 연결 대기 또는 조회 실패 · 미확인을 0으로 판단하지 않습니다."];
+  if (!data.current) return data.limits || ["해당 월 매출 자료 미확인"];
+  const won = value => `${Number(value).toLocaleString("ko-KR")}원`;
+  return [
+    `${data.current.startDate}~${data.sourceDate} 누계 ${won(data.current.total)} · 환불 차감 후 결제액${data.status === "stale" ? " · 수집 지연" : ""}`,
+    ...(data.previous ? [`전월 전체(${data.previous.month}) ${won(data.previous.total)} · 당월 누계와 기간이 다릅니다.`] : []),
+    ...(data.comparison ? [`전월 같은 기간(${data.comparison.startDate}~${data.comparison.endDate}) ${won(data.comparison.total)} · 차이 ${won(data.comparison.change)}${data.comparison.changePct === null ? "" : ` (${data.comparison.changePct.toFixed(1)}%)`}`] : []),
+    ...(data.composition ? [`당월 구성 · 일반·부대 ${won(data.composition.public)} / PT ${won(data.composition.pt)} / 환불 ${won(data.composition.refund)}`, ...(data.composition.changes ? [`같은 기간 구성 차이 · 일반·부대 ${won(data.composition.changes.public)} / PT ${won(data.composition.changes.pt)}`] : [])] : []),
+    ...data.signals.map(item => `${item.title} · ${item.detail}`), ...data.limits,
+  ];
+}
+function renderRevenueEvidence(data) {
+  const lines = revenueFeedbackLines(data);
+  const history = data?.history || [];
+  const max = Math.max(1, ...history.map(row => row.total));
+  return `<div class="revenue-evidence"><p>${escapeHtml(lines[0] || "")}</p>${data?.comparison ? `<p>전월 같은 기간 대비 ${data.comparison.changePct === null ? "증감률 미확인" : `${data.comparison.changePct.toFixed(1)}%`}</p>` : ""}<details><summary>매출 구성·이상 징후 자세히</summary>${lines.slice(1).map(line => `<p>${escapeHtml(line)}</p>`).join("")}</details></div>
+    ${history.length ? `<details class="revenue-history"><summary>2024년 7월 이후 월별 추이·매출 구성</summary>
+    <p>완료된 월만 비교합니다. 일반·부대에는 이용권·일일권·락커·운동복 등이 포함됩니다. PT는 상품명 기준 분류입니다.</p>
+    <div class="revenue-history-table"><table><caption>다짐 월별 매출 · 원 · 환불 차감 후</caption><thead><tr><th>월</th><th>합계</th><th>일반·부대</th><th>PT</th></tr></thead><tbody>
+    ${history.map(row => `<tr><th>${escapeHtml(row.month)}</th><td><span class="revenue-bar" style="width:${Math.max(0, row.total / max * 100)}%"></span><b>${Number(row.total).toLocaleString("ko-KR")}</b></td><td>${row.public === null ? "미확인" : Number(row.public).toLocaleString("ko-KR")}</td><td>${row.pt === null ? "미확인" : Number(row.pt).toLocaleString("ko-KR")}</td></tr>`).join("")}
+    </tbody></table></div><small>월별 구성 확인 ${escapeHtml(data.historyCapturedAt?.slice(0,10) || "")} · 최근 월말 자료는 일일 수집 결과로 보완합니다.</small></details>` : ""}`;
+}
+
+function getRevenueReportLines(model) {
+  const brief = getRevenueRecovery(model.employee, model.dateKey, Boolean(model.isCenter));
+  if (!brief) return [];
+  return [...revenueFeedbackLines(getRevenueFeedback(model.dateKey)), `오늘 실행 · ${brief.how}`, `기록 · ${brief.result}`];
+}
+function revenueReportHtml(model) {
+  const lines = getRevenueReportLines(model);
+  return lines.length ? `<div style="grid-column:1/-1;overflow-wrap:anywhere;font-size:11px;line-height:1.45"><h3>비욘드 피트니스 · 매출 흐름과 실행</h3>${lines.map(line => `<p style="margin:3px 0">${escapeHtml(line)}</p>`).join("")}</div>` : "";
+}
+
+function getRevenueRecovery(employee = {}, dateKey = getActiveDateKey(), isCenter = false) {
+  return window.FitnessRevenueRecovery?.build({ dateKey, org: employee.org,
+    fitness: isCenter || isFitnessEmployeeRecord(employee), isCenter,
+    roleKey: window.FitnessRoleFeedback?.role(employee, isCenter) || "general", analysis: getRevenueFeedback(dateKey) || { date: dateKey, status: "loading" } }) || null;
+}
+
+function renderRevenueRecovery(scope, log) {
+  const panel = document.getElementById(`${scope}RevenueRecovery`);
+  if (!panel) return;
+  const page = scope === "fitness" ? getCurrentFitnessLogPage() : null;
+  const isCenter = page?.type === "center";
+  const employee = page?.employee || getSelectedEmployee();
+  const brief = getRevenueRecovery(employee, getActiveDateKey(), isCenter);
+  panel.hidden = !brief;
+  if (!brief) { panel.innerHTML = ""; return; }
+  const view = scope === "fitness" ? "fitness-log" : activeView;
+  const existing = (log.tasks || []).find(task => task.text === brief.taskText);
+  const canAdd = !isCenter && canEditCurrentWorklog(view);
+  loadRevenueFeedback();
+  panel.innerHTML = `<header><strong>비욘드 피트니스 · 매출 흐름과 오늘의 개선</strong><small>${escapeHtml(brief.source)}</small></header>
+    ${renderRevenueEvidence(getRevenueFeedback())}
+    <p>${escapeHtml(brief.message)}</p>
+    <details><summary>${escapeHtml(brief.title)} · 실행 방법 보기</summary>
+      <p>${escapeHtml(brief.how)}</p><blockquote>${escapeHtml(brief.example)}</blockquote>
+      <p><b>결과 기록 예시</b> · ${escapeHtml(brief.result)}</p>
+      <small>상담·방문은 결제와 구분하고, 미확인 수치는 0으로 기록하지 않습니다. 회원 개인정보는 공유 일지에 적지 않습니다.</small>
+    </details>
+    ${canAdd ? `<button type="button" data-recovery-add ${existing ? "disabled" : ""}>${existing ? "오늘 업무에 추가됨" : "오늘 시도할 업무로 추가"}</button>` : ""}
+    ${existing ? `<p class="recovery-progress">내 업무 상태 · ${escapeHtml(existing.done ? "완료" : existing.status || "미완료")} — 오늘의 업무에서 결과와 지원 요청을 남겨주세요.</p>` : ""}`;
+  panel.querySelector("[data-recovery-add]")?.addEventListener("click", () => {
+    // Recheck the current page and date at click time; no auto-assignment or coworker writes.
+    if (activeView !== view || !guardWorklogEdit(view)) return;
+    const currentPage = scope === "fitness" ? getCurrentFitnessLogPage() : null;
+    if (currentPage?.type === "center") return;
+    const currentEmployee = currentPage?.employee || getSelectedEmployee();
+    const current = getRevenueRecovery(currentEmployee);
+    if (!current) return;
+    const currentLog = getEmployeeLogForDate(getCurrentWorklogEmployeeId(view), getActiveDateKey());
+    currentLog.tasks ||= [];
+    if (currentLog.tasks.some(task => task.text === current.taskText)) return;
+    const task = createWorklogTask("A");
+    task.text = current.taskText;
+    currentLog.tasks.push(task);
+    saveState();
+    renderEntries();
+    showAppToast("오늘의 업무에 추가했습니다. 실행 결과와 필요한 지원을 남겨주세요.");
+  });
+}
+
 function renderWorklogToday(log = getSelectedLog()) {
+  renderRevenueRecovery("worklog", log);
   renderWorklogSummary(log);
   renderWorklogTaskBoard(log);
   renderWorklogAppointments(log);
@@ -15063,6 +15176,7 @@ function renderFitnessWorklog(log = getSelectedLog()) {
   renderWeatherWidgets();
   renderWorklogEditLockBanner("fitness");
   document.getElementById("fitnessCenterDailyPanel").hidden = !isCenter;
+  renderRevenueRecovery("fitness", log);
   renderFitnessPersonalMonthSummary(page, isCenter);
   renderFitnessDagymScheduleWarning(page);
   renderFitnessDailyGuidance(page, isCenter);
@@ -26538,6 +26652,7 @@ function buildFitnessReportLines() {
     "[시간별 세부업무]",
     ...model.schedule.map((entry) => `- ${formatReportTime(entry.time)} ${entry.text || ""}`),
     "",
+    "[매출 흐름과 오늘 실행]", ...getRevenueReportLines(model),
     "[운영 KPI]",
     ...model.kpis.map(([label, value]) => `- ${label}: ${value}`),
     ...(!model.isCenter && model.operatingBrief ? [
@@ -27572,6 +27687,7 @@ function renderWorklogDailyReportTemplate(model = buildWorklogDailyReportModel()
       <section class="worklog-report-bottom-grid">
         <div><h3>3. 이슈·리스크·지원 요청</h3>${model.issueRows.map((row) => `<p>• ${escapeHtml(row)}</p>`).join("")}</div>
         <div><h3>4. 명일 계획·인수인계</h3>${model.tomorrowRows.map((row) => `<p>• ${escapeHtml(row)}</p>`).join("")}</div>
+        ${revenueReportHtml(model)}
         ${model.fitnessIssues ? `<div class="worklog-report-fitness-issues" style="grid-column:1 / -1;min-height:0;overflow-wrap:anywhere">
           <h3>비욘드 피트니스 · 운영 확인 이슈</h3>
           <p>보고일 ${escapeHtml(model.dateKey)}${model.fitnessIssues.analysisSourceDate ? ` · 다짐 근거일 ${escapeHtml(model.fitnessIssues.analysisSourceDate)}` : ""} · 담당자 확인 전 알림</p>
@@ -27685,6 +27801,7 @@ function openWorklogReportSheet() {
     sheet.classList.add("is-open");
     fitWorklogReportPreview();
     loadCoachingFollowup("worklog", model);
+    loadRevenueFeedback(model.dateKey, { force: true });
     loadFitnessReportIssues(model, { force: true });
     if (model.aiEnabled) requestWorklogReportAiCoaching(model, { silent: true });
   });
@@ -27735,6 +27852,7 @@ function buildWorklogDailyReportLines(model = buildWorklogDailyReportModel()) {
     "", "[업무 진행 현황]", ...model.tasks.map((task) => `- ${task.priority} ${task.text} (${task.status})`),
     "", "[시간대별 실행 내역]", ...model.schedule.map((entry) => `- ${entry.time} ${entry.text} (${entry.type})`),
     "", "[이슈·리스크·지원 요청]", ...model.issueRows.map((row) => `- ${row}`),
+    ...getRevenueReportLines(model),
     ...(model.fitnessIssues ? ["", "[비욘드 피트니스 운영 확인 이슈]", ...getFitnessReportIssueLines(model.fitnessIssues)] : []),
     "", "[명일 계획·인수인계]", ...model.tomorrowRows.map((row) => `- ${row}`),
     "", `[${model.businessArea.label} AI 코칭]`, ...getWorklogReportCoachingRows(model).map(([title, text]) => `- ${title}: ${text}`),
@@ -27830,6 +27948,7 @@ function getWorklogReportExportCss(height = 1754) {
 }
 
 async function renderWorklogReportCanvas() {
+  await loadRevenueFeedback();
   await loadFitnessReportIssues(buildWorklogDailyReportModel());
   const width = 1240;
   const model = buildWorklogDailyReportModel();
@@ -27886,6 +28005,7 @@ async function shareWorklogDailyReport() {
 }
 
 async function copyWorklogDailyReport() {
+  await loadRevenueFeedback();
   await loadFitnessReportIssues(buildWorklogDailyReportModel());
   const text = buildWorklogDailyReportLines().join("\n");
   try {
@@ -28374,6 +28494,7 @@ function clearFitnessReportCaches() {
   smartNextActionChoices.clear();
   dagymSnapshotLoads.clear();
   fitnessOperatingBriefCache.clear();
+  revenueFeedbackCache.clear();
   for (const id of ["worklogSmartNextAction", "fitnessSmartNextAction"]) {
     const host = document.getElementById(id); if (host) { host.hidden = true; host.innerHTML = ""; host.__smartRenderKey = ""; }
   }
@@ -28991,6 +29112,7 @@ function renderFitnessReportTemplate(model = buildFitnessReportModel()) {
         </table>
       </section>` : ""}
 
+      ${revenueReportHtml(model)}
       ${renderFitnessDagymReportHtml(model)}
 
       ${renderFitnessSnsReportHtml(model)}
@@ -29125,6 +29247,7 @@ function openFitnessReportSheet() {
     sheet.classList.add("is-open");
     fitFitnessReportPreview();
     const sourceViewer = authState.user?.id;
+    loadRevenueFeedback(model.dateKey, { force: true });
     loadFitnessOperatingBrief(model, { force: true });
     loadFitnessReportDagymSources(model.dateKey).then(() => {
       if (authState.user?.id !== sourceViewer) return;
@@ -29210,7 +29333,8 @@ function getFitnessReportFileBase() {
 
 function getFitnessReportExportHeight(model = buildFitnessReportModel()) {
   const reminderSpace = getPtScheduleReminderLines(model.ptScheduleReminder).reduce((sum, line) => sum + Math.max(1, Math.ceil(line.length / 65)) * 36, 0);
-  const feedbackSpace = (model.operatingBrief?.feedback && !model.isCenter ? 160 : 0) + (reminderSpace ? reminderSpace + 180 : 0) + (model.operatingFeedback ? 360 : 0)
+  const revenueSpace = getRevenueReportLines(model).reduce((sum, line) => sum + Math.max(1, Math.ceil(line.length / 65)) * 24, 0);
+  const feedbackSpace = (revenueSpace ? revenueSpace + 80 : 0) + (model.operatingBrief?.feedback && !model.isCenter ? 160 : 0) + (reminderSpace ? reminderSpace + 180 : 0) + (model.operatingFeedback ? 360 : 0)
     + (model.ptComparison ? 200 + getPtComparisonLines(model.ptComparison).reduce((sum, line) => sum + Math.max(1, Math.ceil(line.length / 65)) * 36, 0) : 0);
   if (model.isCenter) {
     const staffOverflow = Math.max(0, (model.staffRows?.length || 0) - 6) * 72;
@@ -29795,7 +29919,7 @@ function getFitnessReportExportCss(reportHeight = 1754) {
 async function renderFitnessReportCanvas() {
   const width = 1240;
   const selection = buildFitnessReportModel();
-  await Promise.all([loadFitnessReportDagymSources(selection.dateKey), loadFitnessOperatingBrief(selection)]);
+  await Promise.all([loadFitnessReportDagymSources(selection.dateKey), loadFitnessOperatingBrief(selection), loadRevenueFeedback(selection.dateKey)]);
   await loadPtScheduleReminder(selection);
   await loadPtComparison(selection);
   await loadFitnessFeedbackHistory(selection);

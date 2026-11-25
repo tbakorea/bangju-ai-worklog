@@ -390,6 +390,9 @@ create table if not exists public.worklog_states (
 alter table public.profiles enable row level security;
 alter table public.worklog_states enable row level security;
 
+-- metrics.salesComposition is optional JSON: {startDate,endDate,total,public,pt,refund,capturedAt}.
+-- Only same-period components reconciled to metrics.sales are stored by the API.
+-- Existing rows remain valid; no new column, backfill, RLS or field_count change is required.
 create table if not exists public.dagym_daily_snapshots (
   id uuid primary key default gen_random_uuid(),
   center_key text not null default 'beyond-fitness',

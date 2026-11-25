@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import quality from "./dagym-quality.cjs";
+import composition from "./dagym-sales-composition.cjs";
 import { atomicJson, validateDailyReceipt } from "./dagym-sync-health.mjs";
 const { isAuthSource, validateDailySnapshot } = quality;
 
@@ -290,13 +291,26 @@ async function main() {
     sales: process.env.DAGYM_SALES_URL || discovered.sales || `${baseUrl}/sales/list?gymId={gymId}`,
     members: process.env.DAGYM_MEMBERS_URL || discovered.members || `${baseUrl}/member/list?gymId={gymId}`,
   };
+  const saleRequests = new Map();
+  const rememberSaleQuery = request => {
+    try { const name = request.postDataJSON()?.operationName;
+      if (new URL(request.url()).origin === "https://www.dagym-manager.com" && ["GetSaleFilters", "GetSalesSummary"].includes(name)) saleRequests.set(name, request);
+    } catch { /* Non-JSON navigation requests are not sales queries. */ }
+  };
+  page.on("request", rememberSaleQuery);
   const captures = {};
   for (const key of ["attendance", "sales"]) captures[key] = await captureDomain(page, key, urls[key]);
   captures.members = urls.members
     ? await captureDomain(page, "members", urls.members)
     : await captureMembersViaMenu(page, attendanceStart);
   if (!captures.members.ok) captures.members = await captureMembersViaMenu(page, attendanceStart);
+  page.off("request", rememberSaleQuery);
   const metrics = collectMetrics(captures);
+  try {
+    const detail = await composition.captureSalesComposition(context, saleRequests, targetDate, metrics.sales);
+    if (detail) metrics.salesComposition = detail;
+  } catch { /* Missing composition does not block verified total sales; never invent a split. */ }
+  saleRequests.clear();
   const domains = Object.fromEntries(Object.entries(captures).map(([key, capture]) => [key, {
     ok: capture.ok,
     authenticated: capture.authenticated === true,

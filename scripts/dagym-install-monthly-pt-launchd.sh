@@ -17,6 +17,7 @@ SYNC_SCRIPTS=(
   dagym-session.mjs
   dagym-sync-health.mjs
   dagym-quality.cjs
+  dagym-sales-composition.cjs
   dagym-daily-sync.mjs
   dagym-monthly-pt-sync.mjs
   dagym-upload-pending.mjs

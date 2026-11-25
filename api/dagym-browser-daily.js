@@ -1,3 +1,4 @@
+const { normalizeComposition } = require('../scripts/dagym-sales-composition.cjs');
 const crypto = require("crypto");
 const { validateDailySnapshot } = require("../scripts/dagym-quality.cjs");
 
@@ -171,6 +172,8 @@ module.exports = async function handler(request, response) {
   try {
     const enriched = await enrichPtMetrics(dateKey, normalizeMetrics(request.body?.metrics));
     const metrics = enriched.metrics;
+    const composition = normalizeComposition(request.body?.metrics?.salesComposition, dateKey, metrics.sales);
+    if (composition) metrics.salesComposition = composition;
     domains.schedule = { ok: enriched.scheduleRows > 0, bookingMetricVerified: enriched.bookingMetricVerified, rows: enriched.scheduleRows, source: "dagym_pt_schedule_events", error: "", period: "month-schedule", capturedAt: collectedAt };
     const fieldCount = METRIC_KEYS.filter((key) => metrics[key] !== undefined).length;
     const successfulDomains = Object.values(domains).filter((domain) => domain.ok).length;
